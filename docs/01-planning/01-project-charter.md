@@ -48,10 +48,32 @@
 
 ## 5. 핵심 제약 조건
 
+### 5.1 하드웨어 사양
+| 항목 | 사양 |
+|------|------|
+| 장비 | LG 그램 15Z90R |
+| CPU | Intel i7-1360P (12코어/16스레드, 2.2GHz) |
+| RAM | 16GB (실사용 가능 ~12GB, OS/시스템 제외) |
+| GPU | Intel Iris Xe (내장, VRAM 없음) |
+| 디스크 | SSD |
+| OS | Windows 11 Pro + WSL2 + Hyper-V |
+
+### 5.2 리소스 제약 및 운영 전략
+RAM 16GB로 모든 서비스 동시 실행 불가. **교대 실행 전략** 적용:
+
+| 모드 | 실행 서비스 | 예상 RAM |
+|------|------------|----------|
+| 개발 모드 | 앱(게임서버, 프론트) + Redis + PostgreSQL | ~6GB |
+| CI/CD 모드 | ArgoCD + GitLab Runner | ~6GB |
+| 품질 모드 | SonarQube (단독) | ~4GB |
+| AI 실험 모드 | Ollama + 1B~3B 모델 (K8s 밖 직접 실행) | ~5GB |
+
+> Oracle VirtualBox 별도 VM은 이 사양에서 RAM 분할만 발생하므로 사용하지 않는다.
+> Ollama로 7B+ 모델은 K8s와 동시 실행 불가. 3B 이하 모델 또는 API 모델 사용 권장.
+
+### 5.3 기타 제약
 | 제약 | 상세 |
 |------|------|
-| 인프라 | Windows 노트북 + Docker Desktop + Kubernetes |
-| 메모리 | 최소 16GB 권장 (LLM 로컬 실행 시) |
 | 비용 | LLM API 호출 비용 최소화 필요 |
 | 인원 | 1인 개발 |
 

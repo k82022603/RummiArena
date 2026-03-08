@@ -104,10 +104,11 @@ ollama pull qwen3:8b           # 최신, 하이브리드 사고 모드
 # Ollama 설치 (WSL2)
 curl -fsSL https://ollama.com/install.sh | sh
 
-# 권장 모델 3개만 먼저 설치
-ollama pull llama3.2:1b       # 하수용 (~700MB)
-ollama pull qwen2.5:7b        # 중수용 (~4.7GB)
-ollama pull deepseek-r1:14b   # 고수용 (~9GB)
+# 현재 장비(RAM 16GB) 기준 권장 모델
+ollama pull llama3.2:1b       # 하수용 (~700MB, ~1GB RAM)
+ollama pull qwen2.5:3b        # 중수용 (~2GB, ~3GB RAM)
+ollama pull phi4-mini          # 고수용 (~2.5GB, ~4GB RAM)
+# 주의: 7B 이상 모델은 K8s와 동시 실행 불가 (AI 실험 모드에서 단독 실행)
 
 # 테스트
 ollama run qwen2.5:7b "JSON으로 응답하세요: {action: place 또는 draw}"
