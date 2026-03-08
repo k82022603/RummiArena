@@ -98,19 +98,13 @@ SonarQube   →   npm audit   →   Trivy        →   OWASP ZAP*
 3. `trivy image` → CRITICAL/HIGH 취약점 0
 4. (2단계) OWASP ZAP → 배포 후 자동 스캔
 
-## 7. Oracle VM 활용 방안 (선택)
+## 7. Oracle VM 활용 방안 (비권장)
 
-Docker Desktop K8s 리소스가 부족할 경우:
+> **현재 장비(LG 그램, RAM 16GB)에서는 사용하지 않는다.**
+> VM은 물리 RAM을 나눠 쓰므로, 16GB 환경에서 VM 추가 시 오히려 성능 악화.
+> 별도 PC(32GB+)가 확보되거나, 멀티노드 K8s 실험이 필요할 때만 검토.
 
-| 용도 | VM 구성 |
-|------|---------|
-| SonarQube 전용 | Ubuntu VM, 4GB RAM, Docker |
-| GitLab Runner 전용 | Ubuntu VM, 2GB RAM |
-| Ollama (LLaMA) 전용 | Ubuntu VM, 8GB+ RAM |
-| 멀티노드 K8s 실험 | kubeadm 클러스터 구성 |
-
-VirtualBox 또는 Hyper-V 사용.
-WSL2와 Hyper-V는 공존 가능.
+대안: **교대 실행 전략**으로 Docker Desktop 하나에서 모드별 서비스 전환.
 
 ## 8. Istio Service Mesh 구성 계획
 
