@@ -2,13 +2,27 @@
 
 ## 1. 전체 도구 체인 맵
 
-```
-[개발] → [빌드/CI] → [품질/보안] → [배포/CD] → [운영/모니터링] → [소통]
-
- VSCode     GitLab CI    SonarQube     ArgoCD       kubectl        카카오톡
- Git        GitLab       Trivy         Helm         Prometheus*    GitHub Issues
-            Runner       OWASP ZAP*    K8s          Grafana*
-            Docker                                  JSON Logs
+```mermaid
+flowchart LR
+    subgraph Dev["개발"]
+        d1["VSCode\nGit"]
+    end
+    subgraph CI["빌드/CI"]
+        c1["GitLab CI\nGitLab Runner\nDocker"]
+    end
+    subgraph QA["품질/보안"]
+        q1["SonarQube\nTrivy\nOWASP ZAP*"]
+    end
+    subgraph CD["배포/CD"]
+        cd1["ArgoCD\nHelm\nK8s"]
+    end
+    subgraph Ops["운영/모니터링"]
+        o1["kubectl\nPrometheus*\nGrafana*\nJSON Logs"]
+    end
+    subgraph Comm["소통"]
+        co1["카카오톡\nGitHub Issues"]
+    end
+    Dev --> CI --> QA --> CD --> Ops --> Comm
 ```
 
 > `*` 표시: 2단계 이후 도입
@@ -67,12 +81,9 @@
 - 또는 Docker Compose로 별도 실행 (리소스 절약)
 
 ### 5.2 연동 구조
-```
-GitLab CI Pipeline
-  → sonar-scanner 실행
-  → SonarQube 서버로 분석 결과 전송
-  → Quality Gate 판정
-  → 실패 시 카카오톡 알림
+```mermaid
+flowchart LR
+    CI["GitLab CI\nPipeline"] --> Scanner["sonar-scanner\n실행"] --> SQ["SonarQube 서버\n분석 결과 전송"] --> QG["Quality Gate\n판정"] --> Alert["실패 시\n카카오톡 알림"]
 ```
 
 ### 5.3 품질 게이트 기준 (초기)
@@ -86,10 +97,9 @@ GitLab CI Pipeline
 
 ## 6. 보안 스캔 도구 체인 (DevSecOps)
 
-```
-[SAST]          [SCA]           [Container]      [DAST]
-SonarQube   →   npm audit   →   Trivy        →   OWASP ZAP*
-(코드 분석)     (의존성 취약점)   (이미지 스캔)     (동적 테스트)
+```mermaid
+flowchart LR
+    SAST["SAST\nSonarQube\n(코드 분석)"] --> SCA["SCA\nnpm audit\n(의존성 취약점)"] --> Container["Container\nTrivy\n(이미지 스캔)"] --> DAST["DAST\nOWASP ZAP*\n(동적 테스트)"]
 ```
 
 ### 파이프라인 내 보안 게이트
@@ -116,17 +126,18 @@ SonarQube   →   npm audit   →   Trivy        →   OWASP ZAP*
 - **Rate Limiting**: AI API 호출 제한
 
 ### 8.2 적용 대상 서비스
-```
-Istio Ingress Gateway
-  ├─ frontend
-  ├─ game-server
-  ├─ ai-adapter
-  │    ├─ → OpenAI (External)
-  │    ├─ → Claude (External)
-  │    ├─ → DeepSeek (External)
-  │    └─ → Ollama (Internal)
-  ├─ redis
-  └─ postgres
+```mermaid
+graph TB
+    IGW["Istio Ingress Gateway"]
+    IGW --> FE["frontend"]
+    IGW --> GS["game-server"]
+    IGW --> AI["ai-adapter"]
+    AI --> OpenAI["OpenAI (External)"]
+    AI --> Claude["Claude (External)"]
+    AI --> DeepSeek["DeepSeek (External)"]
+    AI --> Ollama["Ollama (Internal)"]
+    IGW --> Redis["redis"]
+    IGW --> PG["postgres"]
 ```
 
 ### 8.3 핵심 활용 시나리오

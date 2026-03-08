@@ -162,10 +162,10 @@ TTL: 1800 (30분)
 
 ## 5. ER 다이어그램
 
-```
-users 1──N game_players N──1 games
-                │                  │
-                │                  │
-                N                  N
-          ai_call_logs       game_events
+```mermaid
+erDiagram
+    users ||--o{ game_players : "1:N"
+    games ||--o{ game_players : "1:N"
+    game_players ||--o{ ai_call_logs : "1:N"
+    games ||--o{ game_events : "1:N"
 ```

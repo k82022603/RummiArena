@@ -2,37 +2,26 @@
 
 ## 1. 전체 아키텍처 개요
 
-```
-┌─────────────────────────────────────────────────────┐
-│                    Istio Ingress Gateway             │
-└──────────┬──────────────────────────┬───────────────┘
-           │                          │
-    ┌──────▼──────┐           ┌───────▼───────┐
-    │  Frontend   │           │  Admin Panel  │
-    │  (Next.js)  │           │  (Next.js)    │
-    └──────┬──────┘           └───────┬───────┘
-           │ WebSocket / REST          │ REST
-           │                          │
-    ┌──────▼──────────────────────────▼───────┐
-    │            Game Server (API)            │
-    │         WebSocket + REST API            │
-    │         ┌─────────────────┐             │
-    │         │  Game Engine    │             │
-    │         │  (규칙 검증)     │             │
-    │         └─────────────────┘             │
-    └──┬─────────┬─────────────┬─────────────┘
-       │         │             │
-  ┌────▼───┐ ┌───▼────┐ ┌─────▼──────┐
-  │ Redis  │ │Postgres│ │ AI Adapter │
-  │(상태)  │ │(영속)  │ │  Service   │
-  └────────┘ └────────┘ └─────┬──────┘
-                               │
-              ┌────────────────┼────────────────┐
-              │                │                │
-       ┌──────▼──┐    ┌───────▼──┐    ┌────────▼──┐
-       │ OpenAI  │    │  Claude  │    │  Ollama   │
-       │DeepSeek │    │   API    │    │  (Local)  │
-       └─────────┘    └──────────┘    └───────────┘
+```mermaid
+graph TB
+    Ingress["Istio Ingress Gateway"]
+    Ingress --> FE["Frontend\n(Next.js)"]
+    Ingress --> Admin["Admin Panel\n(Next.js)"]
+    FE -->|"WebSocket / REST"| GS
+    Admin -->|"REST"| GS
+
+    subgraph GS["Game Server (API)"]
+        direction TB
+        API["WebSocket + REST API"]
+        Engine["Game Engine\n(규칙 검증)"]
+    end
+
+    GS --> Redis["Redis\n(상태)"]
+    GS --> PG["PostgreSQL\n(영속)"]
+    GS --> AI["AI Adapter\nService"]
+    AI --> OpenAI["OpenAI\nDeepSeek"]
+    AI --> Claude["Claude\nAPI"]
+    AI --> Ollama["Ollama\n(Local)"]
 ```
 
 ## 2. 서비스 구성
@@ -55,11 +44,12 @@
 - 수평 확장 가능
 
 ### 3.2 LLM 신뢰 금지 원칙
-```
-LLM → "행동 제안" (JSON)
-Game Engine → "유효성 검증"
-  ├─ 유효 → 적용
-  └─ 무효 → 재요청 (최대 3회) → 실패 시 강제 드로우
+```mermaid
+flowchart LR
+    LLM["LLM"] -->|"행동 제안 (JSON)"| Engine["Game Engine\n유효성 검증"]
+    Engine -->|유효| Apply["적용"]
+    Engine -->|무효| Retry["재요청\n(최대 3회)"]
+    Retry -->|실패| Draw["강제 드로우"]
 ```
 
 ### 3.3 AI Adapter 분리
@@ -68,86 +58,87 @@ Game Engine → "유효성 검증"
 - Istio VirtualService로 모델별 트래픽 분배 가능
 
 ### 3.4 이벤트 기반 턴 관리
-```
-턴 시작
-  → Human: WebSocket으로 행동 수신
-  → AI: AI Adapter에 행동 요청
-    → 유효성 검증
-      → 턴 종료 이벤트 발행
-        → 다음 플레이어 턴 시작
+```mermaid
+flowchart TB
+    Start["턴 시작"] --> Human["Human: WebSocket으로\n행동 수신"]
+    Start --> AI["AI: AI Adapter에\n행동 요청"]
+    Human --> Validate["유효성 검증"]
+    AI --> Validate
+    Validate --> End["턴 종료 이벤트 발행"]
+    End --> Next["다음 플레이어 턴 시작"]
 ```
 
 ## 4. 데이터 흐름
 
 ### 4.1 Human 플레이어 턴
-```
-Browser → WebSocket → Game Server → Engine 검증 → Redis 상태 업데이트
-  → 전체 플레이어에게 WebSocket 브로드캐스트
+```mermaid
+flowchart LR
+    A["Browser"] --> B["WebSocket"] --> C["Game Server"] --> D["Engine 검증"] --> E["Redis 상태\n업데이트"] --> F["전체 플레이어에게\nWebSocket 브로드캐스트"]
 ```
 
 ### 4.2 AI 플레이어 턴
-```
-Game Server → AI Adapter → LLM API 호출 → 응답 파싱
-  → Engine 검증 → Redis 상태 업데이트
-  → 전체 플레이어에게 WebSocket 브로드캐스트
+```mermaid
+flowchart LR
+    A["Game Server"] --> B["AI Adapter"] --> C["LLM API 호출"] --> D["응답 파싱"]
+    D --> E["Engine 검증"] --> F["Redis 상태\n업데이트"] --> G["전체 플레이어에게\nWebSocket 브로드캐스트"]
 ```
 
 ## 5. 인증/인가 아키텍처
 
-```
-Browser → Google OAuth 2.0 → JWT 발급
-  → WebSocket 연결 시 JWT 검증
-  → API 호출 시 JWT 검증
-  → RBAC: ROLE_ADMIN / ROLE_USER
+```mermaid
+flowchart LR
+    Browser --> OAuth["Google OAuth 2.0"] --> JWT["JWT 발급"]
+    JWT --> WS["WebSocket 연결 시\nJWT 검증"]
+    JWT --> API["API 호출 시\nJWT 검증"]
+    WS --> RBAC["RBAC:\nADMIN / USER"]
+    API --> RBAC
 ```
 
 ## 6. Kubernetes 배포 아키텍처
 
-```
-Namespace: rummikub
-
-Deployments:
-  ├─ frontend (replicas: 1)
-  ├─ game-server (replicas: 1)
-  ├─ ai-adapter (replicas: 1)
-  ├─ admin (replicas: 1)
-  └─ ollama (replicas: 1)
-
-StatefulSets:
-  ├─ redis (replicas: 1)
-  └─ postgres (replicas: 1, PVC)
-
-Services:
-  ├─ frontend (ClusterIP)
-  ├─ game-server (ClusterIP)
-  ├─ ai-adapter (ClusterIP)
-  ├─ admin (ClusterIP)
-  ├─ redis (ClusterIP)
-  └─ postgres (ClusterIP)
-
-Ingress:
-  ├─ / → frontend
-  ├─ /api → game-server
-  ├─ /ws → game-server (WebSocket)
-  └─ /admin → admin
-
-Istio (Phase 2):
-  ├─ VirtualService (라우팅 룰)
-  ├─ DestinationRule (Circuit Breaker, Timeout)
-  └─ PeerAuthentication (mTLS)
+```mermaid
+graph TB
+    subgraph NS["Namespace: rummikub"]
+        subgraph deploy["Deployments (replicas: 1)"]
+            d1["frontend"]
+            d2["game-server"]
+            d3["ai-adapter"]
+            d4["admin"]
+            d5["ollama"]
+        end
+        subgraph sts["StatefulSets"]
+            s1["redis (1)"]
+            s2["postgres (1, PVC)"]
+        end
+        subgraph svc["Services (ClusterIP)"]
+            sv1["frontend"]
+            sv2["game-server"]
+            sv3["ai-adapter"]
+            sv4["admin"]
+            sv5["redis"]
+            sv6["postgres"]
+        end
+    end
+    subgraph ing["Ingress"]
+        i1["/ → frontend"]
+        i2["/api → game-server"]
+        i3["/ws → game-server (WS)"]
+        i4["/admin → admin"]
+    end
+    subgraph istio["Istio (Phase 2)"]
+        is1["VirtualService (라우팅)"]
+        is2["DestinationRule (CB, Timeout)"]
+        is3["PeerAuthentication (mTLS)"]
+    end
+    ing --> NS
+    istio -.->|"Phase 2"| NS
 ```
 
 ## 7. 외부 시스템 연동
 
-```
-┌─────────────┐     ┌──────────────┐     ┌──────────────┐
-│  Google     │     │ Kakao        │     │ LLM APIs     │
-│  OAuth 2.0  │     │ Message API  │     │ (External)   │
-└──────┬──────┘     └──────┬───────┘     └──────┬───────┘
-       │                   │                    │
-       │    HTTPS          │    HTTPS           │    HTTPS
-       │                   │                    │
-┌──────▼───────────────────▼────────────────────▼──────┐
-│                    Game Server                        │
-└──────────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    Google["Google\nOAuth 2.0"] -->|HTTPS| GS["Game Server"]
+    Kakao["Kakao\nMessage API"] -->|HTTPS| GS
+    LLM["LLM APIs\n(External)"] -->|HTTPS| GS
 ```

@@ -7,26 +7,21 @@ RummiArena의 로컬 개발/테스트 인프라 전체 구성을 정리한다.
 
 ## 2. 인프라 스택 구조
 
-```
-Windows 11 (LG Gram 15Z90R, i7-1360P, RAM 16GB)
-│
-├─ .wslconfig (리소스 상한 제어)
-│
-└─ WSL2 (Ubuntu 24.04)
-   │
-   ├─ Docker Desktop (WSL2 Backend)
-   │  ├─ docker-compose.yml → PostgreSQL 16
-   │  ├─ (추후) Redis 7
-   │  └─ Kubernetes (내장)
-   │     ├─ namespace: rummikub (앱 서비스)
-   │     ├─ namespace: argocd (GitOps CD)
-   │     └─ namespace: sonarqube (코드 품질)
-   │
-   ├─ Claude Code + MCP 서버 4개
-   │  ├─ github, filesystem, postgres, kubernetes
-   │  └─ Docker 연동: Bash 명령 직접 실행 (MCP 미사용)
-   │
-   └─ GitLab Runner (Docker Executor)
+```mermaid
+graph TB
+    Win["Windows 11\n(LG Gram, i7-1360P, 16GB)"]
+    Win --> WSLConfig[".wslconfig\n(리소스 상한 제어)"]
+    Win --> WSL["WSL2 (Ubuntu 24.04)"]
+    WSL --> Docker["Docker Desktop\n(WSL2 Backend)"]
+    Docker --> Compose["docker-compose.yml\nPostgreSQL 16"]
+    Docker --> Redis["(추후) Redis 7"]
+    Docker --> K8s["Kubernetes (내장)"]
+    K8s --> NS1["rummikub\n(앱 서비스)"]
+    K8s --> NS2["argocd\n(GitOps CD)"]
+    K8s --> NS3["sonarqube\n(코드 품질)"]
+    WSL --> Claude["Claude Code\nMCP 서버 4개"]
+    Claude --> MCP["github, filesystem\npostgres, kubernetes"]
+    WSL --> GitLab["GitLab Runner\n(Docker Executor)"]
 ```
 
 ## 3. 리소스 할당 전략
@@ -142,21 +137,22 @@ docker compose down -v
 
 ### 5.1 네임스페이스 구조
 
-```
-docker-desktop (K8s cluster)
-├─ rummikub        # 앱 서비스 (frontend, game-server, ai-adapter)
-├─ argocd          # ArgoCD (GitOps CD)
-├─ sonarqube       # SonarQube (코드 품질)
-├─ istio-system    # Istio (Phase 5)
-└─ monitoring      # Prometheus, Grafana (Phase 5)
+```mermaid
+graph LR
+    Cluster["docker-desktop\n(K8s cluster)"]
+    Cluster --> NS1["rummikub\n앱 서비스"]
+    Cluster --> NS2["argocd\nArgoCD"]
+    Cluster --> NS3["sonarqube\n코드 품질"]
+    Cluster --> NS4["istio-system\nIstio (Phase 5)"]
+    Cluster --> NS5["monitoring\nPrometheus, Grafana\n(Phase 5)"]
 ```
 
 ### 5.2 배포 방식
 
-```
-GitHub (소스) → GitLab CI (빌드/테스트/스캔) → GitOps Repo (Helm values 업데이트)
-                                                       ↓
-                              ArgoCD (감시) → K8s (rummikub namespace)
+```mermaid
+flowchart LR
+    GH["GitHub\n(소스)"] --> CI["GitLab CI\n(빌드/테스트/스캔)"] --> GitOps["GitOps Repo\n(Helm values)"]
+    GitOps --> ArgoCD["ArgoCD\n(감시)"] --> K8s["K8s\n(rummikub namespace)"]
 ```
 
 > 상세: [06-argocd.md](../00-tools/06-argocd.md), [05-gitlab-ci.md](../00-tools/05-gitlab-ci.md)
@@ -177,27 +173,27 @@ GitHub (소스) → GitLab CI (빌드/테스트/스캔) → GitOps Repo (Helm va
 ## 7. 트러블슈팅 의사결정 트리
 
 ### WSL이 멈추거나 응답 없음
-```
-WSL 멈춤/느림
-├─ 메모리 확인: free -h
-│  ├─ 가용 메모리 < 500MB → OOM 위험
-│  │  ├─ ps aux --sort=-%mem → 비정상 프로세스 있는가?
-│  │  │  ├─ 있다 → 프로세스 kill 또는 원인 제거
-│  │  │  └─ 없다 → .wslconfig memory 상향 또는 서비스 축소
-│  │  └─ swap 사용량 확인: swapon --show
-│  │     └─ swap도 소진 → wsl --shutdown 후 재시작
-│  └─ 가용 메모리 충분 → CPU 확인: top
-│     └─ 특정 프로세스 CPU 100% → 해당 프로세스 조사
-└─ WSL 자체 접속 불가 → PowerShell: wsl --shutdown → wsl
+```mermaid
+flowchart TB
+    Start["WSL 멈춤/느림"] --> Mem["메모리 확인: free -h"]
+    Start -->|WSL 접속 불가| PS2["PowerShell:\nwsl --shutdown → wsl"]
+    Mem -->|"가용 < 500MB"| OOM["OOM 위험"]
+    OOM --> PS["ps aux --sort=-%mem"]
+    PS -->|비정상 프로세스 있음| Kill["프로세스 kill\n또는 원인 제거"]
+    PS -->|비정상 없음| Config[".wslconfig memory 상향\n또는 서비스 축소"]
+    OOM --> Swap["swap 확인: swapon --show"]
+    Swap -->|swap 소진| Shutdown["wsl --shutdown\n후 재시작"]
+    Mem -->|가용 충분| CPU["CPU 확인: top"]
+    CPU -->|"CPU 100%"| Investigate["해당 프로세스 조사"]
 ```
 
 ### Docker 컨테이너 문제
-```
-컨테이너 시작 실패
-├─ docker logs <name> → 에러 메시지 확인
-├─ 포트 충돌 → docker ps로 점유 확인, 충돌 컨테이너 정리
-├─ 볼륨 문제 → docker volume ls, docker volume inspect
-└─ 이미지 문제 → docker pull로 재다운로드
+```mermaid
+flowchart TB
+    Start["컨테이너 시작 실패"] --> Logs["docker logs\n에러 메시지 확인"]
+    Start --> Port["포트 충돌\ndocker ps로 점유 확인"]
+    Start --> Volume["볼륨 문제\ndocker volume inspect"]
+    Start --> Image["이미지 문제\ndocker pull 재다운로드"]
 ```
 
 ## 8. 주의사항
