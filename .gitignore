@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+vendor/
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
+
+# Kubernetes secrets (never commit)
+*-secret.yaml
+*-secrets.yaml
+
+# SonarQube
+.scannerwork/
+
+# Test coverage
+coverage/
+*.lcov
+
+# Logs (application runtime logs only)
+*.log
+# Note: /logs/ 디렉토리는 프로젝트 기록용이므로 추적함
+
+# Temporary
+tmp/
+temp/
