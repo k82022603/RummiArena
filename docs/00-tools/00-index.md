@@ -52,7 +52,8 @@
 |---|------|------|-----------|------|
 | 20 | GitHub Projects + Issues | 백로그, 이슈 관리 | Phase 1 | [20-github-projects.md](20-github-projects.md) |
 | 21 | Claude Code (Skills/MCP) | AI 개발 어시스턴트 | Phase 1 | [21-claude-code.md](21-claude-code.md) |
-| 22 | Oracle VirtualBox | VM 환경 (리소스 분산) | 선택 | [22-oracle-vm.md](22-oracle-vm.md) |
+| 22 | Oracle VirtualBox | VM 환경 (리소스 분산) | 비권장 (16GB) | [22-oracle-vm.md](22-oracle-vm.md) |
+| 23 | WSL2 + .wslconfig | WSL2 리소스 관리 | Phase 1 | [23-wslconfig.md](23-wslconfig.md) |
 
 ## 문서 작성 규칙
 
