@@ -55,3 +55,7 @@ autoMemoryReclaim=gradual
 ## 영향 범위
 - 적용 후 `wsl --shutdown` 필요 (Docker Desktop 포함 재시작)
 - Ollama 7B+ 모델 K8s 동시 실행 불가 (기존과 동일, AI 실험 모드에서 단독 실행)
+- **크로스 프로젝트 영향**: `.wslconfig`는 WSL2 전역 설정이므로,
+  `hybrid-rag-knowledge-ops` 프로젝트(14GB 필요)와 충돌 발생
+- **해결**: 프로젝트별 `.wslconfig.profile` + `scripts/switch-wslconfig.sh` 스위칭 스크립트 도입
+- hybrid-rag 복귀 시 `bash scripts/switch-wslconfig.sh hybrid-rag` 실행 필요
