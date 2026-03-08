@@ -9,17 +9,18 @@
 
 ## 2. Adapter 구조
 
-```
-AI Adapter Service
-├── AdapterInterface (공통 인터페이스)
-│   ├── OpenAIAdapter
-│   ├── ClaudeAdapter
-│   ├── DeepSeekAdapter
-│   └── OllamaAdapter
-├── PromptBuilder (게임 상태 → 프롬프트 변환)
-├── ResponseParser (LLM 응답 → 행동 JSON 파싱)
-├── RetryHandler (재시도 로직)
-└── MetricsCollector (호출 로그/메트릭)
+```mermaid
+graph TB
+    AI["AI Adapter Service"]
+    AI --> IF["AdapterInterface\n(공통 인터페이스)"]
+    IF --> OA["OpenAIAdapter"]
+    IF --> CA["ClaudeAdapter"]
+    IF --> DA["DeepSeekAdapter"]
+    IF --> OLA["OllamaAdapter"]
+    AI --> PB["PromptBuilder\n(게임 상태 → 프롬프트)"]
+    AI --> RP["ResponseParser\n(LLM 응답 → JSON 파싱)"]
+    AI --> RH["RetryHandler\n(재시도 로직)"]
+    AI --> MC["MetricsCollector\n(호출 로그/메트릭)"]
 ```
 
 ## 3. 공통 인터페이스
@@ -128,15 +129,18 @@ interface MoveResponse {
 
 ## 6. 재시도 및 Fallback 로직
 
-```
-요청 시도 (최대 3회)
-  ├─ 성공 → 응답 파싱
-  │    ├─ 파싱 성공 → Game Engine 유효성 검증
-  │    │    ├─ 유효 → 적용
-  │    │    └─ 무효 → 재시도 (에러 메시지 포함)
-  │    └─ 파싱 실패 → 재시도
-  ├─ 타임아웃 → 재시도
-  └─ 3회 실패 → 강제 드로우 (draw)
+```mermaid
+flowchart TB
+    Start["요청 시도\n(최대 3회)"] --> Success{성공?}
+    Success -->|성공| Parse{응답 파싱}
+    Parse -->|파싱 성공| Validate{"Game Engine\n유효성 검증"}
+    Validate -->|유효| Apply["적용"]
+    Validate -->|무효| Retry["재시도\n(에러 메시지 포함)"]
+    Parse -->|파싱 실패| Retry
+    Success -->|타임아웃| Retry
+    Retry --> Fail{3회 실패?}
+    Fail -->|Yes| Draw["강제 드로우 (draw)"]
+    Fail -->|No| Start
 ```
 
 ## 7. 메트릭 수집 항목
@@ -154,14 +158,15 @@ interface MoveResponse {
 ## 8. LangChain/LangGraph 도입 검토
 
 ### 8.1 도입 시 구조 변경
-```
-AI Adapter Service
-├── LangChain/LangGraph Agent
-│   ├── PromptTemplate (프롬프트 관리)
-│   ├── OutputParser (구조화 출력)
-│   ├── Tool: AnalyzeTable (테이블 분석)
-│   ├── Tool: FindPossibleMoves (가능한 수 탐색)
-│   └── Tool: EvaluateMove (수 평가)
+```mermaid
+graph TB
+    AI["AI Adapter Service"]
+    AI --> Agent["LangChain/LangGraph Agent"]
+    Agent --> PT["PromptTemplate\n(프롬프트 관리)"]
+    Agent --> OP["OutputParser\n(구조화 출력)"]
+    Agent --> T1["Tool: AnalyzeTable\n(테이블 분석)"]
+    Agent --> T2["Tool: FindPossibleMoves\n(가능한 수 탐색)"]
+    Agent --> T3["Tool: EvaluateMove\n(수 평가)"]
 ```
 
 ### 8.2 LangGraph 장점 (이 프로젝트 기준)

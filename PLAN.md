@@ -197,22 +197,19 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 
 ## CI/CD 파이프라인 흐름
 
-```
-Push → GitLab CI
-  ├─ Lint + Unit Test
-  ├─ SonarQube Scan → Quality Gate
-  ├─ Docker Build
-  ├─ Trivy Image Scan → Security Gate
-  ├─ Push to Registry
-  └─ Update GitOps Repo (image tag)
-        ↓
-    ArgoCD Sync
-        ↓
-    Kubernetes Deploy
-        ↓
-    (Phase 5) OWASP ZAP Scan
-        ↓
-    카카오톡 알림
+```mermaid
+flowchart TB
+    Push["Push"] --> CI["GitLab CI"]
+    CI --> Lint["Lint + Unit Test"]
+    CI --> Sonar["SonarQube Scan\n→ Quality Gate"]
+    CI --> Build["Docker Build"]
+    CI --> Trivy["Trivy Image Scan\n→ Security Gate"]
+    CI --> Registry["Push to Registry"]
+    CI --> GitOps["Update GitOps Repo\n(image tag)"]
+    GitOps --> ArgoCD["ArgoCD Sync"]
+    ArgoCD --> K8s["Kubernetes Deploy"]
+    K8s --> ZAP["(Phase 5)\nOWASP ZAP Scan"]
+    ZAP --> Kakao["카카오톡 알림"]
 ```
 
 ---
@@ -254,5 +251,7 @@ docs/
 - 기획 문서 5개, 설계 문서 5개, 개발/배포 문서 2개
 - PostgreSQL(docker-compose), .wslconfig 최적화, MCP 4개 연동
 - GitHub Push, 교대 실행 전략 확립
+- 전체 문서 도식 Mermaid 표준화 (25개), Claude Code 스킬 4개 등록
+- CLAUDE.md Diagram Convention 지침 추가
 
 다음 단계: GitHub Projects 보드 → K8s 활성화 → ArgoCD → GitLab Runner → SonarQube

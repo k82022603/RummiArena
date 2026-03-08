@@ -2,10 +2,15 @@
 
 ## 1. 세션 생명주기
 
-```
-[CREATED] → [WAITING] → [PLAYING] → [FINISHED]
-                │                       ↑
-                └── [CANCELLED] ────────┘ (인원 부족/호스트 퇴장)
+```mermaid
+stateDiagram-v2
+    [*] --> CREATED
+    CREATED --> WAITING
+    WAITING --> PLAYING
+    WAITING --> CANCELLED : 인원 부족/호스트 퇴장
+    PLAYING --> FINISHED
+    CANCELLED --> [*]
+    FINISHED --> [*]
 ```
 
 | 상태 | 설명 | 전이 조건 |
@@ -47,15 +52,11 @@ GameSession
 
 ## 3. 저장소별 역할 분담
 
-```
-              ┌───────────────────────┐
-              │   Game Server (API)   │
-              └───┬───────────────┬───┘
-                  │               │
-          ┌───────▼───────┐ ┌────▼────────┐
-          │     Redis     │ │  PostgreSQL  │
-          │  (실시간 상태)  │ │ (영속 기록)   │
-          └───────────────┘ └─────────────┘
+```mermaid
+graph TB
+    GS["Game Server (API)"]
+    GS --> Redis["Redis\n(실시간 상태)"]
+    GS --> PG["PostgreSQL\n(영속 기록)"]
 ```
 
 | 데이터 | Redis | PostgreSQL |
@@ -105,26 +106,30 @@ GameSession
 ## 5. 턴 관리
 
 ### 5.1 턴 플로우
-```
-턴 시작
-  │
-  ├─ Human 턴
-  │   ├─ turn:start 이벤트 전송
-  │   ├─ 타이머 시작 (turnTimeoutSec)
-  │   ├─ 클라이언트에서 타일 배치/드래그
-  │   ├─ turn:confirm 수신
-  │   │   ├─ 유효 → 적용, 다음 턴
-  │   │   └─ 무효 → error 전송, 재시도
-  │   └─ 타임아웃 → 자동 드로우
-  │
-  └─ AI 턴
-      ├─ ai:thinking 이벤트 전송
-      ├─ AI Adapter 호출
-      ├─ 응답 수신 → Engine 검증
-      │   ├─ 유효 → 적용
-      │   └─ 무효 → 재요청 (max 3회) → 실패 시 드로우
-      ├─ turn:action 이벤트 전송
-      └─ 다음 턴
+```mermaid
+flowchart TB
+    Start["턴 시작"] --> Type{플레이어 유형}
+
+    Type -->|Human 턴| H1["turn:start 이벤트 전송"]
+    H1 --> H2["타이머 시작"]
+    H2 --> H3["클라이언트 타일 배치/드래그"]
+    H3 --> H4["turn:confirm 수신"]
+    H4 --> HV{유효?}
+    HV -->|유효| Apply["적용, 다음 턴"]
+    HV -->|무효| HE["error 전송, 재시도"]
+    H2 -->|타임아웃| HD["자동 드로우"]
+
+    Type -->|AI 턴| A1["ai:thinking 이벤트 전송"]
+    A1 --> A2["AI Adapter 호출"]
+    A2 --> A3["응답 수신 → Engine 검증"]
+    A3 --> AV{유효?}
+    AV -->|유효| AApply["적용"]
+    AV -->|무효| AR["재요청 (max 3회)"]
+    AR -->|실패| AD["드로우"]
+    AApply --> A4["turn:action 이벤트 전송"]
+    A4 --> Next["다음 턴"]
+    Apply --> Next
+    HD --> Next
 ```
 
 ### 5.2 턴 타이머

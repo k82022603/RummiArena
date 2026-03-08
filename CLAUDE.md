@@ -9,12 +9,14 @@ Human + AI 혼합 2~4인 실시간 대전을 지원하며, 다양한 LLM 모델(
 
 ## Architecture
 
-```
-Frontend (Next.js) → Game Server (WebSocket/REST) → Game Engine (규칙 검증)
-                                                   → AI Adapter → LLM APIs / Ollama
-                                                   → Redis (게임 상태)
-                                                   → PostgreSQL (영속 데이터)
-Admin Panel (Next.js) → Game Server (관리 API)
+```mermaid
+graph LR
+    FE["Frontend (Next.js)"] --> GS["Game Server\n(WebSocket/REST)"]
+    GS --> Engine["Game Engine (규칙 검증)"]
+    GS --> AI["AI Adapter"] --> LLM["LLM APIs / Ollama"]
+    GS --> Redis["Redis (게임 상태)"]
+    GS --> PG["PostgreSQL (영속 데이터)"]
+    Admin["Admin Panel (Next.js)"] -->|관리 API| GS
 ```
 
 - **Game Engine**: 게임 규칙 검증 전담. LLM은 행동을 "제안"만 하고 Engine이 유효성 검증
@@ -83,3 +85,20 @@ AI 플레이어는 난이도(하수/중수/고수)와 캐릭터(Rookie, Calculat
 ## Document Naming Convention
 
 문서 파일명은 `{번호}-{이름}.md` 형식 (예: `01-project-charter.md`)
+
+## Diagram Convention
+
+- 문서 내 도식은 **Mermaid를 우선** 사용한다. ASCII art, 텍스트 박스 다이어그램은 지양한다.
+- 적합한 Mermaid 유형 선택 기준:
+  | 상황 | Mermaid 유형 |
+  |------|-------------|
+  | 순차적 흐름 | `flowchart LR` |
+  | 계층적 흐름 | `flowchart TB` |
+  | 시스템 간 통신 | `sequenceDiagram` |
+  | 상태 변화 | `stateDiagram-v2` |
+  | DB 관계 | `erDiagram` |
+  | 클래스/컴포넌트 | `classDiagram` |
+  | 일정 | `gantt` |
+- 노드에는 반드시 한글 설명 포함 (예: `A["Game Server"]` 대신 `A["Game Server\n(게임 서버)"]`)
+- 노드 20개 이상이면 다이어그램을 분리한다.
+- 상세 표준은 `.claude/skills/mermaid-diagrams/SKILL.md` 참조
