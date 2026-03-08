@@ -19,26 +19,12 @@
     "postgres": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "@bytebase/dbhub"],
-      "env": {
-        "DATABASE_URL": "postgresql://rummikub:rummikub123@localhost:5432/rummikub"
-      }
-    },
-    "docker": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-docker"],
-      "env": {
-        "DOCKER_HOST": "unix:///var/run/docker.sock"
-      }
+      "args": ["-y", "@bytebase/dbhub", "--dsn", "postgresql://rummikub:rummikub123@localhost:5432/rummikub"]
     },
     "kubernetes": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-kubernetes"],
-      "env": {
-        "KUBECONFIG": "${HOME}/.kube/config"
-      }
+      "args": ["-y", "mcp-server-kubernetes"]
     }
   }
 }

@@ -41,7 +41,13 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 - [x] 05-game-session-design.md — 게임 세션 관리
 - [ ] 06-ui-wireframe.md — UI 와이어프레임
 
+### 개발/배포 문서
+- [x] docs/03-development/01-dev-setup.md — 개발 환경 셋업 매뉴얼
+- [x] docs/05-deployment/01-local-infra-guide.md — 로컬 인프라 구성 가이드
+
 ### 인프라 환경 구축
+- [x] PostgreSQL 컨테이너 기동 (docker-compose)
+- [x] .wslconfig 최적화 및 적용 확인 (10GB/swap4GB/6코어)
 - [ ] Docker Desktop Kubernetes 활성화 및 확인
 - [ ] NGINX Ingress Controller 설치
 - [ ] ArgoCD 설치 (Helm)
@@ -242,6 +248,11 @@ docs/
 
 ## 현재 진행 상황
 
-**Phase 1 진행 중** — 기획/설계 문서 작성 완료, 인프라 환경 구축 미착수
+**Phase 1 진행 중** — 기획/설계 문서 작성 완료, 개발/배포 문서 착수, 인프라 환경 일부 구축
 
-다음 단계: 인프라 환경 구축 (Docker Desktop K8s → ArgoCD → GitLab Runner → SonarQube)
+완료:
+- 기획 문서 5개, 설계 문서 5개, 개발/배포 문서 2개
+- PostgreSQL(docker-compose), .wslconfig 최적화, MCP 4개 연동
+- GitHub Push, 교대 실행 전략 확립
+
+다음 단계: GitHub Projects 보드 → K8s 활성화 → ArgoCD → GitLab Runner → SonarQube

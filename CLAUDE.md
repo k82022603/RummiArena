@@ -27,9 +27,9 @@ Admin Panel (Next.js) → Game Server (관리 API)
 docs/
   01-planning/     # 기획 (헌장, 요구사항, 리스크, 도구체인, WBS)
   02-design/       # 설계 (아키텍처, DB, API, AI Adapter, 세션 관리)
-  03-development/  # 개발 계획 (추후)
+  03-development/  # 개발 가이드 (셋업 매뉴얼)
   04-testing/      # 테스트 전략 (추후)
-  05-deployment/   # 배포 가이드 (추후)
+  05-deployment/   # 배포 가이드 (로컬 인프라)
   06-operations/   # 운영 가이드 (추후)
 src/
   frontend/        # Next.js 프론트엔드
@@ -74,6 +74,11 @@ argocd/            # ArgoCD application manifests
 ## AI Character System
 
 AI 플레이어는 난이도(하수/중수/고수)와 캐릭터(Rookie, Calculator, Shark, Fox, Wall, Wildcard)를 조합하여 다양한 전략 스타일을 시뮬레이션한다. 심리전 레벨(0~3)도 설정 가능.
+
+## User
+
+- 사용자 이름: **애벌레**
+- 스크럼 로그, 액션 아이템 등에서 이 이름을 사용할 것
 
 ## Document Naming Convention
 
