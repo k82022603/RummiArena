@@ -21,20 +21,17 @@ C:\Users\{사용자명}\.wslconfig
 
 ```ini
 [wsl2]
-memory=14GB
-swap=1GB
+memory=10GB
+swap=2GB
 processors=8
+
+[experimental]
+autoMemoryReclaim=gradual
 ```
 
-### 현재 설정의 문제점
-
-| 항목 | 설정 | 문제 |
-|------|------|------|
-| memory | 14GB | 호스트 RAM 16GB 중 14GB를 WSL2에 할당 → **Windows 쪽 2GB만 남음** |
-| swap | 1GB | 적절 |
-| processors | 8 | 16스레드 중 8개, 적절 |
-
-Windows에서 "사용 가능 메모리 1.75GB"로 표시되는 직접적 원인이다.
+> **2026-03-08 변경**: `memory=14GB → 10GB`, `swap=1GB → 2GB`, `autoMemoryReclaim=gradual` 추가.
+> 변경 사유: 기존 14GB 설정으로 Windows 쪽 사용 가능 메모리가 1.75GB까지 하락.
+> 결정 상세: [work_logs/decisions/D01-wslconfig-memory.md](../../work_logs/decisions/D01-wslconfig-memory.md)
 
 ## 4. 설정 항목 설명
 
