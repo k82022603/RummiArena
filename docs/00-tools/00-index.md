@@ -37,7 +37,7 @@
 ### AI & LLM
 | # | 도구 | 용도 | 도입 시점 | 문서 |
 |---|------|------|-----------|------|
-| 15 | Ollama | 로컬 LLM 서빙 | Phase 3 | [15-ollama.md](15-ollama.md) |
+| 15 | 로컬 LLM (Ollama + 모델 비교) | 로컬 LLM 서빙 및 모델 선정 | Phase 3 | [15-local-llm.md](15-local-llm.md) |
 | 16 | LangChain / LangGraph | LLM 오케스트레이션 (검토 중) | Phase 3 | [16-langchain.md](16-langchain.md) |
 
 ### 외부 API & 연동
