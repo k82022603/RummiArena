@@ -54,6 +54,7 @@
 | 21 | Claude Code (Skills/MCP) | AI 개발 어시스턴트 | Phase 1 | [21-claude-code.md](21-claude-code.md) |
 | 22 | Oracle VirtualBox | VM 환경 (리소스 분산) | 비권장 (16GB) | [22-oracle-vm.md](22-oracle-vm.md) |
 | 23 | WSL2 + .wslconfig | WSL2 리소스 관리 | Phase 1 | [23-wslconfig.md](23-wslconfig.md) |
+| 24 | GitHub CLI + MCP | Git 인증, GitHub MCP 연동 | Phase 1 | [24-github-cli-mcp.md](24-github-cli-mcp.md) |
 
 ## 문서 작성 규칙
 

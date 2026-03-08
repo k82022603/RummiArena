@@ -1,8 +1,11 @@
 {
   "mcpServers": {
     "github": {
-      "type": "http",
-      "url": "https://api.githubcopilot.com/mcp/"
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+      }
     },
     "filesystem": {
       "type": "stdio",
