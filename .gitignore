@@ -13,6 +13,9 @@ out/
 .env.local
 .env.*.local
 
+# MCP config (contains tokens)
+.mcp.json
+
 # IDE
 .vscode/
 .idea/
