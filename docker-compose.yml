@@ -1,0 +1,17 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: rummikub-postgres
+    environment:
+      POSTGRES_USER: rummikub
+      POSTGRES_PASSWORD: REDACTED_DB_PASSWORD
+      POSTGRES_DB: rummikub
+    ports:
+      - "5432:5432"
+    volumes:
+      - rummikub_pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  rummikub_pgdata:
+    external: true

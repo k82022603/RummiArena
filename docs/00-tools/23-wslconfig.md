@@ -22,24 +22,30 @@ C:\Users\{사용자명}\.wslconfig
 ```ini
 [wsl2]
 memory=10GB
-swap=2GB
-processors=8
+swap=4GB
+processors=6
 
 [experimental]
-autoMemoryReclaim=gradual
+autoMemoryReclaim=dropcache
+sparseVhd=true
 ```
 
-> **2026-03-08 변경**: `memory=14GB → 10GB`, `swap=1GB → 2GB`, `autoMemoryReclaim=gradual` 추가.
-> 변경 사유: 기존 14GB 설정으로 Windows 쪽 사용 가능 메모리가 1.75GB까지 하락.
+### 변경 이력
+| 날짜 | 변경 | 사유 |
+|------|------|------|
+| 2026-03-08 #1 | memory 14→10GB, swap 1→2GB, autoMemoryReclaim=gradual 추가 | Windows 가용 메모리 1.75GB까지 하락 |
+| 2026-03-08 #2 | swap 2→4GB, processors 8→4, autoMemoryReclaim gradual→dropcache, sparseVhd=true 추가 | docker MCP fork 버그로 WSL OOM 발생, 안전 마진 확보 |
+| 2026-03-08 #3 | memory 8→10GB, processors 4→6 | docker MCP 삭제 후 메모리 안정화, 성능 재상향 |
+
 > 결정 상세: [work_logs/decisions/D01-wslconfig-memory.md](../../work_logs/decisions/D01-wslconfig-memory.md)
 
 ## 4. 설정 항목 설명
 
 ```ini
 [wsl2]
-memory=8GB          # WSL2 최대 메모리 (기본값: 호스트 RAM의 80%)
-swap=2GB            # 스왑 파일 크기 (기본값: 호스트 RAM의 25%)
-processors=8        # WSL2 CPU 코어 수 (기본값: 전체)
+memory=10GB         # WSL2 최대 메모리 (기본값: 호스트 RAM의 80%)
+swap=4GB            # 스왑 파일 크기 (기본값: 호스트 RAM의 25%)
+processors=6        # WSL2 CPU 코어 수 (기본값: 전체)
 localhostForwarding=true  # localhost 포트포워딩 (기본값: true)
 ```
 
@@ -74,11 +80,12 @@ autoMemoryReclaim=gradual    # WSL2가 안 쓰는 메모리를 점진적 반환
 ```ini
 [wsl2]
 memory=8GB
-swap=2GB
-processors=8
+swap=4GB
+processors=4
 
 [experimental]
-autoMemoryReclaim=gradual
+autoMemoryReclaim=dropcache
+sparseVhd=true
 ```
 
 **효과**: Windows 쪽 ~6GB 여유. 브라우저, VSCode 쾌적.
@@ -88,25 +95,27 @@ autoMemoryReclaim=gradual
 ```ini
 [wsl2]
 memory=12GB
-swap=2GB
-processors=10
+swap=4GB
+processors=8
 
 [experimental]
-autoMemoryReclaim=gradual
+autoMemoryReclaim=dropcache
+sparseVhd=true
 ```
 
 **효과**: WSL2 성능 극대화.
 **제한**: Windows 쪽 ~2~3GB. 브라우저 최소한으로.
 
-### 시나리오 C: 균형 (현재 장비 권장)
+### 시나리오 C: 균형 (현재 장비 권장) ← 현재 적용 중
 ```ini
 [wsl2]
 memory=10GB
-swap=2GB
-processors=8
+swap=4GB
+processors=6
 
 [experimental]
-autoMemoryReclaim=gradual
+autoMemoryReclaim=dropcache
+sparseVhd=true
 ```
 
 **효과**: WSL2 10GB + Windows 4~5GB. 양쪽 적당히 사용 가능.
@@ -154,9 +163,10 @@ docker stats --no-stream
 |------|------|------|
 | Windows 사용 가능 메모리 부족 | WSL2 memory 너무 높음 | `.wslconfig` memory 줄이기 |
 | WSL2 OOM (Out of Memory) | memory 너무 낮음 | memory 올리기, swap 늘리기 |
+| WSL2 OOM (프로세스 fork 폭주) | MCP 서버 등 프로세스 버그 | `ps aux --sort=-%mem`으로 원인 프로세스 특정 후 제거 |
 | Docker 컨테이너 시작 실패 | WSL2 메모리 부족 | 불필요 컨테이너 정리 |
 | .wslconfig 적용 안 됨 | `wsl --shutdown` 안 함 | 반드시 재시작 |
-| vmmem 프로세스 메모리 폭주 | autoMemoryReclaim 미설정 | `gradual` 설정 |
+| vmmem 프로세스 메모리 폭주 | autoMemoryReclaim 미설정 | `dropcache` 또는 `gradual` 설정 |
 
 ## 9. 이 프로젝트에서의 의미
 
