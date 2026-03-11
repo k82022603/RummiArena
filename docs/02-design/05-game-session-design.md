@@ -315,7 +315,77 @@ stateDiagram-v2
 
 > **Stage 6 (종합 실전)**: AI 1명과 대전하지만 WebSocket은 사용하지 않는다. 사용자 액션 후 서버가 AI 턴을 즉시 처리하고 응답에 포함하여 반환하는 동기 방식이다.
 
-## 10. 세션 정리 정책
+## 10. 게임 복기 (Replay) 설계
+
+### 10.1 턴 스냅샷 저장
+
+게임 진행 중 매 턴 완료 시 스냅샷을 PostgreSQL에 저장하여 게임 종료 후 복기를 지원한다.
+
+```mermaid
+flowchart LR
+    A["턴 완료"] --> B["스냅샷 생성"]
+    B --> C["PostgreSQL\ngame_snapshots 저장"]
+    C --> D["게임 종료 후\n복기 API 제공"]
+    D --> E["4분할 복기 뷰\n(전체 정보 공개)"]
+```
+
+**스냅샷 구조**:
+```
+GameSnapshot
+├── snapshotId (UUID)
+├── gameId (FK → games)
+├── turnNumber
+├── actingPlayerSeat (0~3)
+├── action (PLACE_TILES / DRAW / REARRANGE / TIMEOUT)
+├── actionDetail (JSON: 수행한 액션 상세)
+│   ├── placedTiles[] (배치한 타일 코드)
+│   ├── drawnTile (드로우한 타일, 복기 시만 공개)
+│   └── rearrangement (재배치 전후 상태)
+├── playerHands[] (각 플레이어의 패 - 복기 시 공개)
+│   ├── seat0: ["R1a", "B3b", ...]
+│   ├── seat1: ["K7a", "Y11b", ...]
+│   ├── seat2: ["R13a", "JK1", ...]
+│   └── seat3: ["B5a", "Y9b", ...]
+├── tableState[] (테이블 위 세트들)
+├── drawPileCount (남은 드로우 파일 수)
+├── aiDecisionLog (AI 턴인 경우, 판단 근거 요약)
+└── createdAt
+```
+
+### 10.2 복기 뷰 모드
+
+| 항목 | 실시간 플레이 (1인칭 뷰) | 복기 (4분할 뷰) |
+|------|-------------------------|----------------|
+| 내 패 | 공개 | 공개 |
+| 상대 패 | 비공개 (타일 수만 표시) | **전체 공개** |
+| 드로우 타일 | 본인만 확인 | **전체 공개** |
+| AI 판단 근거 | 비공개 | **오버레이로 공개** |
+| 테이블 상태 | 공개 | 공개 |
+
+### 10.3 복기 API
+
+```
+GET /api/games/:gameId/replay
+  → 게임 메타 정보 + 전체 스냅샷 목록
+
+GET /api/games/:gameId/replay/turns/:turnNumber
+  → 특정 턴의 스냅샷 상세
+
+GET /api/games/:gameId/replay/summary
+  → 복기 요약 (턴 수, AI별 전략 통계, 핵심 전환점)
+```
+
+### 10.4 저장소 영향
+
+| 데이터 | 저장소 | 설명 |
+|--------|--------|------|
+| game_snapshots | PostgreSQL | 턴당 1행, 게임당 평균 30~80행 |
+| AI 판단 로그 | PostgreSQL | ai_move_logs에 이미 저장, 복기 시 JOIN |
+| 스냅샷 보관 기간 | 90일 | 이후 자동 아카이브/삭제 |
+
+> **참고**: 스냅샷 저장은 턴 완료 시 비동기로 수행하여 게임 진행 성능에 영향을 주지 않는다.
+
+## 11. 세션 정리 정책
 
 | 조건 | 처리 |
 |------|------|

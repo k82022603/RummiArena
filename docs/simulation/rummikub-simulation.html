@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RummiArena - 게임 시뮬레이션</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#1b1b2f; color:#fff; font-family:'Segoe UI',sans-serif; overflow:hidden; }
+
+/* ── 레이아웃 ── */
+.game-container { width:100vw; height:100vh; display:flex; flex-direction:column; }
+.top-bar { height:48px; background:#27274a; display:flex; align-items:center; padding:0 20px; gap:16px; border-bottom:2px solid #0096d6; }
+.top-bar h1 { font-size:16px; color:#0096d6; }
+.top-bar .info { font-size:12px; color:#999; }
+.top-bar .turn-info { margin-left:auto; font-size:13px; color:#f3c623; font-weight:bold; }
+
+.main-area { flex:1; display:flex; position:relative; }
+
+/* ── 플레이어 패널 ── */
+.player-panel { width:200px; display:flex; flex-direction:column; gap:4px; padding:8px; background:#1e1e36; }
+.player-card { padding:10px; border-radius:8px; background:#27274a; border-left:3px solid #555; }
+.player-card.active { border-left-color:#f3c623; background:#2a2a4a; }
+.player-card .name { font-size:13px; font-weight:bold; margin-bottom:4px; }
+.player-card .type { font-size:10px; color:#999; }
+.player-card .tiles-count { font-size:20px; font-weight:bold; margin:6px 0; }
+.player-card .status { font-size:10px; padding:2px 6px; border-radius:4px; display:inline-block; }
+.player-card .thinking { background:#9b59b6; }
+.player-card .waiting { background:#555; }
+.player-card .done { background:#00b88d; }
+
+/* ── 테이블 (중앙) ── */
+.table-area { flex:1; display:flex; flex-direction:column; }
+.table { flex:1; background:#1a3a2a; border:2px solid #2a5a3a; margin:8px; border-radius:12px; padding:16px; overflow-y:auto; position:relative; }
+.table-label { position:absolute; top:8px; left:16px; font-size:11px; color:#2a5a3a; font-weight:bold; }
+.table-sets { display:flex; flex-wrap:wrap; gap:10px; padding-top:24px; }
+.tile-set { display:flex; gap:2px; padding:4px 6px; background:rgba(0,0,0,0.3); border-radius:6px; border:1px solid #2a5a3a; }
+
+/* ── 드로우 파일 ── */
+.draw-pile { position:absolute; bottom:12px; right:16px; display:flex; align-items:center; gap:8px; }
+.draw-pile-visual { width:40px; height:56px; background:#27274a; border:2px solid #555; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:10px; color:#999; }
+.draw-pile-count { font-size:12px; color:#999; }
+
+/* ── 랙 (하단) ── */
+.rack-area { height:100px; background:#27274a; border-top:2px solid #444; padding:8px 16px; }
+.rack-label { font-size:11px; color:#999; margin-bottom:4px; }
+.rack-tiles { display:flex; gap:3px; overflow-x:auto; padding-bottom:4px; }
+
+/* ── 타일 ── */
+.tile { width:36px; height:50px; border-radius:5px; display:flex; flex-direction:column; align-items:center; justify-content:center; font-weight:bold; border:2px solid rgba(255,255,255,0.15); cursor:default; transition:all 0.3s; position:relative; }
+.tile.R { background:#8b2020; color:#ff6b6b; }
+.tile.B { background:#1a3a6b; color:#6ba3ff; }
+.tile.Y { background:#6b5a10; color:#f3c623; }
+.tile.K { background:#333; color:#ccc; }
+.tile.JK { background:#3d2a5c; color:#c39bff; border-color:#9b59b6; }
+.tile .num { font-size:16px; line-height:1; }
+.tile .set-id { font-size:7px; opacity:0.5; }
+.tile.highlight { border-color:#f3c623; box-shadow:0 0 8px rgba(243,198,35,0.5); transform:scale(1.05); }
+.tile.new-tile { animation:tileAppear 0.4s ease-out; }
+@keyframes tileAppear {
+  from { transform:scale(0) rotate(-20deg); opacity:0; }
+  to { transform:scale(1) rotate(0); opacity:1; }
+}
+
+/* ── 로그 ── */
+.log-panel { width:280px; display:flex; flex-direction:column; background:#1e1e36; border-left:1px solid #333; }
+.log-header { padding:8px 12px; font-size:12px; color:#0096d6; font-weight:bold; border-bottom:1px solid #333; }
+.log-entries { flex:1; overflow-y:auto; padding:8px; font-size:11px; }
+.log-entry { padding:4px 0; border-bottom:1px solid #222; line-height:1.4; }
+.log-entry .turn-num { color:#f3c623; font-weight:bold; }
+.log-entry .player-name { font-weight:bold; }
+.log-entry .action { color:#ccc; }
+.log-entry.system { color:#666; font-style:italic; }
+
+/* ── 컨트롤 ── */
+.controls { height:44px; background:#27274a; display:flex; align-items:center; justify-content:center; gap:12px; border-top:1px solid #333; }
+.btn { padding:6px 18px; border:none; border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer; transition:all 0.2s; }
+.btn-play { background:#00b88d; color:#fff; }
+.btn-play:hover { background:#00d4a4; }
+.btn-step { background:#0096d6; color:#fff; }
+.btn-step:hover { background:#00b0f0; }
+.btn-reset { background:#555; color:#fff; }
+.btn-reset:hover { background:#777; }
+.btn-speed { background:#9b59b6; color:#fff; }
+.btn-speed:hover { background:#b06ad4; }
+.speed-label { font-size:11px; color:#999; }
+
+/* ── 스코어보드 오버레이 ── */
+.overlay { display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.8); z-index:100; align-items:center; justify-content:center; }
+.overlay.show { display:flex; }
+.scoreboard { background:#27274a; border:2px solid #0096d6; border-radius:12px; padding:30px 40px; text-align:center; }
+.scoreboard h2 { font-size:24px; color:#f3c623; margin-bottom:16px; }
+.scoreboard table { margin:0 auto; border-collapse:collapse; }
+.scoreboard td, .scoreboard th { padding:8px 16px; font-size:14px; border-bottom:1px solid #444; }
+.scoreboard th { color:#0096d6; }
+.scoreboard .winner { color:#f3c623; font-weight:bold; }
+</style>
+</head>
+<body>
+
+<div class="game-container">
+  <div class="top-bar">
+    <h1>RummiArena Simulation</h1>
+    <span class="info">Human 2 + AI 2 | 턴 타임아웃: 60초</span>
+    <span class="turn-info" id="turnInfo">Turn 1 - 대기 중</span>
+  </div>
+
+  <div class="main-area">
+    <!-- 플레이어 패널 -->
+    <div class="player-panel" id="playerPanel"></div>
+
+    <!-- 테이블 + 랙 -->
+    <div class="table-area">
+      <div class="table" id="table">
+        <div class="table-label">TABLE</div>
+        <div class="table-sets" id="tableSets"></div>
+        <div class="draw-pile">
+          <div class="draw-pile-visual" id="drawPileVisual">?</div>
+          <span class="draw-pile-count" id="drawPileCount">남은 타일: 50</span>
+        </div>
+      </div>
+      <div class="rack-area">
+        <div class="rack-label" id="rackLabel">현재 턴 플레이어의 랙</div>
+        <div class="rack-tiles" id="rackTiles"></div>
+      </div>
+    </div>
+
+    <!-- 로그 패널 -->
+    <div class="log-panel">
+      <div class="log-header">Game Log</div>
+      <div class="log-entries" id="logEntries"></div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="btn btn-play" id="btnPlay" onclick="togglePlay()">자동 재생</button>
+    <button class="btn btn-step" onclick="stepTurn()">다음 턴</button>
+    <button class="btn btn-reset" onclick="resetGame()">리셋</button>
+    <button class="btn btn-speed" onclick="cycleSpeed()">속도: 보통</button>
+    <span class="speed-label" id="speedLabel">1.5초/턴</span>
+  </div>
+</div>
+
+<!-- 스코어보드 -->
+<div class="overlay" id="overlay">
+  <div class="scoreboard" id="scoreboard"></div>
+</div>
+
+<script>
+// ══════════════════════════════════════
+// 게임 엔진
+// ══════════════════════════════════════
+const COLORS = ['R','B','Y','K'];
+const COLOR_NAMES = {R:'빨강',B:'파랑',Y:'노랑',K:'검정'};
+const SETS = ['a','b'];
+
+// 플레이어 정의
+const PLAYERS = [
+  { name: '애벌레', type: 'HUMAN', color: '#f3c623', icon: 'H1' },
+  { name: 'OpenAI Shark', type: 'AI_OPENAI', color: '#00b88d', icon: 'AI', persona: 'shark', difficulty: 'expert' },
+  { name: '게스트', type: 'HUMAN', color: '#0096d6', icon: 'H2' },
+  { name: 'Claude Fox', type: 'AI_CLAUDE', color: '#ff6b35', icon: 'AI', persona: 'fox', difficulty: 'expert' },
+];
+
+let game = null;
+let autoPlayInterval = null;
+let speed = 1500;
+let speedIdx = 1;
+const SPEEDS = [{label:'빠름',ms:600},{label:'보통',ms:1500},{label:'느림',ms:3000}];
+
+function createAllTiles() {
+  const tiles = [];
+  for (const c of COLORS)
+    for (let n = 1; n <= 13; n++)
+      for (const s of SETS)
+        tiles.push({ color: c, number: n, set: s, code: `${c}${n}${s}` });
+  tiles.push({ color: 'JK', number: 0, set: '1', code: 'JK1' });
+  tiles.push({ color: 'JK', number: 0, set: '2', code: 'JK2' });
+  return tiles;
+}
+
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+function tileValue(tile) {
+  return tile.color === 'JK' ? 30 : tile.number;
+}
+
+function initGame() {
+  const allTiles = shuffle(createAllTiles());
+  const hands = [[], [], [], []];
+  for (let i = 0; i < 4; i++)
+    for (let j = 0; j < 14; j++)
+      hands[i].push(allTiles.pop());
+  // 손패 정렬
+  for (let h of hands) h.sort((a,b) => a.color === b.color ? a.number - b.number : COLORS.indexOf(a.color) - COLORS.indexOf(b.color));
+
+  return {
+    drawPile: allTiles,
+    hands,
+    table: [],        // [{tiles:[...], type:'group'|'run'}, ...]
+    turn: 0,
+    currentPlayer: 0,
+    hasInitialMeld: [false, false, false, false],
+    consecutiveDraws: 0,
+    totalPlayers: 4,
+    status: 'PLAYING',
+    winner: null,
+    log: [],
+    turnActions: [],
+  };
+}
+
+// ── 세트 유효성 검증 ──
+function isValidGroup(tiles) {
+  if (tiles.length < 3 || tiles.length > 4) return false;
+  const nonJoker = tiles.filter(t => t.color !== 'JK');
+  if (nonJoker.length === 0) return false;
+  const num = nonJoker[0].number;
+  if (!nonJoker.every(t => t.number === num)) return false;
+  const colors = nonJoker.map(t => t.color);
+  if (new Set(colors).size !== colors.length) return false;
+  return true;
+}
+
+function isValidRun(tiles) {
+  if (tiles.length < 3) return false;
+  // 조커 수
+  let jokerCount = tiles.filter(t => t.color === 'JK').length;
+  const nonJoker = tiles.filter(t => t.color !== 'JK');
+  if (nonJoker.length === 0) return false;
+  const color = nonJoker[0].color;
+  if (!nonJoker.every(t => t.color === color)) return false;
+  // 숫자 정렬
+  const nums = nonJoker.map(t => t.number).sort((a,b) => a-b);
+  // 연속성 확인
+  let jUsed = 0;
+  for (let i = 1; i < nums.length; i++) {
+    const gap = nums[i] - nums[i-1] - 1;
+    if (gap < 0) return false; // 중복
+    jUsed += gap;
+  }
+  if (jUsed > jokerCount) return false;
+  // 범위 확인 (1~13)
+  const minN = nums[0];
+  const maxN = nums[nums.length-1];
+  const totalLen = maxN - minN + 1 + (jokerCount - jUsed); // 앞뒤 확장
+  if (totalLen !== tiles.length) {
+    // 앞뒤에 조커를 배치하는 경우
+    const remainJ = jokerCount - jUsed;
+    if (minN - remainJ < 1 && maxN + remainJ > 13) return false;
+  }
+  return true;
+}
+
+function isValidSet(tiles) {
+  return isValidGroup(tiles) || isValidRun(tiles);
+}
+
+// ── AI 전략: 가능한 수 찾기 ──
+function findPossibleMoves(hand, tableState, hasInitial) {
+  const moves = [];
+
+  // 1) 그룹 찾기
+  const byNumber = {};
+  for (const t of hand) {
+    if (t.color === 'JK') continue;
+    if (!byNumber[t.number]) byNumber[t.number] = [];
+    byNumber[t.number].push(t);
+  }
+  for (const [num, tiles] of Object.entries(byNumber)) {
+    const uniqueColors = [];
+    const seen = new Set();
+    for (const t of tiles) {
+      if (!seen.has(t.color)) { seen.add(t.color); uniqueColors.push(t); }
+    }
+    if (uniqueColors.length >= 3) {
+      moves.push({ type: 'group', tiles: uniqueColors.slice(0, Math.min(4, uniqueColors.length)), score: uniqueColors.reduce((s,t) => s + t.number, 0) });
+    }
+  }
+
+  // 2) 런 찾기
+  for (const c of COLORS) {
+    const colored = hand.filter(t => t.color === c).sort((a,b) => a.number - b.number);
+    // 연속 부분수열 찾기
+    for (let i = 0; i < colored.length; i++) {
+      let run = [colored[i]];
+      for (let j = i + 1; j < colored.length; j++) {
+        if (colored[j].number === run[run.length-1].number + 1) {
+          run.push(colored[j]);
+        } else if (colored[j].number > run[run.length-1].number + 1) {
+          break;
+        }
+      }
+      if (run.length >= 3) {
+        moves.push({ type: 'run', tiles: run, score: run.reduce((s,t) => s + t.number, 0) });
+      }
+    }
+  }
+
+  // 최초 등록 안 됐으면 30점 이상만
+  if (!hasInitial) {
+    return moves.filter(m => m.score >= 30);
+  }
+
+  // 3) 기존 세트에 추가
+  if (hasInitial && tableState.length > 0) {
+    for (const t of hand) {
+      if (t.color === 'JK') continue;
+      for (let si = 0; si < tableState.length; si++) {
+        const set = tableState[si];
+        const newTiles = [...set.tiles, t];
+        if (isValidSet(newTiles)) {
+          moves.push({ type: 'extend', tiles: [t], targetSet: si, score: t.number });
+        }
+      }
+    }
+  }
+
+  return moves;
+}
+
+// ── 턴 시뮬레이션 ──
+function simulateTurn() {
+  if (game.status !== 'PLAYING') return;
+
+  game.turn++;
+  const pi = game.currentPlayer;
+  const player = PLAYERS[pi];
+  const hand = game.hands[pi];
+
+  // 가능한 수 찾기
+  const moves = findPossibleMoves(hand, game.table, game.hasInitialMeld[pi]);
+
+  let action = '';
+  let placedTiles = [];
+  let drewTile = null;
+
+  if (moves.length > 0) {
+    // 가장 점수 높은 수 선택
+    moves.sort((a,b) => b.score - a.score);
+    const best = moves[0];
+    game.consecutiveDraws = 0;
+
+    if (best.type === 'extend') {
+      // 기존 세트에 추가
+      const tile = best.tiles[0];
+      const idx = hand.findIndex(t => t.code === tile.code);
+      if (idx >= 0) hand.splice(idx, 1);
+      game.table[best.targetSet].tiles.push(tile);
+      placedTiles = [tile];
+      action = `${tile.code}를 테이블 세트에 추가`;
+    } else {
+      // 새 세트 배치
+      for (const tile of best.tiles) {
+        const idx = hand.findIndex(t => t.code === tile.code);
+        if (idx >= 0) hand.splice(idx, 1);
+      }
+      game.table.push({ tiles: best.tiles, type: best.type });
+      placedTiles = best.tiles;
+
+      if (!game.hasInitialMeld[pi]) {
+        game.hasInitialMeld[pi] = true;
+        action = `최초 등록! ${best.type === 'group' ? '그룹' : '런'} [${best.tiles.map(t=>t.code).join(', ')}] (${best.score}점)`;
+      } else {
+        action = `${best.type === 'group' ? '그룹' : '런'} [${best.tiles.map(t=>t.code).join(', ')}] 배치`;
+      }
+    }
+
+    // 승리 확인
+    if (hand.length === 0) {
+      game.status = 'FINISHED';
+      game.winner = pi;
+      action += ' -> 승리!';
+    }
+  } else {
+    // 드로우
+    if (game.drawPile.length > 0) {
+      drewTile = game.drawPile.pop();
+      hand.push(drewTile);
+      hand.sort((a,b) => a.color === b.color ? a.number - b.number : COLORS.indexOf(a.color) - COLORS.indexOf(b.color));
+      action = `드로우 (${drewTile.code})`;
+    } else {
+      action = '패스 (드로우 파일 소진)';
+    }
+    game.consecutiveDraws++;
+
+    // 교착 상태 확인
+    if (game.drawPile.length === 0 && game.consecutiveDraws >= game.totalPlayers) {
+      game.status = 'FINISHED';
+      // 점수 계산
+      let minScore = Infinity, winnerIdx = 0;
+      for (let i = 0; i < 4; i++) {
+        const score = game.hands[i].reduce((s,t) => s + tileValue(t), 0);
+        if (score < minScore) { minScore = score; winnerIdx = i; }
+      }
+      game.winner = winnerIdx;
+      action += ' -> 교착 상태, 점수 비교!';
+    }
+  }
+
+  // 로그
+  const logEntry = {
+    turn: game.turn,
+    player: player.name,
+    playerIdx: pi,
+    action,
+    placedTiles,
+    drewTile,
+    handCount: hand.length,
+  };
+  game.log.push(logEntry);
+
+  // 다음 플레이어
+  game.currentPlayer = (game.currentPlayer + 1) % 4;
+
+  // UI 업데이트
+  renderAll();
+
+  if (game.status === 'FINISHED') {
+    setTimeout(showScoreboard, 800);
+    if (autoPlayInterval) { clearInterval(autoPlayInterval); autoPlayInterval = null; }
+  }
+}
+
+// ══════════════════════════════════════
+// UI 렌더링
+// ══════════════════════════════════════
+
+function createTileEl(tile, highlight = false, isNew = false) {
+  const el = document.createElement('div');
+  const cls = tile.color === 'JK' ? 'JK' : tile.color;
+  el.className = `tile ${cls}${highlight ? ' highlight' : ''}${isNew ? ' new-tile' : ''}`;
+  if (tile.color === 'JK') {
+    el.innerHTML = `<span class="num">JK</span><span class="set-id">${tile.set}</span>`;
+  } else {
+    el.innerHTML = `<span class="num">${tile.number}</span><span class="set-id">${tile.color}${tile.set}</span>`;
+  }
+  return el;
+}
+
+function renderPlayers() {
+  const panel = document.getElementById('playerPanel');
+  panel.innerHTML = '';
+  for (let i = 0; i < 4; i++) {
+    const p = PLAYERS[i];
+    const isActive = game.currentPlayer === i && game.status === 'PLAYING';
+    const card = document.createElement('div');
+    card.className = `player-card${isActive ? ' active' : ''}`;
+    card.style.borderLeftColor = p.color;
+
+    let statusHtml = '';
+    if (game.status === 'FINISHED' && game.winner === i) {
+      statusHtml = `<span class="status done">WINNER</span>`;
+    } else if (isActive) {
+      statusHtml = `<span class="status thinking">턴 진행 중</span>`;
+    } else {
+      statusHtml = `<span class="status waiting">대기</span>`;
+    }
+
+    const meldStatus = game.hasInitialMeld[i] ? '등록 완료' : '미등록';
+    const typeLabel = p.type.startsWith('AI') ? `${p.type.replace('AI_','')} / ${p.persona} / ${p.difficulty}` : p.type;
+
+    card.innerHTML = `
+      <div class="name" style="color:${p.color}">${p.icon === 'AI' ? 'AI' : p.icon} ${p.name}</div>
+      <div class="type">${typeLabel}</div>
+      <div class="tiles-count">${game.hands[i].length}장</div>
+      <div style="font-size:9px;color:#888;margin-bottom:4px">최초등록: ${meldStatus}</div>
+      ${statusHtml}
+    `;
+    panel.appendChild(card);
+  }
+}
+
+function renderTable() {
+  const container = document.getElementById('tableSets');
+  container.innerHTML = '';
+  for (const set of game.table) {
+    const setEl = document.createElement('div');
+    setEl.className = 'tile-set';
+    for (const tile of set.tiles) {
+      const lastLog = game.log[game.log.length - 1];
+      const isNew = lastLog && lastLog.placedTiles.some(pt => pt.code === tile.code);
+      setEl.appendChild(createTileEl(tile, isNew, isNew));
+    }
+    container.appendChild(setEl);
+  }
+  document.getElementById('drawPileCount').textContent = `남은 타일: ${game.drawPile.length}장`;
+  document.getElementById('drawPileVisual').textContent = game.drawPile.length > 0 ? '?' : '-';
+}
+
+function renderRack() {
+  const container = document.getElementById('rackTiles');
+  container.innerHTML = '';
+  const pi = game.currentPlayer;
+  const label = document.getElementById('rackLabel');
+
+  // 이전 턴 플레이어의 랙 표시 (AI이면 뒷면)
+  const prevPlayer = (pi + 3) % 4; // 방금 턴한 플레이어
+  const pp = PLAYERS[prevPlayer];
+
+  if (game.turn === 0) {
+    label.textContent = `${PLAYERS[0].name}의 초기 랙 (14장)`;
+    for (const tile of game.hands[0]) {
+      container.appendChild(createTileEl(tile));
+    }
+    return;
+  }
+
+  // 사람 플레이어면 타일 표시, AI면 뒷면
+  if (pp.type === 'HUMAN') {
+    label.textContent = `${pp.name}의 랙 (${game.hands[prevPlayer].length}장)`;
+    for (const tile of game.hands[prevPlayer]) {
+      container.appendChild(createTileEl(tile));
+    }
+  } else {
+    label.textContent = `${pp.name}의 랙 (${game.hands[prevPlayer].length}장) - AI 비공개`;
+    for (let i = 0; i < game.hands[prevPlayer].length; i++) {
+      const el = document.createElement('div');
+      el.className = 'tile';
+      el.style.background = '#27274a';
+      el.style.borderColor = pp.color;
+      el.innerHTML = `<span class="num" style="color:${pp.color};font-size:12px">AI</span>`;
+      container.appendChild(el);
+    }
+  }
+}
+
+function renderLog() {
+  const container = document.getElementById('logEntries');
+  container.innerHTML = '';
+  // 최근 20개만
+  const entries = game.log.slice(-30);
+  for (const e of entries) {
+    const div = document.createElement('div');
+    div.className = 'log-entry';
+    const pColor = PLAYERS[e.playerIdx].color;
+    div.innerHTML = `<span class="turn-num">T${e.turn}</span> <span class="player-name" style="color:${pColor}">${e.player}</span>: <span class="action">${e.action}</span> <span style="color:#666">(${e.handCount}장)</span>`;
+    container.appendChild(div);
+  }
+  container.scrollTop = container.scrollHeight;
+}
+
+function renderAll() {
+  renderPlayers();
+  renderTable();
+  renderRack();
+  renderLog();
+  const info = document.getElementById('turnInfo');
+  if (game.status === 'FINISHED') {
+    info.textContent = `게임 종료 - ${PLAYERS[game.winner].name} 승리!`;
+    info.style.color = '#00b88d';
+  } else {
+    info.textContent = `Turn ${game.turn + 1} - ${PLAYERS[game.currentPlayer].name}의 턴`;
+  }
+}
+
+function showScoreboard() {
+  const overlay = document.getElementById('overlay');
+  const board = document.getElementById('scoreboard');
+  overlay.classList.add('show');
+
+  let rows = '';
+  for (let i = 0; i < 4; i++) {
+    const score = game.hands[i].reduce((s,t) => s + tileValue(t), 0);
+    const isWinner = game.winner === i;
+    rows += `<tr class="${isWinner ? 'winner' : ''}">
+      <td style="color:${PLAYERS[i].color}">${PLAYERS[i].name}</td>
+      <td>${PLAYERS[i].type.startsWith('AI') ? PLAYERS[i].type.replace('AI_','') : 'Human'}</td>
+      <td>${game.hands[i].length}장</td>
+      <td>${score}점</td>
+      <td>${isWinner ? 'WINNER' : ''}</td>
+    </tr>`;
+  }
+
+  board.innerHTML = `
+    <h2>게임 종료</h2>
+    <p style="margin-bottom:16px;color:#ccc">총 ${game.turn}턴 | 테이블 ${game.table.length}세트</p>
+    <table>
+      <tr><th>플레이어</th><th>유형</th><th>남은 타일</th><th>점수</th><th></th></tr>
+      ${rows}
+    </table>
+    <button class="btn btn-play" style="margin-top:20px" onclick="document.getElementById('overlay').classList.remove('show')">닫기</button>
+    <button class="btn btn-reset" style="margin-top:20px;margin-left:8px" onclick="resetGame();document.getElementById('overlay').classList.remove('show')">리셋</button>
+  `;
+}
+
+// ── 컨트롤 ──
+function stepTurn() {
+  if (game.status !== 'PLAYING') return;
+  simulateTurn();
+}
+
+function togglePlay() {
+  const btn = document.getElementById('btnPlay');
+  if (autoPlayInterval) {
+    clearInterval(autoPlayInterval);
+    autoPlayInterval = null;
+    btn.textContent = '자동 재생';
+    btn.style.background = '#00b88d';
+  } else {
+    autoPlayInterval = setInterval(() => {
+      if (game.status !== 'PLAYING') {
+        clearInterval(autoPlayInterval);
+        autoPlayInterval = null;
+        btn.textContent = '자동 재생';
+        btn.style.background = '#00b88d';
+        return;
+      }
+      simulateTurn();
+    }, speed);
+    btn.textContent = '일시정지';
+    btn.style.background = '#e04f5f';
+  }
+}
+
+function cycleSpeed() {
+  speedIdx = (speedIdx + 1) % SPEEDS.length;
+  speed = SPEEDS[speedIdx].ms;
+  document.querySelector('.btn-speed').textContent = `속도: ${SPEEDS[speedIdx].label}`;
+  document.getElementById('speedLabel').textContent = `${speed/1000}초/턴`;
+  if (autoPlayInterval) {
+    clearInterval(autoPlayInterval);
+    autoPlayInterval = setInterval(() => {
+      if (game.status !== 'PLAYING') { clearInterval(autoPlayInterval); autoPlayInterval = null; return; }
+      simulateTurn();
+    }, speed);
+  }
+}
+
+function resetGame() {
+  if (autoPlayInterval) { clearInterval(autoPlayInterval); autoPlayInterval = null; }
+  document.getElementById('btnPlay').textContent = '자동 재생';
+  document.getElementById('btnPlay').style.background = '#00b88d';
+  game = initGame();
+  renderAll();
+  // 초기 로그
+  const logContainer = document.getElementById('logEntries');
+  logContainer.innerHTML = '<div class="log-entry system">게임 시작: 각 플레이어에게 14장 분배 완료</div>';
+}
+
+// ── 초기화 ──
+resetGame();
+</script>
+</body>
+</html>

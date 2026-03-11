@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RummiArena - 1인칭 플레이어 뷰</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#0d1117;color:#fff;font-family:'Segoe UI','Malgun Gothic',sans-serif;overflow:hidden;user-select:none;}
+
+.app{width:100vw;height:100vh;display:flex;flex-direction:column;}
+
+/* ── 상대 플레이어 영역 (상단) ── */
+.opponents{
+  height:90px;display:flex;justify-content:center;gap:24px;
+  padding:8px 20px;background:#161b22;border-bottom:1px solid #21262d;flex-shrink:0;
+}
+.opp{
+  display:flex;flex-direction:column;align-items:center;gap:4px;
+  padding:6px 16px;border-radius:8px;background:#1c2128;border:2px solid #30363d;
+  min-width:160px;transition:all 0.3s;position:relative;
+}
+.opp.active{border-color:#f3c623;background:#1e2028;}
+.opp .opp-name{font-size:12px;font-weight:bold;}
+.opp .opp-type{font-size:9px;color:#8b949e;}
+.opp .opp-tiles{display:flex;gap:1px;margin-top:2px;}
+.opp .opp-thinking{
+  position:absolute;top:-8px;right:-8px;font-size:9px;padding:2px 6px;
+  border-radius:4px;background:#9b59b6;color:#fff;display:none;
+}
+.opp.active .opp-thinking{display:block;}
+.opp .opp-meld{font-size:8px;margin-top:2px;}
+.opp .opp-meld.done{color:#3fb950;}
+.opp .opp-meld.not{color:#f85149;}
+
+/* 미니 타일 (상대 뒷면) */
+.mini-tile{
+  width:10px;height:16px;border-radius:2px;background:#30363d;border:1px solid #484f58;
+}
+.mini-tile.gone{opacity:0;width:0;margin:0;transition:all 0.3s;}
+
+/* ── 테이블 영역 (중앙) ── */
+.table-area{
+  flex:1;display:flex;flex-direction:column;position:relative;
+  background:radial-gradient(ellipse at center,#1a3328 0%,#0f1f18 70%,#0d1117 100%);
+  border-top:2px solid #1a3a2a;border-bottom:2px solid #1a3a2a;min-height:0;
+}
+.table-felt{
+  flex:1;padding:16px 24px;overflow-y:auto;min-height:0;
+}
+.table-label{font-size:11px;color:#2d5a3a;font-weight:bold;margin-bottom:8px;letter-spacing:1px;}
+.table-sets{display:flex;flex-wrap:wrap;gap:8px;align-content:flex-start;}
+.tile-set{
+  display:flex;gap:2px;padding:4px 6px;background:rgba(0,0,0,0.35);
+  border-radius:6px;border:1px solid #2a5a3a;transition:all 0.3s;
+}
+.tile-set.new-set{animation:setGlow 0.6s ease-out;}
+@keyframes setGlow{
+  0%{box-shadow:0 0 16px rgba(243,198,35,0.6);border-color:#f3c623;}
+  100%{box-shadow:none;border-color:#2a5a3a;}
+}
+
+/* 드로우 파일 + 게임 정보 */
+.table-info{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:6px 24px;background:rgba(0,0,0,0.3);flex-shrink:0;
+}
+.draw-pile{display:flex;align-items:center;gap:8px;}
+.draw-stack{
+  position:relative;width:44px;height:58px;
+}
+.draw-card{
+  position:absolute;width:36px;height:50px;border-radius:4px;
+  background:#1c2128;border:2px solid #30363d;
+  display:flex;align-items:center;justify-content:center;
+  font-size:10px;color:#484f58;
+}
+.draw-card:nth-child(1){top:0;left:0;}
+.draw-card:nth-child(2){top:2px;left:2px;}
+.draw-card:nth-child(3){top:4px;left:4px;}
+.draw-count{font-size:13px;color:#8b949e;}
+.draw-count span{color:#f3c623;font-weight:bold;font-size:16px;}
+.game-info{display:flex;gap:16px;font-size:11px;color:#8b949e;}
+.game-info .val{color:#fff;font-weight:bold;}
+
+/* ── 내 랙 (하단) ── */
+.my-rack-area{
+  flex-shrink:0;background:#161b22;border-top:2px solid #f3c623;
+  padding:8px 16px 10px;
+}
+.rack-header{
+  display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;
+}
+.rack-title{font-size:12px;color:#f3c623;font-weight:bold;}
+.rack-count{font-size:11px;color:#8b949e;}
+.rack-meld{font-size:10px;padding:2px 8px;border-radius:4px;}
+.rack-meld.done{background:#3fb95022;color:#3fb950;border:1px solid #3fb95044;}
+.rack-meld.not{background:#f8514922;color:#f85149;border:1px solid #f8514944;}
+.my-tiles{
+  display:flex;gap:3px;overflow-x:auto;padding:4px 0;
+  scrollbar-width:thin;scrollbar-color:#30363d transparent;
+}
+
+/* ── 타일 ── */
+.tile{
+  width:42px;height:58px;border-radius:5px;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;font-weight:bold;
+  border:2px solid rgba(255,255,255,0.12);flex-shrink:0;
+  cursor:default;transition:all 0.2s;position:relative;
+}
+.tile:hover{transform:translateY(-3px);z-index:1;}
+.tile.R{background:linear-gradient(135deg,#8b2020,#6b1818);color:#ff6b6b;}
+.tile.B{background:linear-gradient(135deg,#1a3a6b,#142c52);color:#6ba3ff;}
+.tile.Y{background:linear-gradient(135deg,#6b5a10,#52440c);color:#f3c623;}
+.tile.K{background:linear-gradient(135deg,#3a3a3a,#2a2a2a);color:#ccc;}
+.tile.JK{background:linear-gradient(135deg,#4a2a6b,#3a2058);color:#c39bff;border-color:#7b4db5;}
+.tile .num{font-size:18px;line-height:1;text-shadow:0 1px 2px rgba(0,0,0,0.5);}
+.tile .sid{font-size:7px;opacity:0.4;margin-top:1px;}
+.tile.tbl{width:34px;height:46px;}
+.tile.tbl .num{font-size:14px;}
+.tile.tbl .sid{font-size:6px;}
+.tile.glow{border-color:#f3c623;box-shadow:0 0 10px rgba(243,198,35,0.5);}
+.tile.pop{animation:tilePop 0.4s ease-out;}
+@keyframes tilePop{from{transform:scale(0.3) rotate(-15deg);opacity:0;}to{transform:scale(1) rotate(0);opacity:1;}}
+.tile.drawn{animation:drawnTile 0.5s ease-out;border-color:#3fb950;box-shadow:0 0 10px rgba(63,185,80,0.4);}
+@keyframes drawnTile{from{transform:translateY(-40px) scale(0.5);opacity:0;}to{transform:translateY(0) scale(1);opacity:1;}}
+
+/* ── 알림 토스트 ── */
+.toast{
+  position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(0.8);
+  background:rgba(0,0,0,0.9);border:2px solid #f3c623;border-radius:12px;
+  padding:16px 32px;font-size:16px;font-weight:bold;color:#f3c623;
+  opacity:0;transition:all 0.3s;pointer-events:none;z-index:50;
+  text-align:center;
+}
+.toast.show{opacity:1;transform:translate(-50%,-50%) scale(1);}
+.toast .sub{font-size:11px;color:#8b949e;font-weight:normal;margin-top:4px;}
+
+/* ── 로그 패널 (사이드) ── */
+.log-toggle{
+  position:fixed;top:100px;right:0;background:#1c2128;border:1px solid #30363d;
+  border-right:none;border-radius:6px 0 0 6px;padding:6px 8px;cursor:pointer;
+  font-size:10px;color:#8b949e;z-index:10;writing-mode:vertical-rl;
+}
+.log-toggle:hover{background:#262c34;color:#fff;}
+.log-panel{
+  position:fixed;top:0;right:-300px;width:300px;height:100vh;
+  background:#161b22;border-left:1px solid #30363d;z-index:20;
+  transition:right 0.3s;display:flex;flex-direction:column;
+}
+.log-panel.open{right:0;}
+.log-panel-header{
+  padding:10px 14px;font-size:12px;color:#0096d6;font-weight:bold;
+  border-bottom:1px solid #21262d;display:flex;justify-content:space-between;
+  align-items:center;flex-shrink:0;
+}
+.log-panel-close{cursor:pointer;color:#8b949e;font-size:16px;}
+.log-panel-close:hover{color:#fff;}
+.log-entries{flex:1;overflow-y:auto;padding:8px 10px;}
+.log-entry{
+  padding:3px 0;font-size:10px;color:#8b949e;border-bottom:1px solid #161b22;line-height:1.4;
+}
+.log-entry .me{color:#f3c623;font-weight:bold;}
+.log-entry .turn-n{color:#484f58;}
+
+/* ── 하단 컨트롤 ── */
+.controls{
+  height:36px;background:#0d1117;display:flex;align-items:center;
+  justify-content:center;gap:10px;border-top:1px solid #21262d;flex-shrink:0;
+}
+.btn{
+  padding:4px 16px;border:none;border-radius:5px;font-size:11px;
+  font-weight:bold;cursor:pointer;transition:all 0.15s;
+}
+.btn-play{background:#3fb950;color:#000;}
+.btn-play:hover{background:#56d364;}
+.btn-play.on{background:#f85149;color:#fff;}
+.btn-step{background:#1f6feb;color:#fff;}
+.btn-step:hover{background:#388bfd;}
+.btn-reset{background:#484f58;color:#fff;}
+.btn-reset:hover{background:#6e7681;}
+.btn-speed{background:#8957e5;color:#fff;}
+.btn-speed:hover{background:#a371f7;}
+.ctrl-lbl{font-size:9px;color:#484f58;}
+
+/* ── 결과 오버레이 ── */
+.overlay{
+  display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;
+  background:rgba(0,0,0,0.88);z-index:100;align-items:center;justify-content:center;
+}
+.overlay.show{display:flex;}
+.result{
+  background:#161b22;border:2px solid #1f6feb;border-radius:12px;
+  padding:28px 40px;text-align:center;max-width:480px;
+}
+.result h2{color:#f3c623;font-size:24px;margin-bottom:6px;}
+.result .sub-result{color:#8b949e;font-size:12px;margin-bottom:16px;}
+.result table{margin:0 auto;border-collapse:collapse;width:100%;}
+.result th{color:#1f6feb;font-size:11px;padding:4px 12px;border-bottom:1px solid #30363d;}
+.result td{font-size:12px;padding:6px 12px;border-bottom:1px solid #21262d;}
+.result .wr{color:#f3c623;font-weight:bold;}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- 상대 플레이어 (상단) -->
+  <div class="opponents" id="opponents"></div>
+
+  <!-- 테이블 (중앙) -->
+  <div class="table-area">
+    <div class="table-felt" id="tableFelt">
+      <div class="table-label">T A B L E</div>
+      <div class="table-sets" id="tableSets"></div>
+    </div>
+    <div class="table-info">
+      <div class="draw-pile">
+        <div class="draw-stack">
+          <div class="draw-card">?</div>
+          <div class="draw-card">?</div>
+          <div class="draw-card">?</div>
+        </div>
+        <div class="draw-count">드로우 파일 <span id="drawCount">50</span>장</div>
+      </div>
+      <div class="game-info">
+        <div>턴 <span class="val" id="turnNum">0</span></div>
+        <div>상태 <span class="val" id="gameStatus">진행 중</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 내 랙 (하단) -->
+  <div class="my-rack-area">
+    <div class="rack-header">
+      <span class="rack-title" id="rackTitle">내 패</span>
+      <span class="rack-count" id="rackCount">14장</span>
+      <span class="rack-meld not" id="rackMeld">최초 등록 전</span>
+    </div>
+    <div class="my-tiles" id="myTiles"></div>
+  </div>
+
+  <!-- 컨트롤 -->
+  <div class="controls">
+    <button class="btn btn-play" id="btnPlay" onclick="togglePlay()">자동 재생</button>
+    <button class="btn btn-step" onclick="step()">다음 턴</button>
+    <button class="btn btn-reset" onclick="reset()">리셋</button>
+    <button class="btn btn-speed" id="btnSpd" onclick="cycleSpd()">속도: 보통</button>
+    <span class="ctrl-lbl" id="spdLbl">1.5초/턴</span>
+  </div>
+</div>
+
+<!-- 토스트 -->
+<div class="toast" id="toast"></div>
+
+<!-- 로그 토글 -->
+<div class="log-toggle" onclick="toggleLog()">로그</div>
+<div class="log-panel" id="logPanel">
+  <div class="log-panel-header">
+    <span>Game Log (내 시점)</span>
+    <span class="log-panel-close" onclick="toggleLog()">X</span>
+  </div>
+  <div class="log-entries" id="logEntries"></div>
+</div>
+
+<!-- 결과 -->
+<div class="overlay" id="overlay">
+  <div class="result" id="resultCard"></div>
+</div>
+
+<script>
+// ════════════════════════════════════════
+// 상수 & 설정
+// ════════════════════════════════════════
+const COLORS=['R','B','Y','K'];
+const ME=0; // 내 시점 = seat 0 (애벌레)
+const PLAYERS=[
+  {name:'애벌레',type:'HUMAN',color:'#f3c623',persona:'',diff:''},
+  {name:'OpenAI Shark',type:'AI_OPENAI',color:'#3fb950',persona:'shark',diff:'expert'},
+  {name:'게스트',type:'HUMAN',color:'#1f6feb',persona:'',diff:''},
+  {name:'Claude Fox',type:'AI_CLAUDE',color:'#f0883e',persona:'fox',diff:'expert'},
+];
+
+let G,autoT,speed=1500,si=1;
+const SPDS=[{l:'빠름',ms:600},{l:'보통',ms:1500},{l:'느림',ms:3000}];
+
+// ════════════════════════════════════════
+// 게임 엔진
+// ════════════════════════════════════════
+function mkTiles(){
+  const t=[];
+  for(const c of COLORS)for(let n=1;n<=13;n++)for(const s of['a','b'])
+    t.push({c,n,s,code:`${c}${n}${s}`});
+  t.push({c:'JK',n:0,s:'1',code:'JK1'});
+  t.push({c:'JK',n:0,s:'2',code:'JK2'});
+  return t;
+}
+function shuf(a){for(let i=a.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[a[i],a[j]]=[a[j],a[i]];}return a;}
+function tv(t){return t.c==='JK'?30:t.n;}
+function sortHand(h){h.sort((a,b)=>a.c===b.c?a.n-b.n:COLORS.indexOf(a.c)-COLORS.indexOf(b.c));}
+
+function init(){
+  const all=shuf(mkTiles()),h=[[],[],[],[]];
+  for(let i=0;i<4;i++)for(let j=0;j<14;j++)h[i].push(all.pop());
+  for(let x of h)sortHand(x);
+  return{dp:all,h,tbl:[],turn:0,cp:0,im:[0,0,0,0],cd:0,st:'PLAYING',wi:null,log:[],last:null,newSetIdx:-1};
+}
+
+function vGroup(ts){
+  if(ts.length<3||ts.length>4)return 0;
+  const nj=ts.filter(t=>t.c!=='JK');
+  if(!nj.length)return 0;
+  const num=nj[0].n;
+  if(!nj.every(t=>t.n===num))return 0;
+  const cs=nj.map(t=>t.c);
+  if(new Set(cs).size!==cs.length)return 0;
+  return 1;
+}
+function vRun(ts){
+  if(ts.length<3)return 0;
+  let jc=ts.filter(t=>t.c==='JK').length;
+  const nj=ts.filter(t=>t.c!=='JK');
+  if(!nj.length)return 0;
+  if(!nj.every(t=>t.c===nj[0].c))return 0;
+  const ns=nj.map(t=>t.n).sort((a,b)=>a-b);
+  let ju=0;
+  for(let i=1;i<ns.length;i++){const g=ns[i]-ns[i-1]-1;if(g<0)return 0;ju+=g;}
+  return ju<=jc?1:0;
+}
+function vSet(ts){return vGroup(ts)||vRun(ts);}
+
+function findMoves(hand,tbl,hasIM){
+  const mv=[];
+  const bn={};
+  for(const t of hand){if(t.c==='JK')continue;if(!bn[t.n])bn[t.n]=[];bn[t.n].push(t);}
+  for(const[,ts]of Object.entries(bn)){
+    const uc=[],seen=new Set();
+    for(const t of ts){if(!seen.has(t.c)){seen.add(t.c);uc.push(t);}}
+    if(uc.length>=3){
+      const pick=uc.slice(0,Math.min(4,uc.length));
+      mv.push({ty:'group',ts:pick,sc:pick.reduce((s,t)=>s+t.n,0)});
+    }
+  }
+  for(const c of COLORS){
+    const cs=hand.filter(t=>t.c===c).sort((a,b)=>a.n-b.n);
+    for(let i=0;i<cs.length;i++){
+      let r=[cs[i]];
+      for(let j=i+1;j<cs.length;j++){
+        if(cs[j].n===r[r.length-1].n+1)r.push(cs[j]);
+        else if(cs[j].n>r[r.length-1].n+1)break;
+      }
+      if(r.length>=3)mv.push({ty:'run',ts:r,sc:r.reduce((s,t)=>s+t.n,0)});
+    }
+  }
+  if(!hasIM)return mv.filter(m=>m.sc>=30);
+  if(hasIM&&tbl.length>0){
+    for(const t of hand){
+      if(t.c==='JK')continue;
+      for(let si=0;si<tbl.length;si++){
+        if(vSet([...tbl[si].ts,t]))mv.push({ty:'ext',ts:[t],si,sc:t.n});
+      }
+    }
+  }
+  return mv;
+}
+
+function doTurn(){
+  if(G.st!=='PLAYING')return;
+  G.turn++;
+  const pi=G.cp,p=PLAYERS[pi],hand=G.h[pi];
+  const mv=findMoves(hand,G.tbl,G.im[pi]);
+  let act='',placed=[],drew=null;
+  G.newSetIdx=-1;
+
+  if(mv.length>0){
+    mv.sort((a,b)=>b.sc-a.sc);
+    const best=mv[0];
+    G.cd=0;
+    if(best.ty==='ext'){
+      const t=best.ts[0],idx=hand.findIndex(x=>x.code===t.code);
+      if(idx>=0)hand.splice(idx,1);
+      G.tbl[best.si].ts.push(t);
+      placed=[t];
+      act=pi===ME?`${t.code}를 테이블 세트에 추가`:`${placed.length}장 추가`;
+    }else{
+      for(const t of best.ts){const idx=hand.findIndex(x=>x.code===t.code);if(idx>=0)hand.splice(idx,1);}
+      G.tbl.push({ts:best.ts,ty:best.ty});
+      G.newSetIdx=G.tbl.length-1;
+      placed=best.ts;
+      const label=best.ty==='group'?'그룹':'런';
+      if(!G.im[pi]){
+        G.im[pi]=1;
+        act=pi===ME?`최초 등록! ${label} [${best.ts.map(t=>t.code).join(', ')}] (${best.sc}점)`
+          :`최초 등록! ${best.ts.length}장 배치 (${best.sc}점)`;
+      }else{
+        act=pi===ME?`${label} [${best.ts.map(t=>t.code).join(', ')}] 배치`
+          :`${best.ts.length}장 배치`;
+      }
+    }
+    if(hand.length===0){G.st='FINISHED';G.wi=pi;act+=' → 승리!';}
+  }else{
+    if(G.dp.length>0){
+      drew=G.dp.pop();hand.push(drew);sortHand(hand);
+      act=pi===ME?`드로우 → ${drew.code}`:'드로우 (1장)';
+    }else{
+      act='패스';
+    }
+    G.cd++;
+    if(G.dp.length===0&&G.cd>=4){
+      G.st='FINISHED';
+      let ms=Infinity,wi=0;
+      for(let i=0;i<4;i++){const sc=G.h[i].reduce((s,t)=>s+tv(t),0);if(sc<ms){ms=sc;wi=i;}}
+      G.wi=wi;act+=' → 교착!';
+    }
+  }
+
+  // 내 시점 로그
+  let logMsg;
+  if(pi===ME){
+    logMsg=`[나] ${act}`;
+  }else{
+    logMsg=`${p.name}: ${act} [${hand.length}장]`;
+  }
+  G.log.push({turn:G.turn,pi,msg:logMsg,placed,drew:pi===ME?drew:null});
+  G.last={pi,act,placed,drew:pi===ME?drew:null,hc:hand.length};
+
+  G.cp=(G.cp+1)%4;
+  render();
+
+  // 토스트 알림
+  if(pi!==ME&&placed.length>0){
+    if(act.includes('최초 등록'))showToast(`${p.name}`,`최초 등록 완료! (${placed.length}장 배치)`);
+    else if(act.includes('승리'))showToast(`${p.name}`,`타일 소진 → 승리!`);
+  }
+  if(pi===ME&&placed.length>0&&act.includes('최초 등록')){
+    showToast('최초 등록 완료!',`${placed.length}장 배치 (${mv[0]?.sc||0}점)`);
+  }
+  if(pi===ME&&drew){
+    // 드로우 하이라이트는 렌더링에서 처리
+  }
+
+  if(G.st==='FINISHED'){
+    setTimeout(showResult,1000);
+    stopAuto();
+  }
+}
+
+// ════════════════════════════════════════
+// 렌더링
+// ════════════════════════════════════════
+function mkTileEl(tile,cls='',anim=''){
+  const d=document.createElement('div');
+  const cc=tile.c==='JK'?'JK':tile.c;
+  d.className=`tile ${cc} ${cls} ${anim}`.trim();
+  d.innerHTML=tile.c==='JK'
+    ?`<span class="num">JK</span><span class="sid">${tile.s}</span>`
+    :`<span class="num">${tile.n}</span><span class="sid">${tile.c}${tile.s}</span>`;
+  return d;
+}
+
+function renderOpponents(){
+  const c=document.getElementById('opponents');
+  c.innerHTML='';
+  for(let i=0;i<4;i++){
+    if(i===ME)continue;
+    const p=PLAYERS[i];
+    const isActive=G.cp===i&&G.st==='PLAYING';
+    const isWinner=G.st==='FINISHED'&&G.wi===i;
+    const d=document.createElement('div');
+    d.className=`opp${isActive?' active':''}`;
+    if(isWinner)d.style.borderColor='#3fb950';
+
+    // 상대 뒷면 타일
+    let tilesHtml='';
+    for(let j=0;j<G.h[i].length;j++){
+      tilesHtml+=`<div class="mini-tile"></div>`;
+    }
+
+    const typeLabel=p.type.startsWith('AI')?`${p.type.replace('AI_','')} / ${p.persona}`:`Human`;
+    const meldCls=G.im[i]?'done':'not';
+    const meldTxt=G.im[i]?'등록 완료':'미등록';
+
+    d.innerHTML=`
+      <div class="opp-thinking">사고 중...</div>
+      <div class="opp-name" style="color:${p.color}">${p.name}</div>
+      <div class="opp-type">${typeLabel} | <b>${G.h[i].length}장</b>${isWinner?' | <span style="color:#f3c623">WINNER</span>':''}</div>
+      <div class="opp-tiles">${tilesHtml}</div>
+      <div class="opp-meld ${meldCls}">${meldTxt}</div>
+    `;
+    c.appendChild(d);
+  }
+}
+
+function renderTable(){
+  const c=document.getElementById('tableSets');
+  c.innerHTML='';
+  for(let si=0;si<G.tbl.length;si++){
+    const set=G.tbl[si];
+    const se=document.createElement('div');
+    se.className=`tile-set${si===G.newSetIdx?' new-set':''}`;
+    for(const tile of set.ts){
+      const isNew=G.last&&G.last.placed.some(pt=>pt.code===tile.code);
+      se.appendChild(mkTileEl(tile,'tbl',isNew?'pop':''));
+    }
+    c.appendChild(se);
+  }
+  document.getElementById('drawCount').textContent=G.dp.length;
+  document.getElementById('turnNum').textContent=G.turn;
+  document.getElementById('gameStatus').textContent=G.st==='FINISHED'?'종료':'진행 중';
+}
+
+function renderMyRack(){
+  const c=document.getElementById('myTiles');
+  c.innerHTML='';
+  const drewCode=G.last&&G.last.pi===ME&&G.last.drew?G.last.drew.code:null;
+  for(const tile of G.h[ME]){
+    const isDrew=drewCode&&tile.code===drewCode;
+    c.appendChild(mkTileEl(tile,'',isDrew?'drawn':''));
+  }
+  document.getElementById('rackCount').textContent=`${G.h[ME].length}장`;
+  const meldEl=document.getElementById('rackMeld');
+  if(G.im[ME]){
+    meldEl.className='rack-meld done';meldEl.textContent='최초 등록 완료';
+  }else{
+    meldEl.className='rack-meld not';meldEl.textContent='최초 등록 전 (30점 이상 필요)';
+  }
+  // 내 턴 강조
+  const rackArea=document.querySelector('.my-rack-area');
+  if(G.cp===ME&&G.st==='PLAYING'){
+    rackArea.style.borderTopColor='#f3c623';
+  }else{
+    rackArea.style.borderTopColor='#30363d';
+  }
+}
+
+function renderLog(){
+  const c=document.getElementById('logEntries');
+  c.innerHTML='';
+  const entries=G.log.slice(-50);
+  for(const e of entries){
+    const d=document.createElement('div');
+    d.className='log-entry';
+    const meTag=e.pi===ME?'<span class="me">[나]</span> ':'';
+    d.innerHTML=`<span class="turn-n">T${e.turn}</span> ${e.pi===ME?'<span class="me">'+e.msg+'</span>':e.msg}`;
+    c.appendChild(d);
+  }
+  c.scrollTop=c.scrollHeight;
+}
+
+function render(){
+  renderOpponents();
+  renderTable();
+  renderMyRack();
+  renderLog();
+
+  const ti=document.querySelector('.top-bar .turn-info');
+  // 없으면 추가 (html에 이미 없으므로 info 영역에 표시)
+  // 상단바 info 갱신
+  const turnInfo=document.getElementById('turnInfo');
+  // 존재하지 않으면 무시
+}
+
+// 토스트
+let toastTimer;
+function showToast(title,sub=''){
+  const t=document.getElementById('toast');
+  t.innerHTML=title+(sub?`<div class="sub">${sub}</div>`:'');
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),1800);
+}
+
+function showResult(){
+  const ov=document.getElementById('overlay');
+  const rc=document.getElementById('resultCard');
+  ov.classList.add('show');
+  const isMyWin=G.wi===ME;
+  let rows='';
+  for(let i=0;i<4;i++){
+    const sc=G.h[i].reduce((s,t)=>s+tv(t),0);
+    const w=G.wi===i;
+    const p=PLAYERS[i];
+    rows+=`<tr${w?' class="wr"':''}>
+      <td style="color:${p.color}">${i===ME?p.name+' (나)':p.name}</td>
+      <td>${p.type.startsWith('AI')?p.type.replace('AI_',''):'Human'}</td>
+      <td>${G.h[i].length}장</td><td>${sc}점</td>
+      <td>${w?'WINNER':''}</td></tr>`;
+  }
+  rc.innerHTML=`
+    <h2>${isMyWin?'승리!':'패배...'}</h2>
+    <div class="sub-result">${G.turn}턴 진행 | 테이블 ${G.tbl.length}세트 | ${PLAYERS[G.wi].name} 승리</div>
+    <table><tr><th>플레이어</th><th>유형</th><th>남은</th><th>점수</th><th></th></tr>${rows}</table>
+    <div style="margin-top:16px">
+      <button class="btn btn-play" onclick="document.getElementById('overlay').classList.remove('show')">닫기</button>
+      <button class="btn btn-reset" style="margin-left:8px" onclick="reset();document.getElementById('overlay').classList.remove('show')">리셋</button>
+    </div>`;
+}
+
+// ── 컨트롤 ──
+function step(){if(G.st==='PLAYING')doTurn();}
+function stopAuto(){
+  if(autoT){clearInterval(autoT);autoT=null;}
+  const b=document.getElementById('btnPlay');
+  b.textContent='자동 재생';b.classList.remove('on');
+}
+function togglePlay(){
+  if(autoT){stopAuto();return;}
+  const b=document.getElementById('btnPlay');
+  autoT=setInterval(()=>{if(G.st!=='PLAYING'){stopAuto();return;}doTurn();},speed);
+  b.textContent='일시정지';b.classList.add('on');
+}
+function cycleSpd(){
+  si=(si+1)%SPDS.length;speed=SPDS[si].ms;
+  document.getElementById('btnSpd').textContent=`속도: ${SPDS[si].l}`;
+  document.getElementById('spdLbl').textContent=`${speed/1000}초/턴`;
+  if(autoT){clearInterval(autoT);autoT=setInterval(()=>{if(G.st!=='PLAYING'){stopAuto();return;}doTurn();},speed);}
+}
+function toggleLog(){document.getElementById('logPanel').classList.toggle('open');}
+function reset(){
+  stopAuto();G=init();render();
+  document.getElementById('logEntries').innerHTML='';
+  showToast('게임 시작','각 플레이어에게 14장 분배 완료');
+}
+
+// 초기화
+reset();
+</script>
+</body>
+</html>

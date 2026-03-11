@@ -179,6 +179,31 @@ CREATE INDEX idx_practice_user ON practice_sessions(user_id, stage);
 | 5 | 조커 활용 | 조커를 전략적으로 사용 |
 | 6 | 종합 실전 | AI 1명 상대 자유 대전 |
 
+### 2.9 game_snapshots (게임 복기용 턴 스냅샷)
+
+게임 진행 중 매 턴 완료 시 스냅샷을 저장하여, 게임 종료 후 4분할 복기 뷰를 지원한다.
+
+```sql
+CREATE TABLE game_snapshots (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    game_id         UUID NOT NULL REFERENCES games(id),
+    turn_number     INTEGER NOT NULL,
+    acting_seat     INTEGER NOT NULL CHECK (acting_seat BETWEEN 0 AND 3),
+    action_type     VARCHAR(30) NOT NULL,           -- PLACE_TILES, DRAW_TILE, REARRANGE, TIMEOUT
+    action_detail   JSONB NOT NULL,                 -- 수행 액션 상세 (배치 타일, 드로우 타일 등)
+    player_hands    JSONB NOT NULL,                 -- 각 seat별 패 (복기 시 전체 공개)
+    table_state     JSONB NOT NULL,                 -- 테이블 위 세트들
+    draw_pile_count INTEGER NOT NULL,               -- 남은 드로우 파일 수
+    ai_decision_log TEXT,                           -- AI 턴인 경우 판단 근거 요약
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX idx_game_snapshots_game ON game_snapshots(game_id, turn_number);
+```
+
+**보관 정책**: 90일 후 자동 아카이브/삭제 (배치 작업)
+
+> **성능 고려**: 스냅샷 저장은 턴 완료 시 비동기로 수행하여 게임 진행에 영향을 주지 않는다. 게임당 평균 30~80행이 생성된다.
+
 ## 3. Redis 데이터 구조
 
 ### 3.1 게임 상태
@@ -283,6 +308,7 @@ erDiagram
     games ||--o{ elo_history : "결과"
     games ||--o{ practice_sessions : "연습 세션"
     game_players ||--o{ ai_call_logs : "AI 호출"
+    games ||--o{ game_snapshots : "복기 스냅샷"
 
     users {
         UUID id PK
@@ -316,5 +342,11 @@ erDiagram
         UUID id PK
         INTEGER stage
         VARCHAR status
+    }
+    game_snapshots {
+        UUID id PK
+        INTEGER turn_number
+        VARCHAR action_type
+        JSONB player_hands
     }
 ```
