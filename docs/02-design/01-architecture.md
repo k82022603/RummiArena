@@ -42,6 +42,17 @@ graph TB
 - 게임 상태는 Redis에 저장
 - Pod 재시작 시에도 게임 유지
 - 수평 확장 가능
+- **수평 확장 시 WebSocket 전략**: 현재 replicas:1이므로 단일 인스턴스에서 모든 WebSocket 연결을 처리한다. 수평 확장(replicas > 1) 시에는 Redis Pub/Sub 기반 메시지 브로커를 도입하여 인스턴스 간 WebSocket 이벤트를 동기화해야 한다.
+
+```mermaid
+flowchart LR
+    C1["Client A"] --> P1["Pod 1\n(Game Server)"]
+    C2["Client B"] --> P2["Pod 2\n(Game Server)"]
+    P1 -->|Publish| RPS["Redis Pub/Sub\n(이벤트 브로커)"]
+    P2 -->|Subscribe| RPS
+    RPS -->|Subscribe| P1
+    RPS -->|Publish| P2
+```
 
 ### 3.2 LLM 신뢰 금지 원칙
 ```mermaid
@@ -119,26 +130,44 @@ graph TB
             sv6["postgres"]
         end
     end
-    subgraph ing["Ingress"]
+    subgraph ing["Ingress (NGINX)"]
+        i0["TLS 종단 (self-signed cert)\nHTTPS → HTTP 프록시"]
         i1["/ → frontend"]
         i2["/api → game-server"]
-        i3["/ws → game-server (WS)"]
+        i3["/ws → game-server (WS Upgrade)"]
         i4["/admin → admin"]
     end
-    subgraph istio["Istio (Phase 2)"]
+    subgraph istio["Istio (Phase 5, Sprint 8~9)"]
         is1["VirtualService (라우팅)"]
         is2["DestinationRule (CB, Timeout)"]
         is3["PeerAuthentication (mTLS)"]
     end
     ing --> NS
-    istio -.->|"Phase 2"| NS
+    istio -.->|"Phase 5"| NS
 ```
 
 ## 7. 외부 시스템 연동
 
 ```mermaid
 graph TB
-    Google["Google\nOAuth 2.0"] -->|HTTPS| GS["Game Server"]
+    Google["Google\nOAuth 2.0"] -->|HTTPS| GS["Game Server\n(게임 서버)"]
     Kakao["Kakao\nMessage API"] -->|HTTPS| GS
-    LLM["LLM APIs\n(External)"] -->|HTTPS| GS
+    GS -->|gRPC/REST| AIA["AI Adapter\n(AI 어댑터)"]
+    AIA -->|HTTPS| LLM["LLM APIs\n(OpenAI, Claude, DeepSeek)"]
+    AIA -->|HTTP| Ollama["Ollama\n(로컬 LLM)"]
 ```
+
+> **참고**: LLM API 호출은 Game Server가 직접 수행하지 않는다. 반드시 AI Adapter를 경유하여 모델 무관 인터페이스로 통신한다.
+
+## 8. 게임 상태 Enum
+
+모든 서비스에서 동일한 게임 상태 값을 사용한다.
+
+| 상태 | 설명 |
+|------|------|
+| WAITING | Room 생성 후 플레이어 입장 대기 |
+| PLAYING | 게임 진행 중 |
+| FINISHED | 정상 종료 (승자 확정) |
+| CANCELLED | 비정상 종료 (강제 종료, 인원 부족) |
+
+> CREATED 상태는 사용하지 않는다. Room 생성 시 즉시 WAITING 상태로 진입한다.

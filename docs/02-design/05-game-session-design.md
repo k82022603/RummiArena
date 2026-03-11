@@ -4,22 +4,23 @@
 
 ```mermaid
 stateDiagram-v2
-    [*] --> CREATED
-    CREATED --> WAITING
-    WAITING --> PLAYING
+    [*] --> WAITING : Room 생성
+    WAITING --> PLAYING : 호스트 시작 (2명 이상)
     WAITING --> CANCELLED : 인원 부족/호스트 퇴장
-    PLAYING --> FINISHED
+    PLAYING --> FINISHED : 승자 확정/드로우파일 소진
+    PLAYING --> CANCELLED : 강제 종료/전원 퇴장
     CANCELLED --> [*]
     FINISHED --> [*]
 ```
 
 | 상태 | 설명 | 전이 조건 |
 |------|------|-----------|
-| CREATED | Room 생성됨 | Room 생성 API 호출 |
-| WAITING | 플레이어 입장 대기 | 최소 1명 입장 |
+| WAITING | Room 생성, 플레이어 입장 대기 | Room 생성 API 호출 시 즉시 WAITING |
 | PLAYING | 게임 진행 중 | 호스트가 시작, 2명 이상 |
-| FINISHED | 정상 종료 | 한 명이 타일 0개 / 드로우 파일 소진 |
-| CANCELLED | 비정상 종료 | 강제 종료 / 인원 부족 |
+| FINISHED | 정상 종료 | 한 명이 타일 0개 / 드로우 파일 소진 후 교착 |
+| CANCELLED | 비정상 종료 | 강제 종료 / 인원 부족 / 전원 퇴장 |
+
+> **참고**: CREATED 상태는 사용하지 않는다. Room 생성 시 즉시 WAITING 상태로 진입하며, 호스트가 자동으로 seat 0에 배정된다.
 
 ## 2. 세션 구조
 
@@ -133,12 +134,31 @@ flowchart TB
 ```
 
 ### 5.2 턴 타이머
+
+턴 타임아웃은 30~120초 범위에서 게임 설정에 따라 결정된다.
+
+**구현 방식**: setTimeout/setInterval 기반 + Redis에 만료 시간 기록
+
+```mermaid
+flowchart LR
+    A["턴 시작"] --> B["Redis에 만료 시각 기록\ngame:{gameId}:timer"]
+    B --> C["서버 setTimeout 설정\n(turnTimeoutSec)"]
+    C --> D{타임아웃 발생?}
+    D -->|Yes| E["Redis 만료 시각 검증\n(이중 체크)"]
+    E --> F["자동 드로우 처리"]
+    D -->|No, 턴 종료| G["타이머 취소\nclearTimeout"]
+```
+
 ```
 Redis Key: game:{gameId}:timer
-  - 턴 시작 시 타이머 SET (TTL = turnTimeoutSec)
-  - 서버에서 주기적 체크 (1초) 또는 Redis Keyspace Notification
-  - 만료 시 자동 드로우 처리
+  - 턴 시작 시 SET: 만료 Unix timestamp (ms)
+  - 서버 메모리에 setTimeout 등록 (turnTimeoutSec * 1000 ms)
+  - 타임아웃 발생 시 Redis 만료 시각과 대조하여 이중 검증
+  - 턴 정상 종료 시 clearTimeout으로 타이머 취소
+  - 서버 재시작 시: Redis의 만료 시각을 읽어 남은 시간으로 setTimeout 재설정
 ```
+
+> **주의**: 1초 폴링 방식은 사용하지 않는다. setTimeout 기반이 CPU 효율적이며, Redis 만료 시각을 이중 체크하여 정확성을 보장한다.
 
 ### 5.3 턴 순서
 ```
@@ -153,12 +173,17 @@ seat 0 → seat 1 → seat 2 → seat 3 → seat 0 → ...
 1. WebSocket 끊김 감지 (heartbeat 실패)
 2. 30초 대기 (재연결 유예)
 3. 30초 내 재연결
-   → 게임 상태 재동기화 (game:state 전송)
-   → 자신의 턴이면 남은 시간부터 계속
+   -> 게임 상태 재동기화 (game:state 전송)
+   -> 자신의 턴이면 남은 시간부터 계속
 4. 30초 초과
-   → 해당 플레이어 턴은 자동 드로우
-   → 3턴 연속 부재 시 게임에서 제외
+   -> 해당 플레이어 턴은 자동 드로우
+   -> 3턴 연속 부재 시 게임에서 제외
+5. 제외 후 남은 인원이 2명 미만
+   -> 게임 자동 종료 (CANCELLED)
+   -> 남은 1명에게 game:ended 이벤트 전송
 ```
+
+> **3턴 연속 부재 + 2명 미만 처리**: 연결 끊김으로 제외된 플레이어를 차감한 후 참가 인원이 2명 미만이면, 게임을 정상 진행할 수 없으므로 자동으로 CANCELLED 처리한다. 남은 1명이 있으면 해당 플레이어를 승자로 처리할 수도 있으나, CANCELLED로 처리하고 ELO 변동은 적용하지 않는다.
 
 ### 6.2 AI 플레이어 장애
 ```
@@ -177,20 +202,67 @@ seat 0 → seat 1 → seat 2 → seat 3 → seat 0 → ...
 ### 7.2 종료 처리
 ```
 1. 승자 판정
-2. 점수 계산 (남은 타일 합산)
-3. ELO 레이팅 업데이트
-4. PostgreSQL에 게임 결과 저장
+2. 점수 계산 (남은 타일 합산, 조커는 30점)
+3. ELO 레이팅 업데이트 (아래 7.3 참조)
+4. PostgreSQL에 게임 결과 저장 (games, game_players, elo_history)
 5. AI 호출 통계 집계 저장
 6. game:ended 이벤트 전송
-7. Redis 게임 상태 정리 (TTL 설정 후 삭제)
+7. Redis 게임 상태 TTL을 600초(10분)로 단축
 8. (선택) 카카오톡 결과 알림
 ```
 
-### 7.3 비정상 종료
-- 호스트 퇴장 (WAITING 상태) → CANCELLED
-- 관리자 강제 종료 → CANCELLED
-- 플레이어 전원 퇴장 → CANCELLED
-- 서버 재시작 → Redis 상태로 복구 시도
+### 7.3 ELO 레이팅 업데이트
+
+**기본 공식**: 표준 ELO 계산 (K-factor 기반)
+
+```
+새 레이팅 = 현재 레이팅 + K * (실제 결과 - 기대 결과)
+기대 결과 = 1 / (1 + 10^((상대 평균 레이팅 - 내 레이팅) / 400))
+```
+
+| 항목 | 값 | 설명 |
+|------|------|------|
+| K-factor (기본) | 32 | 일반 사용자 |
+| K-factor (신규) | 40 | 총 게임 수 < 30 (빠른 수렴) |
+| K-factor (고랭크) | 24 | ELO >= 1800 (안정화) |
+| 초기 레이팅 | 1000 | 신규 사용자 |
+| AI 포함 게임 | 적용 | AI와의 대전도 ELO에 반영 |
+| CANCELLED 게임 | 미적용 | 비정상 종료 시 ELO 변동 없음 |
+| 연습 모드 | 미적용 | 연습 모드는 ELO에 영향 없음 |
+
+**다인전(3~4인) ELO 처리**: 승자 vs 나머지 각각에 대해 1:1 ELO 변동을 계산하고 평균한다.
+
+> 모든 ELO 변동은 `elo_history` 테이블에 기록되어 변동 추이를 추적할 수 있다.
+
+### 7.4 비정상 종료
+- 호스트 퇴장 (WAITING 상태) -> CANCELLED
+- 관리자 강제 종료 -> CANCELLED
+- 플레이어 전원 퇴장 -> CANCELLED
+- 서버 재시작 -> 아래 복구 절차 수행
+
+### 7.5 서버 재시작 시 복구 절차
+
+```mermaid
+flowchart TB
+    A["서버 부팅"] --> B["Redis 스캔\ngame:*:state"]
+    B --> C{진행 중 게임\n존재?}
+    C -->|없음| D["정상 시작"]
+    C -->|있음| E["게임별 복구 시도"]
+    E --> F["Redis 타이머 복구\n(남은 시간 계산)"]
+    F --> G["WebSocket 재연결 대기\n(30초)"]
+    G --> H{Human 플레이어\n재연결?}
+    H -->|전원 재연결| I["게임 재개\ngame:state 전송"]
+    H -->|일부 미연결| J["미연결 플레이어\n부재 처리"]
+    J --> K{남은 인원\n2명 이상?}
+    K -->|Yes| I
+    K -->|No| L["게임 일시 중단\n(CANCELLED)"]
+```
+
+1. 서버 부팅 시 Redis에서 `game:*:state` 패턴으로 진행 중(status=PLAYING) 게임을 스캔한다.
+2. 각 게임의 턴 타이머를 Redis 만료 시각 기준으로 재설정한다.
+3. Human 플레이어의 WebSocket 재연결을 30초간 대기한다.
+4. 30초 내 재연결한 플레이어에게 `game:state` 이벤트로 전체 상태를 동기화한다.
+5. 미연결 플레이어는 부재 처리하고, 남은 인원이 2명 미만이면 게임을 CANCELLED 처리한다.
 
 ## 8. 동시성 제어
 
@@ -208,7 +280,42 @@ seat 0 → seat 1 → seat 2 → seat 3 → seat 0 → ...
 - 게임 상태 업데이트는 Redis Transaction (MULTI/EXEC) 또는 Lua Script 사용
 - Race condition 방지
 
-## 9. 세션 정리 정책
+## 9. 1인 연습 모드 세션 관리
+
+### 9.1 연습 모드 생명주기
+
+```mermaid
+stateDiagram-v2
+    [*] --> PRACTICE_ACTIVE : POST /api/practice/start
+    PRACTICE_ACTIVE --> PRACTICE_COMPLETE : 목표 달성 또는 포기
+    PRACTICE_ACTIVE --> PRACTICE_ABANDONED : 세션 만료 (30분)
+    PRACTICE_COMPLETE --> [*]
+    PRACTICE_ABANDONED --> [*]
+```
+
+### 9.2 연습 모드 특성
+
+| 항목 | 일반 게임 | 연습 모드 |
+|------|-----------|-----------|
+| WebSocket | 필요 (실시간 대전) | 불필요 (REST API만) |
+| 턴 타임아웃 | 30~120초 (강제) | 무제한 (사용자 자유) |
+| ELO 반영 | O | X |
+| AI 플레이어 | 0~3명 | Stage 6에서만 1명 |
+| 게임 상태 저장 | Redis (실시간) | Redis (간소화) |
+| 세션 TTL | 7200초 (2시간) | 1800초 (30분, 비활동 기준) |
+
+### 9.3 연습 모드 데이터 흐름
+```
+1. POST /api/practice/start → 게임 초기화 (games.game_mode = 'PRACTICE')
+2. Redis에 간소화된 게임 상태 저장
+3. POST /api/practice/:id/action → 액션 검증 + 상태 업데이트
+4. 목표 달성 시 → practice_sessions.status = 'COMPLETED', 결과 저장
+5. Redis 상태 정리
+```
+
+> **Stage 6 (종합 실전)**: AI 1명과 대전하지만 WebSocket은 사용하지 않는다. 사용자 액션 후 서버가 AI 턴을 즉시 처리하고 응답에 포함하여 반환하는 동기 방식이다.
+
+## 10. 세션 정리 정책
 
 | 조건 | 처리 |
 |------|------|
