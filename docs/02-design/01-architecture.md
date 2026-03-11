@@ -29,8 +29,8 @@ graph TB
 | 서비스 | 역할 | 포트 | 기술 |
 |--------|------|------|------|
 | frontend | 게임 UI | 3000 | Next.js |
-| game-server | 게임 로직, API, WebSocket | 8080 | NestJS or Go |
-| ai-adapter | LLM 호출 추상화 | 8081 | NestJS or Go |
+| game-server | 게임 로직, API, WebSocket | 8080 | Go (gin + gorilla/websocket) |
+| ai-adapter | LLM 호출 추상화 | 8081 | NestJS (TypeScript) |
 | admin | 관리자 대시보드 | 3001 | Next.js |
 | redis | 게임 상태 캐시 | 6379 | Redis 7 |
 | postgres | 유저, 전적, 로그 영속 저장 | 5432 | PostgreSQL 16 |
@@ -171,3 +171,225 @@ graph TB
 | CANCELLED | 비정상 종료 (강제 종료, 인원 부족) |
 
 > CREATED 상태는 사용하지 않는다. Room 생성 시 즉시 WAITING 상태로 진입한다.
+
+## 9. 백엔드 기술 결정 (폴리글랏 구성)
+
+### 9.1 결정 사항
+
+| 서비스 | 언어/프레임워크 | 결정 이유 |
+|--------|---------------|-----------|
+| game-server | **Go** (gin + gorilla/websocket + GORM) | WebSocket 동시성, 게임 엔진 성능, 낮은 메모리 사용 |
+| ai-adapter | **NestJS** (TypeScript) | LLM API JSON 조작 편의, 프롬프트 템플릿 관리, 풍부한 HTTP 생태계 |
+
+> **결정일**: 2026-03-11 (Sprint 0)
+
+### 9.2 폴리글랏 아키텍처 개요
+
+```mermaid
+graph TB
+    subgraph Frontend["Frontend Layer (TypeScript)"]
+        FE["Next.js\n(게임 UI)"]
+        Admin["Next.js\n(관리자)"]
+    end
+
+    subgraph Backend["Backend Layer (Polyglot)"]
+        subgraph GoService["Go Service"]
+            GS["game-server :8080"]
+            GS_API["REST API\n(gin)"]
+            GS_WS["WebSocket\n(gorilla/websocket)"]
+            GS_Engine["Game Engine\n(규칙 검증)"]
+            GS --> GS_API
+            GS --> GS_WS
+            GS --> GS_Engine
+        end
+
+        subgraph NodeService["Node.js Service"]
+            AIA["ai-adapter :8081"]
+            AIA_IF["공통 인터페이스\n(AdapterInterface)"]
+            AIA_PB["PromptBuilder\n(프롬프트 조합)"]
+            AIA_RP["ResponseParser\n(JSON 파싱)"]
+            AIA --> AIA_IF
+            AIA --> AIA_PB
+            AIA --> AIA_RP
+        end
+    end
+
+    subgraph Data["Data Layer"]
+        Redis["Redis 7\n(게임 상태)"]
+        PG["PostgreSQL 16\n(영속 데이터)"]
+    end
+
+    subgraph External["External APIs"]
+        LLM["LLM APIs\n(OpenAI, Claude,\nDeepSeek)"]
+        Ollama["Ollama\n(로컬 LLM)"]
+    end
+
+    FE -->|"WebSocket / REST"| GS
+    Admin -->|"REST"| GS
+    GS -->|"REST (내부)"| AIA
+    GS --> Redis
+    GS --> PG
+    AIA -->|"HTTPS"| LLM
+    AIA -->|"HTTP"| Ollama
+```
+
+### 9.3 서비스별 기술 스택 상세
+
+#### game-server (Go)
+
+| 항목 | 기술 | 설명 |
+|------|------|------|
+| HTTP Framework | gin | 경량 고성능 REST 프레임워크 |
+| WebSocket | gorilla/websocket | 표준 WebSocket 라이브러리 |
+| ORM | GORM | Go 표준 ORM, PostgreSQL 지원 |
+| Redis Client | go-redis/redis | Redis 7 호환 클라이언트 |
+| JWT | golang-jwt/jwt | Google OAuth JWT 검증 |
+| Logger | zap | 구조화 JSON 로그 (Uber) |
+| Config | viper | 환경변수/설정 파일 관리 |
+| Test | testing + testify | 표준 테스트 + assertion |
+
+```
+src/game-server/
+├── cmd/
+│   └── server/
+│       └── main.go              # 엔트리포인트
+├── internal/
+│   ├── handler/                 # HTTP/WS 핸들러 (Controller 역할)
+│   │   ├── room_handler.go
+│   │   ├── game_handler.go
+│   │   └── ws_handler.go
+│   ├── service/                 # 비즈니스 로직 (Service 역할)
+│   │   ├── room_service.go
+│   │   ├── game_service.go
+│   │   └── turn_service.go
+│   ├── engine/                  # 게임 엔진 (규칙 검증)
+│   │   ├── validator.go
+│   │   ├── tile.go
+│   │   ├── group.go
+│   │   └── run.go
+│   ├── repository/              # 데이터 접근 (Repository 역할)
+│   │   ├── redis_repo.go
+│   │   └── postgres_repo.go
+│   ├── model/                   # 도메인 모델
+│   │   ├── game.go
+│   │   ├── player.go
+│   │   └── tile.go
+│   ├── middleware/               # 미들웨어 (JWT, CORS, 로깅)
+│   │   ├── auth.go
+│   │   └── logger.go
+│   └── config/                  # 설정
+│       └── config.go
+├── go.mod
+├── go.sum
+└── Dockerfile
+```
+
+#### ai-adapter (NestJS)
+
+| 항목 | 기술 | 설명 |
+|------|------|------|
+| Framework | NestJS | TypeScript 서버 프레임워크 |
+| HTTP Client | axios | LLM API 호출 |
+| Validation | class-validator | DTO 검증 |
+| Logger | nestjs/common Logger | 구조화 로그 |
+| Test | jest | 단위/통합 테스트 |
+| Config | @nestjs/config | 환경변수 관리 |
+
+```
+src/ai-adapter/
+├── src/
+│   ├── app.module.ts
+│   ├── main.ts
+│   ├── adapter/                 # LLM 어댑터
+│   │   ├── adapter.interface.ts
+│   │   ├── openai.adapter.ts
+│   │   ├── claude.adapter.ts
+│   │   ├── deepseek.adapter.ts
+│   │   └── ollama.adapter.ts
+│   ├── prompt/                  # 프롬프트 빌더
+│   │   ├── prompt.builder.ts
+│   │   └── persona.templates.ts
+│   ├── parser/                  # 응답 파서
+│   │   └── response.parser.ts
+│   ├── dto/                     # 요청/응답 DTO
+│   │   ├── move-request.dto.ts
+│   │   └── move-response.dto.ts
+│   ├── health/                  # 헬스체크
+│   │   └── health.controller.ts
+│   └── metrics/                 # 메트릭 수집
+│       └── metrics.service.ts
+├── package.json
+├── tsconfig.json
+└── Dockerfile
+```
+
+### 9.4 서비스 간 통신
+
+```mermaid
+sequenceDiagram
+    participant Client as Browser
+    participant GS as game-server (Go)
+    participant AI as ai-adapter (NestJS)
+    participant LLM as LLM API
+
+    Note over Client, GS: Human 턴
+    Client->>GS: WebSocket: turn:confirm
+    GS->>GS: Game Engine 검증
+    GS-->>Client: WebSocket: turn:result
+
+    Note over GS, LLM: AI 턴
+    GS->>AI: POST /api/ai/move (REST)
+    AI->>AI: PromptBuilder (프롬프트 조합)
+    AI->>LLM: POST /chat/completions
+    LLM-->>AI: LLM 응답
+    AI->>AI: ResponseParser (JSON 파싱)
+    AI-->>GS: MoveResponse
+    GS->>GS: Game Engine 검증
+    GS-->>Client: WebSocket: turn:action
+```
+
+### 9.5 빌드/배포 파이프라인
+
+```mermaid
+flowchart LR
+    subgraph CI["GitLab CI"]
+        direction TB
+        GoBuild["Go Build\n(game-server)"]
+        NodeBuild["Node Build\n(ai-adapter)"]
+        GoBuild --> GoTest["go test ./..."]
+        NodeBuild --> NodeTest["npm run test"]
+        GoTest --> GoImage["Docker Image\n(golang:alpine → scratch)"]
+        NodeTest --> NodeImage["Docker Image\n(node:alpine)"]
+    end
+
+    subgraph CD["ArgoCD"]
+        Helm["Helm Chart\n(서비스별 values)"]
+    end
+
+    GoImage --> Helm
+    NodeImage --> Helm
+```
+
+| 서비스 | Base Image | 예상 이미지 크기 | 예상 메모리 |
+|--------|-----------|-----------------|------------|
+| game-server | golang:alpine → scratch (멀티스테이지) | ~15MB | ~50-100MB |
+| ai-adapter | node:20-alpine | ~200MB | ~150-256MB |
+
+### 9.6 결정 근거 요약
+
+**Go를 game-server에 선택한 이유**:
+1. goroutine 기반 WebSocket 동시 처리 — 연결당 스레드 모델보다 메모리 효율적
+2. 게임 엔진(규칙 검증)은 CPU-bound 로직 — Go의 컴파일 언어 성능이 유리
+3. Docker 이미지 ~15MB (scratch) — K8s Pod 시작 시간 최소화
+4. Go는 K8s 생태계 네이티브 언어 — 플랫폼 엔지니어링 실습 목적에 부합
+
+**NestJS를 ai-adapter에 선택한 이유**:
+1. LLM API 호출은 I/O-bound — Node.js 비동기 모델로 충분
+2. JSON 조작, 프롬프트 템플릿 관리에 TypeScript가 편리
+3. 프론트엔드(Next.js)와 DTO/타입을 공유 가능 (monorepo)
+4. class-validator, axios 등 풍부한 생태계로 빠른 개발
+
+**폴리글랏 추가 비용 감수 이유**:
+- Go 실전 경험 확보 (학습 목적)
+- 서비스별 최적 기술 선택 (마이크로서비스 원칙)
+- 빌드 파이프라인 2벌은 GitLab CI 멀티스테이지로 관리 가능

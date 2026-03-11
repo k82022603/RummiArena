@@ -110,7 +110,7 @@ flowchart LR
 | 1.1.7 | SonarQube 설치 (Docker) | sonarqube 서비스 |
 | 1.1.8 | Helm Umbrella Chart 초기 구조 | helm/ |
 | 1.1.9 | GitOps 레포 구조 설정 | environments/ |
-| 1.1.10 | **Backend 기술 결정 (NestJS vs Go)** | 기술 결정 문서 |
+| 1.1.10 | ~~Backend 기술 결정~~ → **확정: Go (game-server) + NestJS (ai-adapter)** | 01-architecture.md §9 |
 
 ---
 
@@ -135,7 +135,7 @@ flowchart LR
 
 | ID | 작업 | 산출물 |
 |----|------|--------|
-| 2.2.1 | 프로젝트 초기화 (NestJS or Go) | src/game-server/ |
+| 2.2.1 | 프로젝트 초기화 (Go gin) | src/game-server/ |
 | 2.2.2 | REST API 설계 (Room CRUD) | API 엔드포인트 |
 | 2.2.3 | WebSocket 서버 구현 | 실시간 통신 |
 | 2.2.4 | Redis 연동 (게임 상태 저장) | Redis 클라이언트 |

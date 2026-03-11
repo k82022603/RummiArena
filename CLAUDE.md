@@ -46,7 +46,8 @@ argocd/            # ArgoCD application manifests
 ## Tech Stack
 
 - **Frontend**: Next.js, TailwindCSS, Framer Motion, dnd-kit
-- **Backend**: NestJS or Go (gin)
+- **Backend (game-server)**: Go (gin + gorilla/websocket + GORM)
+- **Backend (ai-adapter)**: NestJS (TypeScript)
 - **DB**: PostgreSQL 16, Redis 7
 - **AI**: OpenAI API, Claude API, DeepSeek API, Ollama (LLaMA)
 - **Infra**: Docker Desktop Kubernetes, Helm 3, ArgoCD
