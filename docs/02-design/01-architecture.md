@@ -354,26 +354,74 @@ sequenceDiagram
 flowchart LR
     subgraph CI["GitLab CI"]
         direction TB
-        GoBuild["Go Build\n(game-server)"]
-        NodeBuild["Node Build\n(ai-adapter)"]
-        GoBuild --> GoTest["go test ./..."]
-        NodeBuild --> NodeTest["npm run test"]
-        GoTest --> GoImage["Docker Image\n(golang:alpine → scratch)"]
-        NodeTest --> NodeImage["Docker Image\n(node:alpine)"]
+
+        subgraph GoPipeline["game-server (Go)"]
+            GoLint["Lint\n(golangci-lint)"]
+            GoTest["Test\n(go test ./...)"]
+            GoSonar["SonarQube\n(Quality Gate)"]
+            GoBuild["Docker Build\n(golang → scratch)"]
+            GoTrivy["Trivy\n(Image Scan)"]
+            GoLint --> GoTest --> GoSonar --> GoBuild --> GoTrivy
+        end
+
+        subgraph NodePipeline["ai-adapter (NestJS)"]
+            NodeLint["Lint\n(eslint + prettier)"]
+            NodeTest["Test\n(jest --coverage)"]
+            NodeSonar["SonarQube\n(Quality Gate)"]
+            NodeBuild["Docker Build\n(node:alpine)"]
+            NodeTrivy["Trivy\n(Image Scan)"]
+            NodeLint --> NodeTest --> NodeSonar --> NodeBuild --> NodeTrivy
+        end
+    end
+
+    subgraph Registry["Container Registry"]
+        GoImage["game-server\nImage"]
+        NodeImage["ai-adapter\nImage"]
+    end
+
+    subgraph GitOps["GitOps Repo"]
+        HelmValues["Helm values\n(image tag 업데이트)"]
     end
 
     subgraph CD["ArgoCD"]
-        Helm["Helm Chart\n(서비스별 values)"]
+        Sync["Auto Sync\n(Helm 기반 배포)"]
     end
 
-    GoImage --> Helm
-    NodeImage --> Helm
+    subgraph K8s["Kubernetes"]
+        Deploy["Rolling Update\n(무중단 배포)"]
+    end
+
+    GoTrivy --> GoImage
+    NodeTrivy --> NodeImage
+    GoImage --> HelmValues
+    NodeImage --> HelmValues
+    HelmValues --> Sync
+    Sync --> Deploy
 ```
 
-| 서비스 | Base Image | 예상 이미지 크기 | 예상 메모리 |
-|--------|-----------|-----------------|------------|
-| game-server | golang:alpine → scratch (멀티스테이지) | ~15MB | ~50-100MB |
-| ai-adapter | node:20-alpine | ~200MB | ~150-256MB |
+#### DevSecOps 보안 게이트
+
+| 단계 | 도구 | 역할 | 실패 시 |
+|------|------|------|---------|
+| Lint | golangci-lint / eslint | 코드 스타일, 잠재 버그 탐지 | 파이프라인 중단 |
+| Test | go test / jest | 단위/통합 테스트 + 커버리지 | 파이프라인 중단 |
+| **SonarQube** | SonarQube Scanner | 정적 분석, Quality Gate (버그/취약점/코드스멜/커버리지) | 파이프라인 중단 |
+| **Trivy** | Trivy | Docker 이미지 CVE 취약점 스캔 | Critical/High 발견 시 중단 |
+| **OWASP ZAP** | ZAP (Phase 5) | 배포 후 동적 보안 테스트 (DAST) | 리포트 생성 (경고) |
+
+> **SonarQube Quality Gate 기준**: 신규 코드 기준 — 버그 0건, 취약점 0건, 코드 스멜 A등급, 커버리지 80% 이상
+
+#### 컨테이너 이미지 구성
+
+| 서비스 | Base Image | 빌드 방식 | 예상 크기 | 예상 메모리 |
+|--------|-----------|----------|----------|------------|
+| game-server | golang:alpine → scratch | 멀티스테이지 | ~15MB | ~50-100MB |
+| ai-adapter | node:20-alpine | 싱글스테이지 | ~200MB | ~150-256MB |
+| frontend | node:20-alpine | 멀티스테이지 (빌드→nginx) | ~50MB | ~64-128MB |
+| admin | node:20-alpine | 멀티스테이지 (빌드→nginx) | ~50MB | ~64-128MB |
+| redis | redis:7-alpine | 공식 이미지 | ~30MB | ~64-128MB |
+| postgres | postgres:16-alpine | 공식 이미지 | ~80MB | ~128-256MB |
+| ollama | ollama/ollama | 공식 이미지 | ~1.2GB | ~2-4GB |
 
 ### 9.6 결정 근거 요약
 
