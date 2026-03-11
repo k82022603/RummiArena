@@ -204,18 +204,21 @@ items = [
     ("08", "게임 세션 관리", "생명주기, 턴 관리, 장애 복구"),
     ("09", "WBS / 프로젝트 일정", "Sprint-Phase 매핑, 의존관계, 마일스톤"),
     ("10", "핵심 설계 원칙 & 제약", "LLM 신뢰 금지, Stateless, 하드웨어 제약"),
+    ("11", "폴리글랏 백엔드 구성", "Go (game-server) + NestJS (ai-adapter) 결정 근거"),
+    ("12", "CI/CD 파이프라인 & 컨테이너", "GitLab CI → ArgoCD → K8s, Docker 이미지 구성"),
+    ("13", "게임 복기 시스템", "4분할 뷰 기반 턴별 리플레이, 스냅샷 저장"),
 ]
 for i, (num, title, desc) in enumerate(items):
-    row_y = inch(1.3) + inch(i * 0.56)
+    row_y = inch(1.3) + inch(i * 0.43)
     # 번호 원
-    add_box(slide, inch(1.5), row_y, inch(0.45), inch(0.4), C_PRIMARY, num,
-            font_size=14, font_color=C_WHITE, bold=True)
-    add_text(slide, inch(2.1), row_y - inch(0.02), inch(4), inch(0.3),
-             title, font_size=16, font_color=C_WHITE, bold=True)
-    add_text(slide, inch(2.1), row_y + inch(0.25), inch(8), inch(0.25),
-             desc, font_size=11, font_color=C_DIMMED)
+    add_box(slide, inch(1.5), row_y, inch(0.38), inch(0.32), C_PRIMARY, num,
+            font_size=12, font_color=C_WHITE, bold=True)
+    add_text(slide, inch(2.0), row_y - inch(0.02), inch(4), inch(0.25),
+             title, font_size=13, font_color=C_WHITE, bold=True)
+    add_text(slide, inch(2.0), row_y + inch(0.2), inch(8), inch(0.2),
+             desc, font_size=9, font_color=C_DIMMED)
     # 우측 라인
-    add_line(slide, inch(2.1), row_y + inch(0.48), inch(11.5), row_y + inch(0.48), C_LINE, Pt(0.5))
+    add_line(slide, inch(2.0), row_y + inch(0.38), inch(11.5), row_y + inch(0.38), C_LINE, Pt(0.5))
 
 
 # ══════════════════════════════════════════════════════════════
@@ -1034,7 +1037,8 @@ add_section_label(slide, inch(0.5), inch(3.9), "기술 스택 요약", C_SECONDA
 
 stack_groups = [
     ("Frontend", "Next.js\nTailwindCSS\nFramer Motion\ndnd-kit", C_PRIMARY),
-    ("Backend", "NestJS or Go\n(Sprint 0 내 결정)\nWebSocket\nREST API", C_SECONDARY),
+    ("Backend\n(game-server)", "Go\ngin + gorilla/ws\nGORM", C_SECONDARY),
+    ("Backend\n(ai-adapter)", "NestJS\nTypeScript\naxios", C_ACCENT3),
     ("Database", "PostgreSQL 16\nRedis 7\n8 테이블\n7 Redis 키 패턴", C_ACCENT),
     ("AI", "OpenAI API\nClaude API\nDeepSeek API\nOllama (LLaMA)", C_ACCENT3),
     ("Infra", "Docker Desktop K8s\nHelm 3\nArgoCD\nNGINX Ingress", C_ACCENT2),
@@ -1061,6 +1065,345 @@ constraints = [
 for i, c in enumerate(constraints):
     add_text(slide, inch(0.7) + inch((i // 2) * 6.3), inch(6.35) + inch((i % 2) * 0.3),
              inch(6), inch(0.3), "- " + c, font_size=9, font_color=C_LIGHT)
+
+
+# ══════════════════════════════════════════════════════════════
+# SLIDE 13: 폴리글랏 백엔드 구성
+# ══════════════════════════════════════════════════════════════
+slide = prs.slides.add_slide(prs.slide_layouts[6])
+set_slide_bg(slide, C_BG_DARK)
+add_title_bar(slide, "11. 폴리글랏 백엔드 구성", "Polyglot Backend: Go + NestJS")
+
+# ── 결정 배경 ──
+add_section_label(slide, inch(0.5), inch(1.1), "기술 결정 (2026-03-11, Sprint 0)", C_PRIMARY)
+
+add_rect(slide, inch(0.5), inch(1.5), inch(5.8), inch(1.8), C_BG_CARD, C_SECONDARY, Pt(2))
+add_text(slide, inch(0.65), inch(1.55), inch(5.5), inch(0.3),
+         "game-server → Go (gin)", font_size=14, font_color=C_SECONDARY, bold=True)
+add_text(slide, inch(0.65), inch(1.9), inch(5.5), inch(0.3),
+         "HTTP Framework: gin  |  WebSocket: gorilla/websocket  |  ORM: GORM",
+         font_size=9, font_color=C_LIGHT)
+
+go_reasons = [
+    ("goroutine", "WebSocket 연결당 경량 스레드, 메모리 효율적"),
+    ("성능", "게임 엔진(규칙 검증)은 CPU-bound → 컴파일 언어 유리"),
+    ("이미지", "Docker scratch 빌드 ~15MB, Pod 기동 최소화"),
+    ("K8s 네이티브", "Go는 K8s 생태계 표준 언어 → 실습 가치 높음"),
+]
+for i, (label, desc) in enumerate(go_reasons):
+    gy = inch(2.25) + inch(i * 0.25)
+    add_text(slide, inch(0.8), gy, inch(1.2), inch(0.22),
+             f"• {label}", font_size=8, font_color=C_SECONDARY, bold=True)
+    add_text(slide, inch(2.0), gy, inch(4.2), inch(0.22),
+             desc, font_size=8, font_color=C_LIGHT)
+
+add_rect(slide, inch(6.8), inch(1.5), inch(5.8), inch(1.8), C_BG_CARD, C_ACCENT3, Pt(2))
+add_text(slide, inch(6.95), inch(1.55), inch(5.5), inch(0.3),
+         "ai-adapter → NestJS (TypeScript)", font_size=14, font_color=C_ACCENT3, bold=True)
+add_text(slide, inch(6.95), inch(1.9), inch(5.5), inch(0.3),
+         "Framework: NestJS  |  HTTP Client: axios  |  Validation: class-validator",
+         font_size=9, font_color=C_LIGHT)
+
+nest_reasons = [
+    ("I/O-bound", "LLM API 호출은 대기 시간 → Node.js 비동기 모델 적합"),
+    ("JSON/프롬프트", "TypeScript로 프롬프트 템플릿, JSON 조작 편리"),
+    ("타입 공유", "프론트엔드(Next.js)와 DTO/타입 공유 가능 (monorepo)"),
+    ("생태계", "class-validator, axios, Passport 등 풍부한 모듈"),
+]
+for i, (label, desc) in enumerate(nest_reasons):
+    ny = inch(2.25) + inch(i * 0.25)
+    add_text(slide, inch(7.1), ny, inch(1.2), inch(0.22),
+             f"• {label}", font_size=8, font_color=C_ACCENT3, bold=True)
+    add_text(slide, inch(8.3), ny, inch(4.2), inch(0.22),
+             desc, font_size=8, font_color=C_LIGHT)
+
+# ── 서비스 구조도 ──
+add_section_label(slide, inch(0.5), inch(3.5), "서비스 구조 및 통신", C_YELLOW)
+
+# game-server 박스
+add_rect(slide, inch(0.5), inch(3.95), inch(4.0), inch(3.2), C_BG_CARD, C_SECONDARY, Pt(2))
+add_text(slide, inch(0.65), inch(4.0), inch(3.7), inch(0.3),
+         "game-server (Go :8080)", font_size=12, font_color=C_SECONDARY, bold=True)
+
+go_modules = [
+    ("handler/", "HTTP/WS 핸들러 (Controller)", C_SECONDARY),
+    ("service/", "비즈니스 로직", C_SECONDARY),
+    ("engine/", "Game Engine (규칙 검증)", C_YELLOW),
+    ("repository/", "Redis + PostgreSQL 접근", C_PRIMARY),
+    ("model/", "도메인 모델 (Tile, Game, Player)", C_LIGHT),
+    ("middleware/", "JWT Auth, CORS, Logger", C_ACCENT),
+]
+for i, (name, desc, color) in enumerate(go_modules):
+    my = inch(4.4) + inch(i * 0.42)
+    add_box(slide, inch(0.7), my, inch(1.3), inch(0.35), RGBColor(0x1E, 0x1E, 0x36),
+            name, font_size=8, font_color=color, bold=True)
+    add_text(slide, inch(2.1), my + inch(0.05), inch(2.3), inch(0.25),
+             desc, font_size=8, font_color=C_LIGHT)
+
+# ai-adapter 박스
+add_rect(slide, inch(8.5), inch(3.95), inch(4.0), inch(3.2), C_BG_CARD, C_ACCENT3, Pt(2))
+add_text(slide, inch(8.65), inch(4.0), inch(3.7), inch(0.3),
+         "ai-adapter (NestJS :8081)", font_size=12, font_color=C_ACCENT3, bold=True)
+
+nest_modules = [
+    ("adapter/", "LLM 어댑터 (OpenAI, Claude, ...)", C_ACCENT3),
+    ("prompt/", "PromptBuilder + Persona 템플릿", C_YELLOW),
+    ("parser/", "ResponseParser (JSON 파싱)", C_ACCENT3),
+    ("dto/", "MoveRequest / MoveResponse", C_PRIMARY),
+    ("health/", "헬스체크 엔드포인트", C_SECONDARY),
+    ("metrics/", "호출 로그 / 메트릭 수집", C_ACCENT),
+]
+for i, (name, desc, color) in enumerate(nest_modules):
+    my = inch(4.4) + inch(i * 0.42)
+    add_box(slide, inch(8.7), my, inch(1.3), inch(0.35), RGBColor(0x1E, 0x1E, 0x36),
+            name, font_size=8, font_color=color, bold=True)
+    add_text(slide, inch(10.1), my + inch(0.05), inch(2.3), inch(0.25),
+             desc, font_size=8, font_color=C_LIGHT)
+
+# 통신 화살표 (game-server → ai-adapter)
+add_rect(slide, inch(4.8), inch(4.8), inch(3.4), inch(1.5), RGBColor(0x1E, 0x1E, 0x36), C_LINE, Pt(1))
+add_text(slide, inch(4.95), inch(4.85), inch(3.1), inch(0.3),
+         "서비스 간 통신", font_size=10, font_color=C_YELLOW, bold=True)
+
+comm_items = [
+    "game-server → ai-adapter: REST (POST /api/ai/move)",
+    "ai-adapter → LLM APIs: HTTPS (외부)",
+    "game-server → Redis: 게임 상태 R/W",
+    "game-server → PostgreSQL: 결과/로그 영속화",
+]
+for i, item in enumerate(comm_items):
+    add_text(slide, inch(5.0), inch(5.2) + inch(i * 0.25), inch(3.1), inch(0.22),
+             f"• {item}", font_size=7, font_color=C_LIGHT)
+
+# 화살표: GS → 중앙 → AI
+add_line(slide, inch(4.5), inch(5.5), inch(4.8), inch(5.5), C_SECONDARY, Pt(2))
+add_line(slide, inch(8.2), inch(5.5), inch(8.5), inch(5.5), C_ACCENT3, Pt(2))
+
+
+# ══════════════════════════════════════════════════════════════
+# SLIDE 14: CI/CD 파이프라인 & 컨테이너 구성
+# ══════════════════════════════════════════════════════════════
+slide = prs.slides.add_slide(prs.slide_layouts[6])
+set_slide_bg(slide, C_BG_DARK)
+add_title_bar(slide, "12. CI/CD 파이프라인 & 컨테이너 구성", "GitLab CI → ArgoCD → Kubernetes")
+
+# ── CI/CD 전체 흐름 ──
+add_section_label(slide, inch(0.5), inch(1.1), "CI/CD 파이프라인 흐름", C_PRIMARY)
+
+# 파이프라인 단계 박스들
+pipeline_steps = [
+    ("Developer", "git push\nGitLab", C_LIGHT, inch(0.5)),
+    ("GitLab CI\n(Runner)", "Lint\nTest\nBuild\nScan", C_ACCENT, inch(2.5)),
+    ("Registry", "Container\nImage", C_YELLOW, inch(5.0)),
+    ("GitOps Repo", "Helm values\n업데이트", C_ACCENT3, inch(7.0)),
+    ("ArgoCD", "Sync\n감지 → 배포", C_PRIMARY, inch(9.2)),
+    ("Kubernetes", "Rolling\nUpdate", C_SECONDARY, inch(11.2)),
+]
+for name, desc, color, px in pipeline_steps:
+    add_rect(slide, px, inch(1.5), inch(1.8), inch(1.2), C_BG_CARD, color, Pt(2))
+    add_text(slide, px + inch(0.05), inch(1.55), inch(1.7), inch(0.4),
+             name, font_size=10, font_color=color, bold=True, alignment=PP_ALIGN.CENTER)
+    add_text(slide, px + inch(0.05), inch(1.95), inch(1.7), inch(0.7),
+             desc, font_size=8, font_color=C_LIGHT, alignment=PP_ALIGN.CENTER)
+
+# 화살표 (단계 간)
+arrow_xs = [(inch(2.3), inch(2.5)), (inch(4.3), inch(5.0)),
+            (inch(6.8), inch(7.0)), (inch(8.8), inch(9.2)),
+            (inch(11.0), inch(11.2))]
+for x1, x2 in arrow_xs:
+    add_line(slide, x1, inch(2.1), x2, inch(2.1), C_LIGHT, Pt(2))
+
+# ── GitLab CI 스테이지 상세 ──
+add_section_label(slide, inch(0.5), inch(2.9), "GitLab CI 스테이지 (.gitlab-ci.yml)", C_ACCENT)
+
+# Go 파이프라인
+add_rect(slide, inch(0.5), inch(3.3), inch(6.0), inch(1.8), C_BG_CARD, C_SECONDARY, Pt(1.5))
+add_text(slide, inch(0.65), inch(3.35), inch(5.7), inch(0.25),
+         "game-server (Go) Pipeline", font_size=11, font_color=C_SECONDARY, bold=True)
+
+go_stages = [
+    ("lint", "golangci-lint", C_YELLOW),
+    ("test", "go test ./...", C_PRIMARY),
+    ("build", "go build\n→ scratch", C_SECONDARY),
+    ("scan", "Trivy\nSonarQube", C_ACCENT2),
+    ("push", "Registry\npush", C_ACCENT),
+]
+for i, (stage, desc, color) in enumerate(go_stages):
+    sx = inch(0.7) + inch(i * 1.1)
+    add_box(slide, sx, inch(3.7), inch(0.95), inch(1.2), RGBColor(0x1E, 0x1E, 0x36),
+            f"{stage}\n─────\n{desc}", font_size=7, font_color=color)
+    if i < len(go_stages) - 1:
+        add_line(slide, sx + inch(0.95), inch(4.3), sx + inch(1.1), inch(4.3), C_LIGHT, Pt(1))
+
+# Node 파이프라인
+add_rect(slide, inch(6.8), inch(3.3), inch(6.0), inch(1.8), C_BG_CARD, C_ACCENT3, Pt(1.5))
+add_text(slide, inch(6.95), inch(3.35), inch(5.7), inch(0.25),
+         "ai-adapter (NestJS) Pipeline", font_size=11, font_color=C_ACCENT3, bold=True)
+
+node_stages = [
+    ("lint", "eslint\nprettier", C_YELLOW),
+    ("test", "jest\n--coverage", C_PRIMARY),
+    ("build", "npm build\n→ alpine", C_ACCENT3),
+    ("scan", "Trivy\nSonarQube", C_ACCENT2),
+    ("push", "Registry\npush", C_ACCENT),
+]
+for i, (stage, desc, color) in enumerate(node_stages):
+    sx = inch(7.0) + inch(i * 1.1)
+    add_box(slide, sx, inch(3.7), inch(0.95), inch(1.2), RGBColor(0x1E, 0x1E, 0x36),
+            f"{stage}\n─────\n{desc}", font_size=7, font_color=color)
+    if i < len(node_stages) - 1:
+        add_line(slide, sx + inch(0.95), inch(4.3), sx + inch(1.1), inch(4.3), C_LIGHT, Pt(1))
+
+# ── 컨테이너 구성 ──
+add_section_label(slide, inch(0.5), inch(5.3), "컨테이너 구성 (Docker Images)", C_YELLOW)
+
+containers = [
+    ("frontend", "Next.js", "node:20-alpine", "~250MB", "3000", C_PRIMARY),
+    ("game-server", "Go (gin)", "golang → scratch", "~15MB", "8080", C_SECONDARY),
+    ("ai-adapter", "NestJS", "node:20-alpine", "~200MB", "8081", C_ACCENT3),
+    ("admin", "Next.js", "node:20-alpine", "~200MB", "3001", C_PRIMARY),
+    ("redis", "Redis 7", "redis:7-alpine", "~30MB", "6379", C_ACCENT2),
+    ("postgres", "PostgreSQL 16", "postgres:16-alpine", "~80MB", "5432", C_ACCENT),
+    ("ollama", "Ollama", "ollama/ollama", "~1.2GB", "11434", C_YELLOW),
+]
+
+# 헤더
+headers = ["서비스", "기술", "Base Image", "이미지 크기", "포트"]
+for i, h in enumerate(headers):
+    hx = inch(0.7) + inch(i * 2.4)
+    hw = inch(2.3) if i < 4 else inch(1.0)
+    add_text(slide, hx, inch(5.7), hw, inch(0.25),
+             h, font_size=8, font_color=C_YELLOW, bold=True)
+
+add_line(slide, inch(0.7), inch(5.95), inch(12.5), inch(5.95), C_LINE, Pt(0.5))
+
+for j, (svc, tech, base, size, port, color) in enumerate(containers):
+    ry = inch(6.0) + inch(j * 0.22)
+    vals = [svc, tech, base, size, port]
+    for i, v in enumerate(vals):
+        vx = inch(0.7) + inch(i * 2.4)
+        fc = color if i == 0 else C_LIGHT
+        fb = True if i == 0 else False
+        add_text(slide, vx, ry, inch(2.3), inch(0.2),
+                 v, font_size=7, font_color=fc, bold=fb)
+
+
+# ══════════════════════════════════════════════════════════════
+# SLIDE 15: 게임 복기 (Replay) 시스템
+# ══════════════════════════════════════════════════════════════
+slide = prs.slides.add_slide(prs.slide_layouts[6])
+set_slide_bg(slide, C_BG_DARK)
+add_title_bar(slide, "13. 게임 복기 시스템", "Post-Game Replay with 4-Split View")
+
+# ── 복기 뷰 개념 ──
+add_section_label(slide, inch(0.5), inch(1.1), "실시간 플레이 vs 복기 뷰", C_PRIMARY)
+
+# 1인칭 뷰 박스
+add_rect(slide, inch(0.5), inch(1.5), inch(5.8), inch(2.0), C_BG_CARD, C_SECONDARY, Pt(2))
+add_text(slide, inch(0.65), inch(1.55), inch(5.5), inch(0.3),
+         "실시간 플레이: 1인칭 뷰", font_size=13, font_color=C_SECONDARY, bold=True)
+
+play_features = [
+    ("내 패", "공개 (드래그&드롭 조작)", C_SECONDARY),
+    ("상대 패", "비공개 (타일 수만 표시)", C_ACCENT2),
+    ("드로우 타일", "본인만 확인", C_YELLOW),
+    ("AI 판단 근거", "비공개", C_DIMMED),
+    ("테이블", "공개 (공유 영역)", C_LIGHT),
+]
+for i, (label, desc, color) in enumerate(play_features):
+    py = inch(1.95) + inch(i * 0.28)
+    add_text(slide, inch(0.8), py, inch(1.5), inch(0.25),
+             f"• {label}", font_size=8, font_color=color, bold=True)
+    add_text(slide, inch(2.3), py, inch(3.8), inch(0.25),
+             desc, font_size=8, font_color=C_LIGHT)
+
+# 4분할 뷰 박스
+add_rect(slide, inch(6.8), inch(1.5), inch(5.8), inch(2.0), C_BG_CARD, C_ACCENT3, Pt(2))
+add_text(slide, inch(6.95), inch(1.55), inch(5.5), inch(0.3),
+         "게임 복기: 4분할 뷰", font_size=13, font_color=C_ACCENT3, bold=True)
+
+replay_features = [
+    ("내 패", "전체 공개", C_SECONDARY),
+    ("상대 패", "전체 공개 ★", C_ACCENT3),
+    ("드로우 타일", "전체 공개 ★", C_ACCENT3),
+    ("AI 판단 근거", "오버레이로 공개 ★", C_YELLOW),
+    ("테이블", "공개 (턴별 변화 추적)", C_LIGHT),
+]
+for i, (label, desc, color) in enumerate(replay_features):
+    ry = inch(1.95) + inch(i * 0.28)
+    add_text(slide, inch(7.1), ry, inch(1.5), inch(0.25),
+             f"• {label}", font_size=8, font_color=color, bold=True)
+    add_text(slide, inch(8.6), ry, inch(3.8), inch(0.25),
+             desc, font_size=8, font_color=C_LIGHT)
+
+# ── 복기 데이터 흐름 ──
+add_section_label(slide, inch(0.5), inch(3.7), "복기 데이터 흐름", C_YELLOW)
+
+replay_flow = [
+    ("턴 완료", "매 턴 완료 시\n스냅샷 생성", C_SECONDARY, inch(0.5)),
+    ("game_snapshots", "PostgreSQL 저장\n(비동기)", C_PRIMARY, inch(3.0)),
+    ("Replay API", "GET /games/:id\n/replay", C_ACCENT3, inch(5.5)),
+    ("4분할 렌더링", "전체 정보 공개\n턴별 재생", C_YELLOW, inch(8.0)),
+    ("전략 분석", "AI별 비교\nLLM 판단 근거", C_ACCENT, inch(10.5)),
+]
+for name, desc, color, px in replay_flow:
+    add_rect(slide, px, inch(4.1), inch(2.2), inch(1.0), C_BG_CARD, color, Pt(1.5))
+    add_text(slide, px + inch(0.05), inch(4.15), inch(2.1), inch(0.3),
+             name, font_size=9, font_color=color, bold=True, alignment=PP_ALIGN.CENTER)
+    add_text(slide, px + inch(0.05), inch(4.45), inch(2.1), inch(0.6),
+             desc, font_size=8, font_color=C_LIGHT, alignment=PP_ALIGN.CENTER)
+
+# 흐름 화살표
+flow_arrows = [(inch(2.7), inch(3.0)), (inch(5.2), inch(5.5)),
+               (inch(7.7), inch(8.0)), (inch(10.2), inch(10.5))]
+for x1, x2 in flow_arrows:
+    add_line(slide, x1, inch(4.6), x2, inch(4.6), C_LIGHT, Pt(2))
+
+# ── 스냅샷 구조 ──
+add_section_label(slide, inch(0.5), inch(5.3), "game_snapshots 테이블", C_PRIMARY)
+
+add_rect(slide, inch(0.5), inch(5.7), inch(7.5), inch(1.5), RGBColor(0x1E, 0x1E, 0x36), C_PRIMARY, Pt(1))
+
+snapshot_fields = [
+    ("game_id", "UUID FK → games"),
+    ("turn_number", "INTEGER (턴 번호)"),
+    ("acting_seat", "INTEGER (행동 플레이어)"),
+    ("action_type", "PLACE_TILES / DRAW / REARRANGE / TIMEOUT"),
+    ("action_detail", "JSONB (배치 타일, 드로우 타일 상세)"),
+    ("player_hands", "JSONB (각 seat별 패 - 복기 시 공개)"),
+    ("table_state", "JSONB (테이블 위 세트들)"),
+    ("ai_decision_log", "TEXT (AI 판단 근거 요약)"),
+]
+for i, (field, desc) in enumerate(snapshot_fields):
+    fy = inch(5.75) + inch(i * 0.17)
+    add_text(slide, inch(0.65), fy, inch(1.8), inch(0.17),
+             field, font_size=7, font_color=C_PRIMARY, bold=True)
+    add_text(slide, inch(2.5), fy, inch(5.3), inch(0.17),
+             desc, font_size=7, font_color=C_LIGHT)
+
+# ── 복기 API ──
+add_section_label(slide, inch(8.5), inch(5.3), "Replay API", C_ACCENT3)
+
+add_rect(slide, inch(8.5), inch(5.7), inch(4.3), inch(1.5), RGBColor(0x1E, 0x1E, 0x36), C_ACCENT3, Pt(1))
+
+replay_apis = [
+    ("GET", "/games/:id/replay", "전체 스냅샷 목록"),
+    ("GET", "/games/:id/replay/turns/:n", "특정 턴 스냅샷"),
+    ("GET", "/games/:id/replay/summary", "복기 요약/핵심 전환점"),
+]
+for i, (method, path, desc) in enumerate(replay_apis):
+    ay = inch(5.85) + inch(i * 0.4)
+    add_box(slide, inch(8.65), ay, inch(0.5), inch(0.25), C_ACCENT3,
+            method, font_size=7, font_color=C_WHITE, bold=True)
+    add_text(slide, inch(9.2), ay, inch(3.5), inch(0.2),
+             path, font_size=7, font_color=C_LIGHT, bold=True)
+    add_text(slide, inch(9.2), ay + inch(0.18), inch(3.5), inch(0.2),
+             desc, font_size=7, font_color=C_DIMMED)
+
+# 보관 정책
+add_text(slide, inch(8.65), inch(7.0), inch(4), inch(0.25),
+         "보관: 90일 → 자동 아카이브  |  게임당 30~80 스냅샷",
+         font_size=7, font_color=C_DIMMED)
 
 
 # ══════════════════════════════════════════════════════════════
