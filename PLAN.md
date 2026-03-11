@@ -16,11 +16,11 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 | Phase | 이름 | Sprint | 핵심 산출물 | 상태 |
 |-------|------|--------|-------------|------|
 | 1 | 기획 & 환경 구축 | Sprint 0 | 기획/설계 문서, K8s/ArgoCD/SonarQube 환경 | 진행 중 |
-| 2 | 핵심 게임 개발 (MVP) | Sprint 1~3 | Game Engine, Backend API, Frontend 기본 | 미착수 |
-| 3 | AI 연동 & 멀티플레이 | Sprint 4~5 | AI Adapter, 실시간 대전, 1인 연습 모드 | 미착수 |
-| 4 | 플랫폼 기능 확장 | Sprint 6 | 관리자 대시보드, 카카오톡 알림, ELO | 미착수 |
-| 5 | DevSecOps 고도화 | Sprint 7 | Istio, Prometheus/Grafana, 보안 스캔 | 미착수 |
-| 6 | 운영 & 실험 | Sprint 8+ | AI 토너먼트, 모델 비교 분석, OpenShift 검토 | 미착수 |
+| 2 | 핵심 게임 개발 (MVP) | Sprint 1~3 | Game Engine (Go), Backend API, Frontend 기본 | 미착수 |
+| 3 | AI 연동 & 멀티플레이 | Sprint 4~5 | AI Adapter (NestJS), 실시간 대전, 1인 연습 모드 | 미착수 |
+| 4 | 플랫폼 기능 확장 | Sprint 6 | 관리자 대시보드, 카카오톡 알림, ELO, 게임 복기 | 미착수 |
+| 5 | DevSecOps 고도화 | Sprint 7~9 | Observability, 보안 고도화, Istio Service Mesh | 미착수 |
+| 6 | 운영 & 실험 | (Phase 6) | AI 토너먼트, 모델 비교 분석, OpenShift 검토 | 미착수 |
 
 ---
 
@@ -39,7 +39,8 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 - [x] 03-api-design.md — API 설계
 - [x] 04-ai-adapter-design.md — AI Adapter 설계 (캐릭터/심리전 포함)
 - [x] 05-game-session-design.md — 게임 세션 관리
-- [ ] 06-ui-wireframe.md — UI 와이어프레임
+- [x] 06-game-rules.md — 게임 규칙 설계
+- [ ] 07-ui-wireframe.md — UI 와이어프레임
 
 ### 개발/배포 문서
 - [x] docs/03-development/01-dev-setup.md — 개발 환경 셋업 매뉴얼
@@ -70,7 +71,7 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 ## Phase 2: 핵심 게임 개발 — MVP (Sprint 1~3)
 
 ### Sprint 1: 게임 엔진
-- [ ] 백엔드 언어 최종 결정 (NestJS vs Go)
+- [x] 백엔드 언어 최종 결정 → **Go (game-server) + NestJS (ai-adapter)** 확정
 - [ ] 타일 데이터 모델 + 풀 생성/셔플
 - [ ] 그룹/런 유효성 검증
 - [ ] 조커 처리
@@ -140,7 +141,7 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 - [ ] AI 모델별 통계 (승률, 평균 응답시간, 토큰)
 - [ ] 카카오톡 알림 연동 (빌드/배포/게임 결과)
 - [ ] ELO 랭킹 시스템
-- [ ] 게임 리플레이 (이벤트 로그 기반)
+- [ ] 게임 복기 (4분할 뷰, game_snapshots 기반 턴별 리플레이)
 
 ---
 
@@ -218,7 +219,7 @@ flowchart TB
 
 | ID | 항목 | 선택지 | 결정 시점 | 상태 |
 |----|------|--------|-----------|------|
-| D-01 | 백엔드 언어 | NestJS vs Go (gin) | Sprint 1 시작 전 | 미결정 |
+| D-01 | 백엔드 언어 | ~~NestJS vs Go~~ → **Go (game-server) + NestJS (ai-adapter)** | Sprint 0 (2026-03-11) | **확정** |
 | D-02 | AI 호출 방식 | 직접 API vs LangChain/LangGraph | Sprint 4 PoC | 미결정 |
 | D-03 | SonarQube 배포 위치 | K8s Pod vs Docker Compose vs Oracle VM | Sprint 0 | 미결정 |
 | D-04 | Ollama 배포 위치 | K8s Pod vs Docker Compose vs Oracle VM | Sprint 4 | 미결정 |
@@ -245,13 +246,17 @@ docs/
 
 ## 현재 진행 상황
 
-**Phase 1 진행 중** — 기획/설계 문서 작성 완료, 개발/배포 문서 착수, 인프라 환경 일부 구축
+**Phase 1 진행 중** — 기획/설계 문서 대부분 완료, 백엔드 기술 확정, 인프라 환경 구축 착수 대기
 
 완료:
-- 기획 문서 5개, 설계 문서 5개, 개발/배포 문서 2개
+- 기획 문서 5개, 설계 문서 6개 (06-game-rules.md 추가), 개발/배포 문서 2개
+- 기획/설계 종합 검토 완료 (17개 이슈 식별 및 해소)
+- 백엔드 기술 확정: Go (game-server) + NestJS (ai-adapter) 폴리글랏 구성
+- 게임 복기(Replay) 기능 설계 반영 (FR-009, game_snapshots)
+- 기획/설계 검토 PPT 15장 완성 (python-pptx 네이티브 셰이프)
+- HTML 시뮬레이션 3종 (관전 뷰, 4분할 뷰, 1인칭 뷰)
 - PostgreSQL(docker-compose), .wslconfig 최적화, MCP 4개 연동
 - GitHub Push, 교대 실행 전략 확립
-- 전체 문서 도식 Mermaid 표준화 (25개), Claude Code 스킬 4개 등록
-- CLAUDE.md Diagram Convention 지침 추가
+- 전체 문서 도식 Mermaid 표준화, Claude Code 스킬 4개 등록
 
-다음 단계: GitHub Projects 보드 → K8s 활성화 → ArgoCD → GitLab Runner → SonarQube
+다음 단계: 상세설계 → UI 와이어프레임 → GitHub Projects 보드 → K8s 활성화 → ArgoCD → GitLab Runner
