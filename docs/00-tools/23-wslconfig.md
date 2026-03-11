@@ -17,22 +17,55 @@ C:\Users\{사용자명}\.wslconfig
 
 > WSL 내부가 아닌 **Windows 쪽**에 위치한다.
 
-## 3. 현재 설정 (이 장비)
+## 3. 프로젝트별 프로파일 관리
+
+`.wslconfig`는 WSL2 전역 설정이므로, 프로젝트마다 요구 리소스가 다를 때 충돌한다.
+각 프로젝트 루트에 `.wslconfig.profile`을 두고 스위칭 스크립트로 전환한다.
+
+### 프로파일 비교
+
+| 프로젝트 | memory | swap | processors | autoMemoryReclaim | 이유 |
+|----------|--------|------|------------|-------------------|------|
+| **RummiArena** (이 프로젝트) | 10GB | 4GB | 6 | dropcache | K8s + 앱 서비스 (~7.5GB) |
+| **hybrid-rag-knowledge-ops** | 14GB | 4GB | 8 | dropcache | ES + AI 임베딩 (18개 컨테이너, ~11GB) |
+
+### 이 프로젝트 프로파일 (`RummiArena/.wslconfig.profile`)
 
 ```ini
 [wsl2]
-memory=10GB
-swap=4GB
+memory=10GB      # K8s + 앱 서비스: ~7.5GB, SonarQube 추가 시 ~9GB
+swap=4GB         # OOM 방지 안전 마진
 processors=6
 
 [experimental]
-autoMemoryReclaim=dropcache
-sparseVhd=true
+autoMemoryReclaim=dropcache   # 캐시 적극 회수
+sparseVhd=true                # 가상 디스크 자동 축소
 ```
+
+### 프로파일 전환 방법
+
+```bash
+# RummiArena 모드로 전환 (이 프로젝트)
+bash scripts/switch-wslconfig.sh rummiarena   # (약칭: ra)
+
+# hybrid-rag 모드로 전환
+bash scripts/switch-wslconfig.sh hybrid-rag   # (약칭: hr)
+
+# 현재 상태 확인
+bash scripts/switch-wslconfig.sh status       # (약칭: st)
+```
+
+전환 후 반드시 PowerShell에서 `wsl --shutdown` 실행 필요.
+
+### 미전환 시 영향
+
+- **hybrid-rag 설정(14GB)으로 이 프로젝트 작업 시**: Windows 쪽 메모리 부족 → 브라우저/VSCode 멈춤
+- **이 프로젝트 설정(10GB)으로 hybrid-rag 작업 시**: api-gateway OOM Kill (Exit 137), 컨테이너 연쇄 종료
 
 ### 변경 이력
 | 날짜 | 변경 | 사유 |
 |------|------|------|
+| 2026-03-09 | swap 2→4GB, processors 8→6, sparseVhd=true 추가 | 현재 안정 .wslconfig와 프로파일 동기화 |
 | 2026-03-08 #1 | memory 14→10GB, swap 1→2GB, autoMemoryReclaim=gradual 추가 | Windows 가용 메모리 1.75GB까지 하락 |
 | 2026-03-08 #2 | swap 2→4GB, processors 8→4, autoMemoryReclaim gradual→dropcache, sparseVhd=true 추가 | docker MCP fork 버그로 WSL OOM 발생, 안전 마진 확보 |
 | 2026-03-08 #3 | memory 8→10GB, processors 4→6 | docker MCP 삭제 후 메모리 안정화, 성능 재상향 |

@@ -3,8 +3,9 @@
 # 최대 부하: ~7.5GB → 10GB 할당으로 여유 확보
 [wsl2]
 memory=10GB
-swap=2GB
-processors=8
+swap=4GB
+processors=6
 
 [experimental]
-autoMemoryReclaim=gradual
+autoMemoryReclaim=dropcache
+sparseVhd=true
