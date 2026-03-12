@@ -1,0 +1,91 @@
+# helm/charts/traefik/values.yaml
+# Traefik v3.x -- RummiArena 로컬 개발 환경 최적화
+# 16GB RAM (WSL 10GB) 기준, 리소스 최소화
+
+# 단일 노드 환경 (Docker Desktop)
+deployment:
+  replicas: 1
+
+# 리소스 제한 (Deploy 테스트 모드: ~5GB 총 예산)
+resources:
+  requests:
+    cpu: "50m"
+    memory: "64Mi"
+  limits:
+    cpu: "200m"
+    memory: "128Mi"
+
+# 진입점 포트 설정
+ports:
+  web:
+    port: 8000
+    expose:
+      default: true
+    exposedPort: 80
+    protocol: TCP
+  websecure:
+    port: 8443
+    expose:
+      default: true
+    exposedPort: 443
+    protocol: TCP
+  # Traefik Dashboard 전용 내부 포트 (port-forward로 접근)
+  traefik:
+    port: 9000
+    expose:
+      default: false
+    exposedPort: 9000
+    protocol: TCP
+
+# Dashboard 활성화 (로컬 개발 전용 insecure 모드)
+ingressRoute:
+  dashboard:
+    enabled: true
+    matchRule: Host(`traefik.localhost`)
+    entryPoints:
+      - traefik
+
+# API 및 Dashboard
+api:
+  dashboard: true
+  insecure: true   # 로컬 전용. 운영에서는 반드시 false
+
+# 로그 설정
+logs:
+  general:
+    level: INFO
+  access:
+    enabled: true
+    format: json
+
+# Kubernetes 프로바이더
+providers:
+  kubernetesIngress:
+    enabled: true
+    ingressClass: traefik
+  kubernetesGateway:
+    enabled: true   # Gateway API (차세대 표준 대비)
+
+# 서비스 타입 (Docker Desktop K8s: LoadBalancer = localhost)
+service:
+  type: LoadBalancer
+
+# WebSocket 지원: Traefik v3은 기본 지원. 별도 설정 불필요.
+# 필요 시 IngressRoute/Middleware로 타임아웃 조정.
+
+# Health/Readiness Probe
+readinessProbe:
+  httpGet:
+    path: /ping
+    port: 9000
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  failureThreshold: 3
+
+livenessProbe:
+  httpGet:
+    path: /ping
+    port: 9000
+  initialDelaySeconds: 15
+  periodSeconds: 20
+  failureThreshold: 3

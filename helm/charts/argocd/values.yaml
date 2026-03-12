@@ -1,0 +1,67 @@
+# helm/charts/argocd/values.yaml
+# ArgoCD -- RummiArena 로컬 개발 환경 최적화
+# 16GB RAM (WSL 10GB) 기준, 메모리 절약 구성
+
+# ArgoCD Server
+server:
+  # 로컬 개발: insecure 모드 (TLS 종단은 Traefik에서 담당)
+  extraArgs:
+    - --insecure
+  service:
+    type: ClusterIP   # Traefik IngressRoute 또는 port-forward로 외부 노출
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "256Mi"
+
+# Repo Server (Helm 렌더링 담당)
+repoServer:
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "256Mi"
+
+# Application Controller
+controller:
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+# Redis (ArgoCD 내장 캐시)
+redis:
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "32Mi"
+    limits:
+      cpu: "200m"
+      memory: "64Mi"
+
+# ApplicationSet Controller -- 비활성화 (메모리 절약, 단순 로컬 환경)
+applicationSet:
+  enabled: false
+
+# Notifications -- 비활성화 (카카오톡 연동은 추후 Sprint에서)
+notifications:
+  enabled: false
+
+# Dex (OIDC) -- 비활성화 (Google OAuth는 Sprint 3+에서)
+dex:
+  enabled: false
+
+# 설정
+configs:
+  params:
+    # ArgoCD Application 레이블 키
+    application.instanceLabelKey: argocd.argoproj.io/app-name
+  # 초기 admin 비밀번호는 argocd-initial-admin-secret에서 자동 생성

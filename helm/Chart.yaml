@@ -1,0 +1,18 @@
+apiVersion: v2
+name: rummikub
+description: RummiArena 멀티 LLM 루미큐브 전략 실험 플랫폼 Umbrella Chart
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+
+# Sprint 1부터 서브차트 추가 예정
+# dependencies:
+#   - name: game-server
+#     version: "0.1.0"
+#     repository: "file://charts/game-server"
+#   - name: frontend
+#     version: "0.1.0"
+#     repository: "file://charts/frontend"
+#   - name: ai-adapter
+#     version: "0.1.0"
+#     repository: "file://charts/ai-adapter"
