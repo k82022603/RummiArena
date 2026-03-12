@@ -178,14 +178,14 @@ flowchart LR
 
 ```mermaid
 graph TB
-    IGW["Istio Ingress Gateway\n(외부 진입점)"]
-    IGW --> FE["frontend\n(프론트엔드)"]
-    IGW --> GS["game-server\n(게임 서버)"]
-    IGW --> Admin["admin\n(관리자)"]
+    Traefik["Traefik\n(외부 Ingress Gateway)"]
+    Traefik --> FE["frontend\n(+ Envoy sidecar)"]
+    Traefik --> GS["game-server\n(+ Envoy sidecar)"]
+    Traefik --> Admin["admin\n(+ Envoy sidecar)"]
 
-    GS --> AI["ai-adapter\n(AI 어댑터)"]
-    GS --> Redis[("Redis\n(게임 상태)")]
-    GS --> PG[("PostgreSQL\n(영속 데이터)")]
+    GS -->|"mTLS"| AI["ai-adapter\n(+ Envoy sidecar)"]
+    GS -->|"mTLS"| Redis[("Redis\n(게임 상태)")]
+    GS -->|"mTLS"| PG[("PostgreSQL\n(영속 데이터)")]
 
     AI --> OpenAI["OpenAI\n(External API)"]
     AI --> Claude["Claude\n(External API)"]
@@ -193,7 +193,8 @@ graph TB
     AI --> Ollama["Ollama\n(Internal)"]
 ```
 
-> Redis, PostgreSQL은 내부 서비스 통신으로 접근한다. Istio Ingress Gateway를 거치지 않는다.
+> **역할 분리**: Traefik이 외부 트래픽(North-South)을 담당하고, Istio는 서비스 간 통신(East-West)에만 집중한다. Istio Ingress Gateway는 사용하지 않는다.
+> 상세: `docs/05-deployment/02-gateway-architecture.md`
 
 ### 9.3 핵심 활용 시나리오
 | 시나리오 | Istio 기능 |
