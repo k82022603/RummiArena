@@ -56,6 +56,7 @@
 | 22 | Oracle VirtualBox | VM 환경 (리소스 분산) | 비권장 (16GB) | [22-oracle-vm.md](22-oracle-vm.md) |
 | 23 | WSL2 + .wslconfig | WSL2 리소스 관리 | Phase 1 | [23-wslconfig.md](23-wslconfig.md) |
 | 24 | GitHub CLI + MCP | Git 인증, GitHub MCP 연동 | Phase 1 | [24-github-cli-mcp.md](24-github-cli-mcp.md) |
+| 26 | Agent Teams | Claude Code 멀티 인스턴스 팀 조율 | Phase 1 | [26-agent-teams.md](26-agent-teams.md) |
 
 ## 문서 작성 규칙
 
