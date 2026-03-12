@@ -44,6 +44,19 @@ coverage/
 *.log
 # Note: /logs/ 디렉토리는 프로젝트 기록용이므로 추적함
 
+# Secrets & Credentials
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+secrets/
+kubeconfig
+*.kubeconfig
+.env.production
+.env.staging
+.docker/
+
 # Temporary
 tmp/
 temp/

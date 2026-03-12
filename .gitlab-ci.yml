@@ -1,0 +1,248 @@
+# .gitlab-ci.yml
+# RummiArena GitLab CI/CD 파이프라인
+# DevSecOps: lint -> test -> scan -> build -> deploy(gitops)
+# 교대 실행 전략: CI 모드에서만 Runner 가동
+
+stages:
+  - lint
+  - test
+  - scan
+  - build
+  - update-gitops
+
+variables:
+  DOCKER_IMAGE: registry.gitlab.com/$CI_PROJECT_PATH
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: ""          # DinD TLS 비활성화 (로컬 개발)
+  SONAR_PROJECT_KEY: rummikub
+
+# ------------------------------------------------------------------
+# Lint Stage
+# ------------------------------------------------------------------
+
+lint-go:
+  stage: lint
+  image: golangci/golangci-lint:v1.62
+  script:
+    - cd src/game-server
+    - golangci-lint run ./... --timeout 5m
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "develop"
+
+lint-nest:
+  stage: lint
+  image: node:20-alpine
+  cache:
+    key: "${CI_JOB_NAME}-${CI_COMMIT_REF_SLUG}"
+    paths:
+      - src/ai-adapter/node_modules/
+  script:
+    - cd src/ai-adapter
+    - npm ci
+    - npm run lint
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "develop"
+
+lint-frontend:
+  stage: lint
+  image: node:20-alpine
+  cache:
+    key: "${CI_JOB_NAME}-${CI_COMMIT_REF_SLUG}"
+    paths:
+      - src/frontend/node_modules/
+  script:
+    - cd src/frontend
+    - npm ci
+    - npm run lint
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "develop"
+
+# ------------------------------------------------------------------
+# Test Stage
+# ------------------------------------------------------------------
+
+test-go:
+  stage: test
+  image: golang:1.22-alpine
+  script:
+    - cd src/game-server
+    - go test ./... -v -coverprofile=coverage.out -covermode=atomic
+    - go tool cover -func=coverage.out
+  coverage: '/total:\s+\(statements\)\s+(\d+\.\d+)%/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: src/game-server/coverage.xml
+    paths:
+      - src/game-server/coverage.out
+    expire_in: 7 days
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "develop"
+
+test-nest:
+  stage: test
+  image: node:20-alpine
+  cache:
+    key: "lint-nest-${CI_COMMIT_REF_SLUG}"
+    paths:
+      - src/ai-adapter/node_modules/
+  script:
+    - cd src/ai-adapter
+    - npm ci
+    - npm run test:cov
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: src/ai-adapter/coverage/cobertura-coverage.xml
+    expire_in: 7 days
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "develop"
+
+# ------------------------------------------------------------------
+# Scan Stage (보안 게이트 -- DevSecOps)
+# ------------------------------------------------------------------
+
+sonarqube:
+  stage: scan
+  image: sonarsource/sonar-scanner-cli:latest
+  variables:
+    SONAR_HOST_URL: $SONAR_HOST_URL
+    SONAR_TOKEN: $SONAR_TOKEN
+  script:
+    - sonar-scanner
+      -Dsonar.projectKey=$SONAR_PROJECT_KEY
+      -Dsonar.host.url=$SONAR_HOST_URL
+      -Dsonar.login=$SONAR_TOKEN
+      -Dsonar.qualitygate.wait=true
+      -Dsonar.sources=src/
+      -Dsonar.exclusions=**/node_modules/**,**/*.test.go,**/*.spec.ts
+  allow_failure: false
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+
+trivy-fs:
+  stage: scan
+  image:
+    name: aquasec/trivy:latest
+    entrypoint: [""]
+  script:
+    - trivy fs
+        --exit-code 1
+        --severity HIGH,CRITICAL
+        --no-progress
+        --format table
+        src/
+  allow_failure: false
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+# ------------------------------------------------------------------
+# Build Stage (Docker 멀티스테이지 빌드)
+# ------------------------------------------------------------------
+
+build-game-server:
+  stage: build
+  image: docker:26-dind
+  services:
+    - docker:26-dind
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - docker build
+        --target production
+        --tag $DOCKER_IMAGE/game-server:$CI_COMMIT_SHA
+        --tag $DOCKER_IMAGE/game-server:latest
+        --label "git.commit=$CI_COMMIT_SHA"
+        --label "git.branch=$CI_COMMIT_REF_NAME"
+        --cache-from $DOCKER_IMAGE/game-server:latest
+        src/game-server/
+    - docker push $DOCKER_IMAGE/game-server:$CI_COMMIT_SHA
+    - docker push $DOCKER_IMAGE/game-server:latest
+    # Trivy 이미지 스캔 (CRITICAL 발견 시 실패)
+    - docker run --rm
+        -v /var/run/docker.sock:/var/run/docker.sock
+        aquasec/trivy:latest image
+        --exit-code 1
+        --severity CRITICAL
+        --no-progress
+        $DOCKER_IMAGE/game-server:$CI_COMMIT_SHA
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+
+build-ai-adapter:
+  stage: build
+  image: docker:26-dind
+  services:
+    - docker:26-dind
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - docker build
+        --target production
+        --tag $DOCKER_IMAGE/ai-adapter:$CI_COMMIT_SHA
+        --tag $DOCKER_IMAGE/ai-adapter:latest
+        --cache-from $DOCKER_IMAGE/ai-adapter:latest
+        src/ai-adapter/
+    - docker push $DOCKER_IMAGE/ai-adapter:$CI_COMMIT_SHA
+    - docker push $DOCKER_IMAGE/ai-adapter:latest
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+
+build-frontend:
+  stage: build
+  image: docker:26-dind
+  services:
+    - docker:26-dind
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - docker build
+        --target production
+        --tag $DOCKER_IMAGE/frontend:$CI_COMMIT_SHA
+        --tag $DOCKER_IMAGE/frontend:latest
+        --cache-from $DOCKER_IMAGE/frontend:latest
+        src/frontend/
+    - docker push $DOCKER_IMAGE/frontend:$CI_COMMIT_SHA
+    - docker push $DOCKER_IMAGE/frontend:latest
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+
+# ------------------------------------------------------------------
+# Update GitOps Stage (ArgoCD가 감시하는 dev-values.yaml 태그 업데이트)
+# ------------------------------------------------------------------
+
+update-gitops:
+  stage: update-gitops
+  image: alpine/git:latest
+  before_script:
+    - git config --global user.email "ci@rummiarena.local"
+    - git config --global user.name "GitLab CI Bot"
+  script:
+    - git clone https://oauth2:$GITOPS_TOKEN@github.com/k82022603/RummiArena.git gitops
+    - cd gitops
+    # game-server 이미지 태그 업데이트
+    - >
+      sed -i
+      "s|registry.gitlab.com/k82022603/rummiarena/game-server:.*|registry.gitlab.com/k82022603/rummiarena/game-server:$CI_COMMIT_SHA|g"
+      helm/environments/dev-values.yaml
+    - git add helm/environments/dev-values.yaml
+    - git diff --staged --quiet || git commit -m "ci: update image tags to $CI_COMMIT_SHA [skip ci]"
+    - git push
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+  when: on_success
+  needs:
+    - build-game-server
+    - build-ai-adapter
+    - build-frontend

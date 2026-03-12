@@ -1,0 +1,15 @@
+---
+# rummikub namespace ResourceQuota
+# docs/05-deployment/03-infra-setup-checklist.md §3.3 참조
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: rummikub-quota
+  namespace: rummikub
+spec:
+  hard:
+    requests.cpu: "2"
+    requests.memory: 2Gi
+    limits.cpu: "4"
+    limits.memory: 4Gi
+    pods: "20"

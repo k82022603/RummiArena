@@ -1,0 +1,75 @@
+# docker-compose.ci.yml
+# CI 모드 전용 -- GitLab Runner + SonarQube
+# 교대 실행 전략: Dev/Deploy 모드와 동시 실행 금지
+# 사용법: docker compose -f docker-compose.ci.yml up -d
+
+services:
+  # PostgreSQL (CI 테스트용 -- docker-compose.yml과 공유 가능)
+  postgres:
+    image: postgres:16-alpine
+    container_name: rummikub-postgres-ci
+    environment:
+      POSTGRES_USER: rummikub
+      POSTGRES_PASSWORD: rummikub123
+      POSTGRES_DB: rummikub_test
+    ports:
+      - "5433:5432"   # 기존 5432와 충돌 방지
+    tmpfs:
+      - /var/lib/postgresql/data   # CI는 휘발성 DB (매 실행 초기화)
+    mem_limit: 128m
+    cpus: "0.5"
+
+  # GitLab Runner (Docker Executor)
+  gitlab-runner:
+    image: gitlab/gitlab-runner:latest
+    container_name: gitlab-runner
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    volumes:
+      - /srv/gitlab-runner/config:/etc/gitlab-runner
+      - /var/run/docker.sock:/var/run/docker.sock
+    mem_limit: 512m
+    cpus: "1.0"
+    # 등록 후 자동 시작됨 (config.toml 생성 필요)
+
+  # SonarQube (정적 분석 서버)
+  # 주의: SonarQube는 vm.max_map_count=262144 필요
+  # sudo sysctl -w vm.max_map_count=262144
+  sonarqube:
+    image: sonarqube:10-community
+    container_name: sonarqube
+    restart: unless-stopped
+    depends_on:
+      - sonarqube-db
+    environment:
+      SONAR_JDBC_URL: jdbc:postgresql://sonarqube-db:5432/sonar
+      SONAR_JDBC_USERNAME: sonar
+      SONAR_JDBC_PASSWORD: sonar123
+    ports:
+      - "9001:9000"   # 9000은 Traefik Dashboard와 충돌 방지
+    volumes:
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_logs:/opt/sonarqube/logs
+      - sonarqube_extensions:/opt/sonarqube/extensions
+    mem_limit: 2g
+    cpus: "1.0"
+
+  # SonarQube 전용 PostgreSQL
+  sonarqube-db:
+    image: postgres:15-alpine
+    container_name: sonarqube-db
+    environment:
+      POSTGRES_USER: sonar
+      POSTGRES_PASSWORD: sonar123
+      POSTGRES_DB: sonar
+    volumes:
+      - sonarqube_pgdata:/var/lib/postgresql/data
+    mem_limit: 256m
+    cpus: "0.5"
+
+volumes:
+  sonarqube_data:
+  sonarqube_logs:
+  sonarqube_extensions:
+  sonarqube_pgdata:

@@ -1,0 +1,19 @@
+---
+# ArgoCD Traefik IngressRoute
+# argocd.localhost:80 -> argocd-server:80 (insecure 모드)
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: argocd-server
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`argocd.localhost`)
+      kind: Rule
+      services:
+        - name: argocd-server
+          port: 80
