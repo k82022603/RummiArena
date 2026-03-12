@@ -1,0 +1,100 @@
+import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import axios from 'axios';
+import { BaseAdapter } from './base.adapter';
+import { ModelInfo } from '../common/interfaces/ai-adapter.interface';
+import { PromptBuilderService } from '../prompt/prompt-builder.service';
+import { ResponseParserService } from '../common/parser/response-parser.service';
+
+/**
+ * Anthropic Claude 어댑터.
+ * Messages API를 사용하며, 긴 컨텍스트(게임 히스토리)를 효과적으로 활용한다.
+ * 기본 모델: claude-sonnet-4-20250514 (expert)
+ */
+@Injectable()
+export class ClaudeAdapter extends BaseAdapter {
+  private readonly apiKey: string;
+  private readonly defaultModel: string;
+  private readonly baseUrl = 'https://api.anthropic.com/v1';
+  private readonly anthropicVersion = '2023-06-01';
+
+  constructor(
+    promptBuilder: PromptBuilderService,
+    responseParser: ResponseParserService,
+    private readonly configService: ConfigService,
+  ) {
+    super(promptBuilder, responseParser, 'ClaudeAdapter');
+    this.apiKey = this.configService.get<string>('CLAUDE_API_KEY', '');
+    this.defaultModel = this.configService.get<string>(
+      'CLAUDE_DEFAULT_MODEL',
+      'claude-sonnet-4-20250514',
+    );
+  }
+
+  getModelInfo(): ModelInfo {
+    return {
+      modelType: 'claude',
+      modelName: this.defaultModel,
+      baseUrl: this.baseUrl,
+    };
+  }
+
+  async healthCheck(): Promise<boolean> {
+    try {
+      // Claude API는 별도 health 엔드포인트가 없으므로 최소 요청으로 확인
+      const response = await axios.post(
+        `${this.baseUrl}/messages`,
+        {
+          model: this.defaultModel,
+          max_tokens: 10,
+          messages: [{ role: 'user', content: 'ping' }],
+        },
+        {
+          headers: {
+            'x-api-key': this.apiKey,
+            'anthropic-version': this.anthropicVersion,
+            'Content-Type': 'application/json',
+          },
+          timeout: 5000,
+        },
+      );
+      return response.status === 200;
+    } catch {
+      return false;
+    }
+  }
+
+  protected async callLlm(
+    systemPrompt: string,
+    userPrompt: string,
+    timeoutMs: number,
+  ): Promise<{ content: string; promptTokens: number; completionTokens: number }> {
+    const response = await axios.post(
+      `${this.baseUrl}/messages`,
+      {
+        model: this.defaultModel,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userPrompt }],
+        max_tokens: 1024,
+        temperature: 0.7,
+      },
+      {
+        headers: {
+          'x-api-key': this.apiKey,
+          'anthropic-version': this.anthropicVersion,
+          'Content-Type': 'application/json',
+        },
+        timeout: timeoutMs,
+      },
+    );
+
+    const content = response.data.content[0]?.text as string ?? '';
+    const usage = response.data.usage;
+
+    return {
+      content,
+      promptTokens: usage?.input_tokens ?? 0,
+      completionTokens: usage?.output_tokens ?? 0,
+    };
+  }
+}
