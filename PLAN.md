@@ -50,7 +50,7 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 - [x] PostgreSQL 컨테이너 기동 (docker-compose)
 - [x] .wslconfig 최적화 및 적용 확인 (10GB/swap4GB/6코어)
 - [ ] Docker Desktop Kubernetes 활성화 및 확인
-- [ ] NGINX Ingress Controller 설치
+- [ ] Traefik Ingress 설치 (Helm)
 - [ ] ArgoCD 설치 (Helm)
 - [ ] GitLab Runner 등록 (Docker Executor)
 - [ ] SonarQube 설치 (Docker 또는 K8s)

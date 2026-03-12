@@ -68,12 +68,27 @@ kubectl port-forward svc/game-server 8080:8080 -n rummikub
 kubectl port-forward svc/argocd-server 8443:443 -n argocd
 ```
 
-## 5. NGINX Ingress Controller 설치
+## 5. Traefik Ingress 설치
+
+> NGINX Ingress Controller는 2026-03 EOL. Traefik으로 대체.
+> 상세: `docs/05-deployment/02-gateway-architecture.md`
+
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.10.0/deploy/static/provider/cloud/deploy.yaml
+# Traefik Helm 저장소 추가
+helm repo add traefik https://traefik.github.io/charts
+helm repo update
+
+# Namespace 생성
+kubectl create namespace traefik
+
+# Traefik 설치 (커스텀 values)
+helm install traefik traefik/traefik \
+  --namespace traefik \
+  --values helm/traefik/values.yaml
 
 # 확인
-kubectl get pods -n ingress-nginx
+kubectl get pods -n traefik
+kubectl get svc -n traefik
 ```
 
 ## 6. 트러블슈팅

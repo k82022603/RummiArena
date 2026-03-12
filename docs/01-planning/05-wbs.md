@@ -104,7 +104,7 @@ flowchart LR
 | 1.1.1 | 프로젝트 기획 문서 작성 | docs/01-planning/* |
 | 1.1.2 | GitHub 저장소 구성 + Issue 템플릿 | .github/ |
 | 1.1.3 | Docker Desktop K8s 활성화 | - |
-| 1.1.4 | NGINX Ingress Controller 설치 | K8s Ingress |
+| 1.1.4 | Traefik Ingress 설치 (Helm) | K8s Ingress, 게이트웨이 구축계획서 |
 | 1.1.5 | ArgoCD 설치 (Helm) | argocd namespace |
 | 1.1.6 | GitLab Runner 등록 | .gitlab-ci.yml |
 | 1.1.7 | SonarQube 설치 (Docker) | sonarqube 서비스 |

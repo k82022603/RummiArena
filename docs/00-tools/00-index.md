@@ -10,7 +10,8 @@
 | 01 | Docker Desktop | 컨테이너 런타임 + K8s | Phase 1 | [01-docker-desktop.md](01-docker-desktop.md) |
 | 02 | Kubernetes (kubectl) | 오케스트레이션 | Phase 1 | [02-kubernetes.md](02-kubernetes.md) |
 | 03 | Helm | 패키지 관리 | Phase 1 | [03-helm.md](03-helm.md) |
-| 04 | Istio | Service Mesh | Phase 5 | [04-istio.md](04-istio.md) |
+| 04 | Istio | Service Mesh (East-West) | Phase 5 | [04-istio.md](04-istio.md) |
+| 25 | Traefik | Ingress Gateway (North-South) | Phase 1 | [25-traefik.md](25-traefik.md) |
 
 ### CI/CD & GitOps
 | # | 도구 | 용도 | 도입 시점 | 문서 |

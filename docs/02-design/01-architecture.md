@@ -4,7 +4,7 @@
 
 ```mermaid
 graph TB
-    Ingress["Istio Ingress Gateway"]
+    Ingress["Traefik\n(Ingress Gateway)"]
     Ingress --> FE["Frontend\n(Next.js)"]
     Ingress --> Admin["Admin Panel\n(Next.js)"]
     FE -->|"WebSocket / REST"| GS
@@ -66,7 +66,7 @@ flowchart LR
 ### 3.3 AI Adapter 분리
 - Game Engine은 특정 LLM에 의존하지 않음
 - 공통 인터페이스를 통해 모델 교체 가능
-- Istio VirtualService로 모델별 트래픽 분배 가능
+- Istio VirtualService로 모델별 트래픽 분배 가능 (Phase 5)
 
 ### 3.4 이벤트 기반 턴 관리
 ```mermaid
@@ -130,20 +130,20 @@ graph TB
             sv6["postgres"]
         end
     end
-    subgraph ing["Ingress (NGINX)"]
+    subgraph ing["Ingress (Traefik)"]
         i0["TLS 종단 (self-signed cert)\nHTTPS → HTTP 프록시"]
         i1["/ → frontend"]
         i2["/api → game-server"]
         i3["/ws → game-server (WS Upgrade)"]
         i4["/admin → admin"]
     end
-    subgraph istio["Istio (Phase 5, Sprint 8~9)"]
-        is1["VirtualService (라우팅)"]
-        is2["DestinationRule (CB, Timeout)"]
-        is3["PeerAuthentication (mTLS)"]
+    subgraph istio["Istio Service Mesh\n(Phase 5, Sprint 8~9)"]
+        is1["Envoy Sidecar (mTLS)"]
+        is2["VirtualService (라우팅)"]
+        is3["DestinationRule (CB, Timeout)"]
     end
     ing --> NS
-    istio -.->|"Phase 5"| NS
+    istio -.->|"Phase 5\n서비스 간 통신"| NS
 ```
 
 ## 7. 외부 시스템 연동
