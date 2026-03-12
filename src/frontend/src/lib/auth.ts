@@ -1,17 +1,23 @@
 import type { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 
+const providers: NextAuthOptions["providers"] = [];
+
+if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+  providers.push(
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    }),
+  );
+}
+
 /**
  * next-auth 설정
  * Google OAuth 2.0 기반 인증
  */
 export const authOptions: NextAuthOptions = {
-  providers: [
-    GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID ?? "",
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
-    }),
-  ],
+  providers,
   callbacks: {
     async jwt({ token, account }) {
       // 최초 로그인 시 access_token을 토큰에 저장
