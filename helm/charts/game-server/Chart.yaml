@@ -1,0 +1,5 @@
+apiVersion: v2
+name: game-server
+description: RummiArena Game Server (Go/gin)
+version: 0.1.0
+appVersion: "0.1.0"

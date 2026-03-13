@@ -1,0 +1,53 @@
+replicaCount: 1
+
+image:
+  repository: rummiarena/game-server
+  tag: dev
+  pullPolicy: Never
+
+service:
+  type: NodePort
+  port: 8080
+  nodePort: 30080
+
+resources:
+  requests:
+    memory: "128Mi"
+    cpu: "100m"
+  limits:
+    memory: "256Mi"
+    cpu: "300m"
+
+env:
+  SERVER_PORT: "8080"
+  SERVER_MODE: "debug"
+  DB_HOST: "postgres.rummikub.svc.cluster.local"
+  DB_PORT: "5432"
+  DB_USER: "rummikub"
+  DB_NAME: "rummikub"
+  REDIS_HOST: "redis.rummikub.svc.cluster.local"
+  REDIS_PORT: "6379"
+
+secrets:
+  DB_PASSWORD: "rummikub123"
+  JWT_SECRET: "test-secret-for-dev"
+
+livenessProbe:
+  path: /health
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 6
+
+readinessProbe:
+  path: /ready
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+initContainers:
+  waitForPostgres:
+    enabled: true
+  waitForRedis:
+    enabled: true

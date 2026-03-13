@@ -33,14 +33,15 @@ func main() {
 		logger.Fatal("failed to load config", zap.Error(err))
 	}
 
-	// --- PostgreSQL 연결 ---
+	// --- PostgreSQL 연결 (선택적: 실패해도 서버 시작) ---
 	db, err := infra.NewPostgresDB(cfg.DB, logger)
 	if err != nil {
-		logger.Fatal("failed to connect postgres", zap.Error(err))
-	}
-	// AutoMigrate (개발 환경 편의. 프로덕션은 migrations/ SQL 파일 사용)
-	if err := infra.AutoMigrate(db, logger); err != nil {
-		logger.Fatal("failed to run auto migrate", zap.Error(err))
+		logger.Warn("postgres unavailable — running without DB", zap.Error(err))
+	} else {
+		// AutoMigrate (개발 환경 편의. 프로덕션은 migrations/ SQL 파일 사용)
+		if err := infra.AutoMigrate(db, logger); err != nil {
+			logger.Warn("auto migrate failed", zap.Error(err))
+		}
 	}
 
 	// --- Redis 연결 (선택적: 실패해도 서버 시작) ---
@@ -158,9 +159,11 @@ func main() {
 		}
 	}
 	// PostgreSQL 연결 해제
-	if sqlDB, err := db.DB(); err == nil {
-		if err := sqlDB.Close(); err != nil {
-			logger.Warn("postgres close error", zap.Error(err))
+	if db != nil {
+		if sqlDB, err := db.DB(); err == nil {
+			if err := sqlDB.Close(); err != nil {
+				logger.Warn("postgres close error", zap.Error(err))
+			}
 		}
 	}
 

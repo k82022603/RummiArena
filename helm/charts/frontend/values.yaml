@@ -1,0 +1,40 @@
+replicaCount: 1
+
+image:
+  repository: rummiarena/frontend
+  tag: dev
+  pullPolicy: Never
+
+service:
+  type: NodePort
+  port: 3000
+  nodePort: 30000
+
+resources:
+  requests:
+    memory: "128Mi"
+    cpu: "100m"
+  limits:
+    memory: "256Mi"
+    cpu: "250m"
+
+env:
+  NODE_ENV: "production"
+  NEXT_PUBLIC_API_URL: "http://game-server.rummikub.svc.cluster.local:8080/api"
+  NEXT_PUBLIC_WS_URL: "ws://game-server.rummikub.svc.cluster.local:8080/ws"
+  NEXTAUTH_SECRET: "dev-nextauth-secret-for-k8s"
+  NEXTAUTH_URL: "http://localhost:30000"
+
+livenessProbe:
+  path: /
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 6
+
+readinessProbe:
+  path: /
+  initialDelaySeconds: 15
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
