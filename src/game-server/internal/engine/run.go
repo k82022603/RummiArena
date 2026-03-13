@@ -34,8 +34,9 @@ func ValidateRun(tiles []*Tile) error {
 	}
 
 	if len(nonJokerNumbers) == 0 {
-		// All jokers — technically can form any run; accept.
-		return nil
+		// 조커만으로 세트를 구성할 수 없습니다 (설계 결정 B.3 참조).
+		// 조커가 대체할 구체적인 숫자와 색상을 결정할 수 없기 때문이다.
+		return newValidationError(ErrRunNoNumber, "조커만으로 세트를 구성할 수 없습니다")
 	}
 
 	sort.Ints(nonJokerNumbers)

@@ -230,12 +230,12 @@ if err := srv.Shutdown(ctx); err != nil {
 | `DB_HOST` | `localhost` | PostgreSQL 호스트 | `Config.DB.Host` |
 | `DB_PORT` | `5432` | PostgreSQL 포트 | `Config.DB.Port` |
 | `DB_USER` | `rummikub` | PostgreSQL 사용자 | `Config.DB.User` |
-| `DB_PASSWORD` | `REDACTED_DB_PASSWORD` | PostgreSQL 패스워드 | `Config.DB.Password` |
+| `DB_PASSWORD` | (환경변수로 설정) | PostgreSQL 패스워드 | `Config.DB.Password` |
 | `DB_NAME` | `rummikub` | PostgreSQL 데이터베이스 이름 | `Config.DB.DBName` |
 | `REDIS_HOST` | `localhost` | Redis 호스트 | `Config.Redis.Host` |
 | `REDIS_PORT` | `6379` | Redis 포트 | `Config.Redis.Port` |
 | `REDIS_PASSWORD` | `` (빈 문자열) | Redis 패스워드 (없으면 비워둠) | `Config.Redis.Password` |
-| `JWT_SECRET` | `change-me-in-production` | JWT 서명 비밀키 | `Config.JWT.Secret` |
+| `JWT_SECRET` | (환경변수로 설정) | JWT 서명 비밀키 | `Config.JWT.Secret` |
 
 > **주의**: `JWT_SECRET`의 기본값은 개발 편의를 위한 것이다. 프로덕션 배포 시 반드시 강력한 무작위 문자열로 교체해야 한다.
 

@@ -32,6 +32,12 @@ func ValidateGroup(tiles []*Tile) error {
 		colorSeen[t.Color] = true
 	}
 
+	// 조커만으로 세트를 구성할 수 없습니다 (설계 결정 B.3 참조).
+	// 조커가 대체할 구체적인 숫자를 결정할 수 없기 때문이다.
+	if refNumber == 0 {
+		return newValidationError(ErrRunNoNumber, "조커만으로 세트를 구성할 수 없습니다")
+	}
+
 	return nil
 }
 
