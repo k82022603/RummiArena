@@ -1,10 +1,9 @@
 # =============================================================================
-# frontend .dockerignore
+# ai-adapter .dockerignore
 # =============================================================================
 
 # 빌드 산출물
-.next/
-out/
+dist/
 
 # 의존성 (Stage 1에서 npm ci로 재설치)
 node_modules/
@@ -16,19 +15,14 @@ node_modules/
 # 환경 변수 (절대 이미지에 포함하지 않음)
 .env
 .env.*
-.env.local
-.env.*.local
 
 # 문서/메모
 *.md
 README*
 
 # 테스트
-__tests__/
-*.test.ts
-*.test.tsx
-*.spec.ts
-*.spec.tsx
+test/
+**/*.spec.ts
 coverage/
 
 # IDE / OS

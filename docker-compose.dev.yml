@@ -1,0 +1,206 @@
+# =============================================================================
+# docker-compose.dev.yml — RummiArena 개발 모드
+# =============================================================================
+# 교대 실행 전략 (16GB 제약):
+#   Dev 모드: PG + Redis + Traefik + App 서비스들 ~6.5 GB
+#   CI  모드: docker-compose.ci.yml 사용 (동시 실행 금지)
+#
+# 사용법:
+#   docker compose -f docker-compose.dev.yml up -d          # 전체 기동
+#   docker compose -f docker-compose.dev.yml up -d postgres redis  # 인프라만
+#   docker compose -f docker-compose.dev.yml logs -f game-server
+#   docker compose -f docker-compose.dev.yml down
+#
+# 사전 조건:
+#   1. cp .env.example .env  후 값 입력
+#   2. cp src/ai-adapter/.env.example src/ai-adapter/.env 후 API 키 입력
+#   3. cp src/frontend/.env.local.example src/frontend/.env.local 후 값 입력
+# =============================================================================
+
+name: rummiarena-dev
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # 인프라
+  # ---------------------------------------------------------------------------
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: rummiarena-postgres
+    env_file:
+      - .env
+    environment:
+      POSTGRES_USER:     ${POSTGRES_USER:-rummikub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB:       ${POSTGRES_DB:-rummikub}
+    ports:
+      - "5432:5432"
+    volumes:
+      - rummiarena_pgdata:/var/lib/postgresql/data
+    networks:
+      - rummiarena-net
+    mem_limit: 256m
+    cpus: "0.5"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rummikub} -d ${POSTGRES_DB:-rummikub}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: rummiarena-redis
+    command: >
+      redis-server
+      --requirepass "${REDIS_PASSWORD:-}"
+      --appendonly yes
+      --maxmemory 128mb
+      --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - rummiarena_redisdata:/data
+    networks:
+      - rummiarena-net
+    mem_limit: 192m
+    cpus: "0.3"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # 애플리케이션 서비스
+  # ---------------------------------------------------------------------------
+
+  game-server:
+    build:
+      context: ./src/game-server
+      dockerfile: Dockerfile
+    image: rummiarena/game-server:dev
+    container_name: rummiarena-game-server
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      SERVER_PORT:       "8080"
+      SERVER_MODE:       debug
+      DB_HOST:           postgres
+      DB_PORT:           "5432"
+      DB_USER:           ${POSTGRES_USER:-rummikub}
+      DB_PASSWORD:       ${POSTGRES_PASSWORD:-REDACTED_DB_PASSWORD}
+      DB_NAME:           ${POSTGRES_DB:-rummikub}
+      REDIS_HOST:        redis
+      REDIS_PORT:        "6379"
+      REDIS_PASSWORD:    ${REDIS_PASSWORD:-}
+      AI_ADAPTER_URL:    http://ai-adapter:8081
+      JWT_SECRET:        ${JWT_SECRET:-dev-jwt-secret-change-in-prod}
+    ports:
+      - "8080:8080"
+    # 개발 시: 소스 마운트 + Air(hot reload) 사용 원할 경우 command를 변경한다.
+    # 현재는 이미지 빌드 후 실행 (Go는 컴파일 언어라 소스 마운트 단독으론 hot reload 불가)
+    networks:
+      - rummiarena-net
+    mem_limit: 256m
+    cpus: "0.5"
+    restart: unless-stopped
+
+  ai-adapter:
+    build:
+      context: ./src/ai-adapter
+      dockerfile: Dockerfile
+    image: rummiarena/ai-adapter:dev
+    container_name: rummiarena-ai-adapter
+    depends_on:
+      redis:
+        condition: service_healthy
+    env_file:
+      - path: ./src/ai-adapter/.env
+        required: false
+    environment:
+      NODE_ENV:        development
+      PORT:            "8081"
+      REDIS_HOST:      redis
+      REDIS_PORT:      "6379"
+      REDIS_PASSWORD:  ${REDIS_PASSWORD:-}
+    ports:
+      - "8081:8081"
+    # 개발 시 소스 마운트 + ts-node-dev 사용 원할 경우:
+    # volumes:
+    #   - ./src/ai-adapter/src:/app/src:ro
+    # command: ["npm", "run", "start:dev"]
+    networks:
+      - rummiarena-net
+    mem_limit: 512m
+    cpus: "0.5"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./src/frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8080
+        NEXT_PUBLIC_WS_URL:  ws://localhost:8080
+    image: rummiarena/frontend:dev
+    container_name: rummiarena-frontend
+    depends_on:
+      - game-server
+    env_file:
+      - path: ./src/frontend/.env.local
+        required: false
+    environment:
+      NODE_ENV:            production
+      NEXTAUTH_URL:        ${NEXTAUTH_URL:-http://localhost:3000}
+      NEXTAUTH_SECRET:     ${NEXTAUTH_SECRET:-dev-nextauth-secret}
+      GOOGLE_CLIENT_ID:    ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+    ports:
+      - "3000:3000"
+    networks:
+      - rummiarena-net
+    mem_limit: 512m
+    cpus: "0.5"
+    restart: unless-stopped
+
+  admin:
+    build:
+      context: ./src/admin
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8080
+    image: rummiarena/admin:dev
+    container_name: rummiarena-admin
+    depends_on:
+      - game-server
+    environment:
+      NODE_ENV:         production
+      NEXTAUTH_URL:     ${ADMIN_NEXTAUTH_URL:-http://localhost:3001}
+      NEXTAUTH_SECRET:  ${NEXTAUTH_SECRET:-dev-nextauth-secret}
+    ports:
+      - "3001:3001"
+    networks:
+      - rummiarena-net
+    mem_limit: 512m
+    cpus: "0.5"
+    restart: unless-stopped
+
+# =============================================================================
+# 볼륨 & 네트워크
+# =============================================================================
+
+volumes:
+  rummiarena_pgdata:
+    # 기존 docker-compose.yml의 external: true 볼륨(rummikub_pgdata)과 분리
+    # dev 모드는 독립 볼륨 사용
+  rummiarena_redisdata:
+
+networks:
+  rummiarena-net:
+    driver: bridge

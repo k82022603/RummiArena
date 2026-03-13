@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { HealthModule } from './health/health.module';
+import { MoveModule } from './move/move.module';
 
 /**
  * RummiArena AI Adapter 루트 모듈.
@@ -19,6 +20,7 @@ import { HealthModule } from './health/health.module';
       ignoreEnvFile: process.env.NODE_ENV === 'production',
     }),
     HealthModule,
+    MoveModule,
   ],
   controllers: [AppController],
   providers: [AppService],
