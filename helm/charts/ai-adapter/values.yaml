@@ -1,0 +1,37 @@
+replicaCount: 1
+
+image:
+  repository: rummiarena/ai-adapter
+  tag: dev
+  pullPolicy: Never
+
+service:
+  type: NodePort
+  port: 8081
+  nodePort: 30081
+
+env:
+  NODE_ENV: "production"
+  PORT: "8081"
+
+resources:
+  requests:
+    memory: "128Mi"
+    cpu: "100m"
+  limits:
+    memory: "256Mi"
+    cpu: "250m"
+
+livenessProbe:
+  path: /health
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 6
+
+readinessProbe:
+  path: /health
+  initialDelaySeconds: 15
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3

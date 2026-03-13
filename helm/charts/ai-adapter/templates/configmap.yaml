@@ -1,0 +1,12 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ai-adapter-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: ai-adapter
+    release: {{ .Release.Name }}
+data:
+  NODE_ENV: {{ .Values.env.NODE_ENV | quote }}
+  PORT: {{ .Values.env.PORT | quote }}

@@ -8,6 +8,9 @@ build/
 .next/
 out/
 
+# Go binaries
+src/game-server/server
+
 # Environment
 .env
 .env.local

@@ -1,0 +1,5 @@
+apiVersion: v2
+name: redis
+description: Redis 7 for RummiArena game state
+version: 0.1.0
+appVersion: "7"

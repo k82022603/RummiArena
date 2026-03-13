@@ -1,0 +1,5 @@
+apiVersion: v2
+name: ai-adapter
+description: RummiArena AI Adapter (NestJS)
+version: 0.1.0
+appVersion: "0.1.0"
