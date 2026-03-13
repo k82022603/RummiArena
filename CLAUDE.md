@@ -30,16 +30,18 @@ docs/
   01-planning/     # 기획 (헌장, 요구사항, 리스크, 도구체인, WBS)
   02-design/       # 설계 (아키텍처, DB, API, AI Adapter, 세션 관리)
   03-development/  # 개발 가이드 (셋업 매뉴얼)
-  04-testing/      # 테스트 전략 (추후)
-  05-deployment/   # 배포 가이드 (로컬 인프라)
+  04-testing/      # 테스트 전략 + 보고서
+  05-deployment/   # 배포 가이드 + K8s 아키텍처
   06-operations/   # 운영 가이드 (추후)
 src/
   frontend/        # Next.js 프론트엔드
   game-server/     # Backend API + Game Engine
   ai-adapter/      # AI Adapter 서비스
   admin/           # 관리자 대시보드
-helm/              # Helm charts
+helm/              # Helm charts (5개 서비스: postgres, redis, game-server, ai-adapter, frontend)
+scripts/           # 통합 테스트 등 자동화 스크립트
 argocd/            # ArgoCD application manifests
+work_logs/         # 세션/데일리/스크럼/바이브/회고/결정 로그
 .github/           # GitHub Issues templates, workflows
 ```
 
@@ -53,7 +55,7 @@ argocd/            # ArgoCD application manifests
 - **Infra**: Docker Desktop Kubernetes, Helm 3, ArgoCD
 - **CI**: GitLab CI + GitLab Runner
 - **Quality**: SonarQube, Trivy
-- **Mesh**: Istio Service Mesh (Phase 2)
+- **Mesh**: Istio Service Mesh (Phase 5)
 - **Notification**: 카카오톡 API
 - **Auth**: Google OAuth 2.0
 
