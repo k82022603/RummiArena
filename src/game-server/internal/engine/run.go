@@ -40,6 +40,13 @@ func ValidateRun(tiles []*Tile) error {
 
 	sort.Ints(nonJokerNumbers)
 
+	// V-15: 런에서 같은 숫자 중복 불가 (R3a, R3b 같은 케이스).
+	for i := 1; i < len(nonJokerNumbers); i++ {
+		if nonJokerNumbers[i] == nonJokerNumbers[i-1] {
+			return fmt.Errorf("duplicate number %d in run", nonJokerNumbers[i])
+		}
+	}
+
 	min := nonJokerNumbers[0]
 	max := nonJokerNumbers[len(nonJokerNumbers)-1]
 

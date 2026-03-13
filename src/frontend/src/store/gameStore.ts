@@ -10,6 +10,10 @@ interface GameStore {
   room: Room | null;
   setRoom: (room: Room | null) => void;
 
+  // 내 seat 번호 (0~3)
+  mySeat: number;
+  setMySeat: (seat: number) => void;
+
   // 내 타일 (1인칭 뷰)
   myTiles: TileCode[];
   setMyTiles: (tiles: TileCode[]) => void;
@@ -52,6 +56,7 @@ interface GameStore {
 
 const initialState = {
   room: null,
+  mySeat: 0,
   myTiles: [],
   gameState: null,
   players: [],
@@ -68,6 +73,7 @@ export const useGameStore = create<GameStore>()(
     ...initialState,
 
     setRoom: (room) => set({ room }),
+    setMySeat: (mySeat) => set({ mySeat }),
     setMyTiles: (myTiles) => set({ myTiles }),
     setGameState: (gameState) => set({ gameState }),
     setPlayers: (players) => set({ players }),

@@ -1,12 +1,12 @@
 # =============================================================================
-# frontend .dockerignore
+# admin .dockerignore
 # =============================================================================
 
 # 빌드 산출물
 .next/
 out/
 
-# 의존성 (Stage 1에서 npm ci로 재설치)
+# 의존성
 node_modules/
 
 # Git
@@ -27,8 +27,6 @@ README*
 __tests__/
 *.test.ts
 *.test.tsx
-*.spec.ts
-*.spec.tsx
 coverage/
 
 # IDE / OS

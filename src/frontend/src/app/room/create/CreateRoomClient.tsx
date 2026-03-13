@@ -3,6 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { motion } from "framer-motion";
+import { createRoom } from "@/lib/api";
+import { useRoomStore } from "@/store/roomStore";
 import type { AIPersona, AIDifficulty, AIPlayerType } from "@/types/game";
 
 interface AISlot {
@@ -37,10 +39,13 @@ const DEFAULT_AI: AISlot = {
 
 /**
  * Room 생성 폼 (Client Component)
- * POST /api/rooms 호출 후 대기실로 이동
+ * createRoom API 호출 후 대기실로 이동
+ * API 실패 시 mock 데이터 fallback
  */
 export default function CreateRoomClient() {
   const router = useRouter();
+  const { setCurrentRoom } = useRoomStore();
+
   const [playerCount, setPlayerCount] = useState<2 | 3 | 4>(4);
   const [turnTimeoutSec, setTurnTimeoutSec] = useState(60);
   const [aiSlots, setAiSlots] = useState<AISlot[]>([{ ...DEFAULT_AI }]);
@@ -68,25 +73,19 @@ export default function CreateRoomClient() {
     setError(null);
 
     try {
-      const res = await fetch("/api/rooms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          playerCount,
-          turnTimeoutSec,
-          aiPlayers: aiSlots,
-        }),
+      const room = await createRoom({
+        playerCount,
+        turnTimeoutSec,
+        aiPlayers: aiSlots,
       });
 
-      if (!res.ok) {
-        const data = (await res.json()) as { error?: { message?: string } };
-        throw new Error(data.error?.message ?? "방 생성에 실패했습니다.");
-      }
+      // roomStore에 현재 방 저장
+      setCurrentRoom(room);
 
-      const data = (await res.json()) as { id: string };
-      router.push(`/room/${data.id}`);
+      // 대기실로 이동
+      router.push(`/room/${room.id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "알 수 없는 오류");
+      setError(err instanceof Error ? err.message : "알 수 없는 오류가 발생했습니다.");
       setSubmitting(false);
     }
   };
@@ -108,7 +107,7 @@ export default function CreateRoomClient() {
       </header>
 
       <div className="max-w-2xl mx-auto px-6 py-8">
-        <form onSubmit={handleSubmit} aria-label="게임 방 생성 폼">
+        <form onSubmit={(e) => void handleSubmit(e)} aria-label="게임 방 생성 폼">
           {/* 인원 설정 */}
           <section className="mb-6" aria-labelledby="player-count-label">
             <h2
@@ -146,6 +145,24 @@ export default function CreateRoomClient() {
               턴 제한 시간:{" "}
               <span className="text-warning font-mono">{turnTimeoutSec}초</span>
             </h2>
+            <div className="flex gap-2 mb-2">
+              {[30, 60, 90, 120].map((sec) => (
+                <button
+                  key={sec}
+                  type="button"
+                  onClick={() => setTurnTimeoutSec(sec)}
+                  className={[
+                    "flex-1 py-1.5 rounded-lg text-tile-sm font-medium border transition-colors",
+                    turnTimeoutSec === sec
+                      ? "bg-warning text-gray-900 border-warning"
+                      : "bg-card-bg border-border hover:border-border-active text-text-secondary",
+                  ].join(" ")}
+                  aria-pressed={turnTimeoutSec === sec}
+                >
+                  {sec}초
+                </button>
+              ))}
+            </div>
             <input
               type="range"
               min={30}
@@ -191,7 +208,7 @@ export default function CreateRoomClient() {
                 >
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-tile-sm font-medium text-color-ai">
-                      AI #{idx + 1}
+                      AI #{idx + 1} (Seat {idx + 1})
                     </span>
                     <button
                       type="button"
@@ -233,7 +250,9 @@ export default function CreateRoomClient() {
                       <select
                         value={slot.difficulty}
                         onChange={(e) =>
-                          updateAI(idx, { difficulty: e.target.value as AIDifficulty })
+                          updateAI(idx, {
+                            difficulty: e.target.value as AIDifficulty,
+                          })
                         }
                         className="w-full px-2 py-1.5 rounded-lg bg-panel-bg border border-border text-text-primary text-tile-sm"
                         aria-label={`AI ${idx + 1} 난이도 선택`}
@@ -259,7 +278,7 @@ export default function CreateRoomClient() {
                               "py-1 px-2 rounded-lg text-tile-xs border transition-colors text-left",
                               slot.persona === p.value
                                 ? "bg-color-ai/20 border-color-ai text-color-ai"
-                                : "bg-panel-bg border-border text-text-secondary",
+                                : "bg-panel-bg border-border text-text-secondary hover:border-border-active",
                             ].join(" ")}
                             title={p.desc}
                             aria-pressed={slot.persona === p.value}
@@ -274,7 +293,10 @@ export default function CreateRoomClient() {
                     {/* 심리전 레벨 */}
                     <div className="col-span-2">
                       <label className="text-tile-xs text-text-secondary block mb-1">
-                        심리전 레벨: {slot.psychologyLevel}
+                        심리전 레벨:{" "}
+                        <span className="text-color-ai font-medium">
+                          {slot.psychologyLevel}
+                        </span>
                       </label>
                       <input
                         type="range"
@@ -284,7 +306,9 @@ export default function CreateRoomClient() {
                         value={slot.psychologyLevel}
                         onChange={(e) =>
                           updateAI(idx, {
-                            psychologyLevel: Number(e.target.value) as 0 | 1 | 2 | 3,
+                            psychologyLevel: Number(
+                              e.target.value
+                            ) as 0 | 1 | 2 | 3,
                           })
                         }
                         className="w-full accent-color-ai"

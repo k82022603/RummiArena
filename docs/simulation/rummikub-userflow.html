@@ -1,0 +1,2080 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RummiArena - 전체 사용자 흐름 시뮬레이션</title>
+<style>
+/* ═══════════════════════════════════════════
+   CSS 변수 (테마)
+═══════════════════════════════════════════ */
+:root[data-theme="dark"] {
+  --app-bg: #0D1117;
+  --panel-bg: #161B22;
+  --card-bg: #1C2128;
+  --card-bg2: #21262D;
+  --border: #30363D;
+  --border-active: #F3C623;
+  --text-primary: #F0F6FC;
+  --text-secondary: #8B949E;
+  --text-muted: #484F58;
+  --board-bg: #1A3328;
+  --board-border: #2A5A3A;
+  --board-label: #2d5a3a;
+  --input-bg: #0D1117;
+  --modal-overlay: rgba(0,0,0,0.85);
+  --shadow: 0 8px 32px rgba(0,0,0,0.5);
+  --btn-ghost-border: #30363D;
+  --btn-ghost-hover: #21262D;
+}
+:root[data-theme="light"] {
+  --app-bg: #F6F8FA;
+  --panel-bg: #FFFFFF;
+  --card-bg: #F0F6FC;
+  --card-bg2: #E8EFF5;
+  --border: #D0D7DE;
+  --border-active: #D4A017;
+  --text-primary: #1F2937;
+  --text-secondary: #57606A;
+  --text-muted: #8C959F;
+  --board-bg: #2A5A3A;
+  --board-border: #3A7A4A;
+  --board-label: #6EC281;
+  --input-bg: #FFFFFF;
+  --modal-overlay: rgba(0,0,0,0.6);
+  --shadow: 0 8px 32px rgba(0,0,0,0.15);
+  --btn-ghost-border: #D0D7DE;
+  --btn-ghost-hover: #E8EFF5;
+}
+
+/* ═══════════════════════════════════════════
+   기본 리셋 & 전역
+═══════════════════════════════════════════ */
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+html, body {
+  width:100%; height:100%;
+  font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', -apple-system, sans-serif;
+  background: var(--app-bg);
+  color: var(--text-primary);
+  overflow: hidden;
+  user-select: none;
+  font-size: 16px;
+  line-height: 1.6;
+  word-break: keep-all;
+  letter-spacing: -0.01em;
+}
+
+/* ═══════════════════════════════════════════
+   화면 전환 SPA 구조
+═══════════════════════════════════════════ */
+.screen {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.35s ease;
+  z-index: 1;
+  overflow: hidden;
+}
+.screen.active {
+  opacity: 1;
+  pointer-events: all;
+  z-index: 2;
+}
+
+/* ═══════════════════════════════════════════
+   테마 토글 & 공통 UI
+═══════════════════════════════════════════ */
+#themeToggle {
+  position: fixed;
+  top: 16px; right: 20px;
+  z-index: 9999;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 15px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+#themeToggle:hover { background: var(--card-bg2); }
+
+/* 브레드크럼 */
+#breadcrumb {
+  position: fixed;
+  top: 16px; left: 20px;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+#breadcrumb .crumb-sep { color: var(--text-muted); }
+#breadcrumb .crumb-cur { color: var(--text-primary); font-weight: 600; }
+#breadcrumb .crumb-back {
+  cursor: pointer;
+  color: #3B82F6;
+  text-decoration: underline;
+}
+#breadcrumb .crumb-back:hover { color: #60A5FA; }
+
+/* ═══════════════════════════════════════════
+   공통 컴포넌트: 버튼
+═══════════════════════════════════════════ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 22px;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.18s;
+  font-family: inherit;
+  letter-spacing: -0.01em;
+}
+.btn:active { transform: scale(0.97); }
+.btn-primary { background: #1F6FEB; color: #fff; }
+.btn-primary:hover { background: #388BFD; }
+.btn-success { background: #3FB950; color: #000; }
+.btn-success:hover { background: #56D364; }
+.btn-danger { background: #F85149; color: #fff; }
+.btn-danger:hover { background: #FF7B72; }
+.btn-warning { background: #F3C623; color: #000; }
+.btn-warning:hover { background: #F6D55F; }
+.btn-ghost {
+  background: transparent;
+  border: 1px solid var(--btn-ghost-border);
+  color: var(--text-primary);
+}
+.btn-ghost:hover { background: var(--btn-ghost-hover); }
+.btn-ai { background: #9B59B6; color: #fff; }
+.btn-ai:hover { background: #B07FCC; }
+.btn-sm { padding: 6px 14px; font-size: 13px; }
+.btn-lg { padding: 14px 32px; font-size: 17px; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn:disabled:active { transform: none; }
+
+/* ═══════════════════════════════════════════
+   공통 컴포넌트: 배지
+═══════════════════════════════════════════ */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.badge-waiting { background: #3FB95022; color: #3FB950; border: 1px solid #3FB95044; }
+.badge-playing { background: #F3C62322; color: #F3C623; border: 1px solid #F3C62344; }
+.badge-ai { background: #9B59B622; color: #C39BFF; border: 1px solid #9B59B644; }
+.badge-host { background: #1F6FEB22; color: #79C0FF; border: 1px solid #1F6FEB44; }
+.badge-meld-done { background: #3FB95022; color: #3FB950; border: 1px solid #3FB95044; }
+.badge-meld-not { background: #F8514922; color: #F85149; border: 1px solid #F8514944; }
+
+/* ═══════════════════════════════════════════
+   타일 컴포넌트
+═══════════════════════════════════════════ */
+.tile {
+  border-radius: 5px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  border: 2px solid rgba(255,255,255,0.12);
+  flex-shrink: 0;
+  position: relative;
+  transition: all 0.18s;
+  cursor: default;
+}
+/* 크기 */
+.tile.sz-lg  { width:42px; height:58px; }
+.tile.sz-md  { width:34px; height:46px; }
+.tile.sz-sm  { width:20px; height:28px; }
+.tile.sz-mini{ width:10px; height:16px; border-radius:2px; background:#30363D; border-color:#484F58; }
+
+/* 색상 */
+.tile.R { background: linear-gradient(135deg,#8B2020,#6B1818); color:#FF6B6B; }
+.tile.B { background: linear-gradient(135deg,#1A3A6B,#142C52); color:#6BA3FF; }
+.tile.Y { background: linear-gradient(135deg,#6B5A10,#52440C); color:#F3C623; }
+.tile.K { background: linear-gradient(135deg,#3A3A3A,#2A2A2A); color:#CCCCCC; }
+.tile.JK {
+  background: linear-gradient(135deg,#4A2A6B,#3A2058);
+  color:#C39BFF;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  outline: 2px solid;
+  outline-color: #9B59B6;
+}
+
+/* 타일 숫자 */
+.tile .t-num { line-height:1; text-shadow:0 1px 3px rgba(0,0,0,0.6); }
+.tile.sz-lg  .t-num { font-size:20px; }
+.tile.sz-md  .t-num { font-size:16px; }
+.tile.sz-sm  .t-num { font-size:11px; }
+.tile .t-sid { font-size:7px; opacity:0.4; margin-top:1px; }
+.tile.sz-sm  .t-sid { display:none; }
+
+/* 색약 보조 심볼 */
+.tile .t-sym {
+  position:absolute; bottom:3px; right:4px;
+  font-size:7px; opacity:0.55; line-height:1;
+}
+.tile.sz-sm .t-sym, .tile.sz-mini .t-sym { display:none; }
+
+/* 상태 */
+.tile.glow { border-color:#F3C623; box-shadow:0 0 10px rgba(243,198,35,0.5); }
+.tile.rack-hover:hover { transform:translateY(-4px); z-index:2; box-shadow:0 6px 16px rgba(0,0,0,0.4); }
+.tile-back { background: linear-gradient(135deg,#21262D,#161B22); border-color:#30363D; }
+
+/* 애니메이션 */
+@keyframes tilePop {
+  from { transform:scale(0.2) rotate(-20deg); opacity:0; }
+  to   { transform:scale(1) rotate(0); opacity:1; }
+}
+@keyframes tileDrawn {
+  from { transform:translateY(-50px) scale(0.5); opacity:0; }
+  to   { transform:translateY(0) scale(1); opacity:1; }
+}
+@keyframes setGlow {
+  0%   { box-shadow:0 0 18px rgba(243,198,35,0.7); border-color:#F3C623; }
+  100% { box-shadow:none; border-color:#2A5A3A; }
+}
+.tile.anim-pop   { animation:tilePop 0.4s ease-out; }
+.tile.anim-drawn { animation:tileDrawn 0.5s ease-out; }
+
+/* ═══════════════════════════════════════════
+   테이블 세트
+═══════════════════════════════════════════ */
+.tile-set {
+  display:flex; gap:2px; padding:5px 8px;
+  background:rgba(0,0,0,0.35);
+  border-radius:6px; border:1px solid #2A5A3A;
+  transition:all 0.3s;
+}
+.tile-set.anim-new { animation:setGlow 0.7s ease-out; }
+
+/* ═══════════════════════════════════════════
+   AI 사고 중 애니메이션
+═══════════════════════════════════════════ */
+@keyframes pulseDot {
+  0%,80%,100% { transform:scale(0.6); opacity:0.4; }
+  40%         { transform:scale(1); opacity:1; }
+}
+.thinking-dots span {
+  display:inline-block; width:6px; height:6px;
+  border-radius:50%; background:#C39BFF;
+  animation:pulseDot 1.2s ease-in-out infinite;
+  margin:0 2px;
+}
+.thinking-dots span:nth-child(2) { animation-delay:0.2s; }
+.thinking-dots span:nth-child(3) { animation-delay:0.4s; }
+
+@keyframes pulseGlow {
+  0%,100% { box-shadow:0 0 6px rgba(155,89,182,0.4); }
+  50%     { box-shadow:0 0 18px rgba(155,89,182,0.9); }
+}
+.pulse-ai { animation:pulseGlow 1.5s ease-in-out infinite; }
+
+/* ═══════════════════════════════════════════
+   타이머 원형
+═══════════════════════════════════════════ */
+.timer-circle {
+  position:relative; width:52px; height:52px;
+  display:flex; align-items:center; justify-content:center;
+}
+.timer-ring {
+  position:absolute; top:0; left:0;
+  width:52px; height:52px; transform:rotate(-90deg);
+}
+.timer-ring circle {
+  fill:none; stroke-width:4;
+  stroke-dasharray:138;
+  stroke-dashoffset:0;
+  transition:stroke-dashoffset 1s linear, stroke 0.3s;
+}
+.timer-bg { stroke:#30363D; }
+.timer-fg { stroke:#3FB950; }
+.timer-text { font-size:13px; font-weight:800; color:var(--text-primary); }
+
+/* ═══════════════════════════════════════════
+   토스트 메시지
+═══════════════════════════════════════════ */
+#toast {
+  position:fixed; top:50%; left:50%;
+  transform:translate(-50%,-50%) scale(0.8);
+  background:rgba(0,0,0,0.92);
+  border:2px solid #F3C623;
+  border-radius:12px;
+  padding:18px 36px;
+  font-size:18px; font-weight:700; color:#F3C623;
+  opacity:0; pointer-events:none;
+  transition:all 0.3s; z-index:10000;
+  text-align:center;
+}
+#toast .toast-sub { font-size:13px; color:#8B949E; font-weight:400; margin-top:6px; }
+#toast.show { opacity:1; transform:translate(-50%,-50%) scale(1); }
+
+/* ═══════════════════════════════════════════
+   모달 공통
+═══════════════════════════════════════════ */
+.modal-overlay {
+  display:none;
+  position:fixed; top:0; left:0;
+  width:100%; height:100%;
+  background: var(--modal-overlay);
+  z-index:500;
+  align-items:center; justify-content:center;
+  backdrop-filter:blur(4px);
+}
+.modal-overlay.show { display:flex; }
+.modal-box {
+  background: var(--card-bg);
+  border:1px solid var(--border);
+  border-radius:16px;
+  padding:32px 40px;
+  width:min(640px, 90vw);
+  max-height:85vh;
+  overflow-y:auto;
+  box-shadow: var(--shadow);
+  animation: modalIn 0.3s ease-out;
+}
+@keyframes modalIn {
+  from { transform:scale(0.88); opacity:0; }
+  to   { transform:scale(1); opacity:1; }
+}
+.modal-title {
+  font-size:28px; font-weight:800;
+  margin-bottom:8px;
+  color: var(--text-primary);
+}
+.modal-sub {
+  font-size:15px; color:var(--text-secondary);
+  margin-bottom:24px;
+}
+.modal-close {
+  float:right; cursor:pointer;
+  font-size:22px; color:var(--text-secondary);
+  background:none; border:none;
+  transition:color 0.2s;
+}
+.modal-close:hover { color:var(--text-primary); }
+
+/* ═══════════════════════════════════════════
+   폼 요소
+═══════════════════════════════════════════ */
+.form-group { margin-bottom:20px; }
+.form-label {
+  display:block; font-size:14px;
+  font-weight:600; color:var(--text-secondary);
+  margin-bottom:8px;
+  text-transform:uppercase; letter-spacing:0.05em;
+}
+.form-input {
+  width:100%; padding:10px 14px;
+  background:var(--input-bg);
+  border:1px solid var(--border);
+  border-radius:8px;
+  color:var(--text-primary);
+  font-size:15px; font-family:inherit;
+  transition:border-color 0.2s;
+}
+.form-input:focus {
+  outline:none;
+  border-color:#1F6FEB;
+  box-shadow:0 0 0 3px rgba(31,111,235,0.2);
+}
+.radio-group { display:flex; gap:8px; flex-wrap:wrap; }
+.radio-btn {
+  padding:8px 18px;
+  border:1px solid var(--border);
+  border-radius:8px;
+  cursor:pointer;
+  font-size:14px; font-weight:600;
+  background:var(--card-bg);
+  color:var(--text-secondary);
+  transition:all 0.18s;
+}
+.radio-btn.selected {
+  border-color:#1F6FEB;
+  background:#1F6FEB22;
+  color:#79C0FF;
+}
+.radio-btn:hover { border-color:var(--text-secondary); }
+select.form-input { cursor:pointer; }
+
+/* ═══════════════════════════════════════════
+   ██ 1. 로그인 화면
+═══════════════════════════════════════════ */
+#screen-login {
+  background: var(--app-bg);
+  display:flex; align-items:center; justify-content:center;
+}
+.login-bg-tiles {
+  position:absolute; top:0; left:0; width:100%; height:100%;
+  overflow:hidden; opacity:0.04; pointer-events:none;
+}
+.login-card {
+  position:relative; z-index:2;
+  background:rgba(22,27,34,0.9);
+  border:1px solid var(--border);
+  border-radius:20px;
+  padding:52px 56px;
+  text-align:center;
+  width:440px;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+  backdrop-filter:blur(12px);
+}
+:root[data-theme="light"] .login-card {
+  background:rgba(255,255,255,0.95);
+}
+.login-logo {
+  display:flex; align-items:center; justify-content:center;
+  gap:6px; margin-bottom:12px;
+}
+.logo-tile {
+  width:22px; height:30px; border-radius:3px;
+  display:flex; align-items:center; justify-content:center;
+  font-size:13px; font-weight:900; color:#fff;
+  box-shadow:0 2px 6px rgba(0,0,0,0.4);
+}
+.logo-tile.R { background:#E74C3C; }
+.logo-tile.B { background:#3498DB; }
+.logo-tile.Y { background:#F1C40F; color:#000; }
+.logo-tile.K { background:#2C3E50; }
+.logo-text {
+  font-size:30px; font-weight:900;
+  background:linear-gradient(135deg,#F3C623,#F0A500);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+  background-clip:text;
+  letter-spacing:-1px;
+}
+.login-tagline {
+  font-size:16px; color:var(--text-secondary);
+  margin-bottom:36px; line-height:1.5;
+}
+.btn-google {
+  display:flex; align-items:center; justify-content:center;
+  gap:12px; width:100%;
+  padding:14px 20px;
+  background:#fff; color:#1F2937;
+  border:1px solid #D0D7DE;
+  border-radius:10px;
+  font-size:16px; font-weight:600;
+  cursor:pointer; transition:all 0.18s;
+  margin-bottom:12px; font-family:inherit;
+}
+.btn-google:hover { background:#F0F0F0; box-shadow:0 4px 12px rgba(0,0,0,0.15); }
+.btn-google svg { flex-shrink:0; }
+.login-divider {
+  font-size:13px; color:var(--text-muted);
+  margin:14px 0;
+  display:flex; align-items:center; gap:10px;
+}
+.login-divider::before, .login-divider::after {
+  content:''; flex:1; height:1px; background:var(--border);
+}
+.login-version { font-size:12px; color:var(--text-muted); margin-top:24px; }
+
+/* ═══════════════════════════════════════════
+   ██ 2. 로비 화면
+═══════════════════════════════════════════ */
+#screen-lobby {
+  display:flex; flex-direction:column;
+  background:var(--app-bg);
+}
+.lobby-header {
+  height:56px; background:var(--panel-bg);
+  border-bottom:1px solid var(--border);
+  display:flex; align-items:center; padding:0 24px; gap:24px;
+  flex-shrink:0;
+}
+.lobby-header .h-logo {
+  font-size:20px; font-weight:900; color:#F3C623; letter-spacing:-0.5px;
+}
+.lobby-header nav {
+  display:flex; gap:4px;
+}
+.lobby-header nav a {
+  padding:6px 14px; border-radius:6px;
+  font-size:15px; font-weight:600;
+  color:var(--text-secondary); text-decoration:none;
+  cursor:pointer; transition:all 0.18s;
+}
+.lobby-header nav a:hover, .lobby-header nav a.active {
+  color:var(--text-primary); background:var(--card-bg);
+}
+.lobby-header .h-user {
+  margin-left:auto; display:flex; align-items:center; gap:10px;
+}
+.h-avatar {
+  width:32px; height:32px; border-radius:50%;
+  background:linear-gradient(135deg,#9B59B6,#6C3483);
+  display:flex; align-items:center; justify-content:center;
+  font-size:14px; font-weight:700; color:#fff;
+}
+.lobby-body {
+  flex:1; display:flex; overflow:hidden; padding:20px; gap:16px;
+}
+/* 좌측 패널 */
+.lobby-left {
+  width:300px; flex-shrink:0;
+  display:flex; flex-direction:column; gap:12px;
+}
+.profile-card {
+  background:var(--card-bg);
+  border:1px solid var(--border);
+  border-radius:12px; padding:20px;
+}
+.profile-card .pc-name { font-size:20px; font-weight:800; margin-bottom:4px; }
+.profile-card .pc-sub { font-size:13px; color:var(--text-secondary); }
+.profile-stats {
+  display:grid; grid-template-columns:1fr 1fr;
+  gap:8px; margin-top:14px;
+}
+.stat-item {
+  background:var(--card-bg2);
+  border:1px solid var(--border);
+  border-radius:8px; padding:10px;
+  text-align:center;
+}
+.stat-item .sv { font-size:20px; font-weight:800; color:var(--text-primary); }
+.stat-item .sl { font-size:12px; color:var(--text-secondary); margin-top:2px; }
+.lobby-actions { display:flex; flex-direction:column; gap:8px; }
+/* 중앙 */
+.lobby-center {
+  flex:1; display:flex; flex-direction:column; gap:12px; min-width:0;
+}
+.lobby-toolbar {
+  display:flex; gap:10px; align-items:center;
+}
+.search-input {
+  flex:1; padding:10px 14px;
+  background:var(--card-bg);
+  border:1px solid var(--border);
+  border-radius:8px;
+  color:var(--text-primary);
+  font-size:15px; font-family:inherit;
+}
+.search-input:focus { outline:none; border-color:#1F6FEB; }
+.room-list {
+  flex:1; overflow-y:auto;
+  display:flex; flex-direction:column; gap:8px;
+  padding-right:4px;
+}
+.room-list::-webkit-scrollbar { width:6px; }
+.room-list::-webkit-scrollbar-track { background:transparent; }
+.room-list::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+
+/* Room 카드 */
+.room-card {
+  background:var(--card-bg);
+  border:1px solid var(--border);
+  border-radius:12px; padding:16px 20px;
+  cursor:pointer; transition:all 0.18s;
+  display:grid;
+  grid-template-columns:80px 1fr auto;
+  align-items:center; gap:16px;
+}
+.room-card:hover {
+  border-color:#1F6FEB;
+  background:var(--card-bg2);
+  transform:translateY(-1px);
+  box-shadow:0 4px 16px rgba(31,111,235,0.15);
+}
+.room-code {
+  font-size:22px; font-weight:900;
+  font-family:'Consolas','D2Coding',monospace;
+  color:#F3C623; letter-spacing:2px;
+}
+.room-info { display:flex; flex-direction:column; gap:5px; }
+.room-info .ri-top { display:flex; align-items:center; gap:8px; }
+.room-info .ri-host { font-size:14px; font-weight:600; }
+.room-info .ri-bot { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-secondary); }
+.room-join-btn { flex-shrink:0; }
+.ai-badges { display:flex; gap:4px; }
+.ai-badge {
+  font-size:11px; padding:2px 8px;
+  background:#9B59B622; color:#C39BFF;
+  border:1px solid #9B59B644; border-radius:12px;
+  font-weight:700;
+}
+/* 우측 패널 */
+.lobby-right {
+  width:260px; flex-shrink:0;
+  display:flex; flex-direction:column; gap:12px;
+}
+.stat-card {
+  background:var(--card-bg);
+  border:1px solid var(--border);
+  border-radius:12px; padding:16px;
+}
+.stat-card-title {
+  font-size:12px; text-transform:uppercase;
+  letter-spacing:0.08em; color:var(--text-secondary);
+  font-weight:700; margin-bottom:10px;
+}
+.online-num { font-size:36px; font-weight:900; color:#3FB950; }
+.game-num { font-size:36px; font-weight:900; color:#F3C623; }
+.winner-list { display:flex; flex-direction:column; gap:6px; }
+.winner-item {
+  display:flex; align-items:center; gap:8px;
+  font-size:14px;
+}
+.winner-item .wi-rank { width:22px; font-weight:700; color:var(--text-muted); font-size:13px; }
+.winner-item .wi-name { flex:1; font-weight:600; }
+.winner-item .wi-model {
+  font-size:11px; color:var(--text-secondary);
+  background:var(--card-bg2); padding:2px 6px; border-radius:4px;
+}
+
+/* ═══════════════════════════════════════════
+   ██ 3. Room 생성 모달
+═══════════════════════════════════════════ */
+.ai-seat-card {
+  background:var(--card-bg2);
+  border:1px solid var(--border);
+  border-radius:10px; padding:16px;
+  margin-bottom:12px;
+}
+.ai-seat-header {
+  display:flex; align-items:center; gap:10px;
+  margin-bottom:12px; font-size:15px; font-weight:700;
+}
+.seat-num {
+  width:28px; height:28px; border-radius:50%;
+  background:var(--border); display:flex; align-items:center;
+  justify-content:center; font-size:13px; font-weight:700;
+}
+.ai-seat-grid {
+  display:grid; grid-template-columns:1fr 1fr;
+  gap:8px;
+}
+.ai-mini-label { font-size:11px; color:var(--text-secondary); margin-bottom:4px; font-weight:600; text-transform:uppercase; }
+select.ai-select {
+  width:100%; padding:6px 10px;
+  background:var(--input-bg); border:1px solid var(--border);
+  border-radius:6px; color:var(--text-primary);
+  font-size:13px; font-family:inherit; cursor:pointer;
+}
+
+/* ═══════════════════════════════════════════
+   ██ 4. 대기실 화면
+═══════════════════════════════════════════ */
+#screen-waiting {
+  background:var(--app-bg);
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+}
+.waiting-container {
+  width:min(720px,90vw);
+}
+.waiting-header {
+  text-align:center; margin-bottom:32px;
+}
+.room-code-big {
+  font-size:52px; font-weight:900;
+  font-family:'Consolas','D2Coding',monospace;
+  color:#F3C623; letter-spacing:8px;
+  text-shadow:0 0 20px rgba(243,198,35,0.3);
+}
+.waiting-sub { font-size:16px; color:var(--text-secondary); margin-top:6px; }
+.share-link {
+  display:flex; align-items:center; gap:8px;
+  background:var(--card-bg); border:1px solid var(--border);
+  border-radius:8px; padding:10px 16px;
+  margin-top:16px; font-size:14px; color:var(--text-secondary);
+}
+.share-url { flex:1; font-family:'Consolas',monospace; font-size:13px; }
+.seats-grid {
+  display:grid; grid-template-columns:1fr 1fr;
+  gap:12px; margin-bottom:24px;
+}
+.seat-card {
+  background:var(--card-bg);
+  border:2px solid var(--border);
+  border-radius:12px; padding:20px;
+  transition:all 0.3s;
+  position:relative;
+}
+.seat-card.occupied { border-color:#3FB95066; }
+.seat-card.ai-seat  { border-color:#9B59B666; }
+.seat-card.empty    { border-color:var(--border); opacity:0.6; }
+.seat-label { font-size:12px; text-transform:uppercase; letter-spacing:0.1em; color:var(--text-muted); margin-bottom:8px; }
+.seat-player-name { font-size:20px; font-weight:800; margin-bottom:6px; }
+.seat-badges { display:flex; gap:6px; flex-wrap:wrap; }
+.seat-ai-detail { font-size:13px; color:var(--text-secondary); margin-top:8px; }
+.seat-ready {
+  position:absolute; top:14px; right:16px;
+  width:10px; height:10px; border-radius:50%;
+}
+.seat-ready.ready { background:#3FB950; box-shadow:0 0 8px #3FB950; }
+.seat-ready.waiting { background:#F3C623; }
+.seat-ready.empty { background:#484F58; }
+.waiting-settings {
+  background:var(--card-bg); border:1px solid var(--border);
+  border-radius:10px; padding:16px; margin-bottom:20px;
+  display:flex; gap:24px; font-size:14px; color:var(--text-secondary);
+}
+.ws-item .wsi-val { font-size:16px; font-weight:700; color:var(--text-primary); margin-top:2px; }
+.waiting-actions { display:flex; gap:12px; justify-content:center; }
+
+/* ═══════════════════════════════════════════
+   ██ 5. 게임 플레이 (1인칭)
+═══════════════════════════════════════════ */
+#screen-game {
+  display:flex; flex-direction:column;
+  background:var(--app-bg);
+}
+/* 상대 영역 */
+.opponents {
+  height:96px; background:var(--panel-bg);
+  border-bottom:1px solid var(--border);
+  display:flex; justify-content:center; gap:20px;
+  padding:10px 24px; flex-shrink:0; align-items:center;
+}
+.opp-card {
+  display:flex; flex-direction:column; align-items:center; gap:4px;
+  padding:8px 18px; border-radius:10px;
+  background:var(--card-bg); border:2px solid var(--border);
+  min-width:170px; transition:all 0.3s; position:relative;
+}
+.opp-card.active { border-color:#F3C623; background:var(--card-bg2); }
+.opp-name { font-size:14px; font-weight:700; }
+.opp-type { font-size:11px; color:var(--text-secondary); }
+.opp-mini-tiles { display:flex; gap:1px; margin-top:3px; }
+.opp-meld { font-size:10px; margin-top:2px; }
+.opp-meld.done { color:#3FB950; }
+.opp-meld.not  { color:#F85149; }
+.opp-thinking-badge {
+  position:absolute; top:-10px; right:-10px;
+  font-size:11px; padding:3px 8px;
+  border-radius:6px; background:#9B59B6; color:#fff;
+  font-weight:700; display:none;
+}
+.opp-card.active .opp-thinking-badge { display:flex; align-items:center; gap:4px; }
+
+/* 테이블 */
+.table-area {
+  flex:1; display:flex; flex-direction:column; position:relative; min-height:0;
+  background:radial-gradient(ellipse at center, #1A3328 0%, #0F1F18 70%, #0D1117 100%);
+  border-top:2px solid #1A3A2A; border-bottom:2px solid #1A3A2A;
+}
+.table-felt {
+  flex:1; padding:18px 28px; overflow-y:auto; min-height:0;
+}
+.table-felt::-webkit-scrollbar { width:6px; }
+.table-felt::-webkit-scrollbar-thumb { background:#2A5A3A; border-radius:3px; }
+.table-label-text {
+  font-size:12px; color:var(--board-label);
+  font-weight:700; letter-spacing:3px; margin-bottom:10px;
+}
+.table-sets { display:flex; flex-wrap:wrap; gap:10px; align-content:flex-start; }
+
+/* AI 사고 오버레이 */
+.ai-think-overlay {
+  position:absolute; top:50%; left:50%;
+  transform:translate(-50%,-50%);
+  background:rgba(155,89,182,0.12);
+  border:1px solid #9B59B644;
+  border-radius:12px; padding:14px 28px;
+  display:none; align-items:center; gap:12px;
+  font-size:16px; color:#C39BFF; font-weight:600;
+  backdrop-filter:blur(4px);
+}
+.ai-think-overlay.show { display:flex; }
+
+/* 테이블 정보바 */
+.table-info-bar {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:8px 28px; background:rgba(0,0,0,0.35); flex-shrink:0;
+}
+.draw-pile-wrap { display:flex; align-items:center; gap:10px; }
+.draw-stack {
+  position:relative; width:48px; height:62px;
+}
+.draw-card-visual {
+  position:absolute; width:38px; height:52px;
+  border-radius:5px; background:var(--card-bg); border:2px solid var(--border);
+  display:flex; align-items:center; justify-content:center;
+  font-size:11px; color:var(--text-muted);
+}
+.draw-card-visual:nth-child(1){top:0;left:0;}
+.draw-card-visual:nth-child(2){top:2px;left:2px;}
+.draw-card-visual:nth-child(3){top:4px;left:4px;}
+.draw-count-txt { font-size:14px; color:var(--text-secondary); }
+.draw-count-txt span { color:#F3C623; font-weight:800; font-size:18px; }
+.game-meta { display:flex; gap:18px; font-size:13px; color:var(--text-secondary); }
+.game-meta .gm-val { color:var(--text-primary); font-weight:700; }
+
+/* 내 랙 */
+.my-rack-area {
+  flex-shrink:0; background:var(--panel-bg);
+  border-top:3px solid #F3C623;
+  padding:10px 18px 12px;
+}
+.rack-header {
+  display:flex; align-items:center; gap:10px; margin-bottom:8px;
+}
+.rack-title { font-size:14px; color:#F3C623; font-weight:700; }
+.rack-count { font-size:13px; color:var(--text-secondary); }
+.rack-tiles {
+  display:flex; gap:3px; overflow-x:auto; padding:4px 0;
+  scrollbar-width:thin; scrollbar-color:#30363D transparent;
+}
+.rack-tiles::-webkit-scrollbar { height:4px; }
+.rack-tiles::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+.rack-actions {
+  display:flex; gap:8px; margin-top:8px;
+}
+
+/* 게임 컨트롤 바 */
+.game-ctrl-bar {
+  height:38px; background:var(--app-bg);
+  border-top:1px solid var(--border);
+  display:flex; align-items:center; justify-content:center;
+  gap:12px; flex-shrink:0;
+}
+
+/* ═══════════════════════════════════════════
+   ██ 6. 게임 결과 화면
+═══════════════════════════════════════════ */
+#screen-result {
+  background:var(--app-bg);
+  display:flex; align-items:center; justify-content:center;
+}
+.result-card {
+  background:var(--card-bg);
+  border:1px solid var(--border);
+  border-radius:20px; padding:40px 52px;
+  width:min(560px,90vw);
+  text-align:center;
+  box-shadow:var(--shadow);
+  animation:modalIn 0.4s ease-out;
+}
+.result-title { font-size:32px; font-weight:900; margin-bottom:6px; }
+.result-winner-name {
+  font-size:22px; font-weight:700; color:#F3C623; margin-bottom:28px;
+}
+.score-table { width:100%; border-collapse:collapse; margin-bottom:24px; }
+.score-table th {
+  font-size:12px; text-transform:uppercase; letter-spacing:0.08em;
+  color:var(--text-secondary); padding:8px 12px;
+  border-bottom:2px solid var(--border); font-weight:700;
+}
+.score-table td {
+  font-size:15px; padding:12px 12px;
+  border-bottom:1px solid var(--border);
+}
+.score-table tr.rank-1 td { color:#F3C623; font-weight:700; font-size:17px; }
+.score-table tr.rank-1 td:first-child::before { content:''; }
+.rank-medal { font-size:20px; }
+.result-stats {
+  font-size:14px; color:var(--text-secondary); margin-bottom:24px;
+}
+.result-elo {
+  font-size:14px; margin-bottom:24px;
+  background:var(--card-bg2); border:1px solid var(--border);
+  border-radius:8px; padding:12px 16px;
+}
+.elo-change-neg { color:#F85149; font-weight:700; }
+.result-actions { display:flex; gap:10px; justify-content:center; }
+
+/* ═══════════════════════════════════════════
+   ██ 7. 연습 모드 Stage 선택
+═══════════════════════════════════════════ */
+#screen-practice-select {
+  background:var(--app-bg);
+  display:flex; flex-direction:column;
+  overflow-y:auto;
+}
+.practice-header {
+  padding:32px 48px 0;
+}
+.practice-title { font-size:36px; font-weight:900; margin-bottom:8px; }
+.practice-desc { font-size:16px; color:var(--text-secondary); }
+.stage-grid {
+  display:grid; grid-template-columns:repeat(3,1fr);
+  gap:16px; padding:28px 48px 48px;
+}
+.stage-card {
+  background:var(--card-bg);
+  border:2px solid var(--border);
+  border-radius:14px; padding:24px;
+  cursor:pointer; transition:all 0.2s;
+  position:relative; overflow:hidden;
+}
+.stage-card:hover {
+  border-color:#1F6FEB;
+  transform:translateY(-3px);
+  box-shadow:0 8px 24px rgba(31,111,235,0.2);
+}
+.stage-card.cleared { border-color:#3FB950; }
+.stage-num {
+  font-size:13px; text-transform:uppercase; letter-spacing:0.1em;
+  color:var(--text-muted); font-weight:700; margin-bottom:6px;
+}
+.stage-name { font-size:22px; font-weight:800; margin-bottom:8px; }
+.stage-desc { font-size:14px; color:var(--text-secondary); line-height:1.5; }
+.stage-clear-mark {
+  position:absolute; top:16px; right:16px;
+  width:28px; height:28px; border-radius:50%;
+  background:#3FB950; display:flex; align-items:center;
+  justify-content:center; font-size:14px;
+}
+.stage-card-footer {
+  margin-top:16px; display:flex;
+  align-items:center; justify-content:space-between;
+}
+.stage-best { font-size:12px; color:var(--text-muted); }
+.stage-icon { font-size:32px; margin-bottom:10px; }
+
+/* ═══════════════════════════════════════════
+   ██ 8. 연습 모드 진행
+═══════════════════════════════════════════ */
+#screen-practice-play {
+  display:flex; flex-direction:column;
+  background:var(--app-bg);
+}
+.practice-goal-bar {
+  background:var(--panel-bg);
+  border-bottom:1px solid var(--border);
+  padding:12px 28px;
+  display:flex; align-items:center; gap:16px; flex-shrink:0;
+}
+.practice-stage-badge {
+  background:#1F6FEB22; color:#79C0FF;
+  border:1px solid #1F6FEB44;
+  border-radius:6px; padding:4px 12px;
+  font-size:13px; font-weight:700;
+}
+.practice-goal-text { font-size:15px; color:var(--text-primary); font-weight:600; }
+.hint-badge {
+  margin-left:auto;
+  background:#F3C62322; color:#F3C623;
+  border:1px solid #F3C62344;
+  border-radius:6px; padding:4px 12px;
+  font-size:13px; font-weight:700; cursor:pointer;
+}
+.hint-badge:hover { background:#F3C62333; }
+
+/* ═══════════════════════════════════════════
+   스크롤바 전역
+═══════════════════════════════════════════ */
+::-webkit-scrollbar { width:6px; height:6px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+
+/* ═══════════════════════════════════════════
+   라이트 테마 오버라이드
+═══════════════════════════════════════════ */
+:root[data-theme="light"] .table-area {
+  background:radial-gradient(ellipse at center,#2A6040 0%,#1E4A30 70%,#163820 100%);
+}
+:root[data-theme="light"] .tile.K { color:#E0E0E0; }
+:root[data-theme="light"] #screen-login { background:linear-gradient(135deg,#E8F4FD,#F6F8FA); }
+</style>
+</head>
+<body>
+
+<!-- 고정 UI -->
+<div id="breadcrumb"></div>
+<button id="themeToggle" onclick="toggleTheme()">☀️ 라이트</button>
+<div id="toast"><div id="toastMsg"></div><div class="toast-sub" id="toastSub"></div></div>
+
+<!-- ══════════════════════════════════════════════
+     화면 1: 로그인
+══════════════════════════════════════════════ -->
+<section class="screen active" id="screen-login">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="logo-tile R">R</div>
+      <div class="logo-tile B">B</div>
+      <div class="logo-tile Y">7</div>
+      <div class="logo-tile K">K</div>
+      <span class="logo-text">RummiArena</span>
+    </div>
+    <p class="login-tagline">AI와 함께하는 루미큐브 전략 대전<br>Human + LLM 멀티플레이어 플랫폼</p>
+    <button class="btn-google" onclick="doLogin()">
+      <svg width="20" height="20" viewBox="0 0 24 24">
+        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
+        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+      </svg>
+      Google 계정으로 로그인
+    </button>
+    <div class="login-divider">또는</div>
+    <button class="btn btn-ghost" style="width:100%;font-size:15px;" onclick="doGuestLogin()">
+      게스트로 관전하기
+    </button>
+    <div class="login-version">v0.1.0-alpha &nbsp;·&nbsp; RummiArena &copy; 2026</div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════
+     화면 2: 로비
+══════════════════════════════════════════════ -->
+<section class="screen" id="screen-lobby">
+  <header class="lobby-header">
+    <div class="h-logo">RummiArena</div>
+    <nav>
+      <a class="active">로비</a>
+      <a onclick="goTo('practice-select')">연습 모드</a>
+      <a>랭킹</a>
+    </nav>
+    <div class="h-user">
+      <span style="font-size:15px;font-weight:600;">애벌레</span>
+      <div class="h-avatar">애</div>
+    </div>
+  </header>
+  <div class="lobby-body">
+    <!-- 좌측 -->
+    <aside class="lobby-left">
+      <div class="profile-card">
+        <div class="h-avatar" style="width:48px;height:48px;font-size:20px;margin-bottom:10px;">애</div>
+        <div class="pc-name">애벌레</div>
+        <div class="pc-sub">일반 플레이어</div>
+        <div class="profile-stats">
+          <div class="stat-item">
+            <div class="sv" style="color:#F3C623;">1,200</div>
+            <div class="sl">ELO</div>
+          </div>
+          <div class="stat-item">
+            <div class="sv" style="color:#3FB950;">56.3%</div>
+            <div class="sl">승률</div>
+          </div>
+          <div class="stat-item">
+            <div class="sv">142</div>
+            <div class="sl">게임 수</div>
+          </div>
+          <div class="stat-item">
+            <div class="sv">5</div>
+            <div class="sl">최장 연승</div>
+          </div>
+        </div>
+      </div>
+      <div class="lobby-actions">
+        <button class="btn btn-warning btn-lg" onclick="openCreateModal()" style="width:100%;">
+          + 빠른 게임 만들기
+        </button>
+        <button class="btn btn-ghost" onclick="goTo('practice-select')" style="width:100%;font-size:15px;">
+          연습 모드
+        </button>
+      </div>
+    </aside>
+    <!-- 중앙 -->
+    <main class="lobby-center">
+      <div class="lobby-toolbar">
+        <input class="search-input" placeholder="방 코드 또는 호스트 이름 검색..." />
+        <button class="btn btn-ghost btn-sm">전체</button>
+        <button class="btn btn-ghost btn-sm">WAITING</button>
+        <button class="btn btn-primary" onclick="openCreateModal()">+ Room 만들기</button>
+      </div>
+      <div class="room-list" id="roomList"></div>
+    </main>
+    <!-- 우측 -->
+    <aside class="lobby-right">
+      <div class="stat-card">
+        <div class="stat-card-title">접속자</div>
+        <div class="online-num">42</div>
+        <div style="font-size:13px;color:var(--text-secondary);margin-top:4px;">현재 온라인</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-title">진행 중 게임</div>
+        <div class="game-num">3</div>
+        <div style="font-size:13px;color:var(--text-secondary);margin-top:4px;">활성 게임</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-title">최근 우승자</div>
+        <div class="winner-list" id="winnerList"></div>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════
+     모달: Room 생성
+══════════════════════════════════════════════ -->
+<div class="modal-overlay" id="createRoomModal">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeCreateModal()">✕</button>
+    <div class="modal-title">Room 만들기</div>
+    <div class="modal-sub">게임 방 설정을 구성하세요</div>
+
+    <div class="form-group">
+      <label class="form-label">최대 인원</label>
+      <div class="radio-group" id="maxPlayersGroup">
+        <div class="radio-btn" onclick="selectRadio('maxPlayersGroup',this,'2')">2명</div>
+        <div class="radio-btn selected" onclick="selectRadio('maxPlayersGroup',this,'3')">3명</div>
+        <div class="radio-btn" onclick="selectRadio('maxPlayersGroup',this,'4')">4명</div>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">턴 타임아웃</label>
+      <div class="radio-group" id="timeoutGroup">
+        <div class="radio-btn" onclick="selectRadio('timeoutGroup',this,'30')">30초</div>
+        <div class="radio-btn selected" onclick="selectRadio('timeoutGroup',this,'60')">60초</div>
+        <div class="radio-btn" onclick="selectRadio('timeoutGroup',this,'90')">90초</div>
+        <div class="radio-btn" onclick="selectRadio('timeoutGroup',this,'120')">120초</div>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">AI 플레이어 설정</label>
+      <!-- Seat 1 -->
+      <div class="ai-seat-card">
+        <div class="ai-seat-header">
+          <div class="seat-num">1</div>
+          <span>Seat 1</span>
+          <select class="ai-select" style="margin-left:auto;width:120px;" onchange="toggleAISeat(this,1)">
+            <option value="none">없음</option>
+            <option value="ai" selected>AI 추가</option>
+          </select>
+        </div>
+        <div id="aiSeatDetail1" class="ai-seat-grid">
+          <div>
+            <div class="ai-mini-label">모델</div>
+            <select class="ai-select"><option>Claude</option><option>GPT-4o</option><option>DeepSeek</option><option>LLaMA</option></select>
+          </div>
+          <div>
+            <div class="ai-mini-label">캐릭터</div>
+            <select class="ai-select"><option>Shark</option><option>Fox</option><option>Calculator</option><option>Rookie</option><option>Wall</option><option>Wildcard</option></select>
+          </div>
+          <div>
+            <div class="ai-mini-label">난이도</div>
+            <select class="ai-select"><option>하수</option><option>중수</option><option selected>고수</option></select>
+          </div>
+          <div>
+            <div class="ai-mini-label">심리전 레벨</div>
+            <select class="ai-select"><option>0</option><option>1</option><option selected>2</option><option>3</option></select>
+          </div>
+        </div>
+      </div>
+      <!-- Seat 2 -->
+      <div class="ai-seat-card">
+        <div class="ai-seat-header">
+          <div class="seat-num">2</div>
+          <span>Seat 2</span>
+          <select class="ai-select" style="margin-left:auto;width:120px;" onchange="toggleAISeat(this,2)">
+            <option value="none">없음</option>
+            <option value="ai" selected>AI 추가</option>
+          </select>
+        </div>
+        <div id="aiSeatDetail2" class="ai-seat-grid">
+          <div>
+            <div class="ai-mini-label">모델</div>
+            <select class="ai-select"><option>GPT-4o</option><option>Claude</option><option>DeepSeek</option><option>LLaMA</option></select>
+          </div>
+          <div>
+            <div class="ai-mini-label">캐릭터</div>
+            <select class="ai-select"><option>Fox</option><option>Shark</option><option>Calculator</option><option>Rookie</option></select>
+          </div>
+          <div>
+            <div class="ai-mini-label">난이도</div>
+            <select class="ai-select"><option>하수</option><option selected>중수</option><option>고수</option></select>
+          </div>
+          <div>
+            <div class="ai-mini-label">심리전 레벨</div>
+            <select class="ai-select"><option>0</option><option selected>1</option><option>2</option><option>3</option></select>
+          </div>
+        </div>
+      </div>
+      <!-- Seat 3 -->
+      <div class="ai-seat-card">
+        <div class="ai-seat-header">
+          <div class="seat-num">3</div>
+          <span>Seat 3</span>
+          <select class="ai-select" style="margin-left:auto;width:120px;" onchange="toggleAISeat(this,3)">
+            <option value="none" selected>없음</option>
+            <option value="ai">AI 추가</option>
+          </select>
+        </div>
+        <div id="aiSeatDetail3" class="ai-seat-grid" style="display:none;opacity:0.5;pointer-events:none;"></div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px;">
+      <button class="btn btn-ghost" onclick="closeCreateModal()">취소</button>
+      <button class="btn btn-warning btn-lg" onclick="goToWaiting()">Room 만들기</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     화면 4: 대기실
+══════════════════════════════════════════════ -->
+<section class="screen" id="screen-waiting">
+  <div class="waiting-container">
+    <div class="waiting-header">
+      <div class="room-code-big">ABCD</div>
+      <div class="waiting-sub">이 코드를 공유하여 친구를 초대하세요</div>
+      <div class="share-link">
+        <span class="share-url">https://rummiarena.kr/room/ABCD</span>
+        <button class="btn btn-ghost btn-sm" onclick="copyLink()">복사</button>
+      </div>
+    </div>
+    <div class="seats-grid" id="seatsGrid"></div>
+    <div class="waiting-settings">
+      <div class="ws-item">
+        <div style="font-size:13px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;">최대 인원</div>
+        <div class="wsi-val">4명</div>
+      </div>
+      <div class="ws-item">
+        <div style="font-size:13px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;">턴 타임아웃</div>
+        <div class="wsi-val">60초</div>
+      </div>
+      <div class="ws-item">
+        <div style="font-size:13px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;">현재 인원</div>
+        <div class="wsi-val">3명 (준비 완료)</div>
+      </div>
+    </div>
+    <div class="waiting-actions">
+      <button class="btn btn-ghost btn-lg" onclick="goTo('lobby')">로비로</button>
+      <button class="btn btn-success btn-lg" onclick="startGame()">게임 시작</button>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════
+     화면 5: 게임 플레이
+══════════════════════════════════════════════ -->
+<section class="screen" id="screen-game">
+  <!-- 상대 영역 -->
+  <div class="opponents" id="opponentsArea"></div>
+
+  <!-- 테이블 -->
+  <div class="table-area">
+    <div class="table-felt" id="gameFelt">
+      <div class="table-label-text">T A B L E</div>
+      <div class="table-sets" id="gameTableSets"></div>
+    </div>
+    <div class="ai-think-overlay" id="aiThinkOverlay">
+      <span class="badge badge-ai pulse-ai">AI</span>
+      <span id="aiThinkName">Shark (Claude)</span>
+      이 생각하고 있습니다
+      <div class="thinking-dots"><span></span><span></span><span></span></div>
+    </div>
+    <div class="table-info-bar">
+      <div class="draw-pile-wrap">
+        <div class="draw-stack">
+          <div class="draw-card-visual">?</div>
+          <div class="draw-card-visual">?</div>
+          <div class="draw-card-visual">?</div>
+        </div>
+        <div class="draw-count-txt">드로우 파일 <span id="gameDrawCount">28</span>장</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:20px;">
+        <div class="timer-circle" id="timerCircle">
+          <svg class="timer-ring" viewBox="0 0 52 52">
+            <circle class="timer-bg" cx="26" cy="26" r="22"/>
+            <circle class="timer-fg" id="timerArc" cx="26" cy="26" r="22"/>
+          </svg>
+          <span class="timer-text" id="timerText">0:60</span>
+        </div>
+        <div class="game-meta">
+          <div>턴 <span class="gm-val" id="gameTurnNum">1</span></div>
+          <div>상태 <span class="gm-val">진행 중</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 내 랙 -->
+  <div class="my-rack-area">
+    <div class="rack-header">
+      <span class="rack-title">내 패</span>
+      <span class="rack-count" id="myRackCount">14장</span>
+      <span class="badge badge-meld-not" id="myMeldBadge">최초 등록 전</span>
+    </div>
+    <div class="rack-tiles" id="myRackTiles"></div>
+    <div class="rack-actions">
+      <button class="btn btn-success" id="btnConfirm" onclick="confirmTurn()">확정</button>
+      <button class="btn btn-primary" onclick="drawTile()">드로우</button>
+      <button class="btn btn-ghost" onclick="resetTurn()">초기화</button>
+    </div>
+  </div>
+
+  <!-- 컨트롤 -->
+  <div class="game-ctrl-bar">
+    <button class="btn btn-ghost btn-sm" id="btnAutoPlay" onclick="toggleAutoPlay()">자동 진행</button>
+    <button class="btn btn-ghost btn-sm" onclick="gameStep()">다음 턴</button>
+    <button class="btn btn-ghost btn-sm" onclick="cycleSpeed()" id="btnSpeed">속도: 보통</button>
+    <button class="btn btn-ghost btn-sm" onclick="goTo('lobby')" style="margin-left:20px;">로비로</button>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════
+     화면 6: 게임 결과
+══════════════════════════════════════════════ -->
+<section class="screen" id="screen-result">
+  <div class="result-card">
+    <div class="result-title">게임 종료!</div>
+    <div class="result-winner-name">🏆 Fox (GPT-4o) 우승!</div>
+    <table class="score-table">
+      <thead>
+        <tr>
+          <th>순위</th>
+          <th>플레이어</th>
+          <th>잔여 타일</th>
+          <th>점수</th>
+        </tr>
+      </thead>
+      <tbody id="scoreTableBody"></tbody>
+    </table>
+    <div class="result-stats">총 턴: 42 &nbsp;·&nbsp; 경기 시간: 18분</div>
+    <div class="result-elo">
+      <span style="color:var(--text-secondary);">ELO 변동: </span>
+      <strong>1,200</strong>
+      <span style="color:var(--text-muted);margin:0 4px;">→</span>
+      <strong>1,192</strong>
+      <span class="elo-change-neg">(-8)</span>
+      &nbsp;&nbsp;2위
+    </div>
+    <div class="result-actions">
+      <button class="btn btn-ghost btn-lg" onclick="goTo('lobby')">로비로</button>
+      <button class="btn btn-primary btn-lg" onclick="showToast('복기 기능은 실제 게임 서버 연동 후 사용 가능합니다.','4분할 뷰 복기')">복기하기</button>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════
+     화면 7: 연습 모드 Stage 선택
+══════════════════════════════════════════════ -->
+<section class="screen" id="screen-practice-select">
+  <div class="practice-header">
+    <div class="practice-title">연습 모드</div>
+    <div class="practice-desc">루미큐브 규칙을 단계별로 학습하고 AI와 실전 대결을 펼쳐보세요</div>
+  </div>
+  <div class="stage-grid" id="stageGrid"></div>
+</section>
+
+<!-- ══════════════════════════════════════════════
+     화면 8: 연습 모드 진행
+══════════════════════════════════════════════ -->
+<section class="screen" id="screen-practice-play">
+  <div class="practice-goal-bar">
+    <div class="practice-stage-badge">Stage 3</div>
+    <div class="practice-goal-text">목표: 같은 숫자 3장으로 그룹 세트 2개를 완성하세요</div>
+    <div class="hint-badge" onclick="showHint()">💡 힌트</div>
+  </div>
+
+  <!-- 테이블 -->
+  <div class="table-area" style="border-top:none;">
+    <div class="table-felt" id="practiceFelt">
+      <div class="table-label-text">T A B L E</div>
+      <div class="table-sets" id="practiceTableSets"></div>
+    </div>
+    <div class="table-info-bar">
+      <div class="draw-pile-wrap">
+        <div class="draw-stack">
+          <div class="draw-card-visual">?</div>
+          <div class="draw-card-visual">?</div>
+          <div class="draw-card-visual">?</div>
+        </div>
+        <div class="draw-count-txt">드로우 파일 <span>34</span>장</div>
+      </div>
+      <div class="game-meta">
+        <div>이동 수 <span class="gm-val">7</span></div>
+        <div style="color:#3FB950;font-weight:700;">타이머 없음</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 랙 -->
+  <div class="my-rack-area">
+    <div class="rack-header">
+      <span class="rack-title">내 패 (연습)</span>
+      <span class="rack-count">11장</span>
+      <span class="badge badge-meld-not">최초 등록 전</span>
+    </div>
+    <div class="rack-tiles" id="practiceRackTiles"></div>
+    <div class="rack-actions">
+      <button class="btn btn-success" onclick="practiceConfirm()">확정</button>
+      <button class="btn btn-primary">드로우</button>
+      <button class="btn btn-ghost">초기화</button>
+      <button class="btn btn-ghost" onclick="goTo('practice-select')" style="margin-left:auto;">Stage 선택으로</button>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════
+     JavaScript
+══════════════════════════════════════════════ -->
+<script>
+/* ────────────────────────────────
+   상태 & 데이터
+──────────────────────────────── */
+let currentScreen = 'login';
+let autoPlayTimer  = null;
+let autoPlaying    = false;
+let turnNum        = 1;
+let timerSec       = 60;
+let timerInterval  = null;
+let speedMs        = 1800;
+let gameDrawCount  = 28;
+let currentTheme   = localStorage.getItem('ra-theme') || 'dark';
+
+const SPEEDS = [
+  {label:'느림',ms:3000},
+  {label:'보통',ms:1800},
+  {label:'빠름',ms:900},
+  {label:'매우 빠름',ms:400},
+];
+let speedIdx = 1;
+
+/* ── 게임 데이터 ── */
+const MY_TILES_INIT = ['R7a','B3a','B7b','Y4a','Y5a','Y6b','K2a','K9b','R11a','B12a','Y1a','K13b','JK1','R5b'];
+let myTiles = [...MY_TILES_INIT];
+let meldDone = false;
+
+const TABLE_SETS_INIT = [
+  {id:'s1', label:'Group', tiles:['R7a','B7a','K7b']},
+  {id:'s2', label:'Run',   tiles:['Y3a','Y4a','Y5a','Y6b']},
+  {id:'s3', label:'Group', tiles:['R1a','B1a','Y1b','K1a']},
+];
+let tableSets = JSON.parse(JSON.stringify(TABLE_SETS_INIT));
+
+const OPPONENTS = [
+  {name:'Shark',   model:'Claude',   difficulty:'고수', tiles:11, thinking:false, meld:true},
+  {name:'Fox',     model:'GPT-4o',   difficulty:'중수', tiles:8,  thinking:false, meld:false},
+  {name:'Rookie',  model:'DeepSeek', difficulty:'하수', tiles:14, thinking:false, meld:false},
+];
+
+const ROOM_SAMPLES = [
+  {code:'XKZT', host:'철수', players:2, max:4, ai:['Shark','Fox'], status:'WAITING', timeout:60},
+  {code:'MFBP', host:'영희', players:3, max:3, ai:['Calculator'], status:'PLAYING', timeout:90},
+  {code:'QLRW', host:'민준', players:1, max:4, ai:['Rookie'],     status:'WAITING', timeout:30},
+  {code:'HSKY', host:'지수', players:2, max:4, ai:['Wall','Fox'], status:'WAITING', timeout:120},
+];
+
+const WINNERS_RECENT = [
+  {name:'Shark',   model:'Claude',  rank:1},
+  {name:'철수',     model:'Human',   rank:1},
+  {name:'Fox',     model:'GPT-4o',  rank:1},
+  {name:'Calculator',model:'DeepSeek',rank:1},
+];
+
+const SCORE_DATA = [
+  {rank:1, name:'Fox',     model:'GPT-4o',   tiles:0,  score:0},
+  {rank:2, name:'애벌레',   model:'Human',    tiles:5,  score:14},
+  {rank:3, name:'Shark',   model:'Claude',   tiles:9,  score:31},
+  {rank:4, name:'Rookie',  model:'DeepSeek', tiles:14, score:52},
+];
+
+const STAGES = [
+  {num:1, name:'최초 등록',    icon:'🎯', desc:'30점 이상 세트를 구성하여 최초 등록을 완성하세요', cleared:true,  best:'이동 수 9'},
+  {num:2, name:'런 만들기',    icon:'🔗', desc:'같은 색상 연속 숫자 3장 이상으로 런을 완성하세요', cleared:true,  best:'이동 수 5'},
+  {num:3, name:'그룹 만들기',  icon:'🎲', desc:'같은 숫자 3~4장으로 그룹 세트를 완성하세요',       cleared:false, best:'-'},
+  {num:4, name:'테이블 재배치',icon:'🔄', desc:'테이블 세트를 분리하고 합쳐 새 세트를 만드세요',   cleared:false, best:'-'},
+  {num:5, name:'조커 활용',    icon:'🃏', desc:'조커를 활용하여 세트를 완성하세요',               cleared:false, best:'-'},
+  {num:6, name:'종합 실전',    icon:'⚔️', desc:'AI와 1:1 실전 대결 — 모든 규칙 적용',           cleared:false, best:'-'},
+];
+
+const PRACTICE_TILES = ['R7a','B3a','Y4a','Y5a','Y6b','K2a','R5b','B9a','K11a','R13a','Y8b'];
+
+/* ────────────────────────────────
+   테마
+──────────────────────────────── */
+function applyTheme(t) {
+  currentTheme = t;
+  document.documentElement.setAttribute('data-theme', t);
+  const btn = document.getElementById('themeToggle');
+  btn.textContent = t === 'dark' ? '☀️ 라이트' : '🌙 다크';
+  localStorage.setItem('ra-theme', t);
+}
+function toggleTheme() {
+  applyTheme(currentTheme === 'dark' ? 'light' : 'dark');
+}
+applyTheme(currentTheme);
+
+/* ────────────────────────────────
+   화면 전환
+──────────────────────────────── */
+const SCREEN_NAMES = {
+  'login':            '로그인',
+  'lobby':            '로비',
+  'waiting':          '대기실',
+  'game':             '게임 플레이',
+  'result':           '게임 결과',
+  'practice-select':  '연습 모드',
+  'practice-play':    '연습 진행',
+};
+const SCREEN_PARENTS = {
+  'waiting':          'lobby',
+  'game':             'waiting',
+  'result':           'game',
+  'practice-play':    'practice-select',
+};
+
+function goTo(screenId) {
+  stopAutoPlay();
+  stopTimer();
+
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  const el = document.getElementById('screen-' + screenId);
+  if (el) el.classList.add('active');
+  currentScreen = screenId;
+
+  updateBreadcrumb(screenId);
+  onScreenEnter(screenId);
+}
+
+function updateBreadcrumb(screenId) {
+  const bc = document.getElementById('breadcrumb');
+  if (screenId === 'login') { bc.innerHTML = ''; return; }
+
+  let parts = [];
+  let cur = screenId;
+  while (cur) {
+    parts.unshift(cur);
+    cur = SCREEN_PARENTS[cur];
+  }
+  if (parts[0] !== 'lobby') parts.unshift('lobby');
+  parts = [...new Set(parts)];
+
+  let html = '';
+  parts.forEach((p, i) => {
+    const name = SCREEN_NAMES[p] || p;
+    if (i === parts.length - 1) {
+      html += `<span class="crumb-cur">${name}</span>`;
+    } else {
+      html += `<span class="crumb-back" onclick="goTo('${p}')">${name}</span>`;
+      html += `<span class="crumb-sep">›</span>`;
+    }
+  });
+  bc.innerHTML = html;
+}
+
+function onScreenEnter(id) {
+  if (id === 'lobby')           initLobby();
+  if (id === 'waiting')         initWaiting();
+  if (id === 'game')            initGame();
+  if (id === 'result')          initResult();
+  if (id === 'practice-select') initPracticeSelect();
+  if (id === 'practice-play')   initPracticePlay();
+}
+
+/* ────────────────────────────────
+   로그인
+──────────────────────────────── */
+function doLogin() {
+  showToast('로그인 성공!', 'Google OAuth 인증 완료');
+  setTimeout(() => goTo('lobby'), 900);
+}
+function doGuestLogin() {
+  showToast('게스트로 입장합니다', '관전 및 복기만 가능합니다');
+  setTimeout(() => goTo('lobby'), 900);
+}
+
+/* ────────────────────────────────
+   로비 초기화
+──────────────────────────────── */
+function initLobby() {
+  renderRoomList();
+  renderWinnerList();
+}
+
+function renderRoomList() {
+  const el = document.getElementById('roomList');
+  el.innerHTML = ROOM_SAMPLES.map(r => `
+    <div class="room-card" onclick="joinRoom('${r.code}')">
+      <div>
+        <div class="room-code">${r.code}</div>
+        <div style="font-size:13px;color:var(--text-secondary);margin-top:4px;">${r.timeout}초 제한</div>
+      </div>
+      <div class="room-info">
+        <div class="ri-top">
+          <span class="ri-host" style="font-size:16px;">${r.host}</span>
+          <span class="badge ${r.status === 'WAITING' ? 'badge-waiting' : 'badge-playing'}">${r.status}</span>
+        </div>
+        <div class="ri-bot">
+          <span>👥 ${r.players}/${r.max}명</span>
+          <div class="ai-badges">${r.ai.map(a => `<span class="ai-badge">${a}</span>`).join('')}</div>
+        </div>
+      </div>
+      <div class="room-join-btn">
+        ${r.status === 'WAITING'
+          ? `<button class="btn btn-primary btn-sm">참가</button>`
+          : `<button class="btn btn-ghost btn-sm">관전</button>`}
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderWinnerList() {
+  document.getElementById('winnerList').innerHTML = WINNERS_RECENT.map((w,i) => `
+    <div class="winner-item">
+      <span class="wi-rank">${i+1}.</span>
+      <span class="wi-name">${w.name}</span>
+      <span class="wi-model">${w.model}</span>
+    </div>
+  `).join('');
+}
+
+function joinRoom(code) {
+  showToast(`Room ${code} 참가 중...`, '대기실로 이동합니다');
+  setTimeout(() => goTo('waiting'), 700);
+}
+
+/* ────────────────────────────────
+   Room 생성 모달
+──────────────────────────────── */
+function openCreateModal() {
+  document.getElementById('createRoomModal').classList.add('show');
+}
+function closeCreateModal() {
+  document.getElementById('createRoomModal').classList.remove('show');
+}
+function selectRadio(groupId, el, val) {
+  document.querySelectorAll(`#${groupId} .radio-btn`).forEach(b => b.classList.remove('selected'));
+  el.classList.add('selected');
+}
+function toggleAISeat(sel, seatNum) {
+  const detail = document.getElementById('aiSeatDetail' + seatNum);
+  if (!detail) return;
+  if (sel.value === 'ai') {
+    detail.style.display = 'grid';
+    detail.style.opacity = '1';
+    detail.style.pointerEvents = 'all';
+  } else {
+    detail.style.display = 'none';
+  }
+}
+function goToWaiting() {
+  closeCreateModal();
+  goTo('waiting');
+}
+
+/* ────────────────────────────────
+   대기실
+──────────────────────────────── */
+function initWaiting() {
+  const seatsData = [
+    {label:'Seat 0', name:'애벌레', type:'host',  status:'ready', aiDetail:''},
+    {label:'Seat 1', name:'Shark',  type:'ai',    status:'ready', aiDetail:'Claude · 고수 · 심리전 2'},
+    {label:'Seat 2', name:'Fox',    type:'ai',    status:'ready', aiDetail:'GPT-4o · 중수 · 심리전 1'},
+    {label:'Seat 3', name:'대기 중...', type:'empty', status:'empty', aiDetail:''},
+  ];
+  document.getElementById('seatsGrid').innerHTML = seatsData.map(s => {
+    const cls = s.type === 'host' ? 'occupied' : s.type === 'ai' ? 'ai-seat' : 'empty';
+    const readyCls = s.status === 'ready' ? 'ready' : s.status === 'empty' ? 'empty' : 'waiting';
+    return `
+      <div class="seat-card ${cls}">
+        <div class="seat-label">${s.label}</div>
+        <div class="seat-player-name">${s.name}</div>
+        <div class="seat-badges">
+          ${s.type === 'host' ? '<span class="badge badge-host">HOST</span>' : ''}
+          ${s.type === 'ai'   ? '<span class="badge badge-ai">AI</span>'   : ''}
+          ${s.status === 'ready' ? '<span class="badge badge-waiting">READY</span>' : ''}
+        </div>
+        ${s.aiDetail ? `<div class="seat-ai-detail">${s.aiDetail}</div>` : ''}
+        <div class="seat-ready ${readyCls}"></div>
+      </div>
+    `;
+  }).join('');
+}
+
+function startGame() {
+  showToast('게임 시작!', '타일을 배분하고 있습니다...');
+  setTimeout(() => goTo('game'), 900);
+}
+
+function copyLink() {
+  showToast('링크가 복사되었습니다!', 'https://rummiarena.kr/room/ABCD');
+}
+
+/* ────────────────────────────────
+   타일 렌더링 유틸리티
+──────────────────────────────── */
+const TILE_COLOR_MAP = { R:'R', B:'B', Y:'Y', K:'K', J:'JK' };
+const TILE_SYMBOL    = { R:'◆', B:'●', Y:'▲', K:'■', JK:'★' };
+
+function parseTile(code) {
+  if (code.startsWith('JK')) return {color:'JK', num:'JK', sid:code[2]||'1'};
+  const color = code[0];
+  const sid   = code[code.length - 1];
+  const num   = code.slice(1, code.length - 1);
+  return {color, num, sid};
+}
+
+function renderTile(code, sizeClass, extraClass='') {
+  const t = parseTile(code);
+  const colorCls = t.color === 'JK' ? 'JK' : t.color;
+  const sym = TILE_SYMBOL[t.color] || '';
+  const numStr = t.num === 'JK' ? '★' : t.num;
+  return `
+    <div class="tile ${colorCls} ${sizeClass} ${extraClass}" title="${code}" role="button" aria-label="${code}">
+      <span class="t-num">${numStr}</span>
+      ${t.color !== 'JK' ? `<span class="t-sid">${t.sid}</span>` : ''}
+      <span class="t-sym">${sym}</span>
+    </div>
+  `;
+}
+
+function renderMiniTile(gone) {
+  return `<div class="tile sz-mini tile-back${gone?' gone':''}"></div>`;
+}
+
+/* ────────────────────────────────
+   게임 플레이 초기화
+──────────────────────────────── */
+function initGame() {
+  myTiles = [...MY_TILES_INIT];
+  tableSets = JSON.parse(JSON.stringify(TABLE_SETS_INIT));
+  meldDone = false;
+  turnNum = 1;
+  gameDrawCount = 28;
+  timerSec = 60;
+
+  renderOpponents(0); // 초기엔 아무도 활성 아님
+  renderTableSets();
+  renderMyRack();
+  renderGameInfo();
+  updateTimer(60, 60);
+  startTimer();
+}
+
+function renderOpponents(activeIdx) {
+  document.getElementById('opponentsArea').innerHTML = OPPONENTS.map((opp, i) => `
+    <div class="opp-card ${i === activeIdx ? 'active' : ''}" id="opp${i}">
+      <div class="opp-name">${opp.name}</div>
+      <div class="opp-type">${opp.model} · ${opp.difficulty}</div>
+      <div class="opp-mini-tiles">
+        ${Array.from({length: Math.min(opp.tiles, 16)}, () => renderMiniTile(false)).join('')}
+      </div>
+      <div class="opp-meld ${opp.meld ? 'done' : 'not'}">${opp.meld ? '최초등록 완료' : '최초등록 전'}</div>
+      <div class="opp-thinking-badge">
+        <span>사고 중</span>
+        <div class="thinking-dots"><span></span><span></span><span></span></div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderTableSets() {
+  document.getElementById('gameTableSets').innerHTML = tableSets.map(s => `
+    <div class="tile-set" id="${s.id}">
+      ${s.tiles.map(t => renderTile(t, 'sz-md')).join('')}
+    </div>
+  `).join('');
+}
+
+function renderMyRack() {
+  document.getElementById('myRackTiles').innerHTML = myTiles.map(t =>
+    renderTile(t, 'sz-lg', 'rack-hover')
+  ).join('');
+  document.getElementById('myRackCount').textContent = myTiles.length + '장';
+  document.getElementById('myMeldBadge').className = 'badge ' + (meldDone ? 'badge-meld-done' : 'badge-meld-not');
+  document.getElementById('myMeldBadge').textContent = meldDone ? '최초 등록 완료' : '최초 등록 전';
+}
+
+function renderGameInfo() {
+  document.getElementById('gameTurnNum').textContent = turnNum;
+  document.getElementById('gameDrawCount').textContent = gameDrawCount;
+}
+
+/* ────────────────────────────────
+   타이머
+──────────────────────────────── */
+function updateTimer(remain, total) {
+  const pct = remain / total;
+  const circumference = 2 * Math.PI * 22;
+  const offset = circumference * (1 - pct);
+  const arc = document.getElementById('timerArc');
+  if (!arc) return;
+  arc.style.strokeDashoffset = offset;
+  arc.style.stroke = remain <= 10 ? '#F85149' : remain <= 20 ? '#F3C623' : '#3FB950';
+  const m = Math.floor(remain / 60);
+  const s = remain % 60;
+  document.getElementById('timerText').textContent = `${m}:${String(s).padStart(2,'0')}`;
+  document.getElementById('timerText').style.color = remain <= 10 ? '#F85149' : remain <= 20 ? '#F3C623' : 'var(--text-primary)';
+}
+
+function startTimer() {
+  stopTimer();
+  timerInterval = setInterval(() => {
+    timerSec--;
+    if (timerSec < 0) timerSec = 0;
+    updateTimer(timerSec, 60);
+    if (timerSec === 0) {
+      stopTimer();
+      autoDrawOnTimeout();
+    }
+  }, 1000);
+}
+
+function stopTimer() {
+  if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+}
+
+function autoDrawOnTimeout() {
+  showToast('시간 초과!', '자동으로 드로우합니다');
+  drawTile();
+}
+
+/* ────────────────────────────────
+   게임 액션
+──────────────────────────────── */
+function confirmTurn() {
+  if (myTiles.length === MY_TILES_INIT.length) {
+    showToast('타일을 먼저 배치해주세요', '테이블로 타일을 이동하세요');
+    return;
+  }
+  meldDone = true;
+  showToast('턴 확정!', `${myTiles.length}장 남음`);
+  renderMyRack();
+  advanceTurn();
+}
+
+function drawTile() {
+  if (gameDrawCount <= 0) { showToast('드로우 파일이 비어있습니다', ''); return; }
+  const drawn = ['R8b','B5a','Y9a','K4b','R2b','Y11a','B6b'][Math.floor(Math.random()*7)];
+  myTiles.push(drawn);
+  gameDrawCount--;
+  renderMyRack();
+  renderGameInfo();
+  // 새 타일 애니메이션
+  const tiles = document.querySelectorAll('#myRackTiles .tile');
+  if (tiles.length > 0) {
+    const last = tiles[tiles.length - 1];
+    last.classList.add('anim-drawn');
+    setTimeout(() => last.classList.remove('anim-drawn'), 600);
+  }
+  advanceTurn();
+}
+
+function resetTurn() {
+  myTiles = [...MY_TILES_INIT];
+  tableSets = JSON.parse(JSON.stringify(TABLE_SETS_INIT));
+  renderMyRack();
+  renderTableSets();
+  showToast('초기화되었습니다', '이번 턴 배치가 취소되었습니다');
+}
+
+function advanceTurn() {
+  stopTimer();
+  turnNum++;
+  timerSec = 60;
+  renderGameInfo();
+  updateTimer(60, 60);
+  if (turnNum > 42) { goTo('result'); return; }
+  startTimer();
+}
+
+/* ────────────────────────────────
+   자동 시뮬레이션
+──────────────────────────────── */
+const SIM_TURNS = [
+  {actor:'shark',  action:'place',  tiles:['K7a','R7b','Y7c'], set:{id:'s4',label:'Group',tiles:['K7a','R7b','Y7a']}},
+  {actor:'fox',    action:'draw'},
+  {actor:'rookie', action:'place',  tiles:['B9a','B10a','B11a'], set:{id:'s5',label:'Run',tiles:['B9a','B10a','B11a']}},
+  {actor:'me',     action:'place',  tiles:['Y4a','Y5a','Y6b'], existing:'s2'},
+  {actor:'shark',  action:'place',  tiles:['R5b','R6a','R7a'], set:{id:'s6',label:'Run',tiles:['R5b','R6a','R7a']}},
+  {actor:'fox',    action:'place',  tiles:['B3a','B4a','B5a'], set:{id:'s7',label:'Run',tiles:['B3a','B4a','B5a']}},
+  {actor:'rookie', action:'draw'},
+  {actor:'me',     action:'draw'},
+];
+let simIdx = 0;
+
+function gameStep() {
+  if (simIdx >= SIM_TURNS.length) { simIdx = 0; }
+  const turn = SIM_TURNS[simIdx++];
+  executeTurn(turn);
+}
+
+function executeTurn(turn) {
+  stopTimer();
+  timerSec = 60;
+  turnNum++;
+  renderGameInfo();
+
+  // 상대 활성화
+  const actorMap = {shark:0, fox:1, rookie:2};
+  const activeOppIdx = actorMap[turn.actor];
+
+  if (turn.actor === 'me') {
+    renderOpponents(-1);
+    if (turn.action === 'draw') {
+      drawTile();
+      return;
+    }
+    if (myTiles.length > 3) {
+      myTiles.splice(0, 2);
+      meldDone = true;
+      renderMyRack();
+    }
+    if (turn.set) {
+      tableSets.push(turn.set);
+      renderTableSets();
+      // glow 애니메이션
+      setTimeout(() => {
+        const el = document.getElementById(turn.set.id);
+        if (el) { el.classList.add('anim-new'); setTimeout(() => el.classList.remove('anim-new'), 800); }
+      }, 100);
+    }
+  } else {
+    renderOpponents(activeOppIdx);
+    const opp = OPPONENTS[activeOppIdx];
+
+    // AI 사고 오버레이
+    const overlay = document.getElementById('aiThinkOverlay');
+    document.getElementById('aiThinkName').textContent = `${opp.name} (${opp.model})`;
+    overlay.classList.add('show');
+
+    const thinkDelay = 800 + Math.random() * 600;
+    setTimeout(() => {
+      overlay.classList.remove('show');
+      renderOpponents(-1);
+
+      if (turn.action === 'draw') {
+        opp.tiles++;
+      } else if (turn.action === 'place') {
+        opp.tiles = Math.max(0, opp.tiles - (turn.tiles ? turn.tiles.length : 2));
+        opp.meld = true;
+        if (turn.set) {
+          tableSets.push(turn.set);
+          renderTableSets();
+          setTimeout(() => {
+            const el = document.getElementById(turn.set.id);
+            if (el) { el.classList.add('anim-new'); setTimeout(() => el.classList.remove('anim-new'), 800); }
+          }, 100);
+        }
+      }
+      renderOpponents(-1);
+      if (opp.tiles <= 0) { goTo('result'); return; }
+      updateTimer(60, 60);
+      startTimer();
+    }, thinkDelay);
+  }
+}
+
+/* ────────────────────────────────
+   자동 진행
+──────────────────────────────── */
+function toggleAutoPlay() {
+  autoPlaying ? stopAutoPlay() : startAutoPlay();
+}
+function startAutoPlay() {
+  autoPlaying = true;
+  document.getElementById('btnAutoPlay').textContent = '정지';
+  document.getElementById('btnAutoPlay').className = 'btn btn-danger btn-sm';
+  autoPlayTimer = setInterval(gameStep, SPEEDS[speedIdx].ms);
+}
+function stopAutoPlay() {
+  autoPlaying = false;
+  const btn = document.getElementById('btnAutoPlay');
+  if (btn) { btn.textContent = '자동 진행'; btn.className = 'btn btn-ghost btn-sm'; }
+  if (autoPlayTimer) { clearInterval(autoPlayTimer); autoPlayTimer = null; }
+}
+function cycleSpeed() {
+  speedIdx = (speedIdx + 1) % SPEEDS.length;
+  const s = SPEEDS[speedIdx];
+  document.getElementById('btnSpeed').textContent = '속도: ' + s.label;
+  speedMs = s.ms;
+  if (autoPlaying) { stopAutoPlay(); startAutoPlay(); }
+}
+
+/* ────────────────────────────────
+   게임 결과
+──────────────────────────────── */
+function initResult() {
+  document.getElementById('scoreTableBody').innerHTML = SCORE_DATA.map(r => `
+    <tr class="${r.rank === 1 ? 'rank-1' : ''}">
+      <td><span class="rank-medal">${r.rank === 1 ? '🥇' : r.rank === 2 ? '🥈' : r.rank === 3 ? '🥉' : r.rank}</span></td>
+      <td><strong>${r.name}</strong> <span style="font-size:12px;color:var(--text-secondary);">(${r.model})</span></td>
+      <td>${r.tiles}장</td>
+      <td>${r.score}점</td>
+    </tr>
+  `).join('');
+}
+
+/* ────────────────────────────────
+   연습 모드
+──────────────────────────────── */
+function initPracticeSelect() {
+  document.getElementById('stageGrid').innerHTML = STAGES.map(s => `
+    <div class="stage-card ${s.cleared ? 'cleared' : ''}" onclick="startStage(${s.num})">
+      ${s.cleared ? '<div class="stage-clear-mark">✓</div>' : ''}
+      <div class="stage-icon">${s.icon}</div>
+      <div class="stage-num">Stage ${s.num}</div>
+      <div class="stage-name">${s.name}</div>
+      <div class="stage-desc">${s.desc}</div>
+      <div class="stage-card-footer">
+        <span class="stage-best">최고: ${s.best}</span>
+        <button class="btn btn-primary btn-sm">시작</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function startStage(num) {
+  showToast(`Stage ${num} 시작!`, '');
+  setTimeout(() => goTo('practice-play'), 500);
+}
+
+function initPracticePlay() {
+  const tableSetsEl = document.getElementById('practiceTableSets');
+  tableSetsEl.innerHTML = `
+    <div class="tile-set">
+      ${renderTile('R7a','sz-md')}${renderTile('B7a','sz-md')}${renderTile('K7b','sz-md')}
+    </div>
+  `;
+  document.getElementById('practiceRackTiles').innerHTML =
+    PRACTICE_TILES.map(t => renderTile(t, 'sz-lg', 'rack-hover')).join('');
+}
+
+function practiceConfirm() {
+  showToast('Stage 3 클리어!', '그룹 세트 2개 완성!');
+}
+
+function showHint() {
+  // 힌트: 타일에 glow 효과
+  const tiles = document.querySelectorAll('#practiceRackTiles .tile');
+  tiles.forEach((t, i) => {
+    if (i < 3) { t.classList.add('glow'); setTimeout(() => t.classList.remove('glow'), 2000); }
+  });
+  showToast('힌트: 같은 숫자 3장을 찾아보세요', 'R7, B7, K7 세트를 만들 수 있습니다');
+}
+
+/* ────────────────────────────────
+   토스트
+──────────────────────────────── */
+let toastTimer = null;
+function showToast(msg, sub) {
+  document.getElementById('toastMsg').textContent = msg;
+  document.getElementById('toastSub').textContent = sub || '';
+  const t = document.getElementById('toast');
+  t.classList.add('show');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+/* ────────────────────────────────
+   초기화
+──────────────────────────────── */
+window.addEventListener('DOMContentLoaded', () => {
+  updateBreadcrumb('login');
+  // login 화면은 breadcrumb 숨김
+  document.getElementById('breadcrumb').style.display = 'none';
+});
+
+// 원래 goTo를 래핑해서 login 화면에서는 breadcrumb 숨김
+const _goTo = goTo;
+window.goTo = function(screenId) {
+  const bc = document.getElementById('breadcrumb');
+  bc.style.display = screenId === 'login' ? 'none' : 'flex';
+  _goTo(screenId);
+};
+</script>
+</body>
+</html>
