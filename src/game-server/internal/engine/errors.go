@@ -1,5 +1,32 @@
 package engine
 
+import "fmt"
+
+// ValidationError is a structured error type for game-rule validation failures.
+// Code carries a machine-readable error constant (e.g. "V-01"),
+// Message contains a human-readable Korean description,
+// and Tiles lists the tile codes that caused the violation.
+type ValidationError struct {
+	Code    string   // 에러 코드 (예: "V-01", "ERR_SET_SIZE")
+	Message string   // 사용자 표시용 한글 설명
+	Tiles   []string // 위반에 관련된 타일 코드 목록 (없으면 nil)
+}
+
+// Error implements the error interface so *ValidationError can be used anywhere
+// an error is expected.
+func (e *ValidationError) Error() string {
+	return fmt.Sprintf("[%s] %s", e.Code, e.Message)
+}
+
+// newValidationError is a convenience constructor used internally.
+func newValidationError(code, message string, tiles ...string) *ValidationError {
+	var t []string
+	if len(tiles) > 0 {
+		t = tiles
+	}
+	return &ValidationError{Code: code, Message: message, Tiles: t}
+}
+
 // 검증 에러 코드 상수
 // 각 코드는 V-01~V-15 규칙(game-rules.md, 09-game-engine-detail.md)에 대응한다.
 const (

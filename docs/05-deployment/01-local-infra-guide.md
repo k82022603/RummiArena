@@ -89,7 +89,7 @@ services:
     container_name: rummikub-postgres
     environment:
       POSTGRES_USER: rummikub
-      POSTGRES_PASSWORD: rummikub123
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}  # .env 파일에서 설정
       POSTGRES_DB: rummikub
     ports:
       - "5432:5432"

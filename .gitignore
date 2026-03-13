@@ -50,6 +50,8 @@ coverage/
 *.p12
 *.pfx
 *.jks
+credentials*.json
+client_secret*
 secrets/
 kubeconfig
 *.kubeconfig

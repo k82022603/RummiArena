@@ -1,6 +1,8 @@
 package config
 
 import (
+	"log"
+
 	"github.com/spf13/viper"
 )
 
@@ -40,12 +42,12 @@ func Load() (*Config, error) {
 	viper.SetDefault("DB_HOST", "localhost")
 	viper.SetDefault("DB_PORT", "5432")
 	viper.SetDefault("DB_USER", "rummikub")
-	viper.SetDefault("DB_PASSWORD", "rummikub123")
+	viper.SetDefault("DB_PASSWORD", "")
 	viper.SetDefault("DB_NAME", "rummikub")
 	viper.SetDefault("REDIS_HOST", "localhost")
 	viper.SetDefault("REDIS_PORT", "6379")
 	viper.SetDefault("REDIS_PASSWORD", "")
-	viper.SetDefault("JWT_SECRET", "change-me-in-production")
+	viper.SetDefault("JWT_SECRET", "")
 
 	viper.AutomaticEnv()
 
@@ -69,6 +71,13 @@ func Load() (*Config, error) {
 		JWT: JWTConfig{
 			Secret: viper.GetString("JWT_SECRET"),
 		},
+	}
+
+	if cfg.DB.Password == "" {
+		log.Println("[WARN] DB_PASSWORD is not set — set via environment variable for production")
+	}
+	if cfg.JWT.Secret == "" {
+		log.Println("[WARN] JWT_SECRET is not set — set via environment variable for production")
 	}
 
 	return cfg, nil
