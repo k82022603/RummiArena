@@ -58,7 +58,7 @@ services:
 
   # ---------------------------------------------------------------------------
   # SonarQube Community Edition (lts-community)
-  # 포트 9000:9000 (Traefik Dashboard 충돌 주의 — Traefik 중지 후 사용)
+  # 포트 9001:9000 (Traefik K8s 서비스가 9000 점유 → 9001로 변경)
   # ---------------------------------------------------------------------------
   sonarqube:
     image: sonarqube:lts-community
@@ -71,13 +71,13 @@ services:
       SONAR_JDBC_USERNAME: sonar
       SONAR_JDBC_PASSWORD: ${CI_SONAR_DB_PASSWORD:-sonarpass}
       # JVM 힙 최소화 (10GB WSL 제약)
-      SONAR_WEB_JAVAOPTS:  "-Xms256m -Xmx512m"
-      SONAR_CE_JAVAOPTS:   "-Xms128m -Xmx256m"
-      SONAR_SEARCH_JAVAOPTS: "-Xms256m -Xmx512m -XX:+UseG1GC"
+      SONAR_WEB_JAVAOPTS:  "-Xms256m -Xmx256m"
+      SONAR_CE_JAVAOPTS:   "-Xms128m -Xmx128m"
+      SONAR_SEARCH_JAVAOPTS: "-Xms512m -Xmx512m -XX:+UseG1GC"
       # 익명 분석 비활성화
       SONAR_TELEMETRY_ENABLE: "false"
     ports:
-      - "9000:9000"
+      - "9001:9000"
     volumes:
       - sonarqube_data:/opt/sonarqube/data
       - sonarqube_logs:/opt/sonarqube/logs
@@ -96,6 +96,7 @@ services:
     healthcheck:
       # /api/system/status 가 UP 반환할 때까지 대기
       test: ["CMD-SHELL", "curl -sf http://localhost:9000/api/system/status | grep -q '\"status\":\"UP\"' || exit 1"]
+      # 내부 컨테이너는 9000 포트 사용, 호스트는 9001로 노출
       interval: 30s
       timeout: 10s
       retries: 10
