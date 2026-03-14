@@ -1,0 +1,150 @@
+# docker-compose.cicd.yml
+# CI/CD 도구 모드 -- SonarQube + PostgreSQL(Sonar 전용)
+#
+# 교대 실행 전략 (10GB WSL 제약):
+#   CI 모드: PG(Sonar) + SonarQube + GitLab Runner ~ 2.5 GB
+#   Dev/Deploy 모드와 동시 실행 금지
+#
+# 사전 조건:
+#   1. vm.max_map_count 설정 (SonarQube Elasticsearch 요구사항):
+#      sudo sysctl -w vm.max_map_count=262144
+#   2. 환경 변수 파일:
+#      cp .env.cicd.example .env.cicd  (또는 직접 env 주입)
+#
+# 사용법:
+#   SonarQube만 기동:
+#     docker compose -f docker-compose.cicd.yml up -d sonarqube-db sonarqube
+#   전체 기동 (Runner 포함):
+#     docker compose -f docker-compose.cicd.yml up -d
+#   상태 확인:
+#     docker compose -f docker-compose.cicd.yml ps
+#   로그 확인:
+#     docker compose -f docker-compose.cicd.yml logs -f sonarqube
+#   중지:
+#     docker compose -f docker-compose.cicd.yml down
+#   데이터 포함 삭제:
+#     docker compose -f docker-compose.cicd.yml down -v
+
+name: rummiarena-cicd
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # SonarQube 전용 PostgreSQL
+  # rummikub-postgres(5432)와 포트 충돌 방지 → 5433 바인딩
+  # ---------------------------------------------------------------------------
+  sonarqube-db:
+    image: postgres:16-alpine
+    container_name: sonarqube-db
+    environment:
+      POSTGRES_USER:     sonar
+      POSTGRES_PASSWORD: ${CI_SONAR_DB_PASSWORD:-sonarpass}
+      POSTGRES_DB:       sonar
+    ports:
+      - "5433:5432"
+    volumes:
+      - sonarqube_pgdata:/var/lib/postgresql/data
+    networks:
+      - cicd-net
+    mem_limit: 256m
+    cpus: "0.5"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sonar -d sonar"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ---------------------------------------------------------------------------
+  # SonarQube Community Edition (lts-community)
+  # 포트 9000:9000 (Traefik Dashboard 충돌 주의 — Traefik 중지 후 사용)
+  # ---------------------------------------------------------------------------
+  sonarqube:
+    image: sonarqube:lts-community
+    container_name: sonarqube
+    depends_on:
+      sonarqube-db:
+        condition: service_healthy
+    environment:
+      SONAR_JDBC_URL:      jdbc:postgresql://sonarqube-db:5432/sonar
+      SONAR_JDBC_USERNAME: sonar
+      SONAR_JDBC_PASSWORD: ${CI_SONAR_DB_PASSWORD:-sonarpass}
+      # JVM 힙 최소화 (10GB WSL 제약)
+      SONAR_WEB_JAVAOPTS:  "-Xms256m -Xmx512m"
+      SONAR_CE_JAVAOPTS:   "-Xms128m -Xmx256m"
+      SONAR_SEARCH_JAVAOPTS: "-Xms256m -Xmx512m -XX:+UseG1GC"
+      # 익명 분석 비활성화
+      SONAR_TELEMETRY_ENABLE: "false"
+    ports:
+      - "9000:9000"
+    volumes:
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_logs:/opt/sonarqube/logs
+      - sonarqube_extensions:/opt/sonarqube/extensions
+    networks:
+      - cicd-net
+    mem_limit: 2g
+    cpus: "1.0"
+    restart: unless-stopped
+    # SonarQube 내장 Elasticsearch는 vm.max_map_count >= 262144 필요
+    # ulimits 설정 (Docker Compose v2 지원)
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    healthcheck:
+      # /api/system/status 가 UP 반환할 때까지 대기
+      test: ["CMD-SHELL", "curl -sf http://localhost:9000/api/system/status | grep -q '\"status\":\"UP\"' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+
+  # ---------------------------------------------------------------------------
+  # GitLab Runner (Docker Executor)
+  # 실제 사용 전 runner 등록 필요:
+  #   docker exec -it gitlab-runner gitlab-runner register
+  # 또는 REGISTRATION_TOKEN 환경변수로 자동 등록 (deprecated → Runner token 방식 사용 권장)
+  # ---------------------------------------------------------------------------
+  gitlab-runner:
+    image: gitlab/gitlab-runner:latest
+    container_name: gitlab-runner
+    depends_on:
+      - sonarqube
+    volumes:
+      - /srv/gitlab-runner/config:/etc/gitlab-runner
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - cicd-net
+    mem_limit: 512m
+    cpus: "1.0"
+    restart: unless-stopped
+    # Runner 등록 명령 (config.toml이 없을 때만 실행):
+    # docker exec gitlab-runner gitlab-runner register \
+    #   --non-interactive \
+    #   --url "https://gitlab.com" \
+    #   --token "$RUNNER_TOKEN" \
+    #   --executor "docker" \
+    #   --docker-image "alpine:latest" \
+    #   --description "RummiArena Local Runner" \
+    #   --tag-list "docker,rummiarena" \
+    #   --run-untagged="true"
+
+# =============================================================================
+# 볼륨 & 네트워크
+# =============================================================================
+
+volumes:
+  sonarqube_pgdata:
+    # SonarQube DB 영속 데이터
+  sonarqube_data:
+    # SonarQube 분석 데이터
+  sonarqube_logs:
+    # SonarQube 로그
+  sonarqube_extensions:
+    # SonarQube 플러그인
+
+networks:
+  cicd-net:
+    driver: bridge

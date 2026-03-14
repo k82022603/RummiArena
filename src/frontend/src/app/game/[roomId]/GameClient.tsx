@@ -5,6 +5,7 @@ import {
   DndContext,
   DragEndEvent,
   DragOverlay,
+  DragStartEvent,
   PointerSensor,
   useSensor,
   useSensors,
@@ -168,6 +169,7 @@ export default function GameClient({ roomId }: GameClientProps) {
   const { mySeat: roomMySeat } = useRoomStore();
 
   const [activeDragCode, setActiveDragCode] = useState<TileCode | null>(null);
+  const isDragging = activeDragCode !== null;
 
   // mock 데이터 초기화 (game-server 미연결 시 UI 데모용)
   useEffect(() => {
@@ -202,6 +204,12 @@ export default function GameClient({ roomId }: GameClientProps) {
       activationConstraint: { distance: 8 },
     })
   );
+
+  // 드래그 시작 핸들러
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    const code = event.active.data.current?.tileCode as TileCode | undefined;
+    if (code) setActiveDragCode(code);
+  }, []);
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
@@ -250,6 +258,18 @@ export default function GameClient({ roomId }: GameClientProps) {
       pendingMyTiles,
       myTiles,
     ]
+  );
+
+  // 랙 타일 정렬 핸들러 (숫자 오름차순, 조커 마지막)
+  const handleRackSort = useCallback(
+    (sorted: TileCode[]) => {
+      if (pendingMyTiles !== null) {
+        setPendingMyTiles(sorted);
+      } else {
+        setMyTiles(sorted);
+      }
+    },
+    [pendingMyTiles, setPendingMyTiles, setMyTiles]
   );
 
   // 턴 확정
@@ -305,10 +325,7 @@ export default function GameClient({ roomId }: GameClientProps) {
     <DndContext
       sensors={sensors}
       collisionDetection={closestCenter}
-      onDragStart={(e) => {
-        const code = e.active.data.current?.tileCode as TileCode | undefined;
-        if (code) setActiveDragCode(code);
-      }}
+      onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
       <div className="min-h-screen bg-app-bg flex flex-col overflow-hidden">
@@ -419,6 +436,7 @@ export default function GameClient({ roomId }: GameClientProps) {
             <GameBoard
               tableGroups={currentTableGroups}
               isMyTurn={isMyTurn}
+              isDragging={isDragging}
               className="flex-1"
             />
 
@@ -446,7 +464,12 @@ export default function GameClient({ roomId }: GameClientProps) {
                 )}
               </div>
 
-              <PlayerRack tiles={currentMyTiles} isMyTurn={isMyTurn} />
+              <PlayerRack
+                tiles={currentMyTiles}
+                isMyTurn={isMyTurn}
+                isDragging={isDragging}
+                onSort={handleRackSort}
+              />
 
               {/* 액션 버튼 */}
               <AnimatePresence>
@@ -477,13 +500,15 @@ export default function GameClient({ roomId }: GameClientProps) {
                       disabled={!pendingTableGroups}
                       className={[
                         "px-4 py-2.5 rounded-xl font-medium text-tile-sm",
-                        "bg-card-bg border border-border hover:border-danger/50",
+                        "bg-card-bg border border-border",
+                        "hover:border-danger/60 hover:text-danger",
                         "disabled:opacity-40 disabled:cursor-not-allowed",
                         "transition-colors",
                       ].join(" ")}
-                      aria-label="배치 초기화 (되돌리기)"
+                      aria-label="이번 턴 배치 초기화 (서버에 RESET_TURN 전송)"
+                      title="이번 턴에 놓은 타일을 모두 되돌립니다"
                     >
-                      초기화
+                      <span aria-hidden="true">↺</span> 초기화
                     </button>
                     <button
                       type="button"
@@ -507,10 +532,22 @@ export default function GameClient({ roomId }: GameClientProps) {
         </div>
       </div>
 
-      {/* 드래그 오버레이 */}
-      <DragOverlay>
+      {/* 드래그 오버레이: 커서를 따라다니는 타일 (그림자 + 미세 회전) */}
+      <DragOverlay dropAnimation={null}>
         {activeDragCode ? (
-          <Tile code={activeDragCode} size="rack" draggable />
+          <motion.div
+            initial={{ scale: 1.05, rotate: -2, opacity: 0.9 }}
+            animate={{ scale: 1.1, rotate: -3, opacity: 0.95 }}
+            style={{ cursor: "grabbing" }}
+            className="drop-shadow-[0_8px_16px_rgba(0,0,0,0.5)]"
+          >
+            <Tile
+              code={activeDragCode}
+              size="rack"
+              draggable
+              aria-label={`${activeDragCode} 타일 드래그 중`}
+            />
+          </motion.div>
         ) : null}
       </DragOverlay>
     </DndContext>
