@@ -304,12 +304,16 @@ func (s *gameService) ConfirmTurn(gameID string, req *ConfirmRequest) (*GameActi
 	}
 
 	if err := engine.ValidateTurnConfirm(validateReq); err != nil {
+		errCode := engine.ErrInvalidSet
+		if ve, ok := err.(*engine.ValidationError); ok {
+			errCode = ve.Code
+		}
 		return &GameActionResult{
 			Success:   false,
 			NextSeat:  state.CurrentSeat,
-			ErrorCode: engine.ErrInvalidSet,
+			ErrorCode: errCode,
 			GameState: state,
-		}, &ServiceError{Code: engine.ErrInvalidSet, Message: err.Error(), Status: 422}
+		}, &ServiceError{Code: errCode, Message: err.Error(), Status: 422}
 	}
 
 	// 검증 통과: 테이블 + 랙 확정

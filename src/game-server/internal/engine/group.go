@@ -1,6 +1,5 @@
 package engine
 
-import "fmt"
 
 // ValidateGroup checks whether a slice of tiles forms a valid Rummikub group.
 // Rules (§3.1 of game-rules):
@@ -10,7 +9,7 @@ import "fmt"
 //   - At most one tile per color (R, B, Y, K)
 func ValidateGroup(tiles []*Tile) error {
 	if len(tiles) < 3 || len(tiles) > 4 {
-		return fmt.Errorf("group must have 3 or 4 tiles, got %d", len(tiles))
+		return newValidationError(ErrSetSize, ErrorMessages[ErrSetSize])
 	}
 
 	colorSeen := make(map[string]bool)
@@ -23,11 +22,10 @@ func ValidateGroup(tiles []*Tile) error {
 		if refNumber == 0 {
 			refNumber = t.Number
 		} else if t.Number != refNumber {
-			return fmt.Errorf("group tiles must share the same number: expected %d, got %d (tile %s)",
-				refNumber, t.Number, t.Code)
+			return newValidationError(ErrGroupNumberMismatch, ErrorMessages[ErrGroupNumberMismatch], t.Code)
 		}
 		if colorSeen[t.Color] {
-			return fmt.Errorf("duplicate color %q in group (tile %s)", t.Color, t.Code)
+			return newValidationError(ErrGroupColorDup, ErrorMessages[ErrGroupColorDup], t.Code)
 		}
 		colorSeen[t.Color] = true
 	}

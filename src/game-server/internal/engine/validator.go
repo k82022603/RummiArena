@@ -21,7 +21,7 @@ type TileSet struct {
 // Returns the detected SetType or an error if the set is invalid.
 func ValidateTileSet(ts *TileSet) (SetType, error) {
 	if len(ts.Tiles) < 3 {
-		return SetTypeUnknown, fmt.Errorf("set %q has fewer than 3 tiles", ts.ID)
+		return SetTypeUnknown, newValidationError(ErrSetSize, ErrorMessages[ErrSetSize])
 	}
 
 	groupErr := ValidateGroup(ts.Tiles)
@@ -34,8 +34,15 @@ func ValidateTileSet(ts *TileSet) (SetType, error) {
 		return SetTypeRun, nil
 	}
 
-	return SetTypeUnknown, fmt.Errorf("set %q is neither a valid group (%v) nor a valid run (%v)",
-		ts.ID, groupErr, runErr)
+	// 그룹 유효성을 먼저 검사했으므로 groupErr를 우선 반환한다.
+	// 타일이 같은 숫자를 가지면 그룹 시도로 간주하고 groupErr를 전파한다.
+	if ve, ok := groupErr.(*ValidationError); ok {
+		return SetTypeUnknown, ve
+	}
+	if ve, ok := runErr.(*ValidationError); ok {
+		return SetTypeUnknown, ve
+	}
+	return SetTypeUnknown, newValidationError(ErrInvalidSet, ErrorMessages[ErrInvalidSet])
 }
 
 // ValidateTable validates all sets on the table.
@@ -78,14 +85,14 @@ func ValidateTurnConfirm(req TurnConfirmRequest) error {
 	// V-03: at least one tile must have moved from rack to table.
 	tilesAdded := countTableTiles(req.TableAfter) - countTableTiles(req.TableBefore)
 	if tilesAdded < 1 {
-		return fmt.Errorf("V-03: no rack tile was added to the table")
+		return newValidationError(ErrNoRackTile, ErrorMessages[ErrNoRackTile])
 	}
 
 	// V-06: tile count on table must not decrease (tiles cannot return to rack,
 	// except jokers retrieved via swap — those are already accounted for
 	// because joker-swap adds the replacement tile and the joker moves elsewhere).
 	if countTableTiles(req.TableAfter) < countTableTiles(req.TableBefore) {
-		return fmt.Errorf("V-06: table tile count decreased; tiles may not be taken back to the rack")
+		return newValidationError(ErrTableTileMissing, ErrorMessages[ErrTableTileMissing])
 	}
 
 	// V-05: before initial meld, only rack tiles may be used.
@@ -112,7 +119,7 @@ func validateInitialMeld(req TurnConfirmRequest) error {
 
 	for code := range beforeCodes {
 		if afterCodes[code] < beforeCodes[code] {
-			return fmt.Errorf("V-05: initial meld may not rearrange existing table tiles (missing %q)", code)
+			return newValidationError(ErrInitialMeldSource, ErrorMessages[ErrInitialMeldSource])
 		}
 	}
 
@@ -127,7 +134,7 @@ func validateInitialMeld(req TurnConfirmRequest) error {
 		score += t.Score()
 	}
 	if score < 30 {
-		return fmt.Errorf("V-04: initial meld score %d is below the required 30 points", score)
+		return newValidationError(ErrInitialMeldScore, ErrorMessages[ErrInitialMeldScore])
 	}
 	return nil
 }
@@ -140,7 +147,7 @@ func validateJokerReturned(req TurnConfirmRequest) error {
 	afterCodes := collectTileCodes(req.TableAfter)
 	for _, joker := range req.JokerReturnedCodes {
 		if afterCodes[joker] == 0 {
-			return fmt.Errorf("V-07: joker %q was retrieved this turn but not placed back on the table", joker)
+			return newValidationError(ErrJokerNotUsed, ErrorMessages[ErrJokerNotUsed], joker)
 		}
 	}
 	return nil

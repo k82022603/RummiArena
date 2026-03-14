@@ -1,7 +1,6 @@
 package engine
 
 import (
-	"fmt"
 	"sort"
 )
 
@@ -14,7 +13,7 @@ import (
 //   - Numbers must be in range 1–13
 func ValidateRun(tiles []*Tile) error {
 	if len(tiles) < 3 {
-		return fmt.Errorf("run must have at least 3 tiles, got %d", len(tiles))
+		return newValidationError(ErrSetSize, ErrorMessages[ErrSetSize])
 	}
 
 	var refColor string
@@ -27,8 +26,7 @@ func ValidateRun(tiles []*Tile) error {
 		if refColor == "" {
 			refColor = t.Color
 		} else if t.Color != refColor {
-			return fmt.Errorf("run tiles must share the same color: expected %q, got %q (tile %s)",
-				refColor, t.Color, t.Code)
+			return newValidationError(ErrRunColor, ErrorMessages[ErrRunColor], t.Code)
 		}
 		nonJokerNumbers = append(nonJokerNumbers, t.Number)
 	}
@@ -44,7 +42,7 @@ func ValidateRun(tiles []*Tile) error {
 	// V-15: 런에서 같은 숫자 중복 불가 (R3a, R3b 같은 케이스).
 	for i := 1; i < len(nonJokerNumbers); i++ {
 		if nonJokerNumbers[i] == nonJokerNumbers[i-1] {
-			return fmt.Errorf("duplicate number %d in run", nonJokerNumbers[i])
+			return newValidationError(ErrRunDuplicate, ErrorMessages[ErrRunDuplicate])
 		}
 	}
 
@@ -56,7 +54,7 @@ func ValidateRun(tiles []*Tile) error {
 	// and all positions fit within 1–13.
 	span := max - min + 1
 	if span > len(tiles) {
-		return fmt.Errorf("run has too many gaps for available jokers (span %d, tiles %d)", span, len(tiles))
+		return newValidationError(ErrRunSequence, ErrorMessages[ErrRunSequence])
 	}
 
 	// Determine actual run bounds including jokers at edges.
@@ -76,7 +74,7 @@ func ValidateRun(tiles []*Tile) error {
 	}
 	possibleEnd := possibleStart + runLen - 1
 	if possibleEnd > 13 {
-		return fmt.Errorf("run exceeds maximum tile number 13")
+		return newValidationError(ErrRunRange, ErrorMessages[ErrRunRange])
 	}
 
 	return nil

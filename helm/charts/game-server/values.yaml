@@ -29,8 +29,9 @@ env:
   REDIS_PORT: "6379"
 
 secrets:
-  DB_PASSWORD: "REDACTED_DB_PASSWORD"
-  JWT_SECRET: "test-secret-for-dev"
+  # 실제 값은 --set secrets.DB_PASSWORD=<value> 또는 외부 Secret으로 주입
+  DB_PASSWORD: ""
+  JWT_SECRET: ""
 
 livenessProbe:
   path: /health
