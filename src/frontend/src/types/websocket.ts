@@ -1,93 +1,181 @@
 import type { TableGroup, TileCode } from "./tile";
-import type { Player } from "./game";
 
 /**
- * WebSocket 메시지 공통 구조
+ * WebSocket 메시지 envelope (10-websocket-protocol.md 준수)
  */
-export interface WSMessage<T = unknown> {
-  event: WSEventType;
-  data: T;
+export interface WSEnvelope<T = unknown> {
+  type: string;
+  payload: T;
+  seq: number;
+  timestamp: string;
 }
 
-/**
- * 서버 → 클라이언트 이벤트 타입
- */
-export type WSServerEvent =
-  | "game:state"
-  | "game:started"
-  | "turn:start"
-  | "turn:action"
-  | "turn:timeout"
-  | "game:ended"
-  | "player:joined"
-  | "player:left"
-  | "player:reconnected"
-  | "ai:thinking"
-  | "error";
-
-/**
- * 클라이언트 → 서버 이벤트 타입
- */
-export type WSClientEvent =
-  | "auth"
-  | "turn:place"
-  | "turn:draw"
-  | "turn:undo"
-  | "turn:confirm";
-
-export type WSEventType = WSServerEvent | WSClientEvent;
-
 /* ------------------------------------------------------------------ */
-/* 서버 → 클라이언트 페이로드                                          */
+/* C2S (Client → Server) 메시지 타입                                   */
 /* ------------------------------------------------------------------ */
 
-export interface GameStartedPayload {
-  myTiles: TileCode[];
-  players: Player[];
-  currentPlayerSeat: number;
+export type C2SMessageType =
+  | "AUTH"
+  | "PLACE_TILES"
+  | "DRAW_TILE"
+  | "CONFIRM_TURN"
+  | "RESET_TURN"
+  | "PING"
+  | "LEAVE_GAME"
+  | "CHAT";
+
+/* ------------------------------------------------------------------ */
+/* S2C (Server → Client) 메시지 타입                                   */
+/* ------------------------------------------------------------------ */
+
+export type S2CMessageType =
+  | "AUTH_OK"
+  | "GAME_STATE"
+  | "TURN_START"
+  | "TURN_END"
+  | "TILE_PLACED"
+  | "TILE_DRAWN"
+  | "INVALID_MOVE"
+  | "GAME_OVER"
+  | "PLAYER_JOIN"
+  | "PLAYER_LEAVE"
+  | "PLAYER_RECONNECT"
+  | "AI_THINKING"
+  | "TIMER_UPDATE"
+  | "CHAT_BROADCAST"
+  | "ERROR"
+  | "PONG";
+
+/* ------------------------------------------------------------------ */
+/* C2S 페이로드                                                        */
+/* ------------------------------------------------------------------ */
+
+export interface AuthPayload {
+  token: string;
+}
+
+export interface PlaceTilesPayload {
+  tableGroups: TableGroup[];
+  tilesFromRack: TileCode[];
+}
+
+export interface ConfirmTurnPayload {
+  tableGroups: TableGroup[];
+  tilesFromRack: TileCode[];
+}
+
+export interface ChatPayload {
+  message: string;
+}
+
+/* ------------------------------------------------------------------ */
+/* S2C 페이로드                                                        */
+/* ------------------------------------------------------------------ */
+
+export interface AuthOKPayload {
+  userId: string;
+  seat: number;
+  displayName: string;
+}
+
+export interface WSPlayerInfo {
+  seat: number;
+  userId?: string;
+  displayName: string;
+  playerType: string;
+  tileCount: number;
+  hasInitialMeld: boolean;
+  isConnected: boolean;
+}
+
+export interface GameStatePayload {
+  gameId: string;
+  status: string;
+  currentSeat: number;
+  tableGroups: TableGroup[];
+  myRack: TileCode[];
+  players: WSPlayerInfo[];
+  drawPileCount: number;
   turnTimeoutSec: number;
+  turnStartedAt?: string;
 }
 
 export interface TurnStartPayload {
-  currentPlayerSeat: number;
-  turnNumber: number;
-  remainingMs: number;
+  seat: number;
+  turnNumber?: number;
+  playerType: string;
+  displayName?: string;
+  timeoutSec: number;
+  turnStartedAt: string;
 }
 
-export interface TurnActionPayload {
+export interface TurnEndPayload {
   seat: number;
-  action: "place" | "draw";
+  turnNumber?: number;
+  action: string;
   tableGroups: TableGroup[];
-  drawnTile?: TileCode; // 내 드로우 시만 포함
-  tilesFromRack?: TileCode[];
+  tilesPlacedCount: number;
+  playerTileCount: number;
+  hasInitialMeld: boolean;
+  drawPileCount: number;
+  nextSeat: number;
+  nextTurnNumber?: number;
 }
 
-export interface TurnTimeoutPayload {
+export interface TilePlacedPayload {
   seat: number;
-  drawnTile?: TileCode;
+  tableGroups: TableGroup[];
+  tilesFromRackCount: number;
 }
 
-export interface GameEndedPayload {
-  winnerSeat: number | null;
-  scores: Array<{ seat: number; score: number; isWinner: boolean }>;
-  gameId: string;
+export interface TileDrawnPayload {
+  seat: number;
+  drawnTile: TileCode | null;
+  drawPileCount: number;
+  playerTileCount: number;
 }
 
-export interface PlayerJoinedPayload {
+export interface InvalidMovePayload {
+  errors: Array<{
+    code: string;
+    message: string;
+  }>;
+}
+
+export interface GameOverPayload {
+  endType: string;
+  winnerId?: string;
+  winnerSeat: number;
+  results: Array<{
+    seat: number;
+    playerType: string;
+    remainingTiles: TileCode[];
+    isWinner: boolean;
+  }>;
+}
+
+export interface PlayerJoinPayload {
   seat: number;
   userId?: string;
-  displayName?: string;
-  type: string;
+  displayName: string;
+  playerType: string;
+  totalPlayers: number;
+  maxPlayers: number;
 }
 
-export interface PlayerLeftPayload {
+export interface PlayerLeavePayload {
   seat: number;
-  userId: string;
+  displayName: string;
+  reason: string;
+  totalPlayers: number;
 }
 
 export interface AIThinkingPayload {
   seat: number;
   playerType: string;
+  persona?: string;
+  displayName?: string;
+  thinkingMessage?: string;
 }
 
 export interface WSErrorPayload {
@@ -96,17 +184,15 @@ export interface WSErrorPayload {
   details?: Record<string, unknown>;
 }
 
-/* ------------------------------------------------------------------ */
-/* 클라이언트 → 서버 페이로드                                          */
-/* ------------------------------------------------------------------ */
-
-export interface AuthPayload {
-  token: string;
+export interface PongPayload {
+  serverTime: string;
 }
 
-export interface TurnPlacePayload {
-  tableGroups: TableGroup[];
-  tilesFromRack: TileCode[];
+export interface ChatBroadcastPayload {
+  seat: number;
+  displayName: string;
+  message: string;
+  sentAt: string;
 }
 
 /**

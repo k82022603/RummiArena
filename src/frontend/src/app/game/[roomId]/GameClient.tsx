@@ -153,6 +153,7 @@ export default function GameClient({ roomId }: GameClientProps) {
     pendingTableGroups,
     pendingMyTiles,
     aiThinkingSeat,
+    turnNumber,
     setPendingTableGroups,
     setPendingMyTiles,
     setMyTiles,
@@ -185,7 +186,7 @@ export default function GameClient({ roomId }: GameClientProps) {
 
   // 실제 내 seat: roomStore의 mySeat 우선, gameStore의 mySeat 차선
   const effectiveMySeat = roomMySeat ?? mySeat;
-  const isMyTurn = gameState?.currentPlayerSeat === effectiveMySeat;
+  const isMyTurn = gameState?.currentSeat === effectiveMySeat;
 
   const currentTableGroups =
     pendingTableGroups ?? gameState?.tableGroups ?? [];
@@ -248,8 +249,7 @@ export default function GameClient({ roomId }: GameClientProps) {
     const tilesFromRack = myTiles.filter(
       (t) => !(pendingMyTiles ?? []).includes(t)
     );
-    send("turn:confirm", {});
-    send("turn:place", {
+    send("CONFIRM_TURN", {
       tableGroups: pendingTableGroups,
       tilesFromRack,
     });
@@ -268,14 +268,14 @@ export default function GameClient({ roomId }: GameClientProps) {
 
   // 턴 되돌리기
   const handleUndo = useCallback(() => {
-    send("turn:undo", {});
+    send("RESET_TURN", {});
     setPendingTableGroups(null);
     setPendingMyTiles(null);
   }, [send, setPendingTableGroups, setPendingMyTiles]);
 
   // 드로우
   const handleDraw = useCallback(() => {
-    send("turn:draw", {});
+    send("DRAW_TILE", {});
   }, [send]);
 
   // 게임 종료 화면
@@ -320,7 +320,7 @@ export default function GameClient({ roomId }: GameClientProps) {
           )}
 
           <div className="text-tile-xs text-text-secondary">
-            턴 #{gameState?.currentTurn ?? 1}
+            턴 #{turnNumber}
           </div>
         </header>
 
@@ -335,7 +335,7 @@ export default function GameClient({ roomId }: GameClientProps) {
                 <PlayerCard
                   player={player}
                   isCurrentTurn={
-                    gameState?.currentPlayerSeat === player.seat
+                    gameState?.currentSeat === player.seat
                   }
                   isAIThinking={aiThinkingSeat === player.seat}
                 />

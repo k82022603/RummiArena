@@ -68,12 +68,14 @@ func main() {
 	roomSvc := service.NewRoomService(roomRepo, gameStateRepo)
 	gameSvc := service.NewGameService(gameStateRepo)
 	turnSvc := service.NewTurnService(gameStateRepo, gameSvc)
-	_ = turnSvc // WebSocket 핸들러에서 사용 예정
+
+	// --- WebSocket Hub ---
+	wsHub := handler.NewHub(logger)
 
 	// --- 핸들러 초기화 ---
 	roomHandler := handler.NewRoomHandler(roomSvc)
 	gameHandler := handler.NewGameHandler(gameSvc)
-	wsHandler := handler.NewWSHandler()
+	wsHandler := handler.NewWSHandler(wsHub, roomSvc, gameSvc, turnSvc, cfg.JWT.Secret, logger)
 
 	// --- 라우터 설정 ---
 	router := gin.New()

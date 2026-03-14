@@ -73,8 +73,7 @@ export interface GameSettings {
  * 게임 상태 (실시간)
  */
 export interface GameState {
-  currentTurn: number;
-  currentPlayerSeat: number;
+  currentSeat: number;
   tableGroups: TableGroup[];
   drawPileCount: number;
   turnStartedAt: string;

@@ -46,6 +46,10 @@ interface GameStore {
   aiThinkingSeat: number | null;
   setAIThinkingSeat: (seat: number | null) => void;
 
+  // 턴 번호
+  turnNumber: number;
+  setTurnNumber: (n: number) => void;
+
   // 게임 종료 결과
   gameEnded: boolean;
   setGameEnded: (v: boolean) => void;
@@ -65,6 +69,7 @@ const initialState = {
   pendingTableGroups: null,
   pendingMyTiles: null,
   aiThinkingSeat: null,
+  turnNumber: 1,
   gameEnded: false,
 };
 
@@ -82,6 +87,7 @@ export const useGameStore = create<GameStore>()(
     setPendingTableGroups: (pendingTableGroups) => set({ pendingTableGroups }),
     setPendingMyTiles: (pendingMyTiles) => set({ pendingMyTiles }),
     setAIThinkingSeat: (aiThinkingSeat) => set({ aiThinkingSeat }),
+    setTurnNumber: (turnNumber) => set({ turnNumber }),
     setGameEnded: (gameEnded) => set({ gameEnded }),
 
     reset: () => set(initialState),
