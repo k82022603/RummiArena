@@ -97,7 +97,7 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 - [x] 턴 관리 + 승리 판정
 - [x] 단위 테스트 (TDD) — 69개 테스트, 96.5% 커버리지
 - [x] REST API (Room CRUD 7개 + Game 5개 = 12개 엔드포인트)
-- [ ] WebSocket 서버 (Hub/Connection 실구현) — **P0 다음 작업**
+- [x] WebSocket 서버 (Hub/Connection 실구현) — 완료 (2026-03-14)
 - [x] Google OAuth 연동 (NextAuth.js)
 - [x] Redis 연동 (게임 상태, 어댑터 패턴)
 - [x] PostgreSQL 연동 (10개 테이블, GORM AutoMigrate)
@@ -112,7 +112,7 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 - [x] 로비 화면 (Room 목록/생성, Zustand, Framer Motion)
 - [ ] 게임 보드 레이아웃 (타일 렌더링 고도화)
 - [ ] 타일 랙 + 드래그&드롭 (dnd-kit) 인터랙션
-- [ ] WebSocket 연결/동기화 (클라이언트)
+- [x] WebSocket 연결/동기화 (클라이언트) — 프로토콜 연동 완료 (2026-03-14)
 - [x] AI Adapter /move 엔드포인트 (4개 어댑터, 재시도 3회, fallback DRAW)
 - [ ] Ollama 로컬 연동 테스트
 - [ ] GitLab CI + Runner 등록
@@ -278,6 +278,7 @@ Sprint 1 Day 2 (2026-03-14):
 - docs/00-tools/ 도구 매뉴얼 26개 전체 완성 (신규 13 + 현행화 4)
 - docs/03-development/ 개발 가이드 7개 전체 완성 (신규 4 + 현행화 3)
 - Mermaid quadrantChart 렌더링 오류 수정
-- Agent Teams 5회차 병렬 실행 (최대 6개 동시)
+- **WebSocket Hub 실구현** (ws_message/ws_hub/ws_connection/ws_handler, 테스트 7/7)
+- **Frontend WebSocket 프로토콜 연동** (6파일, envelope 형식 정렬)
 
-다음 단계: WebSocket Hub 실구현 → Frontend 연동 → ConfirmTurn/PlaceTiles 시나리오 보강
+다음 단계: ConfirmTurn/PlaceTiles 통합 테스트 보강 → 실시간 프리뷰 → 타일 DnD 고도화
