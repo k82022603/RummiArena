@@ -17,26 +17,33 @@ helm version
 ```
 
 ## 3. 프로젝트 Helm 구조
+
+> **현재 상태 (Sprint 1, 2026-03-13)**: 5개 서비스 Helm chart + 인프라 chart 배포 완료.
+
 ```
 helm/
-├── Chart.yaml              # Umbrella Chart 정의
-├── values.yaml             # 기본 values
+├── Chart.yaml              # Umbrella Chart 정의 (5개 서비스 의존성)
+├── deploy.sh               # 배포 스크립트
 ├── charts/
-│   ├── game-server/
+│   ├── game-server/        # Go 게임 서버 (NodePort 30080)
 │   │   ├── Chart.yaml
 │   │   ├── values.yaml
 │   │   └── templates/
 │   │       ├── deployment.yaml
 │   │       ├── service.yaml
-│   │       ├── ingress.yaml
-│   │       └── configmap.yaml
-│   ├── frontend/
-│   ├── ai-adapter/
-│   ├── redis/
-│   └── postgres/
+│   │       ├── configmap.yaml
+│   │       └── secret.yaml
+│   ├── frontend/           # Next.js 프론트엔드 (NodePort 30000)
+│   ├── ai-adapter/         # NestJS AI 어댑터 (NodePort 30081)
+│   ├── redis/              # Redis 7 (ClusterIP)
+│   ├── postgres/           # PostgreSQL 16 (NodePort 30432)
+│   ├── rummikub/           # 네임스페이스 리소스 (ResourceQuota)
+│   │   └── templates/
+│   │       └── resource-quota.yaml
+│   ├── traefik/            # Traefik Ingress values
+│   └── argocd/             # ArgoCD values
 └── environments/
-    ├── dev-values.yaml
-    └── prod-values.yaml
+    └── dev-values.yaml     # 개발 환경 오버라이드
 ```
 
 ## 4. 주요 명령어
@@ -54,19 +61,28 @@ helm lint helm/
 ```
 
 ### 배포 (수동, ArgoCD 없이 테스트할 때)
-```bash
-# 설치
-helm install rummikub helm/ -n rummikub -f helm/environments/dev-values.yaml
 
-# 업그레이드
-helm upgrade rummikub helm/ -n rummikub -f helm/environments/dev-values.yaml
+현재 프로젝트에서는 Umbrella Chart가 아닌 **서비스별 개별 Helm install**로 배포한다.
+
+```bash
+# 개별 서비스 설치 (현재 방식)
+helm install postgres helm/charts/postgres -n rummikub
+helm install redis helm/charts/redis -n rummikub
+helm install game-server helm/charts/game-server -n rummikub
+helm install ai-adapter helm/charts/ai-adapter -n rummikub
+helm install frontend helm/charts/frontend -n rummikub
+
+# 업그레이드 (특정 서비스)
+helm upgrade game-server helm/charts/game-server -n rummikub
 
 # 삭제
-helm uninstall rummikub -n rummikub
+helm uninstall game-server -n rummikub
 
-# 상태 확인
+# 전체 상태 확인
 helm list -n rummikub
-helm status rummikub -n rummikub
+
+# Umbrella Chart로 일괄 설치 (대안)
+helm install rummikub helm/ -n rummikub -f helm/environments/dev-values.yaml
 ```
 
 ### 외부 Chart 저장소
@@ -88,23 +104,29 @@ helm repo update
 
 ## 5. values.yaml 환경 분리
 
+각 서비스별 `values.yaml`에 리소스 제한, NodePort, 환경 변수 등이 정의되어 있다.
+
 ```yaml
-# environments/dev-values.yaml
-global:
-  environment: dev
-  imageTag: latest
-
-gameServer:
-  replicas: 1
-  resources:
-    limits:
-      memory: 512Mi
-      cpu: 500m
-
-aiAdapter:
-  timeout: 10000
-  maxRetries: 3
+# helm/charts/game-server/values.yaml (예시)
+replicaCount: 1
+image:
+  repository: rummiarena/game-server
+  tag: dev
+  pullPolicy: Never
+service:
+  type: NodePort
+  port: 8080
+  nodePort: 30080
+resources:
+  requests:
+    memory: "128Mi"
+    cpu: "100m"
+  limits:
+    memory: "256Mi"
+    cpu: "300m"
 ```
+
+환경별 오버라이드는 `environments/dev-values.yaml`에서 관리한다 (ArgoCD 연동 시 활용).
 
 ## 6. 트러블슈팅
 

@@ -49,6 +49,10 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 - [x] docs/03-development/01-dev-setup.md — 개발 환경 셋업 매뉴얼
 - [x] docs/03-development/02-secret-management.md — 시크릿 관리 정책
 - [x] docs/03-development/03-game-server-scaffolding.md — game-server 스캐폴딩
+- [x] docs/03-development/04-ai-adapter-guide.md — AI Adapter 개발 가이드
+- [x] docs/03-development/05-frontend-guide.md — Frontend 개발 가이드
+- [x] docs/03-development/06-coding-conventions.md — 코딩 컨벤션
+- [x] docs/03-development/07-git-workflow.md — Git 워크플로우
 - [x] docs/04-testing/01-test-strategy.md — 테스트 전략
 - [x] docs/04-testing/02-smoke-test-report.md — 스모크 테스트 보고서 (16/16)
 - [x] docs/04-testing/03-engine-test-matrix.md — 엔진 테스트 매트릭스 (155개)
@@ -262,20 +266,18 @@ docs/
 
 ## 현재 진행 상황
 
-**Phase 2 진행 중 (Sprint 1)** — Sprint 0 완료, Sprint 1 Day 1 성과 우수
-
-Sprint 0 완료 (Phase 1):
-- 기획 7문서, 설계 10문서, 개발 3문서, 테스트 6문서, 배포 4문서
-- K8s/Traefik/ArgoCD 인프라 구축 완료
-- 4개 프로젝트 스캐폴딩 + 빌드 통과
-- QA 스모크 테스트 16/16 PASS
+**Phase 2 진행 중 (Sprint 1)** — Sprint 1 Day 2 완료
 
 Sprint 1 Day 1 (2026-03-13):
-- game-server 12개 REST API 완전 구현 (Handler→Service→Repository)
+- game-server 12개 REST API 완전 구현
 - Game Engine 69개 단위 테스트 (96.5% 커버리지)
 - AI Adapter /move 엔드포인트 + 4개 어댑터 + fallback DRAW
-- K8s 5개 서비스 Helm chart 작성 + 배포
-- **통합 테스트 31/31 (100%) 전원 PASS**
-- 커밋 6건, 107파일, +17,263줄
+- K8s 5개 서비스 Helm chart 배포, 통합 테스트 31/31 (100%) PASS
+
+Sprint 1 Day 2 (2026-03-14):
+- docs/00-tools/ 도구 매뉴얼 26개 전체 완성 (신규 13 + 현행화 4)
+- docs/03-development/ 개발 가이드 7개 전체 완성 (신규 4 + 현행화 3)
+- Mermaid quadrantChart 렌더링 오류 수정
+- Agent Teams 5회차 병렬 실행 (최대 6개 동시)
 
 다음 단계: WebSocket Hub 실구현 → Frontend 연동 → ConfirmTurn/PlaceTiles 시나리오 보강

@@ -58,29 +58,29 @@
 
 ```mermaid
 quadrantChart
-    title 리스크 매트릭스 (발생확률 x 영향도)
-    x-axis "낮은 영향" --> "높은 영향"
-    y-axis "낮은 확률" --> "높은 확률"
-    quadrant-1 "심각 - 즉시 대응"
-    quadrant-2 "높음 - Sprint 내 해결"
-    quadrant-3 "낮음 - 관찰"
-    quadrant-4 "중간 - 모니터링"
-    TR-01 LLM 응답 지연: [0.75, 0.85]
-    TR-05 K8s 리소스 부족: [0.80, 0.82]
-    ER-03 Hyper-V 메모리: [0.78, 0.80]
-    TR-06 Pod 재시작 유실: [0.90, 0.55]
-    TR-04 WebSocket 끊김: [0.75, 0.60]
-    CR-01 API 비용 폭증: [0.70, 0.55]
+    title Risk Matrix
+    x-axis "Low Impact" --> "High Impact"
+    y-axis "Low Probability" --> "High Probability"
+    quadrant-1 "Critical"
+    quadrant-2 "High"
+    quadrant-3 "Low"
+    quadrant-4 "Medium"
+    TR-01 LLM Timeout: [0.75, 0.85]
+    TR-05 K8s Resource: [0.80, 0.82]
+    ER-03 Hyper-V Memory: [0.78, 0.80]
+    TR-06 Pod Data Loss: [0.90, 0.55]
+    TR-04 WebSocket Drop: [0.75, 0.60]
+    CR-01 API Cost Spike: [0.70, 0.55]
     TR-02 Invalid Move: [0.55, 0.78]
-    ER-02 파일시스템 성능: [0.50, 0.75]
-    SR-01 1인 개발 병목: [0.55, 0.80]
-    ER-01 WSL2 네트워킹: [0.65, 0.55]
-    TR-03 JSON 파싱: [0.50, 0.50]
-    TR-07 SonarQube 메모리: [0.50, 0.50]
-    AR-01 카카오톡 한도: [0.45, 0.50]
-    AR-02 토큰 만료: [0.45, 0.50]
-    AR-03 API 스펙 변경: [0.70, 0.25]
-    CR-02 반복 요청: [0.65, 0.25]
+    ER-02 FS Performance: [0.50, 0.75]
+    SR-01 Solo Dev Bottleneck: [0.55, 0.80]
+    ER-01 WSL2 Network: [0.65, 0.55]
+    TR-03 JSON Parse: [0.50, 0.50]
+    TR-07 SonarQube Memory: [0.50, 0.50]
+    AR-01 KakaoTalk Limit: [0.45, 0.50]
+    AR-02 Token Expiry: [0.45, 0.50]
+    AR-03 API Spec Change: [0.70, 0.25]
+    CR-02 Abuse Request: [0.65, 0.25]
 ```
 
 ## 4. 리스크 모니터링

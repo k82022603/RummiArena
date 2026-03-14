@@ -96,7 +96,11 @@ source ~/.bashrc
 
 Claude Code MCP (github 서버)와 gh CLI 모두 이 토큰을 사용한다.
 
-### Step 6: PostgreSQL (docker-compose)
+### Step 6: PostgreSQL
+
+두 가지 방식 중 하나를 선택한다. 로컬 개발 초기에는 docker-compose를, K8s 환경에서는 Helm 방식을 사용한다.
+
+#### 방식 A: docker-compose (로컬 개발)
 
 ```bash
 # 볼륨 생성 (최초 1회)
@@ -111,6 +115,20 @@ docker exec rummikub-postgres pg_isready
 
 # psql 접속
 docker exec -it rummikub-postgres psql -U rummikub -d rummikub
+```
+
+#### 방식 B: Helm (K8s 배포, Step 8 이후)
+
+```bash
+# rummikub namespace에 PostgreSQL 배포
+helm install postgres oci://registry-1.docker.io/bitnamicharts/postgresql \
+  --namespace rummikub \
+  --set auth.username=rummikub \
+  --set auth.password=rummikub123 \
+  --set auth.database=rummikub
+
+# 접속 확인 (NodePort 30432)
+psql -h localhost -p 30432 -U rummikub -d rummikub
 ```
 
 ### Step 7: Claude Code + MCP 서버
@@ -138,13 +156,47 @@ claude
 
 > 상세: [21-claude-code.md](../00-tools/21-claude-code.md)
 
-### Step 8: K8s 네임스페이스 (추후)
+### Step 8: K8s 배포 (Helm)
 
 ```bash
+# 네임스페이스 생성
 kubectl create namespace rummikub
 kubectl create namespace argocd
 kubectl config set-context --current --namespace=rummikub
+
+# 5개 서비스 Helm 배포 순서
+helm install postgres  oci://registry-1.docker.io/bitnamicharts/postgresql \
+  --namespace rummikub \
+  --set auth.username=rummikub \
+  --set auth.password=rummikub123 \
+  --set auth.database=rummikub
+
+helm install redis oci://registry-1.docker.io/bitnamicharts/redis \
+  --namespace rummikub \
+  --set auth.enabled=false
+
+helm install game-server ./helm/game-server \
+  --namespace rummikub
+
+helm install ai-adapter ./helm/ai-adapter \
+  --namespace rummikub
+
+helm install frontend ./helm/frontend \
+  --namespace rummikub
+
+# 배포 상태 확인
+kubectl get pods -n rummikub
+kubectl get svc -n rummikub
 ```
+
+#### NodePort 매핑
+
+| 서비스 | NodePort | 내부 포트 |
+|--------|----------|----------|
+| game-server | 30080 | 8080 |
+| ai-adapter | 30081 | 8081 |
+| frontend | 30000 | 3000 |
+| postgres | 30432 | 5432 |
 
 ## 4. 환경 검증
 
@@ -169,6 +221,11 @@ gh auth status                 # Logged in to github.com
 
 # 6. kubectl (K8s 활성화 시)
 kubectl get nodes              # docker-desktop Ready
+
+# 7. K8s 서비스 (Step 8 완료 후)
+kubectl get pods -n rummikub   # 5개 pods Running
+kubectl get svc -n rummikub    # NodePort 30080/30081/30000/30432 확인
+curl http://localhost:30080/health   # game-server {"status":"ok",...}
 ```
 
 ## 5. 프로젝트 디렉토리 구조
@@ -176,22 +233,25 @@ kubectl get nodes              # docker-desktop Ready
 ```
 RummiArena/
 ├─ docs/
-│  ├─ 00-tools/        # 도구 매뉴얼 (24개)
+│  ├─ 00-tools/        # 도구 매뉴얼 (25개+)
 │  ├─ 01-planning/     # 기획 (헌장, 요구사항, 리스크, 도구체인, WBS)
 │  ├─ 02-design/       # 설계 (아키텍처, DB, API, AI Adapter, 세션)
 │  ├─ 03-development/  # 개발 가이드 (이 문서)
 │  ├─ 05-deployment/   # 배포 가이드
 │  └─ ...
-├─ src/                # 소스 코드 (추후)
-│  ├─ frontend/
+├─ src/
+│  ├─ frontend/        # Next.js
+│  ├─ game-server/     # Go (gin + gorilla/websocket + GORM) — Sprint 1 핵심 구현 완료
+│  ├─ ai-adapter/      # NestJS (TypeScript)
+│  └─ admin/           # Next.js 관리자 대시보드
+├─ helm/               # Helm charts (5개 서비스)
 │  ├─ game-server/
 │  ├─ ai-adapter/
-│  └─ admin/
+│  └─ frontend/
 ├─ work_logs/          # 작업 로그
 ├─ docker-compose.yml  # Docker 서비스 정의
 ├─ .mcp.json           # Claude Code MCP 설정
-├─ CLAUDE.md           # Claude Code 프로젝트 지침
-└─ helm/               # Helm charts (추후)
+└─ CLAUDE.md           # Claude Code 프로젝트 지침
 ```
 
 ## 6. 알려진 이슈
