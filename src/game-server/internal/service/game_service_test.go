@@ -143,6 +143,115 @@ func TestPlaceTiles_GameNotFound(t *testing.T) {
 	assert.Equal(t, 404, se.Status)
 }
 
+func TestPlaceTiles_InvalidSet_ValidationOnConfirm(t *testing.T) {
+	// PlaceTiles 자체는 유효성 검증 없이 테이블에 배치한다.
+	// 유효하지 않은 세트(2장만 배치)를 PlaceTiles로 올린 후
+	// ConfirmTurn에서 ValidationError가 반환되는지 확인한다.
+	rack0 := []string{"R5a", "R6a", "B1a"}
+	rack1 := []string{"K1a"}
+	state := newTestGameState("game-invalid-set", twoPlayerState(rack0, rack1), []string{"Y1a"})
+	state.Players[0].HasInitialMeld = true
+	svc, _ := seedRepo(t, state)
+
+	// 2장짜리 세트 (최소 3장 규칙 위반)
+	tilesFromRack := []string{"R5a", "R6a"}
+	tableGroups := []TilePlacement{{ID: "bad-set", Tiles: tilesFromRack}}
+
+	// PlaceTiles는 성공 (유효성 검증 없음)
+	result, err := svc.PlaceTiles("game-invalid-set", &PlaceRequest{
+		Seat:          0,
+		TableGroups:   tableGroups,
+		TilesFromRack: tilesFromRack,
+	})
+	require.NoError(t, err)
+	assert.True(t, result.Success, "PlaceTiles는 유효성 검증 없이 성공해야 한다")
+
+	// ConfirmTurn에서 ValidationError 발생
+	confirmResult, err := svc.ConfirmTurn("game-invalid-set", &ConfirmRequest{
+		Seat:        0,
+		TableGroups: tableGroups,
+	})
+	require.Error(t, err, "유효하지 않은 세트로 ConfirmTurn하면 에러가 발생해야 한다")
+	assert.False(t, confirmResult.Success)
+
+	se, ok := IsServiceError(err)
+	require.True(t, ok)
+	assert.Equal(t, engine.ErrSetSize, se.Code, "세트 크기 규칙 위반 에러 코드")
+}
+
+func TestPlaceTiles_TableStateSnapshot(t *testing.T) {
+	// PlaceTiles 호출 전후로 테이블 상태가 정확히 기록되는지 확인한다.
+	// 기존 테이블에 세트가 있는 상태에서 새 세트를 추가하면
+	// 테이블에 기존 + 새 세트가 모두 존재해야 한다.
+	existingTable := []*model.SetOnTable{
+		{ID: "existing-run", Tiles: []*model.Tile{
+			{Code: "B5a"}, {Code: "B6a"}, {Code: "B7a"},
+		}},
+	}
+
+	rack0 := []string{"R5a", "R6a", "R7a", "K1a"}
+	rack1 := []string{"K2a"}
+
+	state := &model.GameStateRedis{
+		GameID:      "game-snapshot-1",
+		Status:      model.GameStatusPlaying,
+		CurrentSeat: 0,
+		DrawPile:    []string{"Y1a"},
+		Table:       existingTable,
+		Players:     twoPlayerState(rack0, rack1),
+		TurnStartAt: time.Now().Unix(),
+	}
+	svc, repo := seedRepo(t, state)
+
+	// 기존 세트 유지 + 새 세트 추가
+	tilesFromRack := []string{"R5a", "R6a", "R7a"}
+	tableAfter := []TilePlacement{
+		{ID: "existing-run", Tiles: []string{"B5a", "B6a", "B7a"}}, // 기존 유지
+		{ID: "new-run", Tiles: []string{"R5a", "R6a", "R7a"}},      // 새로 추가
+	}
+
+	result, err := svc.PlaceTiles("game-snapshot-1", &PlaceRequest{
+		Seat:          0,
+		TableGroups:   tableAfter,
+		TilesFromRack: tilesFromRack,
+	})
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+
+	// 배치 후 상태 검증
+	saved, err := repo.GetGameState("game-snapshot-1")
+	require.NoError(t, err)
+
+	// 테이블에 2개 세트가 있어야 한다
+	require.Len(t, saved.Table, 2, "기존 세트 + 새 세트 = 2개")
+
+	// 각 세트의 타일 수 확인
+	setIDs := map[string]int{}
+	for _, s := range saved.Table {
+		setIDs[s.ID] = len(s.Tiles)
+	}
+	assert.Equal(t, 3, setIDs["existing-run"], "기존 세트 타일 수 유지")
+	assert.Equal(t, 3, setIDs["new-run"], "새 세트 타일 수")
+
+	// 랙 상태 확인: R5a, R6a, R7a 제거 후 K1a만 남음
+	assert.Equal(t, []string{"K1a"}, saved.Players[0].Rack)
+
+	// ResetTurn으로 스냅샷 복원 시 원래 상태로 돌아가는지 검증
+	resetResult, err := svc.ResetTurn("game-snapshot-1", 0)
+	require.NoError(t, err)
+	assert.True(t, resetResult.Success)
+
+	restored, err := repo.GetGameState("game-snapshot-1")
+	require.NoError(t, err)
+
+	// 스냅샷 복원: 기존 테이블 1개 세트로 복구
+	require.Len(t, restored.Table, 1, "스냅샷 복원 후 기존 세트만 남아야 한다")
+	assert.Equal(t, "existing-run", restored.Table[0].ID)
+
+	// 랙도 원래대로 복구
+	assert.ElementsMatch(t, rack0, restored.Players[0].Rack)
+}
+
 // --- TestConfirmTurn ---
 
 func TestConfirmTurn_HappyPath_ValidRun(t *testing.T) {

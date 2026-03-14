@@ -24,9 +24,10 @@ type PlaceRequest struct {
 
 // ConfirmRequest POST /api/games/:id/confirm 요청 DTO
 type ConfirmRequest struct {
-	Seat          int             `json:"seat"`
-	TableGroups   []TilePlacement `json:"tableGroups"`
-	TilesFromRack []string        `json:"tilesFromRack"`
+	Seat               int             `json:"seat"`
+	TableGroups        []TilePlacement `json:"tableGroups"`
+	TilesFromRack      []string        `json:"tilesFromRack"`
+	JokerReturnedCodes []string        `json:"jokerReturnedCodes,omitempty"` // V-07: 조커 교체 시 회수한 조커 코드
 }
 
 // GameActionResult 게임 액션 처리 결과 DTO
@@ -296,11 +297,12 @@ func (s *gameService) ConfirmTurn(gameID string, req *ConfirmRequest) (*GameActi
 	engineTableAfter := modelSetsToEngineSets(tableAfter)
 
 	validateReq := engine.TurnConfirmRequest{
-		TableBefore:    engineTableBefore,
-		TableAfter:     engineTableAfter,
-		RackBefore:     rackBefore,
-		RackAfter:      rackAfter,
-		HasInitialMeld: state.Players[playerIdx].HasInitialMeld,
+		TableBefore:        engineTableBefore,
+		TableAfter:         engineTableAfter,
+		RackBefore:         rackBefore,
+		RackAfter:          rackAfter,
+		HasInitialMeld:     state.Players[playerIdx].HasInitialMeld,
+		JokerReturnedCodes: req.JokerReturnedCodes,
 	}
 
 	if err := engine.ValidateTurnConfirm(validateReq); err != nil {

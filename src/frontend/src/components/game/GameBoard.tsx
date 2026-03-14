@@ -11,6 +11,11 @@ interface GameBoardProps {
   isMyTurn: boolean;
   /** 현재 드래그 중 타일이 있는지 여부 (DragOverlay 활성 여부) */
   isDragging?: boolean;
+  /**
+   * 이번 턴에 새로 추가된(서버 미확정) 그룹 ID 세트.
+   * 여기에 포함된 그룹은 반투명 + 노란 점선 테두리(프리뷰)로 표시된다.
+   */
+  pendingGroupIds?: Set<string>;
   className?: string;
 }
 
@@ -27,6 +32,7 @@ const GameBoard = memo(function GameBoard({
   tableGroups,
   isMyTurn,
   isDragging = false,
+  pendingGroupIds = new Set<string>(),
   className = "",
 }: GameBoardProps) {
   const { setNodeRef, isOver } = useDroppable({ id: BOARD_DROP_ID });
@@ -87,39 +93,61 @@ const GameBoard = memo(function GameBoard({
       ) : (
         <div className="flex flex-wrap gap-4">
           <AnimatePresence>
-            {tableGroups.map((group) => (
-              <motion.div
-                key={group.id}
-                layout
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.8 }}
-                transition={{ type: "spring", stiffness: 300, damping: 25 }}
-                className="flex flex-col gap-1"
-              >
-                {/* 그룹 타입 레이블 */}
-                <span className="text-tile-xs text-text-secondary uppercase tracking-wider">
-                  {group.type === "run" ? "런" : "그룹"}
-                </span>
-
-                {/* 타일 목록 */}
-                <div
-                  className={[
-                    "flex gap-0.5 p-1.5 rounded-lg",
-                    "bg-black/20 border border-board-border",
-                  ].join(" ")}
+            {tableGroups.map((group) => {
+              const isPending = pendingGroupIds.has(group.id);
+              return (
+                <motion.div
+                  key={group.id}
+                  layout
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: isPending ? 0.55 : 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                  className="flex flex-col gap-1"
+                  aria-label={
+                    isPending
+                      ? `미확정 ${group.type === "run" ? "런" : "그룹"} (제출 대기 중)`
+                      : undefined
+                  }
                 >
-                  {group.tiles.map((code, idx) => (
-                    <Tile
-                      key={`${group.id}-${code}-${idx}`}
-                      code={code}
-                      size="table"
-                      aria-label={`${group.type} 그룹의 ${code} 타일`}
-                    />
-                  ))}
-                </div>
-              </motion.div>
-            ))}
+                  {/* 그룹 타입 레이블 */}
+                  <span
+                    className={[
+                      "text-tile-xs uppercase tracking-wider",
+                      isPending
+                        ? "text-yellow-400 font-semibold"
+                        : "text-text-secondary",
+                    ].join(" ")}
+                  >
+                    {group.type === "run" ? "런" : "그룹"}
+                    {isPending && (
+                      <span className="ml-1 text-[9px] normal-case tracking-normal">
+                        (미확정)
+                      </span>
+                    )}
+                  </span>
+
+                  {/* 타일 목록 */}
+                  <div
+                    className={[
+                      "flex gap-0.5 p-1.5 rounded-lg",
+                      isPending
+                        ? "bg-yellow-400/10 border border-dashed border-yellow-400"
+                        : "bg-black/20 border border-board-border",
+                    ].join(" ")}
+                  >
+                    {group.tiles.map((code, idx) => (
+                      <Tile
+                        key={`${group.id}-${code}-${idx}`}
+                        code={code}
+                        size="table"
+                        aria-label={`${group.type} 그룹의 ${code} 타일${isPending ? " (미확정)" : ""}`}
+                      />
+                    ))}
+                  </div>
+                </motion.div>
+              );
+            })}
           </AnimatePresence>
         </div>
       )}
