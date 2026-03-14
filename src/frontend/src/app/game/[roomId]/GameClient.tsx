@@ -154,10 +154,13 @@ export default function GameClient({ roomId }: GameClientProps) {
     hasInitialMeld,
     pendingTableGroups,
     pendingMyTiles,
+    pendingGroupIds,
     aiThinkingSeat,
     turnNumber,
     setPendingTableGroups,
     setPendingMyTiles,
+    addPendingGroupId,
+    clearPendingGroupIds,
     setMyTiles,
     setGameState,
     setPlayers,
@@ -221,9 +224,10 @@ export default function GameClient({ roomId }: GameClientProps) {
       if (!tileCode) return;
 
       if (over.id === "game-board") {
-        // 랙 → 테이블: 새 그룹 생성
+        // 랙 → 테이블: 새 그룹 생성 (서버 미전송, 프리뷰 상태)
+        const newGroupId = `pending-${Date.now()}`;
         const newGroup: TableGroup = {
-          id: `pending-${Date.now()}`,
+          id: newGroupId,
           tiles: [tileCode],
           type: "run",
         };
@@ -231,12 +235,8 @@ export default function GameClient({ roomId }: GameClientProps) {
         const nextMyTiles = currentMyTiles.filter((c) => c !== tileCode);
         setPendingTableGroups(nextTableGroups);
         setPendingMyTiles(nextMyTiles);
-
-        // 실시간 프리뷰: 서버에 PLACE_TILES 전송
-        send("PLACE_TILES", {
-          tableGroups: nextTableGroups,
-          tilesFromRack: myTiles.filter((t) => !nextMyTiles.includes(t)),
-        });
+        // 새로 생성된 그룹을 프리뷰 ID 세트에 등록
+        addPendingGroupId(newGroupId);
       } else if (over.id === "player-rack") {
         // 테이블 → 랙: 그룹에서 타일 제거
         if (pendingTableGroups) {
@@ -254,6 +254,7 @@ export default function GameClient({ roomId }: GameClientProps) {
       currentMyTiles,
       setPendingTableGroups,
       setPendingMyTiles,
+      addPendingGroupId,
       pendingTableGroups,
       pendingMyTiles,
       myTiles,
@@ -272,12 +273,18 @@ export default function GameClient({ roomId }: GameClientProps) {
     [pendingMyTiles, setPendingMyTiles, setMyTiles]
   );
 
-  // 턴 확정
+  // 턴 확정: 프리뷰 상태를 서버에 전송 후 확정
   const handleConfirm = useCallback(() => {
     if (!pendingTableGroups) return;
     const tilesFromRack = myTiles.filter(
       (t) => !(pendingMyTiles ?? []).includes(t)
     );
+    // 1단계: 이번 턴 배치 내용을 서버에 전송
+    send("PLACE_TILES", {
+      tableGroups: pendingTableGroups,
+      tilesFromRack,
+    });
+    // 2단계: 턴 확정 요청
     send("CONFIRM_TURN", {
       tableGroups: pendingTableGroups,
       tilesFromRack,
@@ -285,6 +292,7 @@ export default function GameClient({ roomId }: GameClientProps) {
     setMyTiles(pendingMyTiles ?? myTiles);
     setPendingTableGroups(null);
     setPendingMyTiles(null);
+    clearPendingGroupIds();
   }, [
     pendingTableGroups,
     pendingMyTiles,
@@ -293,14 +301,16 @@ export default function GameClient({ roomId }: GameClientProps) {
     setMyTiles,
     setPendingTableGroups,
     setPendingMyTiles,
+    clearPendingGroupIds,
   ]);
 
-  // 턴 되돌리기
+  // 턴 되돌리기 (취소): 프리뷰 상태 전체 초기화 후 서버에 롤백 요청
   const handleUndo = useCallback(() => {
     send("RESET_TURN", {});
     setPendingTableGroups(null);
     setPendingMyTiles(null);
-  }, [send, setPendingTableGroups, setPendingMyTiles]);
+    clearPendingGroupIds();
+  }, [send, setPendingTableGroups, setPendingMyTiles, clearPendingGroupIds]);
 
   // 드로우
   const handleDraw = useCallback(() => {
@@ -437,6 +447,7 @@ export default function GameClient({ roomId }: GameClientProps) {
               tableGroups={currentTableGroups}
               isMyTurn={isMyTurn}
               isDragging={isDragging}
+              pendingGroupIds={pendingGroupIds}
               className="flex-1"
             />
 

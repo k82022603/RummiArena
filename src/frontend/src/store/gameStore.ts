@@ -42,6 +42,11 @@ interface GameStore {
   pendingMyTiles: TileCode[] | null;
   setPendingMyTiles: (tiles: TileCode[] | null) => void;
 
+  // 이번 턴에 새로 추가된 그룹 ID 세트 (프리뷰 표시용, 서버 미확정)
+  pendingGroupIds: Set<string>;
+  addPendingGroupId: (id: string) => void;
+  clearPendingGroupIds: () => void;
+
   // AI 사고 중 표시
   aiThinkingSeat: number | null;
   setAIThinkingSeat: (seat: number | null) => void;
@@ -71,6 +76,7 @@ const initialState = {
   remainingMs: 0,
   pendingTableGroups: null,
   pendingMyTiles: null,
+  pendingGroupIds: new Set<string>(),
   aiThinkingSeat: null,
   turnNumber: 1,
   gameEnded: false,
@@ -89,12 +95,21 @@ export const useGameStore = create<GameStore>()(
     setRemainingMs: (remainingMs) => set({ remainingMs }),
     setPendingTableGroups: (pendingTableGroups) => set({ pendingTableGroups }),
     setPendingMyTiles: (pendingMyTiles) => set({ pendingMyTiles }),
+    addPendingGroupId: (id) =>
+      set((state) => ({
+        pendingGroupIds: new Set([...state.pendingGroupIds, id]),
+      })),
+    clearPendingGroupIds: () => set({ pendingGroupIds: new Set<string>() }),
     setAIThinkingSeat: (aiThinkingSeat) => set({ aiThinkingSeat }),
     setTurnNumber: (turnNumber) => set({ turnNumber }),
     setGameEnded: (gameEnded) => set({ gameEnded }),
 
     resetPending: () =>
-      set({ pendingTableGroups: null, pendingMyTiles: null }),
+      set({
+        pendingTableGroups: null,
+        pendingMyTiles: null,
+        pendingGroupIds: new Set<string>(),
+      }),
 
     reset: () => set(initialState),
   }))

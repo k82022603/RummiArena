@@ -26,6 +26,20 @@ const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8080";
 const MAX_RECONNECT_ATTEMPTS = 5;
 const RECONNECT_DELAY_MS = 2000;
 
+/**
+ * 서버 에러 코드 → 한글 메시지 매핑 (websocket-protocol.md 기반)
+ */
+const INVALID_MOVE_MESSAGES: Record<string, string> = {
+  ERR_INITIAL_MELD_SCORE: "초기 제출 점수가 30점 미만입니다 (최소 30점 필요)",
+  ERR_GROUP_COLOR_DUP: "같은 색 타일이 중복되어 있습니다",
+  ERR_RUN_SEQUENCE: "연속된 숫자가 아닙니다",
+  ERR_SET_SIZE: "세트는 최소 3개 타일이 필요합니다",
+};
+
+function resolveInvalidMoveMessage(code: string, fallback: string): string {
+  return INVALID_MOVE_MESSAGES[code] ?? fallback;
+}
+
 interface UseWebSocketOptions {
   roomId: string;
   enabled?: boolean;
@@ -145,7 +159,9 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
         }
         case "INVALID_MOVE": {
           const payload = msg.payload as InvalidMovePayload;
-          const errorMsg = payload.errors.map((e) => e.message).join("; ");
+          const errorMsg = payload.errors
+            .map((e) => resolveInvalidMoveMessage(e.code, e.message))
+            .join(" / ");
           setLastError(errorMsg);
           // pending 상태 롤백: ErrorToast가 화면에 표시되는 동시에 보드/랙 원복
           resetPending();
