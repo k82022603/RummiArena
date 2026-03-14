@@ -49,6 +49,7 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
     setGameEnded,
     setMySeat,
     setTurnNumber,
+    resetPending,
   } = useGameStore();
 
   const handleMessage = useCallback(
@@ -146,6 +147,8 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
           const payload = msg.payload as InvalidMovePayload;
           const errorMsg = payload.errors.map((e) => e.message).join("; ");
           setLastError(errorMsg);
+          // pending 상태 롤백: ErrorToast가 화면에 표시되는 동시에 보드/랙 원복
+          resetPending();
           console.warn("[WS] INVALID_MOVE:", payload.errors);
           break;
         }
@@ -207,6 +210,7 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
       setLastError,
       setMySeat,
       setTurnNumber,
+      resetPending,
     ]
   );
 
