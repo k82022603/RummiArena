@@ -18,7 +18,9 @@ interface DraggableTileProps {
 
 /**
  * dnd-kit 기반 드래그 가능한 타일
- * DndContext 내부에서만 사용해야 한다.
+ * - 드래그 중 원래 위치는 반투명 고스트로 표시
+ * - DragOverlay에 실제 타일이 렌더링됨
+ * - DndContext 내부에서만 사용해야 한다.
  */
 const DraggableTile = memo(function DraggableTile({
   code,
@@ -29,25 +31,21 @@ const DraggableTile = memo(function DraggableTile({
   disabled = false,
   dragData,
 }: DraggableTileProps) {
-  const { attributes, listeners, setNodeRef, isDragging, transform } =
-    useDraggable({
-      id,
-      data: { tileCode: code, ...dragData },
-      disabled,
-    });
-
-  const style = transform
-    ? {
-        transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
-        zIndex: 50,
-      }
-    : undefined;
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id,
+    data: { tileCode: code, ...dragData },
+    disabled,
+  });
 
   return (
     <div
       ref={setNodeRef}
-      style={style}
-      className={isDragging ? "opacity-40" : ""}
+      className={[
+        "transition-opacity duration-100",
+        isDragging ? "opacity-25 pointer-events-none" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
       {...listeners}
       {...attributes}
     >

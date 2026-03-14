@@ -1,0 +1,160 @@
+# helm/charts/gitlab-runner/values.yaml
+# GitLab Runner — Kubernetes Executor
+# 네임스페이스: cicd
+# 참조: https://docs.gitlab.com/runner/install/kubernetes.html
+#
+# 설치 명령 (실제 토큰 설정 후):
+#   helm install gitlab-runner gitlab/gitlab-runner \
+#     -n cicd --create-namespace \
+#     -f helm/charts/gitlab-runner/values.yaml \
+#     --set runnerToken="<실제 Runner 토큰>"
+#
+# Runner 토큰 발급:
+#   GitLab.com → 프로젝트 → Settings → CI/CD → Runners → New project runner
+#
+# dry-run 검증:
+#   helm install gitlab-runner gitlab/gitlab-runner \
+#     -n cicd --create-namespace \
+#     -f helm/charts/gitlab-runner/values.yaml \
+#     --dry-run 2>&1 | head -50
+
+# GitLab 인스턴스 URL
+gitlabUrl: https://gitlab.com
+
+# Runner 등록 토큰 (실제 값은 K8s Secret 또는 --set으로 주입)
+# 절대 여기에 실제 토큰 값을 커밋하지 말 것
+runnerToken: ""
+
+# 동시 실행 Job 수 (10GB RAM 제약 — 보수적 설정)
+concurrent: 2
+
+# Job 폴링 간격 (초)
+checkInterval: 15
+
+# 로그 레벨
+logLevel: info
+
+# Runner 이름
+nameOverride: "rummiarena-runner"
+
+# ---------------------------------------------------------------------------
+# Runner 설정
+# ---------------------------------------------------------------------------
+runners:
+  # Executor: kubernetes (Docker Desktop K8s 사용)
+  executor: kubernetes
+
+  # 동시 실행 Job 수 (concurrent와 별개로 Runner 인스턴스당 제한)
+  limit: 2
+
+  # Job Pod 생성 네임스페이스
+  namespace: cicd
+
+  # Job Pod 기본 이미지
+  image: alpine:3.19
+
+  # 특권 모드 (DinD — Docker in Docker 필요 시 true)
+  # 로컬 개발은 false, Docker 빌드 Job에만 개별 overrides 적용
+  privileged: false
+
+  # Job Pod 리소스 제한 (10GB WSL 제약)
+  builds:
+    cpuRequests: "100m"
+    cpuLimits: "500m"
+    memoryRequests: "128Mi"
+    memoryLimits: "512Mi"
+
+  services:
+    cpuRequests: "100m"
+    cpuLimits: "300m"
+    memoryRequests: "64Mi"
+    memoryLimits: "256Mi"
+
+  helpers:
+    cpuRequests: "50m"
+    cpuLimits: "200m"
+    memoryRequests: "64Mi"
+    memoryLimits: "128Mi"
+
+  # 캐시 설정 (PVC 기반 로컬 캐시)
+  cache:
+    # "s3" | "gcs" | "azure" | "" (빈 값 = 캐시 비활성화)
+    # 로컬 개발 환경에서는 PVC 또는 비활성화 권장
+    secretName: ""
+
+  # Job Pod에 붙는 추가 라벨
+  podLabels:
+    app: gitlab-runner-job
+    project: rummiarena
+
+  # config.toml runner 블록 추가 설정
+  config: |
+    [[runners]]
+      [runners.kubernetes]
+        namespace = "cicd"
+        image = "alpine:3.19"
+        pull_policy = ["if-not-present", "always"]
+        # Job 실행 후 Pod 즉시 삭제 (리소스 확보)
+        [runners.kubernetes.pod_labels]
+          "app.kubernetes.io/managed-by" = "gitlab-runner"
+
+# ---------------------------------------------------------------------------
+# Runner Pod 자체 리소스 (Runner 컨트롤러 Pod)
+# ---------------------------------------------------------------------------
+resources:
+  requests:
+    cpu: "50m"
+    memory: "64Mi"
+  limits:
+    cpu: "200m"
+    memory: "256Mi"
+
+# ---------------------------------------------------------------------------
+# Runner Pod 보안 컨텍스트
+# ---------------------------------------------------------------------------
+podSecurityContext:
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+
+# ---------------------------------------------------------------------------
+# 서비스 어카운트
+# Job Pod가 cicd 네임스페이스에서 Pod 생성 권한을 가져야 함
+# ---------------------------------------------------------------------------
+serviceAccount:
+  create: true
+  name: gitlab-runner
+
+rbac:
+  create: true
+  # Job Pod 생성/삭제/조회 권한
+  rules:
+    - apiGroups: [""]
+      resources: ["pods", "pods/exec", "pods/attach", "secrets", "configmaps"]
+      verbs: ["get", "list", "watch", "create", "patch", "delete"]
+    - apiGroups: [""]
+      resources: ["pods/log"]
+      verbs: ["get", "list", "watch"]
+
+# ---------------------------------------------------------------------------
+# Unregister on terminate (Pod 삭제 시 GitLab에서 Runner 등록 해제)
+# ---------------------------------------------------------------------------
+unregisterRunners: true
+
+# ---------------------------------------------------------------------------
+# 환경 변수 (Job Pod가 아닌 Runner Pod에 적용)
+# ---------------------------------------------------------------------------
+extraEnv:
+  - name: KUBERNETES_VERIFY_TLS
+    value: "false"
+
+# ---------------------------------------------------------------------------
+# 추가 볼륨 마운트 (Docker 소켓 불필요 — K8s Executor 사용)
+# ---------------------------------------------------------------------------
+extraVolumes: []
+extraVolumeMounts: []
