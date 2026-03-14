@@ -54,6 +54,9 @@ interface GameStore {
   gameEnded: boolean;
   setGameEnded: (v: boolean) => void;
 
+  // pending 상태만 초기화 (INVALID_MOVE 롤백 시 사용)
+  resetPending: () => void;
+
   // 전체 초기화
   reset: () => void;
 }
@@ -89,6 +92,9 @@ export const useGameStore = create<GameStore>()(
     setAIThinkingSeat: (aiThinkingSeat) => set({ aiThinkingSeat }),
     setTurnNumber: (turnNumber) => set({ turnNumber }),
     setGameEnded: (gameEnded) => set({ gameEnded }),
+
+    resetPending: () =>
+      set({ pendingTableGroups: null, pendingMyTiles: null }),
 
     reset: () => set(initialState),
   }))

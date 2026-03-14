@@ -20,6 +20,7 @@ import PlayerRack from "@/components/game/PlayerRack";
 import PlayerCard from "@/components/game/PlayerCard";
 import TurnTimer from "@/components/game/TurnTimer";
 import ConnectionStatus from "@/components/game/ConnectionStatus";
+import ErrorToast from "@/components/game/ErrorToast";
 import Tile from "@/components/tile/Tile";
 import {
   MOCK_GAME_STATE,
@@ -218,8 +219,16 @@ export default function GameClient({ roomId }: GameClientProps) {
           tiles: [tileCode],
           type: "run",
         };
-        setPendingTableGroups([...currentTableGroups, newGroup]);
-        setPendingMyTiles(currentMyTiles.filter((c) => c !== tileCode));
+        const nextTableGroups = [...currentTableGroups, newGroup];
+        const nextMyTiles = currentMyTiles.filter((c) => c !== tileCode);
+        setPendingTableGroups(nextTableGroups);
+        setPendingMyTiles(nextMyTiles);
+
+        // 실시간 프리뷰: 서버에 PLACE_TILES 전송
+        send("PLACE_TILES", {
+          tableGroups: nextTableGroups,
+          tilesFromRack: myTiles.filter((t) => !nextMyTiles.includes(t)),
+        });
       } else if (over.id === "player-rack") {
         // 테이블 → 랙: 그룹에서 타일 제거
         if (pendingTableGroups) {
@@ -291,6 +300,8 @@ export default function GameClient({ roomId }: GameClientProps) {
   }
 
   return (
+    <>
+      <ErrorToast />
     <DndContext
       sensors={sensors}
       collisionDetection={closestCenter}
@@ -503,5 +514,6 @@ export default function GameClient({ roomId }: GameClientProps) {
         ) : null}
       </DragOverlay>
     </DndContext>
+    </>
   );
 }
