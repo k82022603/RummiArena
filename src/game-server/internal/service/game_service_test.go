@@ -241,8 +241,8 @@ func TestConfirmTurn_InvalidMove_BelowThirty(t *testing.T) {
 
 	se, ok := IsServiceError(err)
 	require.True(t, ok)
-	// V-04 초과: 에러 코드가 엔진에서 반환하는 ERR_INVALID_SET
-	assert.Equal(t, engine.ErrInvalidSet, se.Code)
+	// V-04: 30점 미달 → ERR_INITIAL_MELD_SCORE
+	assert.Equal(t, engine.ErrInitialMeldScore, se.Code)
 	assert.True(t, strings.Contains(err.Error(), "30"), "에러 메시지에 30점 관련 내용이 포함되어야 한다")
 }
 
@@ -279,7 +279,8 @@ func TestConfirmTurn_InvalidMove_InvalidSet_DuplicateColor(t *testing.T) {
 
 	se, ok := IsServiceError(err)
 	require.True(t, ok)
-	assert.Equal(t, engine.ErrInvalidSet, se.Code)
+	// V-14: 그룹 내 동일 색상 중복 → ERR_GROUP_COLOR_DUP
+	assert.Equal(t, engine.ErrGroupColorDup, se.Code)
 	_ = svc // 미사용 경고 방지
 }
 
@@ -310,7 +311,9 @@ func TestConfirmTurn_InvalidMove_NonConsecutiveRun(t *testing.T) {
 
 	se, ok := IsServiceError(err)
 	require.True(t, ok)
-	assert.Equal(t, engine.ErrInvalidSet, se.Code)
+	// R3a,R5a,R7a: 같은 색상이지만 숫자가 달라 그룹도 불가 → ERR_GROUP_NUMBER
+	// (ValidateTileSet은 groupErr를 우선 반환)
+	assert.Equal(t, engine.ErrGroupNumberMismatch, se.Code)
 }
 
 func TestConfirmTurn_InvalidMove_TableTileLost(t *testing.T) {
@@ -364,8 +367,9 @@ func TestConfirmTurn_InvalidMove_TableTileLost(t *testing.T) {
 
 	se, ok := IsServiceError(err)
 	require.True(t, ok)
-	// V-06: table tile count decreased
-	assert.Equal(t, engine.ErrInvalidSet, se.Code)
+	// V-03: 테이블 before/after 타일 수 동일(0 증가) → ERR_NO_RACK_TILE
+	// (기존 테이블 타일을 누락하여 새 타일로 대체하면 순증가=0이므로 V-03이 먼저 발동)
+	assert.Equal(t, engine.ErrNoRackTile, se.Code)
 }
 
 func TestConfirmTurn_NotYourTurn(t *testing.T) {

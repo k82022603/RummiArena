@@ -19,7 +19,8 @@ persistence:
 
 credentials:
   user: rummikub
-  password: rummikub123
+  # password: 실제 값은 --set credentials.password=<value> 또는 외부 Secret으로 주입
+  password: ""
   database: rummikub
 
 resources:
