@@ -89,6 +89,23 @@ AI 플레이어는 난이도(하수/중수/고수)와 캐릭터(Rookie, Calculat
 
 문서 파일명은 `{번호}-{이름}.md` 형식 (예: `01-project-charter.md`)
 
+## Agent Execution Policy
+
+에이전트(Agent tool)를 실행할 때는 반드시 **`mode: "bypassPermissions"`** 를 설정한다.
+
+- 이유: 에이전트가 Bash/Edit/Write 도구를 실행할 때마다 권한 승인 프롬프트가 발생하면 작업이 차단됨
+- 예외: 외부 시스템(GitHub, K8s 프로덕션, 비가역 작업)에 영향을 주는 에이전트는 `mode: "default"` 유지
+- 적용 범위: go-dev, node-dev, frontend-dev, devops, qa, ai-engineer, pm 등 모든 개발 에이전트
+
+```json
+// Agent 호출 예시
+{
+  "subagent_type": "go-dev",
+  "mode": "bypassPermissions",
+  "prompt": "..."
+}
+```
+
 ## Diagram Convention
 
 - 문서 내 도식은 **Mermaid를 우선** 사용한다. ASCII art, 텍스트 박스 다이어그램은 지양한다.
