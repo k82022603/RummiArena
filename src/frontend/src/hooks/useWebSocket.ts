@@ -4,20 +4,22 @@ import { useEffect, useRef, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { useWSStore } from "@/store/wsStore";
 import { useGameStore } from "@/store/gameStore";
-import type { GameState, Player } from "@/types/game";
 import type {
-  WSMessage,
-  WSClientEvent,
-  GameStartedPayload,
+  WSEnvelope,
+  C2SMessageType,
+  AuthOKPayload,
+  GameStatePayload,
   TurnStartPayload,
-  TurnActionPayload,
-  TurnTimeoutPayload,
-  GameEndedPayload,
-  PlayerJoinedPayload,
-  PlayerLeftPayload,
+  TurnEndPayload,
+  TilePlacedPayload,
+  TileDrawnPayload,
+  InvalidMovePayload,
+  GameOverPayload,
+  PlayerJoinPayload,
+  PlayerLeavePayload,
   AIThinkingPayload,
   WSErrorPayload,
-  AuthPayload,
+  ChatBroadcastPayload,
 } from "@/types/websocket";
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8080";
@@ -35,6 +37,7 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
   const reconnectAttempts = useRef(0);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMounted = useRef(true);
+  const seqRef = useRef(0);
 
   const { setStatus, setLastError } = useWSStore();
   const {
@@ -44,102 +47,157 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
     setRemainingMs,
     setAIThinkingSeat,
     setGameEnded,
-    gameState,
+    setMySeat,
+    setTurnNumber,
   } = useGameStore();
 
   const handleMessage = useCallback(
     (event: MessageEvent) => {
-      let msg: WSMessage;
+      let msg: WSEnvelope;
       try {
-        msg = JSON.parse(event.data as string) as WSMessage;
+        msg = JSON.parse(event.data as string) as WSEnvelope;
       } catch {
         console.warn("[WS] JSON parse error:", event.data);
         return;
       }
 
-      switch (msg.event) {
-        case "game:started": {
-          const payload = msg.data as GameStartedPayload;
-          setMyTiles(payload.myTiles);
-          setPlayers(payload.players);
+      switch (msg.type) {
+        case "AUTH_OK": {
+          const payload = msg.payload as AuthOKPayload;
+          setMySeat(payload.seat);
+          console.info("[WS] AUTH_OK seat=%d user=%s", payload.seat, payload.displayName);
           break;
         }
-        case "game:state": {
-          const payload = msg.data as { gameState: GameState; players: Player[] };
-          if (payload.gameState) setGameState(payload.gameState);
-          if (payload.players) setPlayers(payload.players);
+        case "GAME_STATE": {
+          const payload = msg.payload as GameStatePayload;
+          setGameState({
+            currentSeat: payload.currentSeat,
+            tableGroups: payload.tableGroups,
+            drawPileCount: payload.drawPileCount,
+            turnTimeoutSec: payload.turnTimeoutSec,
+            turnStartedAt: payload.turnStartedAt ?? new Date().toISOString(),
+          });
+          setMyTiles(payload.myRack);
+          setPlayers(
+            payload.players.map((p) => ({
+              seat: p.seat,
+              type: p.playerType as "HUMAN",
+              userId: p.userId ?? "",
+              displayName: p.displayName,
+              status: p.isConnected ? ("CONNECTED" as const) : ("DISCONNECTED" as const),
+              tileCount: p.tileCount,
+              hasInitialMeld: p.hasInitialMeld,
+            }))
+          );
           break;
         }
-        case "turn:start": {
-          const payload = msg.data as TurnStartPayload;
-          setRemainingMs(payload.remainingMs);
+        case "TURN_START": {
+          const payload = msg.payload as TurnStartPayload;
+          setRemainingMs(payload.timeoutSec * 1000);
+          if (payload.turnNumber != null) setTurnNumber(payload.turnNumber);
+          setAIThinkingSeat(null);
+          useGameStore.setState((state) => ({
+            gameState: state.gameState
+              ? { ...state.gameState, currentSeat: payload.seat }
+              : state.gameState,
+          }));
+          break;
+        }
+        case "TURN_END": {
+          const payload = msg.payload as TurnEndPayload;
+          useGameStore.setState((state) => ({
+            gameState: state.gameState
+              ? {
+                  ...state.gameState,
+                  currentSeat: payload.nextSeat,
+                  tableGroups: payload.tableGroups,
+                  drawPileCount: payload.drawPileCount,
+                }
+              : state.gameState,
+          }));
+          if (payload.nextTurnNumber != null) setTurnNumber(payload.nextTurnNumber);
           setAIThinkingSeat(null);
           break;
         }
-        case "turn:action": {
-          const payload = msg.data as TurnActionPayload;
+        case "TILE_PLACED": {
+          const payload = msg.payload as TilePlacedPayload;
+          useGameStore.setState((state) => ({
+            gameState: state.gameState
+              ? { ...state.gameState, tableGroups: payload.tableGroups }
+              : state.gameState,
+          }));
+          break;
+        }
+        case "TILE_DRAWN": {
+          const payload = msg.payload as TileDrawnPayload;
           if (payload.drawnTile) {
-            // 내 드로우
-            useGameStore.getState().setMyTiles([
-              ...useGameStore.getState().myTiles,
-              payload.drawnTile,
-            ]);
+            useGameStore.setState((state) => ({
+              myTiles: [...state.myTiles, payload.drawnTile!],
+            }));
           }
-          if (payload.tableGroups && gameState) {
-            setGameState({ ...gameState, tableGroups: payload.tableGroups });
-          }
-          setAIThinkingSeat(null);
+          useGameStore.setState((state) => ({
+            gameState: state.gameState
+              ? { ...state.gameState, drawPileCount: payload.drawPileCount }
+              : state.gameState,
+          }));
           break;
         }
-        case "turn:timeout": {
-          const payload = msg.data as TurnTimeoutPayload;
-          if (payload.drawnTile) {
-            useGameStore.getState().setMyTiles([
-              ...useGameStore.getState().myTiles,
-              payload.drawnTile,
-            ]);
-          }
-          setAIThinkingSeat(null);
+        case "INVALID_MOVE": {
+          const payload = msg.payload as InvalidMovePayload;
+          const errorMsg = payload.errors.map((e) => e.message).join("; ");
+          setLastError(errorMsg);
+          console.warn("[WS] INVALID_MOVE:", payload.errors);
           break;
         }
-        case "game:ended": {
-          const payload = msg.data as GameEndedPayload;
-          console.info("[WS] game:ended", payload);
+        case "GAME_OVER": {
+          const payload = msg.payload as GameOverPayload;
+          console.info("[WS] GAME_OVER", payload);
           setGameEnded(true);
           break;
         }
-        case "player:joined": {
-          const payload = msg.data as PlayerJoinedPayload;
-          console.info("[WS] player:joined seat", payload.seat);
+        case "PLAYER_JOIN": {
+          const payload = msg.payload as PlayerJoinPayload;
+          console.info("[WS] PLAYER_JOIN seat=%d %s", payload.seat, payload.displayName);
           break;
         }
-        case "player:left": {
-          const payload = msg.data as PlayerLeftPayload;
-          console.info("[WS] player:left seat", payload.seat);
+        case "PLAYER_LEAVE": {
+          const payload = msg.payload as PlayerLeavePayload;
+          console.info("[WS] PLAYER_LEAVE seat=%d %s", payload.seat, payload.displayName);
           break;
         }
-        case "player:reconnected": {
-          console.info("[WS] player:reconnected");
+        case "PLAYER_RECONNECT": {
+          console.info("[WS] PLAYER_RECONNECT");
           break;
         }
-        case "ai:thinking": {
-          const payload = msg.data as AIThinkingPayload;
+        case "AI_THINKING": {
+          const payload = msg.payload as AIThinkingPayload;
           setAIThinkingSeat(payload.seat);
           break;
         }
-        case "error": {
-          const payload = msg.data as WSErrorPayload;
+        case "CHAT_BROADCAST": {
+          const payload = msg.payload as ChatBroadcastPayload;
+          console.info("[WS] CHAT seat=%d: %s", payload.seat, payload.message);
+          break;
+        }
+        case "TIMER_UPDATE": {
+          // Future: server-side timer sync
+          break;
+        }
+        case "ERROR": {
+          const payload = msg.payload as WSErrorPayload;
           setLastError(payload.message);
-          console.error("[WS] server error:", payload.code, payload.message);
+          console.error("[WS] ERROR:", payload.code, payload.message);
+          break;
+        }
+        case "PONG": {
+          // Heartbeat response
           break;
         }
         default:
-          console.warn("[WS] unknown event:", msg.event);
+          console.warn("[WS] unknown type:", msg.type);
       }
-
     },
     [
-      gameState,
       setMyTiles,
       setGameState,
       setPlayers,
@@ -147,6 +205,8 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
       setAIThinkingSeat,
       setGameEnded,
       setLastError,
+      setMySeat,
+      setTurnNumber,
     ]
   );
 
@@ -167,10 +227,13 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
         setStatus("connected");
         setLastError(null);
 
-        // 인증 이벤트 전송 (방법 B: auth 이벤트 방식)
-        const authMsg: WSMessage<AuthPayload> = {
-          event: "auth",
-          data: { token: session.accessToken as string },
+        // AUTH 메시지 전송
+        seqRef.current = 1;
+        const authMsg: WSEnvelope = {
+          type: "AUTH",
+          payload: { token: session.accessToken as string },
+          seq: seqRef.current,
+          timestamp: new Date().toISOString(),
         };
         ws.send(JSON.stringify(authMsg));
       };
@@ -206,12 +269,18 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
   }, [roomId, session, handleMessage, setStatus, setLastError]);
 
   const send = useCallback(
-    <T>(event: WSClientEvent, data: T) => {
+    <T,>(type: C2SMessageType, payload: T) => {
       if (wsRef.current?.readyState !== WebSocket.OPEN) {
         console.warn("[WS] send called but not connected");
         return;
       }
-      const msg: WSMessage<T> = { event, data };
+      seqRef.current += 1;
+      const msg: WSEnvelope<T> = {
+        type,
+        payload,
+        seq: seqRef.current,
+        timestamp: new Date().toISOString(),
+      };
       wsRef.current.send(JSON.stringify(msg));
     },
     []

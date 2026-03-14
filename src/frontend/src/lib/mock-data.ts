@@ -149,8 +149,7 @@ export const MOCK_TABLE_GROUPS: TableGroup[] = [
 ];
 
 export const MOCK_GAME_STATE: GameState = {
-  currentTurn: 8,
-  currentPlayerSeat: 0,
+  currentSeat: 0,
   tableGroups: MOCK_TABLE_GROUPS,
   drawPileCount: 28,
   turnStartedAt: new Date().toISOString(),
