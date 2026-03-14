@@ -552,11 +552,13 @@ function validatePromptSafety(prompt: string): boolean {
 
 ## 13. 체크리스트
 
-### Sprint 0 (현재)
+### Sprint 0 (완료)
 
-- [ ] `.env.example` 파일 생성 (루트, 각 서비스별)
-- [ ] `docker-compose.yml` 평문 비밀번호 → `.env` 참조로 변경
-- [ ] `.gitignore` 누락 패턴 추가 (`*.pem`, `*.key`, `secrets/`)
+- [x] `.env.example` 파일 생성 (루트, 각 서비스별)
+- [x] `docker-compose.yml` 평문 비밀번호 → `.env` 참조로 변경
+- [x] `.gitignore` 누락 패턴 추가 (`*.pem`, `*.key`, `secrets/`)
+
+> **현재 알려진 이슈**: `helm/game-server/values.yaml`에 `JWT_SECRET: "test-secret-for-dev"`가 하드코딩되어 있다. K8s Secret 주입 방식으로 전환이 필요하며, Phase 2~3 체크리스트에서 처리한다.
 
 ### Phase 2~3
 

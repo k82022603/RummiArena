@@ -1,6 +1,7 @@
 # 도구 매뉴얼 인덱스 (Tools & Harness Manual)
 
 프로젝트에서 사용하는 모든 도구의 설치·설정·사용법을 정리한다.
+전체 **26개** 도구 매뉴얼이 작성 완료되었다 (2026-03-14 기준).
 
 ## 도구 분류
 
@@ -44,7 +45,7 @@
 ### 외부 API & 연동
 | # | 도구 | 용도 | 도입 시점 | 문서 |
 |---|------|------|-----------|------|
-| 17 | Google OAuth 2.0 | 사용자 인증 | Phase 2 | [17-google-oauth.md](17-google-oauth.md) |
+| 17 | Google OAuth 2.0 | 사용자 인증 | Phase 1 | [17-google-oauth.md](17-google-oauth.md) |
 | 18 | 카카오톡 API | 알림 메시지 | Phase 4 | [18-kakao-api.md](18-kakao-api.md) |
 | 19 | OpenAI / Claude / DeepSeek API | AI 플레이어 | Phase 3 | [19-llm-apis.md](19-llm-apis.md) |
 

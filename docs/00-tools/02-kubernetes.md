@@ -2,7 +2,10 @@
 
 ## 1. 개요
 Docker Desktop 내장 단일 노드 K8s 클러스터.
-모든 서비스(게임 서버, AI Adapter, DB 등)를 Pod로 배포.
+모든 서비스(게임 서버, AI Adapter, Frontend, DB 등)를 Pod로 배포.
+
+> **현재 상태 (Sprint 1, 2026-03-13)**: rummikub 네임스페이스에 5개 서비스 Helm 배포 완료.
+> 통합 테스트 31/31 PASS.
 
 ## 2. 설치
 Docker Desktop에 내장. 별도 설치 불필요.
@@ -12,14 +15,56 @@ kubectl version --client
 
 ## 3. 프로젝트 네임스페이스
 ```bash
-kubectl create namespace rummikub       # 앱 서비스
+kubectl create namespace rummikub       # 앱 서비스 (5개 Helm release)
+kubectl create namespace traefik        # Traefik Ingress Gateway
 kubectl create namespace argocd         # ArgoCD
-kubectl create namespace sonarqube      # SonarQube
+kubectl create namespace sonarqube      # SonarQube (Sprint 2 예정)
 kubectl create namespace istio-system   # Istio (Phase 5)
 kubectl create namespace monitoring     # Prometheus/Grafana (Phase 5)
 ```
 
-## 4. 주요 명령어
+## 4. 현재 배포 현황
+
+### 4.1 Helm Releases (rummikub namespace)
+
+| Release | Chart | NodePort | 서비스 포트 | 상태 |
+|---------|-------|----------|------------|------|
+| postgres | helm/charts/postgres | 30432 | 5432 | Running |
+| redis | helm/charts/redis | - (ClusterIP) | 6379 | Running |
+| game-server | helm/charts/game-server | 30080 | 8080 | Running |
+| ai-adapter | helm/charts/ai-adapter | 30081 | 8081 | Running |
+| frontend | helm/charts/frontend | 30000 | 3000 | Running |
+
+### 4.2 NodePort 접속 정보
+
+```bash
+# 프론트엔드
+http://localhost:30000
+
+# 게임 서버 API
+http://localhost:30080/api/...
+http://localhost:30080/health
+
+# AI Adapter
+http://localhost:30081/health
+
+# PostgreSQL (외부 접속)
+psql -h localhost -p 30432 -U rummikub -d rummikub
+```
+
+### 4.3 ResourceQuota (rummikub namespace)
+
+```yaml
+spec:
+  hard:
+    requests.cpu: "2"
+    requests.memory: 2Gi
+    limits.cpu: "4"
+    limits.memory: 4Gi
+    pods: "20"
+```
+
+## 5. 주요 명령어
 
 ### 기본 조회
 ```bash
@@ -27,6 +72,12 @@ kubectl get pods -n rummikub
 kubectl get svc -n rummikub
 kubectl get deployments -n rummikub
 kubectl get all -n rummikub
+```
+
+### Helm release 확인
+```bash
+helm list -n rummikub
+helm status game-server -n rummikub
 ```
 
 ### 로그 확인
@@ -61,16 +112,16 @@ kubectl create secret generic kakao-api -n rummikub \
   --from-literal=REST_API_KEY=xxx
 ```
 
-### 포트 포워딩 (로컬 접속)
+### 포트 포워딩 (NodePort 대신 사용 시)
 ```bash
 kubectl port-forward svc/frontend 3000:3000 -n rummikub
 kubectl port-forward svc/game-server 8080:8080 -n rummikub
 kubectl port-forward svc/argocd-server 8443:443 -n argocd
 ```
 
-## 5. Traefik Ingress 설치
+## 6. Traefik Ingress 설치
 
-> NGINX Ingress Controller는 2026-03 EOL. Traefik으로 대체.
+> NGINX Ingress Controller는 2026-03 EOL. Traefik으로 대체 (Phase 1 도입).
 > 상세: `docs/05-deployment/02-gateway-architecture.md`
 
 ```bash
@@ -84,14 +135,14 @@ kubectl create namespace traefik
 # Traefik 설치 (커스텀 values)
 helm install traefik traefik/traefik \
   --namespace traefik \
-  --values helm/traefik/values.yaml
+  --values helm/charts/traefik/values.yaml
 
 # 확인
 kubectl get pods -n traefik
 kubectl get svc -n traefik
 ```
 
-## 6. 트러블슈팅
+## 7. 트러블슈팅
 
 | 문제 | 명령어 |
 |------|--------|
@@ -99,7 +150,8 @@ kubectl get svc -n traefik
 | 이벤트 확인 | `kubectl get events -n rummikub --sort-by=.lastTimestamp` |
 | DNS 확인 | `kubectl run tmp --rm -it --image=busybox -- nslookup game-server.rummikub.svc.cluster.local` |
 | 리소스 부족 | `kubectl top nodes && kubectl top pods -A` |
+| ResourceQuota 확인 | `kubectl describe resourcequota -n rummikub` |
 
-## 6. 참고 링크
+## 8. 참고 링크
 - kubectl 치트시트: https://kubernetes.io/docs/reference/kubectl/cheatsheet/
 - K8s 개념: https://kubernetes.io/docs/concepts/

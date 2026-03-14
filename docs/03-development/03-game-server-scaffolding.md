@@ -1,8 +1,9 @@
 # game-server 스캐폴딩 상세 설명
 
 > 작성일: 2026-03-12
+> 최종 수정: 2026-03-13
 > 작성자: 애벌레
-> 버전: 0.1 (Sprint 0 스캐폴딩 완료 기준)
+> 버전: 0.2 (Sprint 1 Day 1 핵심 구현 완료 기준)
 
 ---
 
@@ -47,9 +48,9 @@ src/game-server/
 │   │   ├── run.go               # 런 유효성 검증 (같은 색, 연속 숫자)
 │   │   └── validator.go         # 턴 확인 통합 검증 (V-01 ~ V-15)
 │   ├── handler/                 # HTTP/WebSocket 핸들러 (gin 컨텍스트 처리)
-│   │   ├── game_handler.go      # 게임 이력 REST 핸들러
-│   │   ├── room_handler.go      # Room CRUD REST 핸들러
-│   │   └── ws_handler.go        # WebSocket 업그레이드 및 연결 처리
+│   │   ├── game_handler.go      # 게임 REST 핸들러 (5개 엔드포인트 실구현)
+│   │   ├── room_handler.go      # Room REST 핸들러 (7개 엔드포인트 실구현)
+│   │   └── ws_handler.go        # WebSocket 업그레이드 (스텁, 다음 과제)
 │   ├── middleware/              # gin 미들웨어
 │   │   ├── auth.go              # JWT Bearer 토큰 검증
 │   │   └── logger.go            # 구조화 요청 로깅 (zap)
@@ -60,10 +61,10 @@ src/game-server/
 │   ├── repository/              # 데이터 접근 계층 (인터페이스 + 구현)
 │   │   ├── postgres_repo.go     # PostgreSQL: Game/Room/User/GamePlayer
 │   │   └── redis_repo.go        # Redis: 실시간 게임 상태 저장/조회/삭제
-│   └── service/                 # 비즈니스 로직 (인터페이스 우선 정의)
-│       ├── game_service.go      # GameService: 게임 생명주기
-│       ├── room_service.go      # RoomService: 방 생성/참가/퇴장
-│       └── turn_service.go      # TurnService: 턴 진행, 타임아웃 처리
+│   └── service/                 # 비즈니스 로직
+│       ├── game_service.go      # GameService: 5개 메서드 실구현
+│       ├── room_service.go      # RoomService: 7개 메서드 실구현
+│       └── turn_service.go      # TurnService: 인터페이스 정의
 ├── Dockerfile                   # 멀티스테이지 빌드 (builder + runner)
 ├── go.mod                       # 모듈 선언 및 직접 의존성
 └── go.sum                       # 의존성 체크섬
@@ -375,30 +376,33 @@ flowchart TB
 
 #### room_handler.go
 
-`RoomHandler`는 방 관련 REST 엔드포인트를 처리한다.
+`RoomHandler`는 방 관련 REST 엔드포인트를 처리한다. 7개 엔드포인트 모두 실구현 완료.
 
-| 메서드 | 엔드포인트 | 핸들러 함수 |
-|--------|-----------|------------|
-| POST | `/api/rooms` | `CreateRoom` |
-| GET | `/api/rooms` | `ListRooms` |
-| GET | `/api/rooms/:id` | `GetRoom` |
-| POST | `/api/rooms/:id/join` | `JoinRoom` |
-| POST | `/api/rooms/:id/leave` | `LeaveRoom` |
-| POST | `/api/rooms/:id/start` | `StartGame` |
+| 메서드 | 엔드포인트 | 핸들러 함수 | 상태 |
+|--------|-----------|------------|------|
+| POST | `/api/rooms` | `CreateRoom` | 완료 |
+| GET | `/api/rooms` | `ListRooms` | 완료 |
+| GET | `/api/rooms/:id` | `GetRoom` | 완료 |
+| POST | `/api/rooms/:id/join` | `JoinRoom` | 완료 |
+| POST | `/api/rooms/:id/leave` | `LeaveRoom` | 완료 |
+| POST | `/api/rooms/:id/start` | `StartGame` | 완료 |
+| DELETE | `/api/rooms/:id` | `DeleteRoom` | 완료 |
 
 #### game_handler.go
 
-`GameHandler`는 게임 이력 조회 REST 엔드포인트를 처리한다.
+`GameHandler`는 게임 진행 REST 엔드포인트를 처리한다. 5개 엔드포인트 모두 실구현 완료.
 
-| 메서드 | 엔드포인트 | 핸들러 함수 |
-|--------|-----------|------------|
-| GET | `/api/games` | `ListGames` |
-| GET | `/api/games/:id` | `GetGame` |
-| GET | `/api/games/:id/events` | `GetGameEvents` |
+| 메서드 | 엔드포인트 | 핸들러 함수 | 상태 |
+|--------|-----------|------------|------|
+| GET | `/api/games/:id` | `GetGameState` | 완료 |
+| POST | `/api/games/:id/place` | `PlaceTiles` | 완료 |
+| POST | `/api/games/:id/confirm` | `ConfirmTurn` | 완료 |
+| POST | `/api/games/:id/draw` | `DrawTile` | 완료 |
+| POST | `/api/games/:id/reset` | `ResetTurn` | 완료 |
 
 #### ws_handler.go
 
-`WSHandler`는 WebSocket 연결을 처리한다. `gorilla/websocket`의 `Upgrader`를 사용해 HTTP 연결을 WebSocket으로 업그레이드한다.
+`WSHandler`는 WebSocket 연결을 처리한다. `gorilla/websocket`의 `Upgrader`를 사용해 HTTP 연결을 WebSocket으로 업그레이드한다. 현재는 연결 수락 스텁 상태이며, WebSocket Hub/Connection 구현이 다음 P0 과제다.
 
 ```go
 var upgrader = websocket.Upgrader{
@@ -417,27 +421,29 @@ WebSocket 연결 방식:
 
 ### 7.3 service — 비즈니스 로직
 
-서비스 계층은 인터페이스를 우선 정의하고 구현체를 분리한다. 이를 통해 테스트 시 mock 구현체로 대체할 수 있다.
+서비스 계층은 인터페이스를 정의하고 구현체를 분리한다. 이를 통해 테스트 시 mock 구현체로 대체할 수 있다.
 
-#### game_service.go
+#### game_service.go (실구현 완료)
 
 ```go
 type GameService interface {
-    StartGame(roomID string) (*model.Game, error)
-    GetGame(gameID string) (*model.Game, error)
-    GetGameState(gameID string) (*model.GameStateRedis, error)
-    EndGame(gameID string) error
+    NewGame(roomID string) (*model.Game, error)
+    GetGameState(gameID, userID string) (*model.GameStateRedis, error)
+    PlaceTiles(gameID, userID string, sets [][]string) error
+    ConfirmTurn(gameID, userID string) error
+    DrawTile(gameID, userID string) error
 }
 ```
 
-| 메서드 | 구현 예정 로직 |
-|--------|--------------|
-| `StartGame` | 106장 생성 → Fisher-Yates 셔플 → 플레이어별 14장 분배 → Redis 저장 |
-| `GetGame` | PostgreSQL에서 게임 엔티티 조회 |
-| `GetGameState` | Redis에서 실시간 게임 상태 조회 |
-| `EndGame` | 게임 종료 처리, 점수 계산, ELO 업데이트 |
+| 메서드 | 구현 내용 |
+|--------|---------|
+| `NewGame` | 106장 생성 → Fisher-Yates 셔플 → 플레이어별 14장 분배 → Redis 저장 |
+| `GetGameState` | Redis 조회 → 1인칭 POV 필터링 (본인 랙만 공개) |
+| `PlaceTiles` | 랙에서 타일 분리 → 테이블 임시 반영 |
+| `ConfirmTurn` | engine.ValidateTurn 검증 → Redis 상태 확정 → 다음 턴으로 전환 |
+| `DrawTile` | DrawPile에서 1장 뽑기 → 플레이어 랙에 추가 → 다음 턴 전환 |
 
-#### room_service.go
+#### room_service.go (실구현 완료)
 
 ```go
 type RoomService interface {
@@ -446,8 +452,18 @@ type RoomService interface {
     ListRooms() ([]*model.Room, error)
     JoinRoom(roomID, userID string) error
     LeaveRoom(roomID, userID string) error
+    StartGame(roomID, userID string) (*model.Game, error)
+    DeleteRoom(roomID, userID string) error
 }
 ```
+
+| 메서드 | 구현 내용 |
+|--------|---------|
+| `CreateRoom` | 방코드 4자리 랜덤 생성, 호스트 자동 착석 |
+| `JoinRoom` | 빈 좌석 순서대로 배정, 정원 초과 시 에러 |
+| `LeaveRoom` | 좌석 반납; 호스트 퇴장 시 다음 플레이어로 호스트 이전 |
+| `StartGame` | 호스트만 가능, 2인 이상 조건 검증 후 GameService.NewGame 호출 |
+| `DeleteRoom` | 호스트만 가능, WAITING 상태인 방만 삭제 |
 
 `CreateRoomRequest` DTO:
 
@@ -467,11 +483,7 @@ type TurnService interface {
 }
 ```
 
-| 메서드 | 구현 예정 로직 |
-|--------|--------------|
-| `PlaceTiles` | Engine 검증 → 상태 적용 → Redis 업데이트 → 승리 조건 체크 |
-| `DrawTile` | 드로우 파일에서 1장 뽑기 → 랙에 추가 → 다음 턴으로 이동 |
-| `HandleTimeout` | 테이블 스냅샷 롤백 + 자동 드로우 1장 |
+턴 타임아웃 및 WebSocket 브로드캐스트 연동은 WebSocket Hub 구현 이후 실구현 예정이다.
 
 `TurnResult`:
 
@@ -559,7 +571,24 @@ TTL은 24시간(`gameStateTTL = 24 * time.Hour`)이다. 게임이 종료되면 `
 
 ---
 
-### 7.5 model — GORM 도메인 모델
+### 7.5 infra/database.go — DB 초기화
+
+`infra/database.go`는 GORM 연결과 AutoMigrate를 담당한다. 아래 8개 모델이 자동 마이그레이션된다.
+
+| 모델 | 설명 |
+|------|------|
+| `User` | Google OAuth 사용자, ELO 레이팅 |
+| `Room` | 게임 방, 방코드, 호스트 |
+| `Game` | 게임 인스턴스, 상태, 최대 플레이어 수 |
+| `GamePlayer` | 게임 참가자, 좌석, AI 모델, 랙 |
+| `GameEvent` | 턴별 이벤트 로그 |
+| `GameSnapshot` | 게임 복기(Replay)용 상태 스냅샷 |
+| `AICallLog` | AI Adapter 호출 기록, 응답 시간 |
+| `EloHistory` | ELO 점수 변동 이력 |
+
+---
+
+### 7.6 model — GORM 도메인 모델
 
 #### game.go
 
@@ -605,9 +634,11 @@ type GameStateRedis struct {
 
 ---
 
-### 7.6 middleware — 횡단 관심사
+### 7.7 middleware — 횡단 관심사
 
-#### auth.go — JWT 인증 미들웨어
+#### auth.go — JWT 인증 미들웨어 (실구현 완료)
+
+HS256 알고리즘으로 서명된 Bearer 토큰을 검증한다. `sub`(userID)와 `email` 클레임을 파싱해 gin 컨텍스트에 주입한다.
 
 ```mermaid
 flowchart LR
@@ -728,6 +759,8 @@ cd /mnt/d/Users/KTDS/Documents/06.과제/RummiArena/src/game-server
 go test ./internal/engine/... -v
 ```
 
+Sprint 1 Day 1 기준 결과: **69개 테스트, 커버리지 96.5%**
+
 ### 전체 테스트 실행
 
 ```bash
@@ -737,42 +770,64 @@ go tool cover -func=coverage.out
 
 목표 커버리지: 80% 이상 (engine 패키지는 100% 목표).
 
+### 통합 테스트
+
+```bash
+# K8s 배포 후 REST API 통합 테스트 (31개 케이스)
+# game-server NodePort: 30080
+curl http://localhost:30080/health
+```
+
+Sprint 1 Day 1 기준: **통합 테스트 31/31 PASS**
+
 ---
 
-## 10. 다음 단계 (Sprint 1 로드맵)
+## 10. Sprint 1 구현 완료 사항 및 다음 단계
 
-스캐폴딩 단계에서는 인터페이스와 구조체, Game Engine 핵심 로직이 완성되었다. Sprint 1에서 구현할 항목이다.
+### Sprint 1 Day 1 완료 항목 (2026-03-13)
+
+| 항목 | 상태 | 비고 |
+|------|------|------|
+| GORM AutoMigrate 8개 모델 | 완료 | User, Room, Game, GamePlayer, GameEvent, GameSnapshot, AICallLog, EloHistory |
+| Redis 연결 및 상태 저장 | 완료 | TTL 24h, key: `game:{id}:state` |
+| GameService 5개 메서드 | 완료 | NewGame, GetGameState(1P-POV), PlaceTiles, ConfirmTurn, DrawTile |
+| RoomService 7개 메서드 | 완료 | CreateRoom(4자리 코드), JoinRoom, LeaveRoom, StartGame, DeleteRoom 외 |
+| REST API 12개 엔드포인트 | 완료 | Room 7개 + Game 5개 |
+| middleware/auth.go JWT HS256 | 완료 | sub/email claims, Bearer 검증 |
+| K8s 5개 서비스 Helm 배포 | 완료 | rummikub namespace, NodePort 구성 |
+| Engine 단위 테스트 | 완료 | 69개 테스트, 커버리지 96.5% |
+| 통합 테스트 | 완료 | 31/31 PASS |
+| ws_handler.go | 스텁 | WebSocket Hub/Connection 구현 대기 중 |
 
 ```mermaid
 gantt
     title Sprint 1 구현 로드맵
     dateFormat  YYYY-MM-DD
     section 인프라 연결
-    GORM 마이그레이션 적용          :s1-1, 2026-03-15, 3d
-    Redis 연결 및 상태 저장 검증    :s1-2, after s1-1, 2d
+    GORM 마이그레이션 적용          :done, s1-1, 2026-03-13, 1d
+    Redis 연결 및 상태 저장 검증    :done, s1-2, 2026-03-13, 1d
+    K8s Helm 5개 서비스 배포        :done, s1-k, 2026-03-13, 1d
     section 핵심 서비스
-    GameService StartGame 구현     :s1-3, after s1-2, 3d
-    TurnService PlaceTiles 구현    :s1-4, after s1-3, 4d
-    TurnService DrawTile 구현      :s1-5, after s1-4, 2d
+    GameService 5개 메서드 구현     :done, s1-3, 2026-03-13, 1d
+    RoomService 7개 메서드 구현     :done, s1-6, 2026-03-13, 1d
     section 핸들러 완성
-    RoomHandler 구현               :s1-6, after s1-2, 3d
-    WSHandler 메시지 루프 구현     :s1-7, after s1-4, 4d
+    REST API 12개 엔드포인트        :done, s1-h, 2026-03-13, 1d
+    WSHandler Hub/Connection 구현  :active, s1-7, 2026-03-14, 4d
     section 미들웨어
-    Origin 검증 구현               :s1-8, after s1-6, 1d
-    Rate Limiting 미들웨어         :s1-9, after s1-8, 2d
+    JWT 인증 미들웨어               :done, s1-8, 2026-03-13, 1d
+    WebSocket Origin 검증          :s1-9, after s1-7, 1d
+    Rate Limiting 미들웨어         :s1-10, after s1-9, 2d
     section 테스트
-    Engine 패키지 테스트 완성      :s1-10, 2026-03-15, 5d
-    Service 레이어 mock 테스트     :s1-11, after s1-4, 4d
+    Engine 패키지 테스트 (69개)    :done, s1-t, 2026-03-13, 1d
+    Service 레이어 mock 테스트     :s1-11, after s1-7, 3d
 ```
 
-### 우선 구현 항목
+### 다음 P0 항목
 
 | 우선순위 | 항목 | 관련 파일 |
 |----------|------|----------|
-| 1 | GORM AutoMigrate 연결 (`main.go` 초기화 블록) | `cmd/server/main.go` |
-| 2 | `GameService.StartGame` — 타일 셔플, 분배, Redis 저장 | `internal/service/game_service.go` |
-| 3 | `TurnService.PlaceTiles` — Engine 검증 → Redis 업데이트 | `internal/service/turn_service.go` |
-| 4 | `WSHandler` 메시지 루프 — 인증, 룸 참가, 이벤트 브로드캐스트 | `internal/handler/ws_handler.go` |
-| 5 | WebSocket Origin 검증 | `internal/handler/ws_handler.go` |
-| 6 | `RoomHandler` 전체 메서드 구현 | `internal/handler/room_handler.go` |
-| 7 | Engine 패키지 테스트 커버리지 100% | `internal/engine/*_test.go` |
+| P0 | `WSHandler` Hub + Connection 구현 — 룸 참가, 이벤트 브로드캐스트 | `internal/handler/ws_handler.go` |
+| P0 | WebSocket Origin 검증 | `internal/handler/ws_handler.go` |
+| P1 | Service 레이어 mock 테스트 | `internal/service/*_test.go` |
+| P1 | Rate Limiting 미들웨어 | `internal/middleware/ratelimit.go` |
+| P2 | Engine 패키지 테스트 커버리지 100% | `internal/engine/*_test.go` |

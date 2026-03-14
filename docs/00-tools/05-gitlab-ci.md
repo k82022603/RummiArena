@@ -4,6 +4,8 @@
 CI 파이프라인 엔진. 코드 Push 시 자동으로 빌드·테스트·스캔·이미지 Push 수행.
 ArgoCD(CD)와 분리하여 GitOps 구조를 완성한다.
 
+> **현재 상태 (Sprint 1)**: `.gitlab-ci.yml` 생성 완료. GitLab 인스턴스 + Runner 등록은 Sprint 2 이월.
+
 ## 2. 구성 전략
 
 ### 소스 ↔ GitOps 레포 분리
