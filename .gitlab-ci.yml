@@ -36,6 +36,13 @@ variables:
   # Trivy DB 캐시 (매 실행 DB 재다운로드 방지)
   TRIVY_CACHE_DIR: "$CI_PROJECT_DIR/.cache/trivy"
 
+# 로컬 K8s 런너 강제 실행 앵커
+# quality/lint/test는 host.docker.internal 접근이 필요하므로 공유 런너 사용 금지
+.local-runner: &local-runner
+  tags:
+    - k8s
+    - rummiarena
+
 # 공통 캐시 앵커 (YAML 앵커 재사용)
 .go-cache: &go-cache
   key:
@@ -66,6 +73,7 @@ variables:
 
 lint-go:
   stage: lint
+  <<: *local-runner
   image: golangci/golangci-lint:v2.1
   cache:
     <<: *go-cache
@@ -81,6 +89,7 @@ lint-go:
 
 lint-nest:
   stage: lint
+  <<: *local-runner
   image: node:20-alpine
   cache:
     <<: *node-ai-cache
@@ -97,6 +106,7 @@ lint-nest:
 
 lint-frontend:
   stage: lint
+  <<: *local-runner
   image: node:20-alpine
   cache:
     <<: *node-fe-cache
@@ -117,6 +127,7 @@ lint-frontend:
 
 test-go:
   stage: test
+  <<: *local-runner
   image: golang:1.24-alpine
   cache:
     <<: *go-cache
@@ -151,6 +162,7 @@ test-go:
 
 test-nest:
   stage: test
+  <<: *local-runner
   image: node:20-alpine
   cache:
     <<: *node-ai-cache
@@ -179,6 +191,7 @@ test-nest:
 
 sonarqube:
   stage: quality
+  <<: *local-runner
   image: sonarsource/sonar-scanner-cli:5.0
   variables:
     SONAR_HOST_URL: $SONAR_HOST_URL   # GitLab CI Variable로 주입
@@ -206,6 +219,7 @@ sonarqube:
 
 trivy-fs:
   stage: quality
+  <<: *local-runner
   image:
     name: aquasec/trivy:latest
     entrypoint: [""]

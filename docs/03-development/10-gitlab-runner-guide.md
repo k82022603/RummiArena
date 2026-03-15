@@ -741,7 +741,58 @@ kubectl run -it --rm debug --image=alpine --restart=Never -n gitlab-runner -- \
 # Permissions → Contents: Read and write
 ```
 
-### 10.6 glrt- 토큰 "Failed to verify the runner" (403 Forbidden)
+### 10.6 Job이 GitLab.com 공유 런너에서 실행됨 (sonarqube/trivy-fs 실패)
+
+증상: sonarqube job 로그 첫 줄이 다음과 같이 `runners-manager.gitlab.com`을 포함:
+
+```
+on green-4.saas-linux-small-amd64.runners-manager.gitlab.com/default ntHFEtyXQ
+```
+
+원인: `.gitlab-ci.yml`에 `tags:`가 없으면 job은 우리 K8s 런너와 GitLab.com 공유 런너 중 먼저 응답하는 쪽에서 실행된다. 공유 런너는 `host.docker.internal`에 접근할 수 없어 sonarqube가 Connection refused로 실패한다.
+
+```mermaid
+flowchart LR
+    Job["Job (tags 없음)"]
+    Shared["GitLab.com\n공유 런너\n(host.docker.internal 접근 불가)"]
+    Local["우리 K8s 런너\n(host.docker.internal:9001 접근 가능)"]
+
+    Job -->|먼저 응답한 쪽| Shared
+    Job -->|먼저 응답한 쪽| Local
+
+    Shared -->|sonarqube 연결 실패| FAIL["파이프라인 실패"]
+    Local -->|SonarQube UP 이면| PASS["파이프라인 통과"]
+```
+
+해결: `.gitlab-ci.yml`의 모든 lint/test/quality job에 `tags:` 추가:
+
+```yaml
+# .gitlab-ci.yml 상단에 앵커 정의
+.local-runner: &local-runner
+  tags:
+    - k8s
+    - rummiarena
+
+# 각 job에 적용
+lint-go:
+  <<: *local-runner
+  ...
+
+sonarqube:
+  <<: *local-runner
+  ...
+```
+
+tags는 우리 K8s Runner 생성 시 등록한 값(`k8s`, `rummiarena`, `docker`)과 일치해야 한다.
+
+> **K8s pod에서 host.docker.internal 접근 확인 방법**:
+> ```bash
+> kubectl run -it --rm sonar-test --image=alpine --restart=Never -n gitlab-runner -- \
+>   wget -q --timeout=5 -O- http://host.docker.internal:9001/api/system/status
+> # {"status":"UP"} 이면 접근 가능
+> ```
+
+### 10.7 glrt- 토큰 "Failed to verify the runner" (403 Forbidden)
 
 증상: Runner Pod 로그에 아래 메시지가 반복되며 PANIC 발생
 
@@ -864,3 +915,4 @@ glab pipeline ci view
 > | 1.0 | 2026-03-15 | DevOps Agent | 초안 작성 (glab 1.89.0, Runner K8s Executor, 교대 실행 전략, 트러블슈팅) |
 > | 1.1 | 2026-03-15 | 애벌레 | 네임스페이스 cicd→gitlab-runner 수정, 직접 Helm 설치 절차 추가, 10.6 토큰 검증 트러블슈팅 추가 |
 > | 1.2 | 2026-03-16 | 애벌레 | 10.2 run_untagged API 수동 설정 절차 추가 |
+> | 1.3 | 2026-03-16 | 애벌레 | 10.6 신규: 공유 런너 실행 문제 (Mermaid 도식 + tags 해결책), 10.7로 번호 조정 |
