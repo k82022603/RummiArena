@@ -9,6 +9,8 @@ import (
 	"github.com/k82022603/RummiArena/game-server/internal/model"
 )
 
+const queryByID = "id = ?"
+
 // GameRepository defines persistent game operations backed by PostgreSQL.
 type GameRepository interface {
 	CreateGame(ctx context.Context, game *model.Game) error
@@ -55,7 +57,7 @@ func (r *postgresGameRepo) CreateGame(ctx context.Context, game *model.Game) err
 
 func (r *postgresGameRepo) GetGame(ctx context.Context, id string) (*model.Game, error) {
 	var game model.Game
-	if err := r.db.WithContext(ctx).First(&game, "id = ?", id).Error; err != nil {
+	if err := r.db.WithContext(ctx).First(&game, queryByID, id).Error; err != nil {
 		return nil, fmt.Errorf("postgres_repo: get game %q: %w", id, err)
 	}
 	return &game, nil
@@ -77,7 +79,7 @@ func (r *postgresGameRepo) CreateRoom(ctx context.Context, room *model.Room) err
 
 func (r *postgresGameRepo) GetRoom(ctx context.Context, id string) (*model.Room, error) {
 	var room model.Room
-	if err := r.db.WithContext(ctx).First(&room, "id = ?", id).Error; err != nil {
+	if err := r.db.WithContext(ctx).First(&room, queryByID, id).Error; err != nil {
 		return nil, fmt.Errorf("postgres_repo: get room %q: %w", id, err)
 	}
 	return &room, nil
@@ -117,7 +119,7 @@ func (r *postgresUserRepo) CreateUser(ctx context.Context, user *model.User) err
 
 func (r *postgresUserRepo) GetUserByID(ctx context.Context, id string) (*model.User, error) {
 	var user model.User
-	if err := r.db.WithContext(ctx).First(&user, "id = ?", id).Error; err != nil {
+	if err := r.db.WithContext(ctx).First(&user, queryByID, id).Error; err != nil {
 		return nil, fmt.Errorf("postgres_repo: get user by id %q: %w", id, err)
 	}
 	return &user, nil

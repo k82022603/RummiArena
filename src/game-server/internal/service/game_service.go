@@ -9,6 +9,12 @@ import (
 	"github.com/k82022603/RummiArena/game-server/internal/repository"
 )
 
+const (
+	errMsgGameNotFound   = "게임을 찾을 수 없습니다."
+	errMsgNotYourTurn    = "자신의 턴이 아닙니다."
+	errMsgPlayerNotFound = "플레이어를 찾을 수 없습니다."
+)
+
 // TilePlacement 클라이언트에서 전송하는 단일 세트 배치 정보
 type TilePlacement struct {
 	ID    string   `json:"id"`
@@ -156,7 +162,7 @@ func NewGameService(gameRepo repository.MemoryGameStateRepository) GameService {
 func (s *gameService) GetGameState(gameID string, requestingSeat int) (*GameStateView, error) {
 	state, err := s.gameRepo.GetGameState(gameID)
 	if err != nil {
-		return nil, &ServiceError{Code: "NOT_FOUND", Message: "게임을 찾을 수 없습니다.", Status: 404}
+		return nil, &ServiceError{Code: "NOT_FOUND", Message: errMsgGameNotFound, Status: 404}
 	}
 
 	// Table → TilePlacement 변환
@@ -204,17 +210,17 @@ func (s *gameService) GetGameState(gameID string, requestingSeat int) (*GameStat
 func (s *gameService) PlaceTiles(gameID string, req *PlaceRequest) (*GameActionResult, error) {
 	state, err := s.gameRepo.GetGameState(gameID)
 	if err != nil {
-		return nil, &ServiceError{Code: "NOT_FOUND", Message: "게임을 찾을 수 없습니다.", Status: 404}
+		return nil, &ServiceError{Code: "NOT_FOUND", Message: errMsgGameNotFound, Status: 404}
 	}
 
 	if state.CurrentSeat != req.Seat {
-		return nil, &ServiceError{Code: "NOT_YOUR_TURN", Message: "자신의 턴이 아닙니다.", Status: 422}
+		return nil, &ServiceError{Code: "NOT_YOUR_TURN", Message: errMsgNotYourTurn, Status: 422}
 	}
 
 	// seat의 플레이어 인덱스 탐색
 	playerIdx := findPlayerBySeat(state.Players, req.Seat)
 	if playerIdx < 0 {
-		return nil, &ServiceError{Code: "NOT_FOUND", Message: "플레이어를 찾을 수 없습니다.", Status: 404}
+		return nil, &ServiceError{Code: "NOT_FOUND", Message: errMsgPlayerNotFound, Status: 404}
 	}
 
 	// 스냅샷이 없으면 (턴 시작 최초 place) 스냅샷 저장
@@ -252,100 +258,118 @@ func (s *gameService) PlaceTiles(gameID string, req *PlaceRequest) (*GameActionR
 func (s *gameService) ConfirmTurn(gameID string, req *ConfirmRequest) (*GameActionResult, error) {
 	state, err := s.gameRepo.GetGameState(gameID)
 	if err != nil {
-		return nil, &ServiceError{Code: "NOT_FOUND", Message: "게임을 찾을 수 없습니다.", Status: 404}
+		return nil, &ServiceError{Code: "NOT_FOUND", Message: errMsgGameNotFound, Status: 404}
 	}
 
 	if state.CurrentSeat != req.Seat {
-		return nil, &ServiceError{Code: "NOT_YOUR_TURN", Message: "자신의 턴이 아닙니다.", Status: 422}
+		return nil, &ServiceError{Code: "NOT_YOUR_TURN", Message: errMsgNotYourTurn, Status: 422}
 	}
 
 	playerIdx := findPlayerBySeat(state.Players, req.Seat)
 	if playerIdx < 0 {
-		return nil, &ServiceError{Code: "NOT_FOUND", Message: "플레이어를 찾을 수 없습니다.", Status: 404}
+		return nil, &ServiceError{Code: "NOT_FOUND", Message: errMsgPlayerNotFound, Status: 404}
 	}
 
-	// 스냅샷에서 턴 시작 시점 랙/테이블 조회
-	snapKey := snapshotKey(gameID, req.Seat)
-	snap, hasSnap := s.snapshots[snapKey]
+	rackBefore, tableBefore := s.getOrCreateSnapshot(gameID, req.Seat, state, playerIdx)
 
-	// 스냅샷이 없으면 현재 상태 = 변화 없음 (place 없이 confirm)
-	var rackBefore []string
-	var tableBefore []*model.SetOnTable
-	if hasSnap {
-		rackBefore = snap.rack
-		tableBefore = snap.table
-	} else {
-		rackBefore = make([]string, len(state.Players[playerIdx].Rack))
-		copy(rackBefore, state.Players[playerIdx].Rack)
-		tableBefore = cloneTable(state.Table)
-	}
-
-	// 현재 상태(ConfirmRequest 기반)로 테이블/랙 구성
 	tableAfter := convertToSetOnTable(req.TableGroups)
 
-	// 랙에서 tilesFromRack 제거 (place 없이 confirm 직접 호출 시)
-	rackAfter := state.Players[playerIdx].Rack
-	if len(req.TilesFromRack) > 0 {
-		rackAfter, err = removeTilesFromRack(rackBefore, req.TilesFromRack)
-		if err != nil {
-			return nil, &ServiceError{Code: "INVALID_REQUEST", Message: err.Error(), Status: 400}
-		}
+	rackAfter, err := s.resolveRackAfter(state.Players[playerIdx].Rack, rackBefore, req.TilesFromRack)
+	if err != nil {
+		return nil, &ServiceError{Code: "INVALID_REQUEST", Message: err.Error(), Status: 400}
 	}
 
-	// engine 검증
-	engineTableBefore := modelSetsToEngineSets(tableBefore)
-	engineTableAfter := modelSetsToEngineSets(tableAfter)
-
-	validateReq := engine.TurnConfirmRequest{
-		TableBefore:        engineTableBefore,
-		TableAfter:         engineTableAfter,
-		RackBefore:         rackBefore,
-		RackAfter:          rackAfter,
-		HasInitialMeld:     state.Players[playerIdx].HasInitialMeld,
-		JokerReturnedCodes: req.JokerReturnedCodes,
-	}
+	validateReq := buildValidateRequest(tableBefore, tableAfter, rackBefore, rackAfter, state.Players[playerIdx].HasInitialMeld, req.JokerReturnedCodes)
 
 	if err := engine.ValidateTurnConfirm(validateReq); err != nil {
-		errCode := engine.ErrInvalidSet
-		if ve, ok := err.(*engine.ValidationError); ok {
-			errCode = ve.Code
-		}
-		return &GameActionResult{
-			Success:   false,
-			NextSeat:  state.CurrentSeat,
-			ErrorCode: errCode,
-			GameState: state,
-		}, &ServiceError{Code: errCode, Message: err.Error(), Status: 422}
+		return s.buildValidationFailResult(state, err), &ServiceError{Code: extractErrCode(err), Message: err.Error(), Status: 422}
 	}
 
 	// 검증 통과: 테이블 + 랙 확정
 	state.Table = tableAfter
 	state.Players[playerIdx].Rack = rackAfter
 
-	// 최초 등록 여부 업데이트 (처음으로 테이블에 타일을 올린 경우)
 	if !state.Players[playerIdx].HasInitialMeld && len(req.TilesFromRack) > 0 {
 		state.Players[playerIdx].HasInitialMeld = true
 	}
 
-	// 스냅샷 제거
+	snapKey := snapshotKey(gameID, req.Seat)
 	delete(s.snapshots, snapKey)
 
 	// 승리 조건: 랙이 0장
 	if len(rackAfter) == 0 {
-		state.Status = model.GameStatusFinished
-		if err := s.gameRepo.SaveGameState(state); err != nil {
-			return nil, fmt.Errorf("game_service: save after win: %w", err)
-		}
-		return &GameActionResult{
-			Success:   true,
-			NextSeat:  state.CurrentSeat,
-			GameEnded: true,
-			WinnerID:  state.Players[playerIdx].UserID,
-			GameState: state,
-		}, nil
+		return s.finishGame(state, playerIdx)
 	}
 
-	// 다음 턴으로 전환
+	return s.advanceToNextTurn(state)
+}
+
+// getOrCreateSnapshot 스냅샷이 있으면 반환하고, 없으면 현재 상태에서 생성한다.
+func (s *gameService) getOrCreateSnapshot(gameID string, seat int, state *model.GameStateRedis, playerIdx int) ([]string, []*model.SetOnTable) {
+	snapKey := snapshotKey(gameID, seat)
+	if snap, hasSnap := s.snapshots[snapKey]; hasSnap {
+		return snap.rack, snap.table
+	}
+	rackBefore := make([]string, len(state.Players[playerIdx].Rack))
+	copy(rackBefore, state.Players[playerIdx].Rack)
+	return rackBefore, cloneTable(state.Table)
+}
+
+// resolveRackAfter tilesFromRack이 있으면 rackBefore에서 제거한 결과를, 없으면 currentRack을 반환한다.
+func (s *gameService) resolveRackAfter(currentRack, rackBefore, tilesFromRack []string) ([]string, error) {
+	if len(tilesFromRack) > 0 {
+		return removeTilesFromRack(rackBefore, tilesFromRack)
+	}
+	return currentRack, nil
+}
+
+// buildValidateRequest engine.TurnConfirmRequest를 조립한다.
+func buildValidateRequest(tableBefore, tableAfter []*model.SetOnTable, rackBefore, rackAfter []string, hasInitialMeld bool, jokerReturnedCodes []string) engine.TurnConfirmRequest {
+	return engine.TurnConfirmRequest{
+		TableBefore:        modelSetsToEngineSets(tableBefore),
+		TableAfter:         modelSetsToEngineSets(tableAfter),
+		RackBefore:         rackBefore,
+		RackAfter:          rackAfter,
+		HasInitialMeld:     hasInitialMeld,
+		JokerReturnedCodes: jokerReturnedCodes,
+	}
+}
+
+// extractErrCode ValidationError에서 에러 코드를 추출한다. 타입이 다르면 ErrInvalidSet을 반환한다.
+func extractErrCode(err error) string {
+	if ve, ok := err.(*engine.ValidationError); ok {
+		return ve.Code
+	}
+	return engine.ErrInvalidSet
+}
+
+// buildValidationFailResult 유효성 검증 실패 시 GameActionResult를 생성한다.
+func (s *gameService) buildValidationFailResult(state *model.GameStateRedis, err error) *GameActionResult {
+	return &GameActionResult{
+		Success:   false,
+		NextSeat:  state.CurrentSeat,
+		ErrorCode: extractErrCode(err),
+		GameState: state,
+	}
+}
+
+// finishGame 승리 조건 충족 시 게임을 종료하고 결과를 반환한다.
+func (s *gameService) finishGame(state *model.GameStateRedis, playerIdx int) (*GameActionResult, error) {
+	state.Status = model.GameStatusFinished
+	if err := s.gameRepo.SaveGameState(state); err != nil {
+		return nil, fmt.Errorf("game_service: save after win: %w", err)
+	}
+	return &GameActionResult{
+		Success:   true,
+		NextSeat:  state.CurrentSeat,
+		GameEnded: true,
+		WinnerID:  state.Players[playerIdx].UserID,
+		GameState: state,
+	}, nil
+}
+
+// advanceToNextTurn 다음 플레이어 턴으로 전환하고 상태를 저장한 후 결과를 반환한다.
+func (s *gameService) advanceToNextTurn(state *model.GameStateRedis) (*GameActionResult, error) {
 	nextSeat := advanceTurn(state)
 	state.CurrentSeat = nextSeat
 	state.TurnStartAt = time.Now().Unix()
@@ -353,7 +377,6 @@ func (s *gameService) ConfirmTurn(gameID string, req *ConfirmRequest) (*GameActi
 	if err := s.gameRepo.SaveGameState(state); err != nil {
 		return nil, fmt.Errorf("game_service: save after confirm: %w", err)
 	}
-
 	return &GameActionResult{Success: true, NextSeat: nextSeat, GameState: state}, nil
 }
 
@@ -361,16 +384,16 @@ func (s *gameService) ConfirmTurn(gameID string, req *ConfirmRequest) (*GameActi
 func (s *gameService) DrawTile(gameID string, seat int) (*GameActionResult, error) {
 	state, err := s.gameRepo.GetGameState(gameID)
 	if err != nil {
-		return nil, &ServiceError{Code: "NOT_FOUND", Message: "게임을 찾을 수 없습니다.", Status: 404}
+		return nil, &ServiceError{Code: "NOT_FOUND", Message: errMsgGameNotFound, Status: 404}
 	}
 
 	if state.CurrentSeat != seat {
-		return nil, &ServiceError{Code: "NOT_YOUR_TURN", Message: "자신의 턴이 아닙니다.", Status: 422}
+		return nil, &ServiceError{Code: "NOT_YOUR_TURN", Message: errMsgNotYourTurn, Status: 422}
 	}
 
 	playerIdx := findPlayerBySeat(state.Players, seat)
 	if playerIdx < 0 {
-		return nil, &ServiceError{Code: "NOT_FOUND", Message: "플레이어를 찾을 수 없습니다.", Status: 404}
+		return nil, &ServiceError{Code: "NOT_FOUND", Message: errMsgPlayerNotFound, Status: 404}
 	}
 
 	if len(state.DrawPile) == 0 {
@@ -412,16 +435,16 @@ func (s *gameService) DrawTile(gameID string, seat int) (*GameActionResult, erro
 func (s *gameService) ResetTurn(gameID string, seat int) (*GameActionResult, error) {
 	state, err := s.gameRepo.GetGameState(gameID)
 	if err != nil {
-		return nil, &ServiceError{Code: "NOT_FOUND", Message: "게임을 찾을 수 없습니다.", Status: 404}
+		return nil, &ServiceError{Code: "NOT_FOUND", Message: errMsgGameNotFound, Status: 404}
 	}
 
 	if state.CurrentSeat != seat {
-		return nil, &ServiceError{Code: "NOT_YOUR_TURN", Message: "자신의 턴이 아닙니다.", Status: 422}
+		return nil, &ServiceError{Code: "NOT_YOUR_TURN", Message: errMsgNotYourTurn, Status: 422}
 	}
 
 	playerIdx := findPlayerBySeat(state.Players, seat)
 	if playerIdx < 0 {
-		return nil, &ServiceError{Code: "NOT_FOUND", Message: "플레이어를 찾을 수 없습니다.", Status: 404}
+		return nil, &ServiceError{Code: "NOT_FOUND", Message: errMsgPlayerNotFound, Status: 404}
 	}
 
 	snapKey := snapshotKey(gameID, seat)

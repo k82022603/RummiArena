@@ -10,6 +10,10 @@ import (
 	"github.com/k82022603/RummiArena/game-server/internal/repository"
 )
 
+const (
+	errMsgRoomNotFound = "방을 찾을 수 없습니다."
+)
+
 // RoomService Room 생성/관리 비즈니스 로직
 type RoomService interface {
 	CreateRoom(req *CreateRoomRequest) (*model.RoomState, error)
@@ -109,7 +113,7 @@ func (s *roomService) CreateRoom(req *CreateRoomRequest) (*model.RoomState, erro
 func (s *roomService) GetRoom(id string) (*model.RoomState, error) {
 	room, err := s.roomRepo.GetRoom(id)
 	if err != nil {
-		return nil, &ServiceError{Code: "NOT_FOUND", Message: "방을 찾을 수 없습니다.", Status: 404}
+		return nil, &ServiceError{Code: "NOT_FOUND", Message: errMsgRoomNotFound, Status: 404}
 	}
 	return room, nil
 }
@@ -128,7 +132,7 @@ func (s *roomService) ListRooms() ([]*model.RoomState, error) {
 func (s *roomService) JoinRoom(roomID, userID string) error {
 	room, err := s.roomRepo.GetRoom(roomID)
 	if err != nil {
-		return &ServiceError{Code: "NOT_FOUND", Message: "방을 찾을 수 없습니다.", Status: 404}
+		return &ServiceError{Code: "NOT_FOUND", Message: errMsgRoomNotFound, Status: 404}
 	}
 
 	if room.Status != model.RoomStatusWaiting {
@@ -174,7 +178,7 @@ func (s *roomService) JoinRoom(roomID, userID string) error {
 func (s *roomService) LeaveRoom(roomID, userID string) (*model.RoomState, error) {
 	room, err := s.roomRepo.GetRoom(roomID)
 	if err != nil {
-		return nil, &ServiceError{Code: "NOT_FOUND", Message: "방을 찾을 수 없습니다.", Status: 404}
+		return nil, &ServiceError{Code: "NOT_FOUND", Message: errMsgRoomNotFound, Status: 404}
 	}
 
 	if room.Status == model.RoomStatusFinished || room.Status == model.RoomStatusCancelled {
@@ -217,7 +221,7 @@ func (s *roomService) LeaveRoom(roomID, userID string) (*model.RoomState, error)
 func (s *roomService) StartGame(roomID, hostUserID string) (*model.GameStateRedis, error) {
 	room, err := s.roomRepo.GetRoom(roomID)
 	if err != nil {
-		return nil, &ServiceError{Code: "NOT_FOUND", Message: "방을 찾을 수 없습니다.", Status: 404}
+		return nil, &ServiceError{Code: "NOT_FOUND", Message: errMsgRoomNotFound, Status: 404}
 	}
 
 	if room.HostID != hostUserID {
@@ -262,7 +266,7 @@ func (s *roomService) StartGame(roomID, hostUserID string) (*model.GameStateRedi
 func (s *roomService) DeleteRoom(roomID, hostUserID string) error {
 	room, err := s.roomRepo.GetRoom(roomID)
 	if err != nil {
-		return &ServiceError{Code: "NOT_FOUND", Message: "방을 찾을 수 없습니다.", Status: 404}
+		return &ServiceError{Code: "NOT_FOUND", Message: errMsgRoomNotFound, Status: 404}
 	}
 
 	if room.HostID != hostUserID {

@@ -16,6 +16,24 @@ func ValidateRun(tiles []*Tile) error {
 		return newValidationError(ErrSetSize, ErrorMessages[ErrSetSize])
 	}
 
+	refColor, nonJokerNumbers, err := extractRunColorAndNumbers(tiles)
+	if err != nil {
+		return err
+	}
+	_ = refColor
+
+	sort.Ints(nonJokerNumbers)
+
+	if err := checkRunDuplicates(nonJokerNumbers); err != nil {
+		return err
+	}
+
+	return checkRunBounds(tiles, nonJokerNumbers)
+}
+
+// extractRunColorAndNumbers non-joker 타일에서 기준 색상과 숫자 목록을 추출한다.
+// 색상 불일치이거나 non-joker 타일이 없으면 에러를 반환한다.
+func extractRunColorAndNumbers(tiles []*Tile) (string, []int, error) {
 	var refColor string
 	nonJokerNumbers := make([]int, 0, len(tiles))
 
@@ -26,58 +44,62 @@ func ValidateRun(tiles []*Tile) error {
 		if refColor == "" {
 			refColor = t.Color
 		} else if t.Color != refColor {
-			return newValidationError(ErrRunColor, ErrorMessages[ErrRunColor], t.Code)
+			return "", nil, newValidationError(ErrRunColor, ErrorMessages[ErrRunColor], t.Code)
 		}
 		nonJokerNumbers = append(nonJokerNumbers, t.Number)
 	}
 
 	if len(nonJokerNumbers) == 0 {
 		// 조커만으로 세트를 구성할 수 없습니다 (설계 결정 B.3 참조).
-		// 조커가 대체할 구체적인 숫자와 색상을 결정할 수 없기 때문이다.
-		return newValidationError(ErrRunNoNumber, "조커만으로 세트를 구성할 수 없습니다")
+		return "", nil, newValidationError(ErrRunNoNumber, "조커만으로 세트를 구성할 수 없습니다")
 	}
 
-	sort.Ints(nonJokerNumbers)
+	return refColor, nonJokerNumbers, nil
+}
 
-	// V-15: 런에서 같은 숫자 중복 불가 (R3a, R3b 같은 케이스).
-	for i := 1; i < len(nonJokerNumbers); i++ {
-		if nonJokerNumbers[i] == nonJokerNumbers[i-1] {
+// checkRunDuplicates V-15: 런에서 같은 숫자 중복 여부를 검사한다 (정렬된 슬라이스 가정).
+func checkRunDuplicates(sorted []int) error {
+	for i := 1; i < len(sorted); i++ {
+		if sorted[i] == sorted[i-1] {
 			return newValidationError(ErrRunDuplicate, ErrorMessages[ErrRunDuplicate])
 		}
 	}
+	return nil
+}
 
-	min := nonJokerNumbers[0]
-	max := nonJokerNumbers[len(nonJokerNumbers)-1]
+// checkRunBounds 런의 span과 범위(1–13)가 유효한지 검사한다.
+func checkRunBounds(tiles []*Tile, sortedNonJokerNumbers []int) error {
+	min := sortedNonJokerNumbers[0]
+	max := sortedNonJokerNumbers[len(sortedNonJokerNumbers)-1]
 
-	// The run occupies positions [min, min+len(tiles)-1] or similar.
-	// With jokers filling gaps, we need: (max - min) < len(tiles)
-	// and all positions fit within 1–13.
 	span := max - min + 1
 	if span > len(tiles) {
 		return newValidationError(ErrRunSequence, ErrorMessages[ErrRunSequence])
 	}
 
-	// Determine actual run bounds including jokers at edges.
-	jokerCount := 0
-	for _, t := range tiles {
-		if t.IsJoker {
-			jokerCount++
-		}
-	}
+	jokerCount := countJokers(tiles)
 
-	// Total length is len(tiles). Non-joker numbers must all fit within a
-	// window of size len(tiles) somewhere in [1, 13].
 	runLen := len(tiles)
 	possibleStart := min - (jokerCount - (span - (max - min + 1)))
 	if possibleStart < 1 {
 		possibleStart = 1
 	}
-	possibleEnd := possibleStart + runLen - 1
-	if possibleEnd > 13 {
+	if possibleStart+runLen-1 > 13 {
 		return newValidationError(ErrRunRange, ErrorMessages[ErrRunRange])
 	}
 
 	return nil
+}
+
+// countJokers 타일 슬라이스에서 조커 수를 반환한다.
+func countJokers(tiles []*Tile) int {
+	count := 0
+	for _, t := range tiles {
+		if t.IsJoker {
+			count++
+		}
+	}
+	return count
 }
 
 // runScore returns the sum of effective tile values in a run.

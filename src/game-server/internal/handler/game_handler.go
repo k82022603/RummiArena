@@ -24,7 +24,7 @@ func NewGameHandler(gameSvc service.GameService) *GameHandler {
 func (h *GameHandler) GetGameState(c *gin.Context) {
 	gameID := c.Param("id")
 	if gameID == "" {
-		respondError(c, http.StatusBadRequest, "INVALID_REQUEST", "게임 ID가 없습니다.")
+		respondError(c, http.StatusBadRequest, "INVALID_REQUEST", errMsgGameIDRequired)
 		return
 	}
 
@@ -56,19 +56,19 @@ type placeTilesRequest struct {
 func (h *GameHandler) PlaceTiles(c *gin.Context) {
 	_, ok := middleware.UserIDFromContext(c)
 	if !ok {
-		respondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "인증 정보가 없습니다.")
+		respondError(c, http.StatusUnauthorized, "UNAUTHORIZED", errMsgUnauthorized)
 		return
 	}
 
 	gameID := c.Param("id")
 	if gameID == "" {
-		respondError(c, http.StatusBadRequest, "INVALID_REQUEST", "게임 ID가 없습니다.")
+		respondError(c, http.StatusBadRequest, "INVALID_REQUEST", errMsgGameIDRequired)
 		return
 	}
 
 	var req placeTilesRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		respondError(c, http.StatusBadRequest, "INVALID_REQUEST", "요청 형식이 올바르지 않습니다.")
+		respondError(c, http.StatusBadRequest, "INVALID_REQUEST", errMsgInvalidRequest)
 		return
 	}
 
@@ -96,19 +96,19 @@ type confirmTurnRequest struct {
 func (h *GameHandler) ConfirmTurn(c *gin.Context) {
 	_, ok := middleware.UserIDFromContext(c)
 	if !ok {
-		respondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "인증 정보가 없습니다.")
+		respondError(c, http.StatusUnauthorized, "UNAUTHORIZED", errMsgUnauthorized)
 		return
 	}
 
 	gameID := c.Param("id")
 	if gameID == "" {
-		respondError(c, http.StatusBadRequest, "INVALID_REQUEST", "게임 ID가 없습니다.")
+		respondError(c, http.StatusBadRequest, "INVALID_REQUEST", errMsgGameIDRequired)
 		return
 	}
 
 	var req confirmTurnRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		respondError(c, http.StatusBadRequest, "INVALID_REQUEST", "요청 형식이 올바르지 않습니다.")
+		respondError(c, http.StatusBadRequest, "INVALID_REQUEST", errMsgInvalidRequest)
 		return
 	}
 
@@ -144,19 +144,19 @@ type drawTileRequest struct {
 func (h *GameHandler) DrawTile(c *gin.Context) {
 	_, ok := middleware.UserIDFromContext(c)
 	if !ok {
-		respondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "인증 정보가 없습니다.")
+		respondError(c, http.StatusUnauthorized, "UNAUTHORIZED", errMsgUnauthorized)
 		return
 	}
 
 	gameID := c.Param("id")
 	if gameID == "" {
-		respondError(c, http.StatusBadRequest, "INVALID_REQUEST", "게임 ID가 없습니다.")
+		respondError(c, http.StatusBadRequest, "INVALID_REQUEST", errMsgGameIDRequired)
 		return
 	}
 
 	var req drawTileRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		respondError(c, http.StatusBadRequest, "INVALID_REQUEST", "요청 형식이 올바르지 않습니다.")
+		respondError(c, http.StatusBadRequest, "INVALID_REQUEST", errMsgInvalidRequest)
 		return
 	}
 
@@ -178,19 +178,19 @@ type resetTurnRequest struct {
 func (h *GameHandler) ResetTurn(c *gin.Context) {
 	_, ok := middleware.UserIDFromContext(c)
 	if !ok {
-		respondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "인증 정보가 없습니다.")
+		respondError(c, http.StatusUnauthorized, "UNAUTHORIZED", errMsgUnauthorized)
 		return
 	}
 
 	gameID := c.Param("id")
 	if gameID == "" {
-		respondError(c, http.StatusBadRequest, "INVALID_REQUEST", "게임 ID가 없습니다.")
+		respondError(c, http.StatusBadRequest, "INVALID_REQUEST", errMsgGameIDRequired)
 		return
 	}
 
 	var req resetTurnRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		respondError(c, http.StatusBadRequest, "INVALID_REQUEST", "요청 형식이 올바르지 않습니다.")
+		respondError(c, http.StatusBadRequest, "INVALID_REQUEST", errMsgInvalidRequest)
 		return
 	}
 

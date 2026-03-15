@@ -9,6 +9,14 @@ import (
 	"github.com/k82022603/RummiArena/game-server/internal/service"
 )
 
+// 공통 에러 메시지 상수
+const (
+	errMsgUnauthorized   = "인증 정보가 없습니다."
+	errMsgInvalidRequest = "요청 형식이 올바르지 않습니다."
+	errMsgRoomIDRequired = "방 ID가 없습니다."
+	errMsgGameIDRequired = "게임 ID가 없습니다."
+)
+
 // RoomHandler Room 관련 HTTP 핸들러
 type RoomHandler struct {
 	roomSvc service.RoomService
@@ -30,13 +38,13 @@ type createRoomRequest struct {
 func (h *RoomHandler) CreateRoom(c *gin.Context) {
 	userID, ok := middleware.UserIDFromContext(c)
 	if !ok {
-		respondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "인증 정보가 없습니다.")
+		respondError(c, http.StatusUnauthorized, "UNAUTHORIZED", errMsgUnauthorized)
 		return
 	}
 
 	var req createRoomRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		respondError(c, http.StatusBadRequest, "INVALID_REQUEST", "요청 형식이 올바르지 않습니다.")
+		respondError(c, http.StatusBadRequest, "INVALID_REQUEST", errMsgInvalidRequest)
 		return
 	}
 
@@ -77,7 +85,7 @@ func (h *RoomHandler) ListRooms(c *gin.Context) {
 func (h *RoomHandler) GetRoom(c *gin.Context) {
 	id := c.Param("id")
 	if id == "" {
-		respondError(c, http.StatusBadRequest, "INVALID_REQUEST", "방 ID가 없습니다.")
+		respondError(c, http.StatusBadRequest, "INVALID_REQUEST", errMsgRoomIDRequired)
 		return
 	}
 
@@ -99,13 +107,13 @@ type joinRoomRequest struct {
 func (h *RoomHandler) JoinRoom(c *gin.Context) {
 	userID, ok := middleware.UserIDFromContext(c)
 	if !ok {
-		respondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "인증 정보가 없습니다.")
+		respondError(c, http.StatusUnauthorized, "UNAUTHORIZED", errMsgUnauthorized)
 		return
 	}
 
 	roomID := c.Param("id")
 	if roomID == "" {
-		respondError(c, http.StatusBadRequest, "INVALID_REQUEST", "방 ID가 없습니다.")
+		respondError(c, http.StatusBadRequest, "INVALID_REQUEST", errMsgRoomIDRequired)
 		return
 	}
 
@@ -127,13 +135,13 @@ func (h *RoomHandler) JoinRoom(c *gin.Context) {
 func (h *RoomHandler) LeaveRoom(c *gin.Context) {
 	userID, ok := middleware.UserIDFromContext(c)
 	if !ok {
-		respondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "인증 정보가 없습니다.")
+		respondError(c, http.StatusUnauthorized, "UNAUTHORIZED", errMsgUnauthorized)
 		return
 	}
 
 	roomID := c.Param("id")
 	if roomID == "" {
-		respondError(c, http.StatusBadRequest, "INVALID_REQUEST", "방 ID가 없습니다.")
+		respondError(c, http.StatusBadRequest, "INVALID_REQUEST", errMsgRoomIDRequired)
 		return
 	}
 
@@ -150,13 +158,13 @@ func (h *RoomHandler) LeaveRoom(c *gin.Context) {
 func (h *RoomHandler) StartGame(c *gin.Context) {
 	userID, ok := middleware.UserIDFromContext(c)
 	if !ok {
-		respondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "인증 정보가 없습니다.")
+		respondError(c, http.StatusUnauthorized, "UNAUTHORIZED", errMsgUnauthorized)
 		return
 	}
 
 	roomID := c.Param("id")
 	if roomID == "" {
-		respondError(c, http.StatusBadRequest, "INVALID_REQUEST", "방 ID가 없습니다.")
+		respondError(c, http.StatusBadRequest, "INVALID_REQUEST", errMsgRoomIDRequired)
 		return
 	}
 
@@ -177,13 +185,13 @@ func (h *RoomHandler) StartGame(c *gin.Context) {
 func (h *RoomHandler) DeleteRoom(c *gin.Context) {
 	userID, ok := middleware.UserIDFromContext(c)
 	if !ok {
-		respondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "인증 정보가 없습니다.")
+		respondError(c, http.StatusUnauthorized, "UNAUTHORIZED", errMsgUnauthorized)
 		return
 	}
 
 	roomID := c.Param("id")
 	if roomID == "" {
-		respondError(c, http.StatusBadRequest, "INVALID_REQUEST", "방 ID가 없습니다.")
+		respondError(c, http.StatusBadRequest, "INVALID_REQUEST", errMsgRoomIDRequired)
 		return
 	}
 
