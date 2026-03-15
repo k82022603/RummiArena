@@ -68,8 +68,9 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 - [x] Docker Desktop Kubernetes 활성화 및 확인
 - [x] Traefik Ingress 설치 (Helm)
 - [x] ArgoCD 설치 (Helm)
-- [ ] GitLab Runner 등록 (Docker Executor) — Sprint 2 이월
-- [ ] SonarQube 설치 (Docker 또는 K8s) — Sprint 2 이월
+- [x] SonarQube 설치 (Docker Compose, http://localhost:9001) — 2026-03-15 완료
+- [ ] GitLab Runner 등록 (K8s Executor) — Runner 토큰 발급 후 설치 예정
+- [ ] GitLab CI Variables 등록 (SONAR_TOKEN, GITOPS_TOKEN)
 - [ ] GitHub Projects 보드 구성 (Kanban + Sprint)
 - [x] GitOps 레포 초기 구조 설정
 - [x] Helm Umbrella Chart 초기 골격 + 5개 서비스 Helm chart 완성
@@ -82,7 +83,7 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 - [ ] OpenAI API Key 준비
 - [ ] Anthropic (Claude) API Key 준비
 - [ ] DeepSeek API Key 준비
-- [ ] GitLab 계정 + Container Registry 확인
+- [x] GitLab 계정 + Container Registry 확인 (k82022603, 2026-03-15)
 
 ---
 
@@ -115,8 +116,9 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 - [x] WebSocket 연결/동기화 (클라이언트) — 프로토콜 연동 완료 (2026-03-14)
 - [x] AI Adapter /move 엔드포인트 (4개 어댑터, 재시도 3회, fallback DRAW)
 - [ ] Ollama 로컬 연동 테스트
-- [ ] GitLab CI + Runner 등록
-- [ ] SonarQube 설치
+- [x] SonarQube 설치 (http://localhost:9001 UP, 2026-03-15)
+- [x] GitLab 프로젝트 생성 + glab 인증 (2026-03-15)
+- [ ] GitLab CI Variables 등록 + Runner 등록
 
 ### MVP 완료 기준
 - [ ] 로컬 K8s에서 Human 2명이 WebSocket으로 게임 가능
@@ -241,9 +243,9 @@ flowchart TB
 |----|------|--------|-----------|------|
 | D-01 | 백엔드 언어 | ~~NestJS vs Go~~ → **Go (game-server) + NestJS (ai-adapter)** | Sprint 0 (2026-03-11) | **확정** |
 | D-02 | AI 호출 방식 | 직접 API vs LangChain/LangGraph | Sprint 4 PoC | 미결정 |
-| D-03 | SonarQube 배포 위치 | K8s Pod vs Docker Compose vs Oracle VM | Sprint 0 | 미결정 |
+| D-03 | SonarQube 배포 위치 | ~~K8s Pod vs Docker Compose vs Oracle VM~~ → **Docker Compose (포트 9001)** | 2026-03-15 | **확정** |
 | D-04 | Ollama 배포 위치 | K8s Pod vs Docker Compose vs Oracle VM | Sprint 4 | 미결정 |
-| D-05 | GitLab Runner Executor | Docker vs Kubernetes | Sprint 0 | Docker (초기) |
+| D-05 | GitLab Runner Executor | ~~Docker~~ → **Kubernetes Executor** | 2026-03-15 | **확정** |
 | D-06 | 카카오톡 API 방식 | 나에게 보내기 vs 카카오워크 봇 | Sprint 6 | 미결정 |
 
 ---
@@ -266,7 +268,7 @@ docs/
 
 ## 현재 진행 상황
 
-**Phase 2 진행 중 (Sprint 1)** — Sprint 1 Day 2 완료
+**Phase 2 진행 중 (Sprint 1)** — Sprint 1 Day 3 완료
 
 Sprint 1 Day 1 (2026-03-13):
 - game-server 12개 REST API 완전 구현
@@ -277,8 +279,16 @@ Sprint 1 Day 1 (2026-03-13):
 Sprint 1 Day 2 (2026-03-14):
 - docs/00-tools/ 도구 매뉴얼 26개 전체 완성 (신규 13 + 현행화 4)
 - docs/03-development/ 개발 가이드 7개 전체 완성 (신규 4 + 현행화 3)
-- Mermaid quadrantChart 렌더링 오류 수정
 - **WebSocket Hub 실구현** (ws_message/ws_hub/ws_connection/ws_handler, 테스트 7/7)
 - **Frontend WebSocket 프로토콜 연동** (6파일, envelope 형식 정렬)
+
+Sprint 1 Day 3 (2026-03-15):
+- **SonarQube** http://localhost:9001 UP (Elasticsearch heap 수정)
+- **통합 테스트 50개 GREEN** (신규 8개: JokerSwap, InitialMeld, DrawAction, PlaceTiles 등)
+- **PLACE_TILES 실시간 프리뷰** (pendingGroupIds 상태, 노란 점선 미확정 표시)
+- **INVALID_MOVE 에러 UI** (에러 코드 한글 매핑 4종, ErrorToast 3초 자동 소멸)
+- **glab CLI 1.89.0 설치** + GitLab 프로젝트 생성 + GitHub/GitLab 동시 push 설정
+- **Sprint 2 GitHub Issues** #18~#23 등록 (30 SP)
+- 문서 3개 신규: SonarQube 가이드(648줄), GitLab CI/CD(541줄), Runner 가이드(782줄)
 
 다음 단계: ConfirmTurn/PlaceTiles 통합 테스트 보강 → 실시간 프리뷰 → 타일 DnD 고도화
