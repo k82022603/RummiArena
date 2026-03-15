@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 
 	"github.com/k82022603/RummiArena/game-server/internal/config"
 	"github.com/k82022603/RummiArena/game-server/internal/handler"
@@ -20,69 +22,95 @@ import (
 )
 
 func main() {
-	// --- 로거 초기화 ---
 	logger, err := zap.NewProduction()
 	if err != nil {
 		panic("failed to initialize logger: " + err.Error())
 	}
 	defer logger.Sync() //nolint:errcheck
 
-	// --- 설정 로딩 ---
 	cfg, err := config.Load()
 	if err != nil {
 		logger.Fatal("failed to load config", zap.Error(err))
 	}
 
-	// --- PostgreSQL 연결 (선택적: 실패해도 서버 시작) ---
+	db, redisClient := initInfra(cfg, logger)
+
+	gameStateRepo := initGameStateRepo(redisClient, logger)
+	roomRepo := repository.NewMemoryRoomRepo()
+
+	gin.SetMode(cfg.Server.Mode)
+
+	router := buildRouter(cfg, logger, redisClient, gameStateRepo, roomRepo)
+
+	srv := &http.Server{
+		Addr:         ":" + cfg.Server.Port,
+		Handler:      router,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	runServer(srv, cfg, logger)
+
+	shutdownConnections(db, redisClient, logger)
+
+	logger.Info("server stopped")
+}
+
+// initInfra PostgreSQL과 Redis 연결을 초기화한다. 각 연결 실패는 경고로 처리한다.
+func initInfra(cfg *config.Config, logger *zap.Logger) (*gorm.DB, *redis.Client) {
 	db, err := infra.NewPostgresDB(cfg.DB, logger)
 	if err != nil {
 		logger.Warn("postgres unavailable — running without DB", zap.Error(err))
-	} else {
-		// AutoMigrate (개발 환경 편의. 프로덕션은 migrations/ SQL 파일 사용)
-		if err := infra.AutoMigrate(db, logger); err != nil {
-			logger.Warn("auto migrate failed", zap.Error(err))
-		}
+	} else if err := infra.AutoMigrate(db, logger); err != nil {
+		logger.Warn("auto migrate failed", zap.Error(err))
 	}
 
-	// --- Redis 연결 (선택적: 실패해도 서버 시작) ---
 	redisClient, _ := infra.NewRedisClient(cfg.Redis, logger)
+	return db, redisClient
+}
 
-	// --- 게임 상태 레포지터리 초기화 ---
-	// Redis 가용 여부에 따라 구현체를 선택한다 (어댑터 패턴).
-	var gameStateRepo repository.MemoryGameStateRepository
+// initGameStateRepo Redis 가용 여부에 따라 게임 상태 레포지터리 구현체를 선택한다.
+func initGameStateRepo(redisClient *redis.Client, logger *zap.Logger) repository.MemoryGameStateRepository {
 	if infra.IsRedisAvailable(redisClient) {
-		gameStateRepo = repository.NewRedisGameStateMemAdapter(redisClient)
 		logger.Info("using redis game state repository")
-	} else {
-		logger.Warn("using in-memory game state repository (redis unavailable)")
-		gameStateRepo = repository.NewMemoryGameStateRepoAdapter()
+		return repository.NewRedisGameStateMemAdapter(redisClient)
 	}
+	logger.Warn("using in-memory game state repository (redis unavailable)")
+	return repository.NewMemoryGameStateRepoAdapter()
+}
 
-	// 인메모리 방 레포지터리 (MVP 단계)
-	roomRepo := repository.NewMemoryRoomRepo()
-
-	// --- gin 모드 설정 ---
-	gin.SetMode(cfg.Server.Mode)
-
-	// --- 서비스 초기화 (DI 수동 와이어링) ---
+// buildRouter gin 라우터를 구성하고 반환한다.
+func buildRouter(
+	cfg *config.Config,
+	logger *zap.Logger,
+	redisClient *redis.Client,
+	gameStateRepo repository.MemoryGameStateRepository,
+	roomRepo repository.MemoryRoomRepository,
+) *gin.Engine {
 	roomSvc := service.NewRoomService(roomRepo, gameStateRepo)
 	gameSvc := service.NewGameService(gameStateRepo)
 	turnSvc := service.NewTurnService(gameStateRepo, gameSvc)
 
-	// --- WebSocket Hub ---
 	wsHub := handler.NewHub(logger)
 
-	// --- 핸들러 초기화 ---
 	roomHandler := handler.NewRoomHandler(roomSvc)
 	gameHandler := handler.NewGameHandler(gameSvc)
 	wsHandler := handler.NewWSHandler(wsHub, roomSvc, gameSvc, turnSvc, cfg.JWT.Secret, logger)
 
-	// --- 라우터 설정 ---
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.Use(middleware.ZapLogger(logger))
 
-	// 시스템 헬스체크 (인증 불필요)
+	registerSystemRoutes(router, redisClient)
+	registerWSRoutes(router, wsHandler)
+	registerAPIRoutes(router, cfg, roomHandler, gameHandler)
+
+	return router
+}
+
+// registerSystemRoutes 헬스체크 엔드포인트를 등록한다.
+func registerSystemRoutes(router *gin.Engine, redisClient *redis.Client) {
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"status":    "ok",
@@ -93,14 +121,17 @@ func main() {
 	router.GET("/ready", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ready"})
 	})
+}
 
-	// WebSocket (인증은 WS 핸들러 내부에서 처리)
+// registerWSRoutes WebSocket 엔드포인트를 등록한다.
+func registerWSRoutes(router *gin.Engine, wsHandler *handler.WSHandler) {
 	router.GET("/ws", wsHandler.HandleWS)
+}
 
-	// --- API 라우트 그룹 ---
+// registerAPIRoutes REST API 라우트 그룹을 등록한다.
+func registerAPIRoutes(router *gin.Engine, cfg *config.Config, roomHandler *handler.RoomHandler, gameHandler *handler.GameHandler) {
 	api := router.Group("/api")
 
-	// Room 라우트 (JWT 인증 필요)
 	rooms := api.Group("/rooms")
 	rooms.Use(middleware.JWTAuth(cfg.JWT.Secret))
 	{
@@ -113,7 +144,6 @@ func main() {
 		rooms.DELETE("/:id", roomHandler.DeleteRoom)
 	}
 
-	// Game 라우트 (JWT 인증 필요)
 	games := api.Group("/games")
 	games.Use(middleware.JWTAuth(cfg.JWT.Secret))
 	{
@@ -123,17 +153,10 @@ func main() {
 		games.POST("/:id/draw", gameHandler.DrawTile)
 		games.POST("/:id/reset", gameHandler.ResetTurn)
 	}
+}
 
-	// --- HTTP 서버 ---
-	srv := &http.Server{
-		Addr:         ":" + cfg.Server.Port,
-		Handler:      router,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
-	}
-
-	// --- Graceful Shutdown ---
+// runServer HTTP 서버를 goroutine으로 실행하고 SIGINT/SIGTERM 수신 후 graceful shutdown을 수행한다.
+func runServer(srv *http.Server, cfg *config.Config, logger *zap.Logger) {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
@@ -153,14 +176,15 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.Error("server shutdown error", zap.Error(err))
 	}
+}
 
-	// Redis 연결 해제
+// shutdownConnections Redis와 PostgreSQL 연결을 순서대로 해제한다.
+func shutdownConnections(db *gorm.DB, redisClient *redis.Client, logger *zap.Logger) {
 	if redisClient != nil {
 		if err := redisClient.Close(); err != nil {
 			logger.Warn("redis close error", zap.Error(err))
 		}
 	}
-	// PostgreSQL 연결 해제
 	if db != nil {
 		if sqlDB, err := db.DB(); err == nil {
 			if err := sqlDB.Close(); err != nil {
@@ -168,6 +192,4 @@ func main() {
 			}
 		}
 	}
-
-	logger.Info("server stopped")
 }
