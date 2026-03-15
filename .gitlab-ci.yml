@@ -7,7 +7,7 @@
 #   Dev/Deploy 모드와 CI 모드 동시 실행 금지
 #
 # 필요한 GitLab CI/CD Variables (Settings → CI/CD → Variables):
-#   SONAR_HOST_URL       — SonarQube 서버 URL (예: http://host.docker.internal:9000)
+#   SONAR_HOST_URL       — SonarQube 서버 URL (예: http://host.docker.internal:9001)
 #   SONAR_TOKEN          — SonarQube 분석 토큰
 #   CI_REGISTRY_USER     — GitLab Container Registry 사용자 (자동 제공)
 #   CI_REGISTRY_PASSWORD — GitLab Container Registry 패스워드 (자동 제공)
