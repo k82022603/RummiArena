@@ -320,21 +320,11 @@ update-gitops:
   script:
     - git clone https://oauth2:$GITOPS_TOKEN@github.com/k82022603/RummiArena.git gitops
     - cd gitops
-    # game-server, ai-adapter, frontend 이미지 태그 일괄 업데이트
-    - >
-      sed -i
-      "s|registry.gitlab.com/k82022603/rummiarena/game-server:.*|registry.gitlab.com/k82022603/rummiarena/game-server:$CI_COMMIT_SHA|g"
-      helm/environments/dev-values.yaml
-    - >
-      sed -i
-      "s|registry.gitlab.com/k82022603/rummiarena/ai-adapter:.*|registry.gitlab.com/k82022603/rummiarena/ai-adapter:$CI_COMMIT_SHA|g"
-      helm/environments/dev-values.yaml
-    - >
-      sed -i
-      "s|registry.gitlab.com/k82022603/rummiarena/frontend:.*|registry.gitlab.com/k82022603/rummiarena/frontend:$CI_COMMIT_SHA|g"
-      helm/environments/dev-values.yaml
+    - 'sed -i "s|registry.gitlab.com/k82022603/rummiarena/game-server:.*|registry.gitlab.com/k82022603/rummiarena/game-server:$CI_COMMIT_SHA|g" helm/environments/dev-values.yaml'
+    - 'sed -i "s|registry.gitlab.com/k82022603/rummiarena/ai-adapter:.*|registry.gitlab.com/k82022603/rummiarena/ai-adapter:$CI_COMMIT_SHA|g" helm/environments/dev-values.yaml'
+    - 'sed -i "s|registry.gitlab.com/k82022603/rummiarena/frontend:.*|registry.gitlab.com/k82022603/rummiarena/frontend:$CI_COMMIT_SHA|g" helm/environments/dev-values.yaml'
     - git add helm/environments/dev-values.yaml
-    - git diff --staged --quiet || git commit -m "ci: update image tags to $CI_COMMIT_SHA [skip ci]"
+    - 'git diff --staged --quiet || git commit -m "ci: update image tags to $CI_COMMIT_SHA [skip ci]"'
     - git push
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
