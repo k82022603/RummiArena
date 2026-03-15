@@ -1,7 +1,7 @@
 # GitLab CI/CD 환경 설정 가이드
 
-> 최종 수정: 2026-03-15
-> 대상: Sprint 2 CI 파이프라인 도입 준비 (현재 Sprint 1에서 dry-run 검증)
+> 최종 수정: 2026-03-16
+> 대상: Sprint 1 CI 파이프라인 운영 중 (lint/test GREEN 달성, quality 단계 진행 중)
 > 환경: WSL2 Ubuntu, Docker Desktop Kubernetes (docker-desktop context)
 
 ---
@@ -207,7 +207,7 @@ export RUNNER_TOKEN="glrt-xxxxxxxxxxxx"
 
 # 또는 K8s Secret으로 저장 (영구적, 권장)
 kubectl create secret generic gitlab-runner-token \
-  -n cicd \
+  -n gitlab-runner \
   --from-literal=runnerToken="glrt-xxxxxxxxxxxx" \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
@@ -303,8 +303,8 @@ kubectl get nodes
 # Helm 버전 확인
 helm version
 
-# cicd 네임스페이스 확인
-kubectl get namespace cicd 2>/dev/null || echo "cicd 네임스페이스 없음 (자동 생성됨)"
+# gitlab-runner 네임스페이스 확인
+kubectl get namespace gitlab-runner 2>/dev/null || echo "gitlab-runner 네임스페이스 없음 (자동 생성됨)"
 ```
 
 ### 6.2 Helm dry-run 검증 (필수)
@@ -330,12 +330,28 @@ dry-run에서 확인할 항목:
 
 ### 6.3 실제 설치
 
-```bash
-# Runner 토큰을 환경변수로 전달
-RUNNER_TOKEN="glrt-xxxxxxxxxxxx" ./scripts/gitlab-setup.sh install-runner
+> **자세한 Runner 설치 절차**: `docs/03-development/10-gitlab-runner-guide.md` 참조
+>
+> **핵심 주의사항**: `--set runnerToken=glrt-xxx.01.yyy` 사용 금지. `.`이 Helm 경로 구분자로 해석되어 오류 발생. 반드시 values 파일로 전달.
 
-# 또는 대화형 입력
-./scripts/gitlab-setup.sh install-runner
+```bash
+# values 파일 방식으로 설치 (권장)
+cat > /tmp/gitlab-runner-values.yaml << 'EOF'
+gitlabUrl: https://gitlab.com
+runnerToken: "glrt-xxxxxxxxxxxx"
+rbac:
+  create: true
+runners:
+  executor: kubernetes
+  kubernetes:
+    namespace: gitlab-runner
+EOF
+
+helm repo add gitlab https://charts.gitlab.io
+helm install gitlab-runner gitlab/gitlab-runner \
+  --namespace gitlab-runner \
+  --create-namespace \
+  -f /tmp/gitlab-runner-values.yaml
 ```
 
 Helm values 파일 위치: `helm/charts/gitlab-runner/values.yaml`
@@ -346,7 +362,7 @@ Helm values 파일 위치: `helm/charts/gitlab-runner/values.yaml`
 # Executor: kubernetes (Docker Desktop K8s)
 runners:
   executor: kubernetes
-  namespace: cicd
+  namespace: gitlab-runner
   image: alpine:3.19
 
 # 동시 실행 2개 (10GB WSL 제약)
@@ -362,17 +378,35 @@ resources:
     memory: "256Mi"
 ```
 
-### 6.4 설치 확인
+### 6.4 Run Untagged Jobs 설정
+
+Runner 생성 시 "Run untagged jobs" 체크를 놓쳤거나 기존 Runner에 적용하는 경우, GitLab API로 수동 설정할 수 있다.
+
+```bash
+# Runner ID 확인 (GitLab UI: Settings → CI/CD → Runners → Runner 클릭 → Runner ID)
+RUNNER_ID=52262488
+GITLAB_PAT="glpat-xxxxxxxxxxxx"   # glab CLI 인증용 PAT
+
+# run_untagged: true 설정
+curl -s -X PUT "https://gitlab.com/api/v4/runners/${RUNNER_ID}" \
+  -H "PRIVATE-TOKEN: ${GITLAB_PAT}" \
+  -H "Content-Type: application/json" \
+  -d '{"run_untagged": true}' | python3 -m json.tool
+
+# 확인: run_untagged 필드가 true여야 함
+```
+
+### 6.5 설치 확인
 
 ```bash
 # Runner Pod 상태 확인 (Running이어야 함)
-kubectl get pods -n cicd -l app=gitlab-runner
+kubectl get pods -n gitlab-runner -l app=gitlab-runner
 
 # Runner Pod 로그 확인
-kubectl logs -n cicd -l app=gitlab-runner --tail=20
+kubectl logs -n gitlab-runner deploy/gitlab-runner --tail=20
 
 # Helm 릴리스 상태
-helm status gitlab-runner -n cicd
+helm status gitlab-runner -n gitlab-runner
 
 # GitLab 웹 UI 확인
 # 프로젝트 → Settings → CI/CD → Runners → Runner 목록
@@ -433,15 +467,94 @@ flowchart LR
 | 실패 단계 | 원인 | 해결 |
 |-----------|------|------|
 | lint-go | golangci-lint 규칙 위반 | `golangci-lint run` 로컬 실행 후 수정 |
-| test-go | 테스트 실패 또는 커버리지 미달 | `go test ./... -v` 로컬 확인 |
+| lint-go | Go 버전 불일치 | `.gitlab-ci.yml`의 golangci-lint 이미지 버전 확인 (v2.1+) |
+| test-go | go.mod 버전과 CI 이미지 불일치 | `golang:1.24-alpine` 사용 (go.mod toolchain과 일치) |
+| test-go | gocover-cobertura not found | `GOBIN=/usr/local/bin go install ...` 사용 (PATH 문제 해결) |
+| sonarqube | `v2 API not found` | `sonarsource/sonar-scanner-cli:5.0` 고정 (SonarQube 9.9 LTS와 호환) |
 | sonarqube | SONAR_TOKEN 미설정 | GitLab Variables에 SONAR_TOKEN 등록 |
 | sonarqube | SonarQube 미실행 | `./scripts/setup-cicd.sh sonarqube` 실행 |
+| trivy-fs | HIGH/CRITICAL CVE 발견 | 아래 CVE 수정 절차 참조 |
 | build-* | Docker 빌드 오류 | `docker build src/game-server/` 로컬 테스트 |
 | update-gitops | GITOPS_TOKEN 권한 부족 | GitHub PAT의 Contents write 권한 확인 |
+| update-gitops | YAML 파싱 오류 | script 행을 단일 따옴표로 래핑 (`'sed -i ...'`) |
 
 ---
 
-## 8. 교대 실행 전략 적용
+## 8. `.gitlab-ci.yml` 이미지 버전 가이드
+
+### 8.1 확정 이미지 버전 (2026-03-16 기준)
+
+| Job | 이미지 | 이유 |
+|-----|--------|------|
+| lint-go | `golangci/golangci-lint:v2.1` | Go 1.24 지원 (v1.62는 Go 1.23 기반으로 버전 불일치) |
+| test-go | `golang:1.24-alpine` | `go.mod` toolchain directive와 일치 |
+| test-nest | `node:20-alpine` | ai-adapter package.json engines 기준 |
+| lint-frontend | `node:20-alpine` | Next.js 15 LTS 기준 |
+| sonarqube | `sonarsource/sonar-scanner-cli:5.0` | SonarQube 9.9 LTS 호환 (`:latest`는 v2 API 사용으로 비호환) |
+| trivy-fs | `aquasec/trivy:latest` | 취약점 DB 최신성 우선 |
+| build-* | `docker:26-dind` | Docker 26 LTS |
+| update-gitops | `alpine/git:latest` | 경량 git 이미지 |
+
+### 8.2 gocover-cobertura PATH 문제
+
+CI 환경에서 `go install` 실행 시 바이너리가 `$GOPATH/bin`에 설치되지만 PATH에 포함되지 않는 경우가 있다. `GOBIN=/usr/local/bin`을 명시하면 `/usr/local/bin`에 설치되어 문제가 해결된다.
+
+```yaml
+# ❌ 잘못된 방법 — CI 환경에서 PATH 미포함 디렉토리에 설치됨
+- go install github.com/boumenot/gocover-cobertura@latest
+
+# ✅ 올바른 방법 — /usr/local/bin에 설치 (PATH에 포함됨)
+- GOBIN=/usr/local/bin go install github.com/boumenot/gocover-cobertura@latest
+```
+
+### 8.3 update-gitops YAML 파싱 주의
+
+`update-gitops` job의 `sed` 명령은 큰따옴표와 변수 확장이 섞여 GitLab YAML 파서가 멀티라인으로 오해할 수 있다. **단일 따옴표로 래핑**하면 안전하다.
+
+```yaml
+# ❌ 문제 발생 가능 — YAML 파서가 > fold로 인식할 수 있음
+script:
+  - sed -i "s|image:.*|image:$CI_COMMIT_SHA|g" file.yaml
+
+# ✅ 안전한 방법 — 단일 따옴표 래핑
+script:
+  - 'sed -i "s|image:.*|image:$CI_COMMIT_SHA|g" file.yaml'
+```
+
+### 8.4 Trivy CVE 수정 절차
+
+trivy-fs job이 HIGH/CRITICAL CVE로 실패하면 다음 방법으로 수정한다.
+
+**npm 패키지 직접 업데이트** (direct dependency):
+
+```bash
+# Next.js CVE-2025-55182: 15.2.3 → 15.2.6
+npm install next@15.2.6 --save-exact --prefix src/frontend
+```
+
+**npm 간접 의존성 버전 강제** (transitive dependency via overrides):
+
+```json
+// src/ai-adapter/package.json
+{
+  "overrides": {
+    "multer": "2.1.0"
+  }
+}
+```
+
+**Go 모듈 보안 패치**:
+
+```bash
+# golang-jwt CVE-2025-30204: v5.2.1 → v5.2.2
+cd src/game-server
+go get github.com/golang-jwt/jwt/v5@v5.2.2
+go mod tidy
+```
+
+---
+
+## 9. 교대 실행 전략 적용
 
 16GB RAM (WSL 10GB) 제약으로 모든 서비스를 동시 실행할 수 없다.
 
@@ -494,10 +607,10 @@ glab auth status
 glab pipeline list
 
 # Runner 상태 (K8s)
-kubectl get pods -n cicd
+kubectl get pods -n gitlab-runner
 
 # Runner Helm 상태
-helm status gitlab-runner -n cicd
+helm status gitlab-runner -n gitlab-runner
 
 # Runner 재설치 (토큰 변경 시)
 RUNNER_TOKEN=glrt-xxx ./scripts/gitlab-setup.sh install-runner
@@ -524,6 +637,7 @@ glab api "projects/YOUR_USERNAME%2FRummiArena/variables/SONAR_TOKEN" \
 
 | 문서 | 경로 |
 |------|------|
+| GitLab Runner 상세 가이드 | `docs/03-development/10-gitlab-runner-guide.md` |
 | 인프라 설치 체크리스트 | `docs/05-deployment/03-infra-setup-checklist.md` |
 | 시크릿 관리 | `docs/03-development/02-secret-management.md` |
 | Git 워크플로우 | `docs/03-development/07-git-workflow.md` |
@@ -539,3 +653,4 @@ glab api "projects/YOUR_USERNAME%2FRummiArena/variables/SONAR_TOKEN" \
 > | 버전 | 날짜 | 작성자 | 내용 |
 > |------|------|--------|------|
 > | 1.0 | 2026-03-15 | DevOps Agent | 초안 작성 (glab 설치, Runner K8s 설치, 토큰 등록 가이드) |
+> | 1.1 | 2026-03-16 | 애벌레 | 네임스페이스 cicd→gitlab-runner 수정, 이미지 버전 가이드 추가 (8절), CVE 수정 절차, run_untagged API 설정, 트러블슈팅 보강 |

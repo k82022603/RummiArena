@@ -678,6 +678,20 @@ grep -A3 'tags:' /mnt/d/Users/KTDS/Documents/06.과제/RummiArena/.gitlab-ci.yml
 
 Runner 설정에서 **Run untagged jobs**를 체크하면 tags 지정 없는 job도 처리한다.
 
+체크를 놓친 경우 GitLab API로 수동 설정할 수 있다:
+
+```bash
+# Runner ID 확인: GitLab UI → Settings → CI/CD → Runners → Runner 클릭
+RUNNER_ID=52262488
+GITLAB_PAT="glpat-xxxxxxxxxxxx"
+
+curl -s -X PUT "https://gitlab.com/api/v4/runners/${RUNNER_ID}" \
+  -H "PRIVATE-TOKEN: ${GITLAB_PAT}" \
+  -H "Content-Type: application/json" \
+  -d '{"run_untagged": true}' | python3 -m json.tool
+# 성공 시: "run_untagged": true 포함된 JSON 반환
+```
+
 ### 10.3 Docker-in-Docker 빌드 실패
 
 증상: `build-*` job에서 `Cannot connect to the Docker daemon` 오류
@@ -849,3 +863,4 @@ glab pipeline ci view
 > |------|------|--------|------|
 > | 1.0 | 2026-03-15 | DevOps Agent | 초안 작성 (glab 1.89.0, Runner K8s Executor, 교대 실행 전략, 트러블슈팅) |
 > | 1.1 | 2026-03-15 | 애벌레 | 네임스페이스 cicd→gitlab-runner 수정, 직접 Helm 설치 절차 추가, 10.6 토큰 검증 트러블슈팅 추가 |
+> | 1.2 | 2026-03-16 | 애벌레 | 10.2 run_untagged API 수동 설정 절차 추가 |
