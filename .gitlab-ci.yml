@@ -132,7 +132,7 @@ test-go:
         -timeout 120s
     - go tool cover -func=coverage.out
     # XML 변환 (GitLab Coverage 리포트)
-    - go install github.com/boumenot/gocover-cobertura@latest
+    - GOBIN=/usr/local/bin go install github.com/boumenot/gocover-cobertura@latest
     - gocover-cobertura < coverage.out > coverage.xml
   coverage: '/total:\s+\(statements\)\s+(\d+\.\d+)%/'
   artifacts:
