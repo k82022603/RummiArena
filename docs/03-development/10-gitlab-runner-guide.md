@@ -84,18 +84,27 @@ glab --version
 
 ### 2.3 수동 설치 (자동 설치 실패 시)
 
-```bash
-# 최신 버전 확인
-GLAB_VER=$(curl -sf https://api.github.com/repos/gitlab-org/cli/releases/latest \
-  | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'])")
+> **주의**: glab은 GitHub가 아닌 GitLab.com에서 배포된다.
+> `github.com/gitlab-org/cli`는 glab의 소스 미러가 아니므로 releases가 없다.
+> 반드시 `gitlab.com/api/v4` 또는 직접 GitLab 릴리즈 URL을 사용해야 한다.
 
-# 다운로드 및 설치
-curl -fL "https://github.com/gitlab-org/cli/releases/download/${GLAB_VER}/glab_${GLAB_VER#v}_linux_amd64.tar.gz" \
+```bash
+# 최신 버전 확인 (GitLab API 사용 — GitHub API와 다름)
+GLAB_VER=$(curl -s "https://gitlab.com/api/v4/projects/gitlab-org%2Fcli/releases" \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print(d[0]['tag_name'].lstrip('v'))")
+echo "Latest glab: ${GLAB_VER}"
+
+# GitLab.com 릴리즈에서 다운로드
+curl -sL "https://gitlab.com/gitlab-org/cli/-/releases/v${GLAB_VER}/downloads/glab_${GLAB_VER}_linux_amd64.tar.gz" \
   -o /tmp/glab.tar.gz
-mkdir -p /tmp/glab_extract && tar -xzf /tmp/glab.tar.gz -C /tmp/glab_extract
+
+# 압축 해제 및 설치
+mkdir -p /tmp/glab_extract ~/.local/bin
+tar -xzf /tmp/glab.tar.gz -C /tmp/glab_extract
 cp /tmp/glab_extract/bin/glab ~/.local/bin/glab
 chmod +x ~/.local/bin/glab
-glab --version
+~/.local/bin/glab --version
+# glab 1.89.0 (c6fca530)
 ```
 
 ---
@@ -128,19 +137,44 @@ PAT는 glab CLI 인증과 CI/CD 설정에 사용된다.
 
 ### 3.3 glab 인증
 
+> **함정 주의**: `glab auth login`을 `--hostname` 없이 실행하면 **github.com**으로
+> 연결된다. glab은 GitLab CLI임에도 기본 호스트가 github.com으로 잘못 동작하는 경우가 있다.
+> **반드시 `--hostname gitlab.com`을 명시**해야 한다.
+
 ```bash
+# ❌ 잘못된 방법 — github.com으로 연결됨
+glab auth login
+
+# ✅ 올바른 방법 — gitlab.com 명시
 glab auth login --hostname gitlab.com
 ```
 
-프롬프트에서 **Token** 방식 선택 후 발급받은 PAT를 입력한다.
+프롬프트에서 **HTTPS** 프로토콜 → **Token** 방식 선택 후 발급받은 PAT를 입력한다.
+
+```
+- Signing into gitlab.com
+The minimum required scopes are 'api' and 'write_repository'.
+Generate a personal access token at https://gitlab.com/-/user_settings/personal_access_tokens
+Choose default Git protocol:
+  SSH
+> HTTPS
+  HTTP
+✓ Configured Git protocol.
+✓ Configured API protocol.
+✓ Logged in as k82022603
+✓ Configuration saved to /home/claude/.config/glab-cli/config.yml
+  - Host: gitlab.com
+```
 
 ```bash
 # 인증 상태 확인
 glab auth status
 # gitlab.com
-#   - Logged in to gitlab.com as <username>
-#   - Git operations for gitlab.com configured to use https protocol.
-#   - Token: ********************
+#   ✓ Logged in to gitlab.com as k82022603
+#   ✓ Git operations for gitlab.com configured to use https protocol.
+#   ✓ API calls for gitlab.com are made over https protocol.
+#   ✓ REST API Endpoint: https://gitlab.com/api/v4/
+#   ✓ Token found: **************************
 ```
 
 또는 스크립트 사용:
@@ -168,29 +202,59 @@ glab auth status
 
 ### 4.2 GitHub + GitLab 동시 push 설정
 
-매 push마다 GitHub와 GitLab 모두에 동시 전송한다. `origin` push URL에 두 원격을 추가한다.
+#### 왜 두 곳에 동시 push 하는가?
+
+```mermaid
+flowchart LR
+    Dev["개발자\n(git push origin main)"]
+    GH["GitHub\n(협업/PR/Issues 허브)"]
+    GL["GitLab\n(CI/CD 파이프라인 트리거)"]
+    Pipe["파이프라인\n(lint→test→build→deploy)"]
+
+    Dev -->|push 1| GH
+    Dev -->|push 2| GL
+    GL -->|.gitlab-ci.yml 감지| Pipe
+```
+
+| 목적 | 도구 | 이유 |
+|------|------|------|
+| 코드 리뷰, PR, Issues | GitHub | 팀 협업 허브, 무료 public repo |
+| CI/CD 파이프라인 | GitLab | GitLab Runner + SonarQube 연동 |
+| GitOps repo 업데이트 | GitHub | ArgoCD가 감시하는 저장소 |
+
+**핵심**: GitLab 미러링은 유료 기능(GitLab Premium). 동시 push는 무료로 동일 효과를 낸다.
+단일 `git push origin main` 한 번으로 GitHub 소스 관리 + GitLab CI 트리거를 동시 수행한다.
+
+#### 설정 방법
+
+> **주의**: `git remote set-url --add --push`를 처음 실행하면 기존 GitHub push URL이
+> 사라지고 새 URL만 남는다. 반드시 GitHub URL도 다시 추가해야 한다.
 
 ```bash
 cd /mnt/d/Users/KTDS/Documents/06.과제/RummiArena
 
+# 1단계: GitLab URL 추가 (기존 GitHub push URL 대체됨)
+git remote set-url --add --push origin https://gitlab.com/k82022603/RummiArena.git
+
+# 2단계: GitHub URL 재추가
 git remote set-url --add --push origin https://github.com/k82022603/RummiArena.git
-git remote set-url --add --push origin https://gitlab.com/<username>/RummiArena.git
 
-# 확인 (push URL이 2개여야 함)
-git remote -v
-# origin  https://github.com/k82022603/RummiArena.git (fetch)
-# origin  https://github.com/k82022603/RummiArena.git (push)
-# origin  https://gitlab.com/<username>/RummiArena.git (push)
+# 확인 — push URL이 정확히 2개여야 함
+git remote get-url --all --push origin
+# https://gitlab.com/k82022603/RummiArena.git
+# https://github.com/k82022603/RummiArena.git
 ```
 
-이후 `git push origin main` 한 번으로 GitHub와 GitLab에 동시 push되며, GitLab이 `.gitlab-ci.yml`을 자동 트리거한다.
+이후 `git push origin main` 한 번으로 두 원격에 동시 push된다:
 
-개별 push 방식(CI가 필요할 때만):
-
-```bash
-git push origin main    # GitHub (소스 관리)
-git push gitlab main    # GitLab (CI 트리거)
 ```
+To https://gitlab.com/k82022603/RummiArena.git
+ * [new branch]      main -> main
+To https://github.com/k82022603/RummiArena.git
+   4022c1a..c9f4521  main -> main
+```
+
+GitLab이 push를 감지하면 `.gitlab-ci.yml`이 자동으로 파이프라인을 트리거한다.
 
 ---
 
