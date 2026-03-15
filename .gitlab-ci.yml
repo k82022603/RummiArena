@@ -117,7 +117,7 @@ lint-frontend:
 
 test-go:
   stage: test
-  image: golang:1.22-alpine
+  image: golang:1.24-alpine
   cache:
     <<: *go-cache
     policy: pull
