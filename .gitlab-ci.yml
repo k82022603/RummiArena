@@ -179,7 +179,7 @@ test-nest:
 
 sonarqube:
   stage: quality
-  image: sonarsource/sonar-scanner-cli:latest
+  image: sonarsource/sonar-scanner-cli:5.0
   variables:
     SONAR_HOST_URL: $SONAR_HOST_URL   # GitLab CI Variable로 주입
     SONAR_TOKEN: $SONAR_TOKEN         # GitLab CI Variable로 주입
