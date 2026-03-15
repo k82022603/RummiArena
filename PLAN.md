@@ -111,14 +111,17 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 - [x] Next.js 프로젝트 초기화
 - [x] 로그인 페이지 (Google OAuth)
 - [x] 로비 화면 (Room 목록/생성, Zustand, Framer Motion)
-- [ ] 게임 보드 레이아웃 (타일 렌더링 고도화)
-- [ ] 타일 랙 + 드래그&드롭 (dnd-kit) 인터랙션
+- [x] 게임 보드 레이아웃 (타일 렌더링 고도화) — DnD UX 고도화 완료 (2026-03-15)
+- [x] 타일 랙 + 드래그&드롭 (dnd-kit) 인터랙션 — 점선 고스트 + overlay scale/shadow 완료 (2026-03-15)
 - [x] WebSocket 연결/동기화 (클라이언트) — 프로토콜 연동 완료 (2026-03-14)
 - [x] AI Adapter /move 엔드포인트 (4개 어댑터, 재시도 3회, fallback DRAW)
 - [ ] Ollama 로컬 연동 테스트
 - [x] SonarQube 설치 (http://localhost:9001 UP, 2026-03-15)
 - [x] GitLab 프로젝트 생성 + glab 인증 (2026-03-15)
-- [ ] GitLab CI Variables 등록 + Runner 등록
+- [x] GitLab CI Variables 등록 (SONAR_TOKEN, GITOPS_TOKEN) — 2026-03-15
+- [ ] GitLab Runner 등록 (Runner 토큰 발급 후 설치)
+- [x] dev-login 엔드포인트 (APP_ENV=dev, 게스트 JWT 발급) — 2026-03-15
+- [x] ai-adapter 테스트 110개 GREEN (adapter 100% coverage) — 2026-03-15
 
 ### MVP 완료 기준
 - [ ] 로컬 K8s에서 Human 2명이 WebSocket으로 게임 가능
