@@ -86,6 +86,10 @@ const PlayerRack = memo(function PlayerRack({
     return "border-blue-500/40 border-dashed";
   })();
 
+  // 드롭 오버 시 배경 하이라이트
+  const bgOverlayClass =
+    isDragging && isOver ? "bg-blue-500/5" : "";
+
   return (
     <section
       aria-label="내 타일 랙"
@@ -94,17 +98,20 @@ const PlayerRack = memo(function PlayerRack({
         "rounded-xl",
         "bg-panel-bg border",
         borderClass,
+        bgOverlayClass,
         "min-h-[80px] transition-all duration-150",
         className,
-      ].join(" ")}
+      ]
+        .filter(Boolean)
+        .join(" ")}
     >
       <h2 className="sr-only">내 타일 ({tiles.length}개)</h2>
 
-      {/* 랙 헤더: 정렬 버튼 */}
+      {/* 랙 헤더: 타일 수 + 정렬 버튼 */}
       <div className="flex items-center justify-between px-3 pt-2 pb-1">
         <span className="text-tile-xs text-text-secondary">
-          랙{" "}
-          <span className="text-text-primary font-mono">{tiles.length}</span>장
+          내 타일{" "}
+          <span className="text-text-primary font-medium">({tiles.length}개)</span>
         </span>
 
         {/* 정렬 버튼: 내 턴이고 타일이 2개 이상일 때만 활성 */}

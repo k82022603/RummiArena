@@ -543,14 +543,17 @@ export default function GameClient({ roomId }: GameClientProps) {
         </div>
       </div>
 
-      {/* 드래그 오버레이: 커서를 따라다니는 타일 (그림자 + 미세 회전) */}
+      {/* 드래그 오버레이: 커서를 따라다니는 타일 (scale 1.1 + 그림자 강화 + grabbing 커서) */}
       <DragOverlay dropAnimation={null}>
         {activeDragCode ? (
           <motion.div
-            initial={{ scale: 1.05, rotate: -2, opacity: 0.9 }}
-            animate={{ scale: 1.1, rotate: -3, opacity: 0.95 }}
-            style={{ cursor: "grabbing" }}
-            className="drop-shadow-[0_8px_16px_rgba(0,0,0,0.5)]"
+            initial={{ scale: 1.0, rotate: 0, opacity: 0.85 }}
+            animate={{ scale: 1.12, rotate: -3, opacity: 1 }}
+            transition={{ type: "spring", stiffness: 500, damping: 20 }}
+            style={{
+              cursor: "grabbing",
+              filter: "drop-shadow(0 10px 20px rgba(0,0,0,0.55)) drop-shadow(0 2px 6px rgba(0,0,0,0.35))",
+            }}
           >
             <Tile
               code={activeDragCode}
