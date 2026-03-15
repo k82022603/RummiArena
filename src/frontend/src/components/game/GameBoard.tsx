@@ -87,14 +87,24 @@ const GameBoard = memo(function GameBoard({
       </AnimatePresence>
 
       {tableGroups.length === 0 && !isDragging ? (
-        <div className="flex items-center justify-center h-full text-text-secondary text-tile-base">
-          아직 놓인 타일이 없습니다
+        /* 빈 보드 플레이스홀더 */
+        <div className="flex flex-col items-center justify-center h-full gap-3 pointer-events-none select-none">
+          <div className="w-16 h-16 rounded-2xl border-2 border-dashed border-board-border/50 flex items-center justify-center">
+            <span className="text-3xl text-board-border/40" aria-hidden="true">+</span>
+          </div>
+          <p className="text-text-secondary text-tile-sm font-medium">
+            타일을 여기에 드롭하세요
+          </p>
+          <p className="text-text-secondary/50 text-tile-xs">
+            랙에서 타일을 끌어다 테이블에 올려놓으세요
+          </p>
         </div>
       ) : (
         <div className="flex flex-wrap gap-4">
           <AnimatePresence>
             {tableGroups.map((group) => {
               const isPending = pendingGroupIds.has(group.id);
+              const tileCount = group.tiles.length;
               return (
                 <motion.div
                   key={group.id}
@@ -110,22 +120,36 @@ const GameBoard = memo(function GameBoard({
                       : undefined
                   }
                 >
-                  {/* 그룹 타입 레이블 */}
-                  <span
-                    className={[
-                      "text-tile-xs uppercase tracking-wider",
-                      isPending
-                        ? "text-yellow-400 font-semibold"
-                        : "text-text-secondary",
-                    ].join(" ")}
-                  >
-                    {group.type === "run" ? "런" : "그룹"}
-                    {isPending && (
-                      <span className="ml-1 text-[9px] normal-case tracking-normal">
-                        (미확정)
-                      </span>
-                    )}
-                  </span>
+                  {/* 그룹 타입 레이블 + 타일 수 배지 */}
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      className={[
+                        "text-tile-xs uppercase tracking-wider",
+                        isPending
+                          ? "text-yellow-400 font-semibold"
+                          : "text-text-secondary",
+                      ].join(" ")}
+                    >
+                      {group.type === "run" ? "런" : "그룹"}
+                      {isPending && (
+                        <span className="ml-1 text-[9px] normal-case tracking-normal">
+                          (미확정)
+                        </span>
+                      )}
+                    </span>
+                    {/* 타일 수 배지 */}
+                    <span
+                      className={[
+                        "text-[9px] font-bold px-1 py-0.5 rounded-full leading-none min-w-[18px] text-center",
+                        isPending
+                          ? "bg-yellow-400/20 text-yellow-300"
+                          : "bg-board-border/30 text-text-secondary",
+                      ].join(" ")}
+                      aria-label={`${tileCount}개 타일`}
+                    >
+                      {tileCount}개
+                    </span>
+                  </div>
 
                   {/* 타일 목록 */}
                   <div
