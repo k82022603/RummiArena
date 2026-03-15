@@ -19,6 +19,9 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-jest/register node_modules/jest/bin/jest.js --runInBand",
     "test:e2e": "node node_modules/jest/bin/jest.js --config ./test/jest-e2e.json"
   },
+  "overrides": {
+    "multer": "2.1.0"
+  },
   "dependencies": {
     "@nestjs/common": "^10.0.0",
     "@nestjs/config": "^3.0.0",
