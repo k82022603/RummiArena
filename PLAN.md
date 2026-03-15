@@ -70,7 +70,7 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 - [x] ArgoCD 설치 (Helm)
 - [x] SonarQube 설치 (Docker Compose, http://localhost:9001) — 2026-03-15 완료
 - [ ] GitLab Runner 등록 (K8s Executor) — Runner 토큰 발급 후 설치 예정
-- [ ] GitLab CI Variables 등록 (SONAR_TOKEN, GITOPS_TOKEN)
+- [x] GitLab CI Variables 등록 (SONAR_TOKEN, GITOPS_TOKEN) — 2026-03-15 완료
 - [ ] GitHub Projects 보드 구성 (Kanban + Sprint)
 - [x] GitOps 레포 초기 구조 설정
 - [x] Helm Umbrella Chart 초기 골격 + 5개 서비스 Helm chart 완성
@@ -289,6 +289,9 @@ Sprint 1 Day 3 (2026-03-15):
 - **INVALID_MOVE 에러 UI** (에러 코드 한글 매핑 4종, ErrorToast 3초 자동 소멸)
 - **glab CLI 1.89.0 설치** + GitLab 프로젝트 생성 + GitHub/GitLab 동시 push 설정
 - **Sprint 2 GitHub Issues** #18~#23 등록 (30 SP)
-- 문서 3개 신규: SonarQube 가이드(648줄), GitLab CI/CD(541줄), Runner 가이드(782줄)
+- 문서 4개 신규: SonarQube 가이드(648줄), GitLab CI/CD(541줄), Runner 가이드(782줄), Quality Gate(505줄)
+- **SonarQube 첫 분석 완료** — 3개 프로젝트 Quality Gate PASSED (bugs=0, vulns=0)
+- **코드 스멜 18→5** (CRITICAL 13건 해소: 문자열 상수화 + Cognitive Complexity 리팩토링)
+- **Go 커버리지 28.4%** SonarQube 반영 (engine 95.8%, service 58.1%)
 
-다음 단계: ConfirmTurn/PlaceTiles 통합 테스트 보강 → 실시간 프리뷰 → 타일 DnD 고도화
+다음 단계: GitLab Runner 설치 → 첫 CI 파이프라인 GREEN → dev-login 엔드포인트 → E2E 테스트
