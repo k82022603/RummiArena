@@ -22,7 +22,9 @@ const mockedAxios = axios as jest.Mocked<typeof axios>;
 // -----------------------------------------------------------------------
 
 /** 테스트용 MoveRequestDto 팩토리 */
-const makeMoveRequest = (overrides: Partial<MoveRequestDto> = {}): MoveRequestDto => ({
+const makeMoveRequest = (
+  overrides: Partial<MoveRequestDto> = {},
+): MoveRequestDto => ({
   gameId: 'test-game-001',
   playerId: 'ai-player-ollama',
   gameState: {
@@ -128,7 +130,9 @@ describe('OllamaAdapter', () => {
     });
 
     it('Ollama 연결 실패 시 false를 반환한다', async () => {
-      mockedAxios.get = jest.fn().mockRejectedValueOnce(new Error('ECONNREFUSED'));
+      mockedAxios.get = jest
+        .fn()
+        .mockRejectedValueOnce(new Error('ECONNREFUSED'));
 
       const result = await adapter.healthCheck();
 
@@ -145,9 +149,9 @@ describe('OllamaAdapter', () => {
         action: 'draw',
         reasoning: '초기 등록 30점을 만들 수 없어 드로우를 선택합니다.',
       });
-      mockedAxios.post = jest.fn().mockResolvedValueOnce(
-        makeOllamaApiResponse(drawContent),
-      );
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(makeOllamaApiResponse(drawContent));
 
       const response = await adapter.generateMove(makeMoveRequest());
 
@@ -167,15 +171,14 @@ describe('OllamaAdapter', () => {
     it('유효한 place JSON을 반환하면 tableGroups와 tilesFromRack이 설정된다', async () => {
       const placeContent = JSON.stringify({
         action: 'place',
-        tableGroups: [
-          { tiles: ['R7a', 'R8a', 'R9a'] },
-        ],
+        tableGroups: [{ tiles: ['R7a', 'R8a', 'R9a'] }],
         tilesFromRack: ['R7a', 'R8a', 'R9a'],
-        reasoning: '빨강 7-8-9 런으로 초기 등록을 완료합니다. (24+... 부족, 드로우)',
+        reasoning:
+          '빨강 7-8-9 런으로 초기 등록을 완료합니다. (24+... 부족, 드로우)',
       });
-      mockedAxios.post = jest.fn().mockResolvedValueOnce(
-        makeOllamaApiResponse(placeContent),
-      );
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(makeOllamaApiResponse(placeContent));
 
       const response = await adapter.generateMove(makeMoveRequest());
 
@@ -189,15 +192,13 @@ describe('OllamaAdapter', () => {
     it('조커 타일이 포함된 place 응답도 정상 파싱한다', async () => {
       const placeContent = JSON.stringify({
         action: 'place',
-        tableGroups: [
-          { tiles: ['JK1', 'R8a', 'R9a'] },
-        ],
+        tableGroups: [{ tiles: ['JK1', 'R8a', 'R9a'] }],
         tilesFromRack: ['JK1', 'R8a', 'R9a'],
         reasoning: '조커를 R7a 대신 사용하여 런을 완성합니다.',
       });
-      mockedAxios.post = jest.fn().mockResolvedValueOnce(
-        makeOllamaApiResponse(placeContent),
-      );
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(makeOllamaApiResponse(placeContent));
 
       const response = await adapter.generateMove(makeMoveRequest());
 
@@ -222,7 +223,9 @@ describe('OllamaAdapter', () => {
         .mockResolvedValueOnce(makeOllamaApiResponse(invalidContent))
         .mockResolvedValueOnce(makeOllamaApiResponse(validContent));
 
-      const response = await adapter.generateMove(makeMoveRequest({ maxRetries: 3 }));
+      const response = await adapter.generateMove(
+        makeMoveRequest({ maxRetries: 3 }),
+      );
 
       expect(response.action).toBe('draw');
       expect(response.metadata.retryCount).toBe(1);
@@ -231,11 +234,13 @@ describe('OllamaAdapter', () => {
 
     it('maxRetries 모두 실패하면 강제 드로우(isFallbackDraw=true)를 반환한다', async () => {
       // 모든 응답을 파싱 불가 텍스트로 설정
-      mockedAxios.post = jest.fn().mockResolvedValue(
-        makeOllamaApiResponse('파싱 불가 응답'),
-      );
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValue(makeOllamaApiResponse('파싱 불가 응답'));
 
-      const response = await adapter.generateMove(makeMoveRequest({ maxRetries: 3 }));
+      const response = await adapter.generateMove(
+        makeMoveRequest({ maxRetries: 3 }),
+      );
 
       expect(response.action).toBe('draw');
       expect(response.metadata.isFallbackDraw).toBe(true);
@@ -246,7 +251,9 @@ describe('OllamaAdapter', () => {
     it('axios 네트워크 오류 시 재시도 후 강제 드로우를 반환한다', async () => {
       mockedAxios.post = jest.fn().mockRejectedValue(new Error('ECONNREFUSED'));
 
-      const response = await adapter.generateMove(makeMoveRequest({ maxRetries: 2 }));
+      const response = await adapter.generateMove(
+        makeMoveRequest({ maxRetries: 2 }),
+      );
 
       expect(response.action).toBe('draw');
       expect(response.metadata.isFallbackDraw).toBe(true);
@@ -259,9 +266,11 @@ describe('OllamaAdapter', () => {
   // -----------------------------------------------------------------------
   describe('generateMove() - API 호출 파라미터', () => {
     it('/api/chat 엔드포인트로 POST 요청을 보낸다', async () => {
-      mockedAxios.post = jest.fn().mockResolvedValueOnce(
-        makeOllamaApiResponse(JSON.stringify({ action: 'draw' })),
-      );
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(
+          makeOllamaApiResponse(JSON.stringify({ action: 'draw' })),
+        );
 
       await adapter.generateMove(makeMoveRequest());
 
@@ -270,9 +279,11 @@ describe('OllamaAdapter', () => {
     });
 
     it('요청 바디에 model, messages, stream:false, format:"json"이 포함된다', async () => {
-      mockedAxios.post = jest.fn().mockResolvedValueOnce(
-        makeOllamaApiResponse(JSON.stringify({ action: 'draw' })),
-      );
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(
+          makeOllamaApiResponse(JSON.stringify({ action: 'draw' })),
+        );
 
       await adapter.generateMove(makeMoveRequest());
 
@@ -286,9 +297,11 @@ describe('OllamaAdapter', () => {
     });
 
     it('timeoutMs를 axios 타임아웃에 전달한다', async () => {
-      mockedAxios.post = jest.fn().mockResolvedValueOnce(
-        makeOllamaApiResponse(JSON.stringify({ action: 'draw' })),
-      );
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(
+          makeOllamaApiResponse(JSON.stringify({ action: 'draw' })),
+        );
 
       await adapter.generateMove(makeMoveRequest({ timeoutMs: 15000 }));
 
@@ -305,7 +318,10 @@ describe('OllamaAdapter', () => {
       mockedAxios.post = jest.fn().mockResolvedValueOnce({
         data: {
           model: 'gemma3:4b',
-          message: { role: 'assistant', content: JSON.stringify({ action: 'draw' }) },
+          message: {
+            role: 'assistant',
+            content: JSON.stringify({ action: 'draw' }),
+          },
           done: true,
           prompt_eval_count: 200,
           eval_count: 80,
@@ -323,7 +339,10 @@ describe('OllamaAdapter', () => {
       mockedAxios.post = jest.fn().mockResolvedValueOnce({
         data: {
           model: 'gemma3:4b',
-          message: { role: 'assistant', content: JSON.stringify({ action: 'draw' }) },
+          message: {
+            role: 'assistant',
+            content: JSON.stringify({ action: 'draw' }),
+          },
           done: true,
           // prompt_eval_count, eval_count 없음
         },
@@ -346,9 +365,9 @@ describe('OllamaAdapter', () => {
         '```json\n' +
         JSON.stringify({ action: 'draw', reasoning: '코드블록 테스트' }) +
         '\n```';
-      mockedAxios.post = jest.fn().mockResolvedValueOnce(
-        makeOllamaApiResponse(wrappedContent),
-      );
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(makeOllamaApiResponse(wrappedContent));
 
       const response = await adapter.generateMove(makeMoveRequest());
 

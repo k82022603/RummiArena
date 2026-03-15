@@ -57,14 +57,6 @@ func validRunTiles(color string, start, length int) []TilePlacement {
 	return []TilePlacement{{ID: "set-1", Tiles: codes}}
 }
 
-// validGroupTiles 유효한 그룹 세트 타일 코드 슬라이스를 반환한다 (숫자 동일, 색상 상이).
-func validGroupTiles(number int) []TilePlacement {
-	return []TilePlacement{{
-		ID:    "set-1",
-		Tiles: []string{fmt.Sprintf("R%da", number), fmt.Sprintf("B%da", number), fmt.Sprintf("Y%da", number)},
-	}}
-}
-
 // --- TestPlaceTiles ---
 
 func TestPlaceTiles_SnapshotCreated(t *testing.T) {

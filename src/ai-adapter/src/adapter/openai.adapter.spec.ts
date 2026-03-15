@@ -27,7 +27,9 @@ const makeGameState = (): GameStateDto => ({
   initialMeldDone: false,
 });
 
-const makeMoveRequest = (overrides: Partial<MoveRequestDto> = {}): MoveRequestDto => ({
+const makeMoveRequest = (
+  overrides: Partial<MoveRequestDto> = {},
+): MoveRequestDto => ({
   gameId: 'openai-test-001',
   playerId: 'ai-openai',
   gameState: makeGameState(),
@@ -40,7 +42,11 @@ const makeMoveRequest = (overrides: Partial<MoveRequestDto> = {}): MoveRequestDt
 });
 
 /** OpenAI /chat/completions 응답 형식 */
-const makeOpenAiResponse = (content: string, promptTokens = 100, completionTokens = 50) => ({
+const makeOpenAiResponse = (
+  content: string,
+  promptTokens = 100,
+  completionTokens = 50,
+) => ({
   data: {
     choices: [
       {
@@ -101,7 +107,11 @@ describe('OpenAiAdapter', () => {
       const configWithDefaults = {
         get: jest.fn((key: string, defaultValue?: string) => defaultValue),
       } as unknown as ConfigService;
-      const adapterWithDefaults = new OpenAiAdapter(promptBuilder, responseParser, configWithDefaults);
+      const adapterWithDefaults = new OpenAiAdapter(
+        promptBuilder,
+        responseParser,
+        configWithDefaults,
+      );
 
       const info = adapterWithDefaults.getModelInfo();
       expect(info.modelName).toBe('gpt-4o');
@@ -125,7 +135,9 @@ describe('OpenAiAdapter', () => {
     });
 
     it('API 연결 실패 시 false를 반환한다', async () => {
-      mockedAxios.get = jest.fn().mockRejectedValueOnce(new Error('ECONNREFUSED'));
+      mockedAxios.get = jest
+        .fn()
+        .mockRejectedValueOnce(new Error('ECONNREFUSED'));
 
       const result = await adapter.healthCheck();
 
@@ -142,7 +154,9 @@ describe('OpenAiAdapter', () => {
         action: 'draw',
         reasoning: '유효한 조합이 없어 드로우합니다.',
       });
-      mockedAxios.post = jest.fn().mockResolvedValueOnce(makeOpenAiResponse(content));
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(makeOpenAiResponse(content));
 
       const response = await adapter.generateMove(makeMoveRequest());
 
@@ -163,7 +177,9 @@ describe('OpenAiAdapter', () => {
         tilesFromRack: ['R7a', 'R8a', 'R9a'],
         reasoning: '런 배치',
       });
-      mockedAxios.post = jest.fn().mockResolvedValueOnce(makeOpenAiResponse(content));
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(makeOpenAiResponse(content));
 
       const response = await adapter.generateMove(makeMoveRequest());
 
@@ -178,9 +194,11 @@ describe('OpenAiAdapter', () => {
   // -----------------------------------------------------------------------
   describe('generateMove() - API 호출 파라미터', () => {
     it('/chat/completions 엔드포인트로 POST 요청을 보낸다', async () => {
-      mockedAxios.post = jest.fn().mockResolvedValueOnce(
-        makeOpenAiResponse(JSON.stringify({ action: 'draw' })),
-      );
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(
+          makeOpenAiResponse(JSON.stringify({ action: 'draw' })),
+        );
 
       await adapter.generateMove(makeMoveRequest());
 
@@ -189,9 +207,11 @@ describe('OpenAiAdapter', () => {
     });
 
     it('요청 바디에 response_format: json_object가 포함된다', async () => {
-      mockedAxios.post = jest.fn().mockResolvedValueOnce(
-        makeOpenAiResponse(JSON.stringify({ action: 'draw' })),
-      );
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(
+          makeOpenAiResponse(JSON.stringify({ action: 'draw' })),
+        );
 
       await adapter.generateMove(makeMoveRequest());
 
@@ -200,9 +220,11 @@ describe('OpenAiAdapter', () => {
     });
 
     it('요청 헤더에 Authorization: Bearer 토큰이 포함된다', async () => {
-      mockedAxios.post = jest.fn().mockResolvedValueOnce(
-        makeOpenAiResponse(JSON.stringify({ action: 'draw' })),
-      );
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(
+          makeOpenAiResponse(JSON.stringify({ action: 'draw' })),
+        );
 
       await adapter.generateMove(makeMoveRequest());
 
@@ -211,9 +233,11 @@ describe('OpenAiAdapter', () => {
     });
 
     it('timeoutMs가 axios 타임아웃에 전달된다', async () => {
-      mockedAxios.post = jest.fn().mockResolvedValueOnce(
-        makeOpenAiResponse(JSON.stringify({ action: 'draw' })),
-      );
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(
+          makeOpenAiResponse(JSON.stringify({ action: 'draw' })),
+        );
 
       await adapter.generateMove(makeMoveRequest({ timeoutMs: 20000 }));
 
@@ -227,9 +251,11 @@ describe('OpenAiAdapter', () => {
   // -----------------------------------------------------------------------
   describe('generateMove() - 토큰 메타데이터', () => {
     it('usage.prompt_tokens와 completion_tokens가 메타데이터에 반영된다', async () => {
-      mockedAxios.post = jest.fn().mockResolvedValueOnce(
-        makeOpenAiResponse(JSON.stringify({ action: 'draw' }), 180, 75),
-      );
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(
+          makeOpenAiResponse(JSON.stringify({ action: 'draw' }), 180, 75),
+        );
 
       const response = await adapter.generateMove(makeMoveRequest());
 
@@ -240,7 +266,9 @@ describe('OpenAiAdapter', () => {
     it('usage 없을 때 promptTokens=0, completionTokens=0을 반환한다', async () => {
       mockedAxios.post = jest.fn().mockResolvedValueOnce({
         data: {
-          choices: [{ message: { content: JSON.stringify({ action: 'draw' }) } }],
+          choices: [
+            { message: { content: JSON.stringify({ action: 'draw' }) } },
+          ],
           // usage 필드 없음
         },
         status: 200,
@@ -258,11 +286,13 @@ describe('OpenAiAdapter', () => {
   // -----------------------------------------------------------------------
   describe('generateMove() - 파싱 실패', () => {
     it('maxRetries 모두 실패하면 isFallbackDraw=true를 반환한다', async () => {
-      mockedAxios.post = jest.fn().mockResolvedValue(
-        makeOpenAiResponse('파싱 불가 텍스트'),
-      );
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValue(makeOpenAiResponse('파싱 불가 텍스트'));
 
-      const response = await adapter.generateMove(makeMoveRequest({ maxRetries: 2 }));
+      const response = await adapter.generateMove(
+        makeMoveRequest({ maxRetries: 2 }),
+      );
 
       expect(response.action).toBe('draw');
       expect(response.metadata.isFallbackDraw).toBe(true);
@@ -272,7 +302,9 @@ describe('OpenAiAdapter', () => {
     it('axios 에러 시 재시도 후 fallback draw를 반환한다', async () => {
       mockedAxios.post = jest.fn().mockRejectedValue(new Error('timeout'));
 
-      const response = await adapter.generateMove(makeMoveRequest({ maxRetries: 2 }));
+      const response = await adapter.generateMove(
+        makeMoveRequest({ maxRetries: 2 }),
+      );
 
       expect(response.action).toBe('draw');
       expect(response.metadata.isFallbackDraw).toBe(true);

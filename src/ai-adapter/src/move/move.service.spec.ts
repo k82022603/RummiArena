@@ -83,7 +83,12 @@ describe('MoveService', () => {
       getModelInfo: jest.fn(),
     } as unknown as jest.Mocked<OllamaAdapter>;
 
-    service = new MoveService(openAiAdapter, claudeAdapter, deepSeekAdapter, ollamaAdapter);
+    service = new MoveService(
+      openAiAdapter,
+      claudeAdapter,
+      deepSeekAdapter,
+      ollamaAdapter,
+    );
   });
 
   // -----------------------------------------------------------------------
@@ -205,7 +210,9 @@ describe('MoveService', () => {
 
     it('MoveRequestDto가 어댑터에 그대로 전달된다', async () => {
       const request = makeMoveRequest();
-      ollamaAdapter.generateMove.mockResolvedValueOnce(makeDrawResponse('ollama'));
+      ollamaAdapter.generateMove.mockResolvedValueOnce(
+        makeDrawResponse('ollama'),
+      );
 
       await service.generateMove('ollama', request);
 

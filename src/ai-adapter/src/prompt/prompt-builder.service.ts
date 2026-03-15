@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { MoveRequestDto, GameStateDto, Difficulty } from '../common/dto/move-request.dto';
+import { MoveRequestDto, Difficulty } from '../common/dto/move-request.dto';
 import { buildSystemPrompt } from './persona.templates';
 
 /**
@@ -40,14 +40,18 @@ export class PromptBuilderService {
     // 내 타일
     lines.push('');
     lines.push('## 내 타일');
-    lines.push(`  [${gameState.myTiles.join(', ')}] (총 ${gameState.myTiles.length}장)`);
+    lines.push(
+      `  [${gameState.myTiles.join(', ')}] (총 ${gameState.myTiles.length}장)`,
+    );
 
     // 게임 진행 상황
     lines.push('');
     lines.push('## 게임 진행 상황');
     lines.push(`  현재 턴: ${gameState.turnNumber}`);
     lines.push(`  드로우 파일: ${gameState.drawPileCount}장 남음`);
-    lines.push(`  최초 등록 완료: ${gameState.initialMeldDone ? '완료' : '미완료 (30점 이상 필요)'}`);
+    lines.push(
+      `  최초 등록 완료: ${gameState.initialMeldDone ? '완료' : '미완료 (30점 이상 필요)'}`,
+    );
 
     // 상대 정보 (beginner는 제외)
     if (difficulty !== 'beginner' && gameState.opponents.length > 0) {

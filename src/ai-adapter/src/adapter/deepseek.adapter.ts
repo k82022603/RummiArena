@@ -54,7 +54,11 @@ export class DeepSeekAdapter extends BaseAdapter {
     systemPrompt: string,
     userPrompt: string,
     timeoutMs: number,
-  ): Promise<{ content: string; promptTokens: number; completionTokens: number }> {
+  ): Promise<{
+    content: string;
+    promptTokens: number;
+    completionTokens: number;
+  }> {
     // DeepSeek은 OpenAI 호환 API를 제공하므로 동일한 요청 구조를 사용한다
     const response = await axios.post(
       `${this.baseUrl}/chat/completions`,

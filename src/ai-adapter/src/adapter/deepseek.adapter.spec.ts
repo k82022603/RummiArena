@@ -28,7 +28,9 @@ const makeGameState = (): GameStateDto => ({
   initialMeldDone: false,
 });
 
-const makeMoveRequest = (overrides: Partial<MoveRequestDto> = {}): MoveRequestDto => ({
+const makeMoveRequest = (
+  overrides: Partial<MoveRequestDto> = {},
+): MoveRequestDto => ({
   gameId: 'deepseek-test-001',
   playerId: 'ai-deepseek',
   gameState: makeGameState(),
@@ -41,7 +43,11 @@ const makeMoveRequest = (overrides: Partial<MoveRequestDto> = {}): MoveRequestDt
 });
 
 /** DeepSeek /v1/chat/completions 응답 형식 (OpenAI 호환) */
-const makeDeepSeekResponse = (content: string, promptTokens = 90, completionTokens = 45) => ({
+const makeDeepSeekResponse = (
+  content: string,
+  promptTokens = 90,
+  completionTokens = 45,
+) => ({
   data: {
     id: 'chatcmpl-test',
     object: 'chat.completion',
@@ -105,7 +111,11 @@ describe('DeepSeekAdapter', () => {
       const configWithDefaults = {
         get: jest.fn((key: string, defaultValue?: string) => defaultValue),
       } as unknown as ConfigService;
-      const adapterWithDefaults = new DeepSeekAdapter(promptBuilder, responseParser, configWithDefaults);
+      const adapterWithDefaults = new DeepSeekAdapter(
+        promptBuilder,
+        responseParser,
+        configWithDefaults,
+      );
 
       const info = adapterWithDefaults.getModelInfo();
       expect(info.modelName).toBe('deepseek-chat');
@@ -129,7 +139,9 @@ describe('DeepSeekAdapter', () => {
     });
 
     it('API 연결 실패 시 false를 반환한다', async () => {
-      mockedAxios.get = jest.fn().mockRejectedValueOnce(new Error('ECONNREFUSED'));
+      mockedAxios.get = jest
+        .fn()
+        .mockRejectedValueOnce(new Error('ECONNREFUSED'));
 
       const result = await adapter.healthCheck();
 
@@ -146,7 +158,9 @@ describe('DeepSeekAdapter', () => {
         action: 'draw',
         reasoning: '초기 등록 30점 미달로 드로우합니다.',
       });
-      mockedAxios.post = jest.fn().mockResolvedValueOnce(makeDeepSeekResponse(content));
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(makeDeepSeekResponse(content));
 
       const response = await adapter.generateMove(makeMoveRequest());
 
@@ -167,7 +181,9 @@ describe('DeepSeekAdapter', () => {
         tilesFromRack: ['K1a', 'K2a', 'K3a'],
         reasoning: '검정 1-2-3 런',
       });
-      mockedAxios.post = jest.fn().mockResolvedValueOnce(makeDeepSeekResponse(content));
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(makeDeepSeekResponse(content));
 
       const response = await adapter.generateMove(makeMoveRequest());
 
@@ -182,9 +198,11 @@ describe('DeepSeekAdapter', () => {
   // -----------------------------------------------------------------------
   describe('generateMove() - API 호출 파라미터', () => {
     it('/chat/completions 엔드포인트로 POST 요청을 보낸다', async () => {
-      mockedAxios.post = jest.fn().mockResolvedValueOnce(
-        makeDeepSeekResponse(JSON.stringify({ action: 'draw' })),
-      );
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(
+          makeDeepSeekResponse(JSON.stringify({ action: 'draw' })),
+        );
 
       await adapter.generateMove(makeMoveRequest());
 
@@ -193,9 +211,11 @@ describe('DeepSeekAdapter', () => {
     });
 
     it('요청 바디에 response_format: json_object가 포함된다', async () => {
-      mockedAxios.post = jest.fn().mockResolvedValueOnce(
-        makeDeepSeekResponse(JSON.stringify({ action: 'draw' })),
-      );
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(
+          makeDeepSeekResponse(JSON.stringify({ action: 'draw' })),
+        );
 
       await adapter.generateMove(makeMoveRequest());
 
@@ -204,9 +224,11 @@ describe('DeepSeekAdapter', () => {
     });
 
     it('요청 헤더에 Authorization: Bearer가 포함된다', async () => {
-      mockedAxios.post = jest.fn().mockResolvedValueOnce(
-        makeDeepSeekResponse(JSON.stringify({ action: 'draw' })),
-      );
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(
+          makeDeepSeekResponse(JSON.stringify({ action: 'draw' })),
+        );
 
       await adapter.generateMove(makeMoveRequest());
 
@@ -215,9 +237,11 @@ describe('DeepSeekAdapter', () => {
     });
 
     it('timeoutMs가 axios 타임아웃에 전달된다', async () => {
-      mockedAxios.post = jest.fn().mockResolvedValueOnce(
-        makeDeepSeekResponse(JSON.stringify({ action: 'draw' })),
-      );
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(
+          makeDeepSeekResponse(JSON.stringify({ action: 'draw' })),
+        );
 
       await adapter.generateMove(makeMoveRequest({ timeoutMs: 10000 }));
 
@@ -231,9 +255,11 @@ describe('DeepSeekAdapter', () => {
   // -----------------------------------------------------------------------
   describe('generateMove() - 토큰 메타데이터', () => {
     it('prompt_tokens와 completion_tokens가 메타데이터에 반영된다', async () => {
-      mockedAxios.post = jest.fn().mockResolvedValueOnce(
-        makeDeepSeekResponse(JSON.stringify({ action: 'draw' }), 150, 65),
-      );
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(
+          makeDeepSeekResponse(JSON.stringify({ action: 'draw' }), 150, 65),
+        );
 
       const response = await adapter.generateMove(makeMoveRequest());
 
@@ -247,11 +273,13 @@ describe('DeepSeekAdapter', () => {
   // -----------------------------------------------------------------------
   describe('generateMove() - 파싱 실패', () => {
     it('모든 재시도 실패 시 isFallbackDraw=true를 반환한다', async () => {
-      mockedAxios.post = jest.fn().mockResolvedValue(
-        makeDeepSeekResponse('JSON이 아닌 응답'),
-      );
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValue(makeDeepSeekResponse('JSON이 아닌 응답'));
 
-      const response = await adapter.generateMove(makeMoveRequest({ maxRetries: 2 }));
+      const response = await adapter.generateMove(
+        makeMoveRequest({ maxRetries: 2 }),
+      );
 
       expect(response.action).toBe('draw');
       expect(response.metadata.isFallbackDraw).toBe(true);
@@ -259,9 +287,13 @@ describe('DeepSeekAdapter', () => {
     });
 
     it('네트워크 에러 시 재시도 후 fallback draw를 반환한다', async () => {
-      mockedAxios.post = jest.fn().mockRejectedValue(new Error('Network Error'));
+      mockedAxios.post = jest
+        .fn()
+        .mockRejectedValue(new Error('Network Error'));
 
-      const response = await adapter.generateMove(makeMoveRequest({ maxRetries: 2 }));
+      const response = await adapter.generateMove(
+        makeMoveRequest({ maxRetries: 2 }),
+      );
 
       expect(response.action).toBe('draw');
       expect(response.metadata.isFallbackDraw).toBe(true);

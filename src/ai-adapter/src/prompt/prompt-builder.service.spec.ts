@@ -4,7 +4,9 @@ import { MoveRequestDto, GameStateDto } from '../common/dto/move-request.dto';
 describe('PromptBuilderService', () => {
   let service: PromptBuilderService;
 
-  const makeRequest = (overrides: Partial<MoveRequestDto> = {}): MoveRequestDto => ({
+  const makeRequest = (
+    overrides: Partial<MoveRequestDto> = {},
+  ): MoveRequestDto => ({
     gameId: 'game-001',
     playerId: 'player-ai-01',
     gameState: {
@@ -36,7 +38,9 @@ describe('PromptBuilderService', () => {
     });
 
     it('캐릭터 지시문이 포함된다', () => {
-      const prompt = service.buildSystemPrompt(makeRequest({ persona: 'shark' }));
+      const prompt = service.buildSystemPrompt(
+        makeRequest({ persona: 'shark' }),
+      );
       expect(prompt).toContain('공격적');
     });
 
@@ -69,12 +73,16 @@ describe('PromptBuilderService', () => {
     });
 
     it('beginner 난이도에서는 상대 정보가 없다', () => {
-      const prompt = service.buildUserPrompt(makeRequest({ difficulty: 'beginner' }));
+      const prompt = service.buildUserPrompt(
+        makeRequest({ difficulty: 'beginner' }),
+      );
       expect(prompt).not.toContain('상대 플레이어 정보');
     });
 
     it('expert 난이도에서는 상대 정보가 포함된다', () => {
-      const prompt = service.buildUserPrompt(makeRequest({ difficulty: 'expert' }));
+      const prompt = service.buildUserPrompt(
+        makeRequest({ difficulty: 'expert' }),
+      );
       expect(prompt).toContain('상대 플레이어 정보');
     });
 

@@ -68,7 +68,11 @@ export class ClaudeAdapter extends BaseAdapter {
     systemPrompt: string,
     userPrompt: string,
     timeoutMs: number,
-  ): Promise<{ content: string; promptTokens: number; completionTokens: number }> {
+  ): Promise<{
+    content: string;
+    promptTokens: number;
+    completionTokens: number;
+  }> {
     const response = await axios.post(
       `${this.baseUrl}/messages`,
       {
@@ -88,7 +92,7 @@ export class ClaudeAdapter extends BaseAdapter {
       },
     );
 
-    const content = response.data.content[0]?.text as string ?? '';
+    const content = (response.data.content[0]?.text as string) ?? '';
     const usage = response.data.usage;
 
     return {
