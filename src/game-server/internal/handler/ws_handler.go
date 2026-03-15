@@ -69,7 +69,7 @@ func (h *WSHandler) HandleWS(c *gin.Context) {
 
 	// Auth phase: WritePump은 아직 시작하지 않음 → 직접 쓰기
 	if !h.authenticate(conn) {
-		ws.Close()
+		_ = ws.Close() //nolint:errcheck
 		return
 	}
 

@@ -98,11 +98,6 @@ func (h *RoomHandler) GetRoom(c *gin.Context) {
 	c.JSON(http.StatusOK, roomStateToDetail(room))
 }
 
-// joinRoomRequest POST /api/rooms/:id/join 요청 바디 (선택)
-type joinRoomRequest struct {
-	// 추후 비밀번호 지원 등 확장용
-}
-
 // JoinRoom POST /api/rooms/:id/join
 func (h *RoomHandler) JoinRoom(c *gin.Context) {
 	userID, ok := middleware.UserIDFromContext(c)

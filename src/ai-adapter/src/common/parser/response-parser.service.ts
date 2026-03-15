@@ -31,7 +31,10 @@ export class ResponseParserService {
    */
   parse(
     rawResponse: RawLlmResponse,
-    metadata: Omit<MoveMetadataDto, 'latencyMs' | 'promptTokens' | 'completionTokens' | 'retryCount'>,
+    metadata: Omit<
+      MoveMetadataDto,
+      'latencyMs' | 'promptTokens' | 'completionTokens' | 'retryCount'
+    >,
     retryCount: number,
   ): ParseResult {
     const fullMetadata: MoveMetadataDto = {
@@ -49,7 +52,9 @@ export class ResponseParserService {
       parsed = this.extractJson(rawResponse.content);
     } catch (err) {
       const errorReason = `JSON 파싱 실패: ${(err as Error).message}`;
-      this.logger.warn(`[ResponseParser] ${errorReason} | raw: ${rawResponse.content.slice(0, 200)}`);
+      this.logger.warn(
+        `[ResponseParser] ${errorReason} | raw: ${rawResponse.content.slice(0, 200)}`,
+      );
       return { success: false, errorReason };
     }
 
@@ -75,20 +80,31 @@ export class ResponseParserService {
     }
 
     // action === 'place' 처리
-    const tileGroupsRaw = obj.tableGroups as Array<{ tiles: string[] }> | undefined;
+    const tileGroupsRaw = obj.tableGroups as
+      | Array<{ tiles: string[] }>
+      | undefined;
     const tilesFromRack = obj.tilesFromRack as string[] | undefined;
 
     // 타일 그룹 유효성 검증
-    if (!tileGroupsRaw || !Array.isArray(tileGroupsRaw) || tileGroupsRaw.length === 0) {
+    if (
+      !tileGroupsRaw ||
+      !Array.isArray(tileGroupsRaw) ||
+      tileGroupsRaw.length === 0
+    ) {
       return {
         success: false,
-        errorReason: 'action이 "place"이지만 tableGroups가 비어있거나 없습니다.',
+        errorReason:
+          'action이 "place"이지만 tableGroups가 비어있거나 없습니다.',
       };
     }
 
     const tableGroups: TileGroupDto[] = [];
     for (const group of tileGroupsRaw) {
-      if (!group.tiles || !Array.isArray(group.tiles) || group.tiles.length < 3) {
+      if (
+        !group.tiles ||
+        !Array.isArray(group.tiles) ||
+        group.tiles.length < 3
+      ) {
         return {
           success: false,
           errorReason: `그룹의 타일 수가 3개 미만입니다: ${JSON.stringify(group)}`,
@@ -125,7 +141,10 @@ export class ResponseParserService {
    * maxRetries 초과 시 강제 드로우 응답을 생성한다.
    */
   buildFallbackDraw(
-    metadata: Omit<MoveMetadataDto, 'latencyMs' | 'promptTokens' | 'completionTokens' | 'retryCount'>,
+    metadata: Omit<
+      MoveMetadataDto,
+      'latencyMs' | 'promptTokens' | 'completionTokens' | 'retryCount'
+    >,
     retryCount: number,
     latencyMs: number,
   ): MoveResponseDto {
@@ -171,7 +190,11 @@ export class ResponseParserService {
    * 문제가 있으면 에러 메시지를 반환하고, 없으면 null을 반환한다.
    */
   private validateStructure(parsed: unknown): string | null {
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    if (
+      typeof parsed !== 'object' ||
+      parsed === null ||
+      Array.isArray(parsed)
+    ) {
       return '응답이 JSON 객체가 아닙니다.';
     }
     const obj = parsed as Record<string, unknown>;

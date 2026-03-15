@@ -22,7 +22,9 @@ async function bootstrap() {
 
   // CORS 설정 (Game Server에서 호출하므로 내부 서비스간 통신)
   app.enableCors({
-    origin: process.env.ALLOWED_ORIGINS?.split(',') ?? ['http://localhost:8080'],
+    origin: process.env.ALLOWED_ORIGINS?.split(',') ?? [
+      'http://localhost:8080',
+    ],
     methods: ['GET', 'POST'],
   });
 

@@ -56,7 +56,11 @@ export class OllamaAdapter extends BaseAdapter {
     systemPrompt: string,
     userPrompt: string,
     timeoutMs: number,
-  ): Promise<{ content: string; promptTokens: number; completionTokens: number }> {
+  ): Promise<{
+    content: string;
+    promptTokens: number;
+    completionTokens: number;
+  }> {
     // Ollama Chat API (OpenAI 호환 엔드포인트 사용)
     const response = await axios.post(
       `${this.baseUrl}/api/chat`,
@@ -79,7 +83,7 @@ export class OllamaAdapter extends BaseAdapter {
       },
     );
 
-    const content = response.data.message?.content as string ?? '';
+    const content = (response.data.message?.content as string) ?? '';
     // Ollama는 토큰 사용량을 다른 형태로 제공한다
     const promptEvalCount = response.data.prompt_eval_count ?? 0;
     const evalCount = response.data.eval_count ?? 0;

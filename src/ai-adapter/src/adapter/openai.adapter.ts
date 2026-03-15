@@ -54,7 +54,11 @@ export class OpenAiAdapter extends BaseAdapter {
     systemPrompt: string,
     userPrompt: string,
     timeoutMs: number,
-  ): Promise<{ content: string; promptTokens: number; completionTokens: number }> {
+  ): Promise<{
+    content: string;
+    promptTokens: number;
+    completionTokens: number;
+  }> {
     const response = await axios.post(
       `${this.baseUrl}/chat/completions`,
       {

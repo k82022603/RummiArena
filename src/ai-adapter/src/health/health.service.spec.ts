@@ -21,12 +21,25 @@ describe('HealthService', () => {
   let ollamaAdapter: jest.Mocked<OllamaAdapter>;
 
   beforeEach(() => {
-    openAiAdapter = { healthCheck: jest.fn() } as unknown as jest.Mocked<OpenAiAdapter>;
-    claudeAdapter = { healthCheck: jest.fn() } as unknown as jest.Mocked<ClaudeAdapter>;
-    deepSeekAdapter = { healthCheck: jest.fn() } as unknown as jest.Mocked<DeepSeekAdapter>;
-    ollamaAdapter = { healthCheck: jest.fn() } as unknown as jest.Mocked<OllamaAdapter>;
+    openAiAdapter = {
+      healthCheck: jest.fn(),
+    } as unknown as jest.Mocked<OpenAiAdapter>;
+    claudeAdapter = {
+      healthCheck: jest.fn(),
+    } as unknown as jest.Mocked<ClaudeAdapter>;
+    deepSeekAdapter = {
+      healthCheck: jest.fn(),
+    } as unknown as jest.Mocked<DeepSeekAdapter>;
+    ollamaAdapter = {
+      healthCheck: jest.fn(),
+    } as unknown as jest.Mocked<OllamaAdapter>;
 
-    service = new HealthService(openAiAdapter, claudeAdapter, deepSeekAdapter, ollamaAdapter);
+    service = new HealthService(
+      openAiAdapter,
+      claudeAdapter,
+      deepSeekAdapter,
+      ollamaAdapter,
+    );
   });
 
   // -----------------------------------------------------------------------
@@ -85,7 +98,9 @@ describe('HealthService', () => {
   // -----------------------------------------------------------------------
   describe('checkAllAdapters() - 어댑터 예외 처리', () => {
     it('어댑터 healthCheck()가 예외를 던지면 해당 어댑터를 false로 처리한다', async () => {
-      openAiAdapter.healthCheck.mockRejectedValueOnce(new Error('Network error'));
+      openAiAdapter.healthCheck.mockRejectedValueOnce(
+        new Error('Network error'),
+      );
       claudeAdapter.healthCheck.mockResolvedValueOnce(true);
       deepSeekAdapter.healthCheck.mockResolvedValueOnce(true);
       ollamaAdapter.healthCheck.mockResolvedValueOnce(true);

@@ -88,7 +88,6 @@ type turnSnapshot struct {
 type gameService struct {
 	gameRepo  repository.MemoryGameStateRepository
 	snapshots map[string]*turnSnapshot // key: gameID+":"+seat
-	mu        struct{ mu interface{} } // 단순 구조 — 실제로는 sync.Mutex를 사용
 }
 
 // newGame 방의 플레이어들로 게임을 생성하고 초기 타일을 분배한다.

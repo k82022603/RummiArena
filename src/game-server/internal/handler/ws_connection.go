@@ -106,7 +106,7 @@ func (c *Connection) CloseWithReason(code int, reason string) {
 // WritePump pumps messages from the send channel to the WebSocket.
 // Exits when the send channel is closed.
 func (c *Connection) WritePump() {
-	defer c.conn.Close()
+	defer func() { _ = c.conn.Close() }() //nolint:errcheck
 
 	for data := range c.send {
 		_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))

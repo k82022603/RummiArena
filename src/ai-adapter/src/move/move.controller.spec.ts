@@ -10,7 +10,9 @@ import { MoveResponseDto } from '../common/dto/move-response.dto';
 //   - body.model 분리, maxRetries/timeoutMs 기본값 처리 확인
 // -----------------------------------------------------------------------
 
-const makePostMoveBody = (overrides: Partial<PostMoveBodyDto> = {}): PostMoveBodyDto => ({
+const makePostMoveBody = (
+  overrides: Partial<PostMoveBodyDto> = {},
+): PostMoveBodyDto => ({
   gameId: 'ctrl-test-001',
   playerId: 'ai-player-ctrl',
   model: 'ollama',

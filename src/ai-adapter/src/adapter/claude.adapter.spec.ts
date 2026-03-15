@@ -28,7 +28,9 @@ const makeGameState = (): GameStateDto => ({
   initialMeldDone: true,
 });
 
-const makeMoveRequest = (overrides: Partial<MoveRequestDto> = {}): MoveRequestDto => ({
+const makeMoveRequest = (
+  overrides: Partial<MoveRequestDto> = {},
+): MoveRequestDto => ({
   gameId: 'claude-test-001',
   playerId: 'ai-claude',
   gameState: makeGameState(),
@@ -41,7 +43,11 @@ const makeMoveRequest = (overrides: Partial<MoveRequestDto> = {}): MoveRequestDt
 });
 
 /** Claude /v1/messages 응답 형식 */
-const makeClaudeResponse = (text: string, inputTokens = 120, outputTokens = 60) => ({
+const makeClaudeResponse = (
+  text: string,
+  inputTokens = 120,
+  outputTokens = 60,
+) => ({
   data: {
     id: 'msg_test',
     type: 'message',
@@ -102,7 +108,11 @@ describe('ClaudeAdapter', () => {
       const configWithDefaults = {
         get: jest.fn((key: string, defaultValue?: string) => defaultValue),
       } as unknown as ConfigService;
-      const adapterWithDefaults = new ClaudeAdapter(promptBuilder, responseParser, configWithDefaults);
+      const adapterWithDefaults = new ClaudeAdapter(
+        promptBuilder,
+        responseParser,
+        configWithDefaults,
+      );
 
       const info = adapterWithDefaults.getModelInfo();
       expect(info.modelName).toBeDefined();
@@ -123,7 +133,9 @@ describe('ClaudeAdapter', () => {
     });
 
     it('API 연결 실패 시 false를 반환한다', async () => {
-      mockedAxios.post = jest.fn().mockRejectedValueOnce(new Error('Unauthorized'));
+      mockedAxios.post = jest
+        .fn()
+        .mockRejectedValueOnce(new Error('Unauthorized'));
 
       const result = await adapter.healthCheck();
 
@@ -140,7 +152,9 @@ describe('ClaudeAdapter', () => {
         action: 'draw',
         reasoning: '상대방 패를 분석하여 드로우가 유리합니다.',
       });
-      mockedAxios.post = jest.fn().mockResolvedValueOnce(makeClaudeResponse(text));
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(makeClaudeResponse(text));
 
       const response = await adapter.generateMove(makeMoveRequest());
 
@@ -157,13 +171,13 @@ describe('ClaudeAdapter', () => {
     it('place JSON 응답을 올바르게 파싱한다', async () => {
       const text = JSON.stringify({
         action: 'place',
-        tableGroups: [
-          { tiles: ['R11a', 'B11a', 'K11b'] },
-        ],
+        tableGroups: [{ tiles: ['R11a', 'B11a', 'K11b'] }],
         tilesFromRack: ['R11a', 'B11a', 'K11b'],
         reasoning: '11 그룹 완성',
       });
-      mockedAxios.post = jest.fn().mockResolvedValueOnce(makeClaudeResponse(text));
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(makeClaudeResponse(text));
 
       const response = await adapter.generateMove(makeMoveRequest());
 
@@ -178,9 +192,11 @@ describe('ClaudeAdapter', () => {
   // -----------------------------------------------------------------------
   describe('generateMove() - API 호출 파라미터', () => {
     it('/messages 엔드포인트로 POST 요청을 보낸다', async () => {
-      mockedAxios.post = jest.fn().mockResolvedValueOnce(
-        makeClaudeResponse(JSON.stringify({ action: 'draw' })),
-      );
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(
+          makeClaudeResponse(JSON.stringify({ action: 'draw' })),
+        );
 
       await adapter.generateMove(makeMoveRequest());
 
@@ -189,9 +205,11 @@ describe('ClaudeAdapter', () => {
     });
 
     it('요청 헤더에 x-api-key가 포함된다', async () => {
-      mockedAxios.post = jest.fn().mockResolvedValueOnce(
-        makeClaudeResponse(JSON.stringify({ action: 'draw' })),
-      );
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(
+          makeClaudeResponse(JSON.stringify({ action: 'draw' })),
+        );
 
       await adapter.generateMove(makeMoveRequest());
 
@@ -200,9 +218,11 @@ describe('ClaudeAdapter', () => {
     });
 
     it('요청 헤더에 anthropic-version이 포함된다', async () => {
-      mockedAxios.post = jest.fn().mockResolvedValueOnce(
-        makeClaudeResponse(JSON.stringify({ action: 'draw' })),
-      );
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(
+          makeClaudeResponse(JSON.stringify({ action: 'draw' })),
+        );
 
       await adapter.generateMove(makeMoveRequest());
 
@@ -211,9 +231,11 @@ describe('ClaudeAdapter', () => {
     });
 
     it('요청 바디에 system 필드로 시스템 프롬프트가 전달된다', async () => {
-      mockedAxios.post = jest.fn().mockResolvedValueOnce(
-        makeClaudeResponse(JSON.stringify({ action: 'draw' })),
-      );
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(
+          makeClaudeResponse(JSON.stringify({ action: 'draw' })),
+        );
 
       await adapter.generateMove(makeMoveRequest());
 
@@ -226,14 +248,18 @@ describe('ClaudeAdapter', () => {
     });
 
     it('timeoutMs가 axios 타임아웃에 전달된다', async () => {
-      mockedAxios.post = jest.fn().mockResolvedValueOnce(
-        makeClaudeResponse(JSON.stringify({ action: 'draw' })),
-      );
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(
+          makeClaudeResponse(JSON.stringify({ action: 'draw' })),
+        );
 
       await adapter.generateMove(makeMoveRequest({ timeoutMs: 25000 }));
 
       const calls = (mockedAxios.post as jest.Mock).mock.calls;
-      const callLlmCall = calls.find(([, body, cfg]) => cfg && cfg.timeout === 25000);
+      const callLlmCall = calls.find(
+        ([, , cfg]) => cfg && cfg.timeout === 25000,
+      );
       expect(callLlmCall).toBeDefined();
     });
   });
@@ -243,9 +269,11 @@ describe('ClaudeAdapter', () => {
   // -----------------------------------------------------------------------
   describe('generateMove() - 토큰 메타데이터', () => {
     it('input_tokens와 output_tokens가 메타데이터에 반영된다', async () => {
-      mockedAxios.post = jest.fn().mockResolvedValueOnce(
-        makeClaudeResponse(JSON.stringify({ action: 'draw' }), 200, 90),
-      );
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(
+          makeClaudeResponse(JSON.stringify({ action: 'draw' }), 200, 90),
+        );
 
       const response = await adapter.generateMove(makeMoveRequest());
 
@@ -259,11 +287,13 @@ describe('ClaudeAdapter', () => {
   // -----------------------------------------------------------------------
   describe('generateMove() - 파싱 실패', () => {
     it('모든 재시도 실패 시 isFallbackDraw=true를 반환한다', async () => {
-      mockedAxios.post = jest.fn().mockResolvedValue(
-        makeClaudeResponse('유효하지 않은 응답'),
-      );
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValue(makeClaudeResponse('유효하지 않은 응답'));
 
-      const response = await adapter.generateMove(makeMoveRequest({ maxRetries: 2 }));
+      const response = await adapter.generateMove(
+        makeMoveRequest({ maxRetries: 2 }),
+      );
 
       expect(response.action).toBe('draw');
       expect(response.metadata.isFallbackDraw).toBe(true);

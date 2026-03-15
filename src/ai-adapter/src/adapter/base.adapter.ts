@@ -1,5 +1,8 @@
 import { Logger } from '@nestjs/common';
-import { AiAdapterInterface, ModelInfo } from '../common/interfaces/ai-adapter.interface';
+import {
+  AiAdapterInterface,
+  ModelInfo,
+} from '../common/interfaces/ai-adapter.interface';
 import { MoveRequestDto } from '../common/dto/move-request.dto';
 import { MoveResponseDto } from '../common/dto/move-response.dto';
 import { PromptBuilderService } from '../prompt/prompt-builder.service';
@@ -29,7 +32,11 @@ export abstract class BaseAdapter implements AiAdapterInterface {
     systemPrompt: string,
     userPrompt: string,
     timeoutMs: number,
-  ): Promise<{ content: string; promptTokens: number; completionTokens: number }>;
+  ): Promise<{
+    content: string;
+    promptTokens: number;
+    completionTokens: number;
+  }>;
 
   abstract getModelInfo(): ModelInfo;
   abstract healthCheck(): Promise<boolean>;
@@ -53,7 +60,11 @@ export abstract class BaseAdapter implements AiAdapterInterface {
       const userPrompt =
         attempt === 0
           ? this.promptBuilder.buildUserPrompt(request)
-          : this.promptBuilder.buildRetryUserPrompt(request, lastErrorReason, attempt);
+          : this.promptBuilder.buildRetryUserPrompt(
+              request,
+              lastErrorReason,
+              attempt,
+            );
 
       this.logger.log(
         `[${modelInfo.modelType}] gameId=${request.gameId} attempt=${attempt + 1}/${request.maxRetries}`,

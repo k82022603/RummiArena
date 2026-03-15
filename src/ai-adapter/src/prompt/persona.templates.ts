@@ -1,4 +1,8 @@
-import { Persona, Difficulty, PsychologyLevel } from '../common/dto/move-request.dto';
+import {
+  Persona,
+  Difficulty,
+  PsychologyLevel,
+} from '../common/dto/move-request.dto';
 
 // -----------------------------------------------------------------------
 // 캐릭터(persona) × 난이도(difficulty) × 심리전(psychologyLevel) 프롬프트 템플릿
