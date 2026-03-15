@@ -69,7 +69,7 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 - [x] Traefik Ingress 설치 (Helm)
 - [x] ArgoCD 설치 (Helm)
 - [x] SonarQube 설치 (Docker Compose, http://localhost:9001) — 2026-03-15 완료
-- [ ] GitLab Runner 등록 (K8s Executor) — Runner 토큰 발급 후 설치 예정
+- [x] GitLab Runner 등록 (K8s Executor) — Runner ID 52262488, gitlab-runner NS, online (2026-03-16)
 - [x] GitLab CI Variables 등록 (SONAR_TOKEN, GITOPS_TOKEN) — 2026-03-15 완료
 - [ ] GitHub Projects 보드 구성 (Kanban + Sprint)
 - [x] GitOps 레포 초기 구조 설정
@@ -119,7 +119,7 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 - [x] SonarQube 설치 (http://localhost:9001 UP, 2026-03-15)
 - [x] GitLab 프로젝트 생성 + glab 인증 (2026-03-15)
 - [x] GitLab CI Variables 등록 (SONAR_TOKEN, GITOPS_TOKEN) — 2026-03-15
-- [ ] GitLab Runner 등록 (Runner 토큰 발급 후 설치)
+- [x] GitLab Runner 등록 (K8s Executor, runner-id 52262488) — 2026-03-16
 - [x] dev-login 엔드포인트 (APP_ENV=dev, 게스트 JWT 발급) — 2026-03-15
 - [x] ai-adapter 테스트 110개 GREEN (adapter 100% coverage) — 2026-03-15
 
@@ -271,7 +271,7 @@ docs/
 
 ## 현재 진행 상황
 
-**Phase 2 진행 중 (Sprint 1)** — Sprint 1 Day 3 완료
+**Phase 2 진행 중 (Sprint 1)** — Sprint 1 Day 4 완료
 
 Sprint 1 Day 1 (2026-03-13):
 - game-server 12개 REST API 완전 구현
@@ -297,4 +297,12 @@ Sprint 1 Day 3 (2026-03-15):
 - **코드 스멜 18→5** (CRITICAL 13건 해소: 문자열 상수화 + Cognitive Complexity 리팩토링)
 - **Go 커버리지 28.4%** SonarQube 반영 (engine 95.8%, service 58.1%)
 
-다음 단계: GitLab Runner 설치 → 첫 CI 파이프라인 GREEN → dev-login 엔드포인트 → E2E 테스트
+Sprint 1 Day 4 (2026-03-16):
+- **GitLab Runner K8s 설치 완료** — Runner ID 52262488, gitlab-runner NS, online
+- **`.gitlab-ci.yml` lint/test GREEN** — golangci-lint v2.1, golang:1.24, GOBIN=/usr/local/bin, sonar-scanner-cli:5.0
+- **Go lint 5건 + NestJS lint 2건** 해결
+- **CVE 3건 수정** — next 15.2.6, multer overrides 2.1.0, golang-jwt v5.2.2
+- **CI 이미지 버전 가이드 신규** (09-gitlab-cicd-setup.md 8절)
+- quality 단계(sonarqube + trivy-fs) 진행 중 → 내일 확인
+
+다음 단계: quality 단계 GREEN → build → update-gitops → 전체 파이프라인 GREEN → E2E 테스트
