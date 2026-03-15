@@ -16,7 +16,7 @@ sequenceDiagram
     participant GH as GitHub<br/>(소스 관리 + ALM)
     participant GL as GitLab.com<br/>(CI 빌드 전용)
     participant Runner as GitLab Runner<br/>(K8s Executor)
-    participant K8s as Docker Desktop K8s<br/>(cicd 네임스페이스)
+    participant K8s as Docker Desktop K8s<br/>(gitlab-runner 네임스페이스)
     participant SQ as SonarQube<br/>(품질 게이트)
     participant Reg as GitLab<br/>Container Registry
     participant AG as ArgoCD<br/>(GitOps 배포)
@@ -305,7 +305,7 @@ glab api "projects/<username>%2FRummiArena/variables/SONAR_TOKEN" \
 
 ## 6. GitLab Runner K8s Executor 설치
 
-GitLab Runner는 K8s Executor 방식으로 설치된다. Runner 컨트롤러 Pod가 `cicd` 네임스페이스에 상주하고, Job 실행 시 Job Pod를 동적으로 생성/삭제한다.
+GitLab Runner는 K8s Executor 방식으로 설치된다. Runner 컨트롤러 Pod가 `gitlab-runner` 네임스페이스에 상주하고, Job 실행 시 Job Pod를 동적으로 생성/삭제한다.
 
 ### 6.1 Runner 토큰 발급
 
@@ -314,7 +314,7 @@ sequenceDiagram
     actor Dev as 개발자(애벌레)
     participant GL as GitLab.com
     participant Helm as Helm CLI
-    participant K8s as K8s (cicd NS)
+    participant K8s as K8s (gitlab-runner NS)
 
     Dev->>GL: Settings → CI/CD → Runners<br/>→ New project runner
     Note over GL: Tags: docker,rummiarena,k8s<br/>Run untagged jobs: 체크
@@ -341,10 +341,10 @@ sequenceDiagram
 토큰 K8s Secret 저장 (영구 보관 권장):
 
 ```bash
-kubectl create namespace cicd --dry-run=client -o yaml | kubectl apply -f -
+kubectl create namespace gitlab-runner --dry-run=client -o yaml | kubectl apply -f -
 
 kubectl create secret generic gitlab-runner-token \
-  -n cicd \
+  -n gitlab-runner \
   --from-literal=runnerToken="glrt-xxxxxxxxxxxx" \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
@@ -361,8 +361,8 @@ kubectl get nodes
 # Helm 버전 확인
 helm version
 
-# cicd 네임스페이스 확인
-kubectl get namespace cicd 2>/dev/null || echo "cicd 네임스페이스 없음 (자동 생성됨)"
+# gitlab-runner 네임스페이스 확인
+kubectl get namespace gitlab-runner 2>/dev/null || echo "gitlab-runner 네임스페이스 없음 (자동 생성됨)"
 ```
 
 ### 6.3 Helm dry-run 검증 (필수)
@@ -398,7 +398,7 @@ RUNNER_TOKEN="glrt-xxxxxxxxxxxx" ./scripts/gitlab-setup.sh install-runner
 
 스크립트가 수행하는 작업:
 1. gitlab Helm repo 추가 (`https://charts.gitlab.io`)
-2. `cicd` 네임스페이스 생성 (idempotent)
+2. `gitlab-runner` 네임스페이스 생성 (idempotent)
 3. `helm install gitlab-runner` 또는 기존 릴리즈가 있으면 `helm upgrade`
 4. Runner Pod 상태 출력
 
@@ -411,7 +411,7 @@ checkInterval: 15       # Job 폴링 간격(초)
 
 runners:
   executor: kubernetes
-  namespace: cicd
+  namespace: gitlab-runner
   image: alpine:3.19
   privileged: false     # DinD 필요 시 true (build 단계에서 개별 override)
   builds:
@@ -425,17 +425,49 @@ resources:              # Runner 컨트롤러 Pod 자체 리소스
     memory: "256Mi"
 ```
 
+#### 직접 Helm 설치 방법 (스크립트 없이)
+
+> **주의**: `--set`으로 토큰을 전달하면 토큰 내 `.`이 Helm 경로 구분자로 파싱되어 오류가 발생한다.
+> 반드시 values 파일로 전달할 것.
+
+```bash
+# 1. values 파일 생성 (토큰을 파일에 저장)
+cat > /tmp/gitlab-runner-values.yaml << 'EOF'
+gitlabUrl: https://gitlab.com
+runnerToken: "glrt-xxxxxxxxxxxx"   # GitLab UI에서 발급한 토큰
+rbac:
+  create: true
+serviceAccount:
+  create: true
+runners:
+  executor: kubernetes
+  kubernetes:
+    namespace: gitlab-runner
+  tags: "k8s,docker"
+  name: "rummiarena-k8s-runner"
+EOF
+
+# 2. 설치
+helm install gitlab-runner gitlab/gitlab-runner \
+  --namespace gitlab-runner \
+  -f /tmp/gitlab-runner-values.yaml
+
+# 3. 확인 (Ready: True가 되면 성공)
+kubectl get pods -n gitlab-runner
+kubectl logs -n gitlab-runner deployment/gitlab-runner --tail=20
+```
+
 ### 6.5 설치 확인
 
 ```bash
 # Runner Pod 상태 확인 (Running 이어야 함)
-kubectl get pods -n cicd -l app=gitlab-runner
+kubectl get pods -n gitlab-runner -l app=gitlab-runner
 
 # Runner Pod 로그 확인
-kubectl logs -n cicd deploy/gitlab-runner --tail=20
+kubectl logs -n gitlab-runner deploy/gitlab-runner --tail=20
 
 # Helm 릴리스 상태
-helm status gitlab-runner -n cicd
+helm status gitlab-runner -n gitlab-runner
 
 # 전체 상태 한 번에 확인
 ./scripts/gitlab-setup.sh status
@@ -612,14 +644,14 @@ glab pipeline ci view
 
 ```bash
 # Runner Pod 상태 확인
-kubectl get pods -n cicd
-kubectl describe pod -n cicd <runner-pod-name>
+kubectl get pods -n gitlab-runner
+kubectl describe pod -n gitlab-runner <runner-pod-name>
 
 # 로그에서 토큰 오류 확인
-kubectl logs -n cicd deploy/gitlab-runner --tail=50
+kubectl logs -n gitlab-runner deploy/gitlab-runner --tail=50
 
 # 토큰 재발급 후 Runner 재설치
-helm uninstall gitlab-runner -n cicd
+helm uninstall gitlab-runner -n gitlab-runner
 RUNNER_TOKEN=glrt-<new-token> ./scripts/gitlab-setup.sh install-runner
 ```
 
@@ -637,7 +669,7 @@ RUNNER_TOKEN=glrt-<new-token> ./scripts/gitlab-setup.sh install-runner
 
 ```bash
 # 현재 Runner tags 확인
-kubectl logs -n cicd deploy/gitlab-runner | grep -i tag
+kubectl logs -n gitlab-runner deploy/gitlab-runner | grep -i tag
 
 # .gitlab-ci.yml의 tags 설정 확인
 # Job에 tags가 지정된 경우 Runner tags와 일치해야 함
@@ -655,7 +687,7 @@ Runner 설정에서 **Run untagged jobs**를 체크하면 tags 지정 없는 job
 ```bash
 # 임시 해결: privileged 모드 활성화 (보안 위험 검토 후 적용)
 helm upgrade gitlab-runner gitlab/gitlab-runner \
-  -n cicd \
+  -n gitlab-runner \
   -f helm/charts/gitlab-runner/values.yaml \
   --set "runners.privileged=true" \
   --set "runnerToken=glrt-xxxxxxxxxxxx"
@@ -673,7 +705,7 @@ helm upgrade gitlab-runner gitlab/gitlab-runner \
 curl -s http://localhost:9001/api/system/status
 
 # host.docker.internal 접근 테스트 (K8s Job Pod 내부에서)
-kubectl run -it --rm debug --image=alpine --restart=Never -n cicd -- \
+kubectl run -it --rm debug --image=alpine --restart=Never -n gitlab-runner -- \
   wget -q -O- http://host.docker.internal:9001/api/system/status
 ```
 
@@ -695,6 +727,42 @@ kubectl run -it --rm debug --image=alpine --restart=Never -n cicd -- \
 # Permissions → Contents: Read and write
 ```
 
+### 10.6 glrt- 토큰 "Failed to verify the runner" (403 Forbidden)
+
+증상: Runner Pod 로그에 아래 메시지가 반복되며 PANIC 발생
+
+```
+Verifying runner... is not valid
+PANIC: Failed to verify the runner.
+Registration attempt N of 30
+```
+
+원인:
+
+| 원인 | 설명 |
+|------|------|
+| 토큰 이미 소비됨 | 이전 Helm 설치 시도에서 토큰이 소비/무효화됨 |
+| `--set` 파싱 오류 | `--set runnerToken=glrt-xxx.01.yyy` 에서 `.`이 Helm 경로 구분자로 해석 |
+| 잘못된 계정의 토큰 | 다른 GitLab 프로젝트/계정에서 발급된 토큰 사용 |
+
+**토큰 유효성 사전 검증 (설치 전 필수)**:
+
+```bash
+curl -s -X POST "https://gitlab.com/api/v4/runners/verify" \
+  -H "Content-Type: application/json" \
+  -d '{"token": "glrt-xxxxxxxxxxxx"}' | python3 -m json.tool
+# 유효: {"id": 52262488, "token": "glrt-...", "token_expires_at": null}
+# 무효: {"message": "403 Forbidden"}
+```
+
+해결 절차:
+
+1. GitLab 웹 UI → Settings → CI/CD → Runners → 기존 Runner 삭제
+2. **New project runner** 클릭 → 새 Runner 생성
+3. 발급된 `glrt-` 토큰을 위 API로 검증 (200 OK 확인)
+4. `helm uninstall gitlab-runner -n gitlab-runner` 로 기존 설치 제거
+5. values 파일 방식으로 재설치 (6.4 직접 Helm 설치 방법 참조)
+
 ---
 
 ## 빠른 참조 (Quick Reference)
@@ -715,10 +783,10 @@ glab pipeline list
 glab pipeline ci view
 
 # Runner 상태 (K8s)
-kubectl get pods -n cicd
+kubectl get pods -n gitlab-runner
 
 # Runner Helm 상태
-helm status gitlab-runner -n cicd
+helm status gitlab-runner -n gitlab-runner
 
 # 전체 설치 상태 확인
 ./scripts/gitlab-setup.sh status
@@ -780,3 +848,4 @@ glab pipeline ci view
 > | 버전 | 날짜 | 작성자 | 내용 |
 > |------|------|--------|------|
 > | 1.0 | 2026-03-15 | DevOps Agent | 초안 작성 (glab 1.89.0, Runner K8s Executor, 교대 실행 전략, 트러블슈팅) |
+> | 1.1 | 2026-03-15 | 애벌레 | 네임스페이스 cicd→gitlab-runner 수정, 직접 Helm 설치 절차 추가, 10.6 토큰 검증 트러블슈팅 추가 |
