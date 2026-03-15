@@ -97,6 +97,7 @@ func buildRouter(
 	roomHandler := handler.NewRoomHandler(roomSvc)
 	gameHandler := handler.NewGameHandler(gameSvc)
 	wsHandler := handler.NewWSHandler(wsHub, roomSvc, gameSvc, turnSvc, cfg.JWT.Secret, logger)
+	authHandler := handler.NewAuthHandler(cfg.JWT.Secret)
 
 	router := gin.New()
 	router.Use(gin.Recovery())
@@ -104,7 +105,7 @@ func buildRouter(
 
 	registerSystemRoutes(router, redisClient)
 	registerWSRoutes(router, wsHandler)
-	registerAPIRoutes(router, cfg, roomHandler, gameHandler)
+	registerAPIRoutes(router, cfg, roomHandler, gameHandler, authHandler)
 
 	return router
 }
@@ -129,8 +130,21 @@ func registerWSRoutes(router *gin.Engine, wsHandler *handler.WSHandler) {
 }
 
 // registerAPIRoutes REST API 라우트 그룹을 등록한다.
-func registerAPIRoutes(router *gin.Engine, cfg *config.Config, roomHandler *handler.RoomHandler, gameHandler *handler.GameHandler) {
+// APP_ENV=dev 일 때는 /api/auth/dev-login 엔드포인트를 추가로 등록한다.
+func registerAPIRoutes(
+	router *gin.Engine,
+	cfg *config.Config,
+	roomHandler *handler.RoomHandler,
+	gameHandler *handler.GameHandler,
+	authHandler *handler.AuthHandler,
+) {
 	api := router.Group("/api")
+
+	// 개발 전용 엔드포인트: JWT 없이 접근 가능
+	if cfg.AppEnv == "dev" {
+		auth := api.Group("/auth")
+		auth.POST("/dev-login", authHandler.DevLogin)
+	}
 
 	rooms := api.Group("/rooms")
 	rooms.Use(middleware.JWTAuth(cfg.JWT.Secret))

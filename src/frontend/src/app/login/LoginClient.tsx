@@ -5,14 +5,45 @@ import { motion } from "framer-motion";
 import { useState } from "react";
 
 /**
- * Google OAuth 로그인 UI (Client Component)
+ * Google OAuth 로그인 + 개발용 게스트 로그인 UI (Client Component)
  */
 export default function LoginClient() {
   const [loading, setLoading] = useState(false);
+  const [guestLoading, setGuestLoading] = useState(false);
+  const [nickname, setNickname] = useState("");
+  const [guestError, setGuestError] = useState("");
 
   const handleGoogleLogin = async () => {
     setLoading(true);
     await signIn("google", { callbackUrl: "/lobby" });
+  };
+
+  const handleGuestLogin = async () => {
+    const trimmed = nickname.trim();
+    if (!trimmed) {
+      setGuestError("닉네임을 입력해 주세요.");
+      return;
+    }
+    if (trimmed.length < 2 || trimmed.length > 12) {
+      setGuestError("닉네임은 2~12자여야 합니다.");
+      return;
+    }
+    setGuestError("");
+    setGuestLoading(true);
+    const userId =
+      trimmed.toLowerCase().replace(/\s/g, "-") + "-" + Date.now();
+    const result = await signIn("dev-login", {
+      userId,
+      displayName: trimmed,
+      callbackUrl: "/lobby",
+      redirect: false,
+    });
+    if (result?.error) {
+      setGuestError("게스트 로그인에 실패했습니다. 게임 서버 연결을 확인하세요.");
+      setGuestLoading(false);
+    } else if (result?.url) {
+      window.location.href = result.url;
+    }
   };
 
   return (
@@ -75,7 +106,7 @@ export default function LoginClient() {
           <button
             type="button"
             onClick={handleGoogleLogin}
-            disabled={loading}
+            disabled={loading || guestLoading}
             className={[
               "w-full flex items-center justify-center gap-3",
               "px-4 py-3 rounded-xl font-medium",
@@ -123,6 +154,110 @@ export default function LoginClient() {
             )}
             <span>{loading ? "로그인 중..." : "Google로 계속하기"}</span>
           </button>
+
+          {/* 구분선 */}
+          <div className="relative my-5" aria-hidden="true">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-border" />
+            </div>
+            <div className="relative flex justify-center">
+              <span className="bg-card-bg px-3 text-tile-xs text-text-secondary">
+                또는
+              </span>
+            </div>
+          </div>
+
+          {/* 게스트 로그인 */}
+          <div className="space-y-3">
+            <label
+              htmlFor="guest-nickname"
+              className="block text-tile-sm font-medium text-text-secondary"
+            >
+              닉네임
+            </label>
+            <input
+              id="guest-nickname"
+              type="text"
+              value={nickname}
+              onChange={(e) => {
+                setNickname(e.target.value);
+                if (guestError) setGuestError("");
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void handleGuestLogin();
+              }}
+              placeholder="닉네임 입력 (예: 테스터)"
+              maxLength={12}
+              disabled={guestLoading || loading}
+              className={[
+                "w-full px-4 py-3 rounded-xl",
+                "bg-app-bg border text-text-primary placeholder-text-secondary",
+                "text-tile-sm font-medium",
+                "transition-colors duration-150 outline-none",
+                "focus:ring-2 focus:ring-warning",
+                guestError ? "border-red-500" : "border-border",
+                guestLoading || loading ? "opacity-60 cursor-not-allowed" : "",
+              ].join(" ")}
+              aria-describedby={guestError ? "guest-error" : undefined}
+              aria-invalid={!!guestError}
+            />
+            {guestError && (
+              <p
+                id="guest-error"
+                role="alert"
+                className="text-tile-xs text-red-500"
+              >
+                {guestError}
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={() => void handleGuestLogin()}
+              disabled={guestLoading || loading}
+              className={[
+                "w-full flex items-center justify-center gap-2",
+                "px-4 py-3 rounded-xl font-medium",
+                "bg-warning text-gray-900 hover:bg-yellow-400",
+                "transition-all duration-200",
+                "focus-visible:ring-2 focus-visible:ring-warning focus-visible:ring-offset-2",
+                guestLoading || loading ? "opacity-70 cursor-not-allowed" : "",
+              ].join(" ")}
+              aria-busy={guestLoading}
+              aria-label="게스트로 로그인"
+            >
+              {guestLoading ? (
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{
+                    repeat: Infinity,
+                    duration: 0.8,
+                    ease: "linear",
+                  }}
+                  className="w-5 h-5 border-2 border-gray-600 border-t-gray-900 rounded-full"
+                  aria-hidden="true"
+                />
+              ) : (
+                <svg
+                  aria-hidden="true"
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                  <circle cx="12" cy="7" r="4" />
+                </svg>
+              )}
+              <span>{guestLoading ? "로그인 중..." : "게스트 로그인"}</span>
+            </button>
+            <p className="text-center text-tile-xs text-text-secondary">
+              게스트 계정은 개발·테스트 전용입니다.
+            </p>
+          </div>
 
           <p className="mt-4 text-center text-tile-xs text-text-secondary">
             로그인하면{" "}

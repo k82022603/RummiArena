@@ -11,6 +11,7 @@ type Config struct {
 	DB     DBConfig
 	Redis  RedisConfig
 	JWT    JWTConfig
+	AppEnv string // "dev" | "staging" | "production"
 }
 
 type ServerConfig struct {
@@ -37,6 +38,7 @@ type JWTConfig struct {
 }
 
 func Load() (*Config, error) {
+	viper.SetDefault("APP_ENV", "production")
 	viper.SetDefault("SERVER_PORT", "8080")
 	viper.SetDefault("SERVER_MODE", "debug")
 	viper.SetDefault("DB_HOST", "localhost")
@@ -52,6 +54,7 @@ func Load() (*Config, error) {
 	viper.AutomaticEnv()
 
 	cfg := &Config{
+		AppEnv: viper.GetString("APP_ENV"),
 		Server: ServerConfig{
 			Port: viper.GetString("SERVER_PORT"),
 			Mode: viper.GetString("SERVER_MODE"),

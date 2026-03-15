@@ -28,16 +28,20 @@ interface ApiError {
 
 async function apiFetch<T>(
   path: string,
-  options?: RequestInit
+  options?: RequestInit & { token?: string }
 ): Promise<T> {
   const url = `${API_BASE}${path}`;
 
+  const authHeader: Record<string, string> =
+    options?.token ? { Authorization: `Bearer ${options.token}` } : {};
+
   const res = await fetch(url, {
+    ...options,
     headers: {
       "Content-Type": "application/json",
+      ...authHeader,
       ...options?.headers,
     },
-    ...options,
   });
 
   if (!res.ok) {
@@ -74,11 +78,15 @@ export interface CreateRoomParams {
  * Room 생성
  * 실패 시 mock 데이터로 fallback (개발/데모 환경)
  */
-export async function createRoom(params: CreateRoomParams): Promise<Room> {
+export async function createRoom(
+  params: CreateRoomParams,
+  token?: string,
+): Promise<Room> {
   try {
     return await apiFetch<Room>("/rooms", {
       method: "POST",
       body: JSON.stringify(params),
+      token,
     });
   } catch (err) {
     console.warn("[api] createRoom fallback to mock:", err);
@@ -93,9 +101,9 @@ export async function createRoom(params: CreateRoomParams): Promise<Room> {
  * Room 목록 조회
  * 실패 시 mock 데이터로 fallback
  */
-export async function getRooms(): Promise<Room[]> {
+export async function getRooms(token?: string): Promise<Room[]> {
   try {
-    return await apiFetch<Room[]>("/rooms");
+    return await apiFetch<Room[]>("/rooms", { token });
   } catch (err) {
     console.warn("[api] getRooms fallback to mock:", err);
     return MOCK_ROOMS;
@@ -106,9 +114,9 @@ export async function getRooms(): Promise<Room[]> {
  * Room 상세 조회
  * 실패 시 mock 데이터에서 찾아 반환
  */
-export async function getRoom(roomId: string): Promise<Room> {
+export async function getRoom(roomId: string, token?: string): Promise<Room> {
   try {
-    return await apiFetch<Room>(`/rooms/${roomId}`);
+    return await apiFetch<Room>(`/rooms/${roomId}`, { token });
   } catch (err) {
     console.warn("[api] getRoom fallback to mock:", err);
     const found =
@@ -122,10 +130,11 @@ export async function getRoom(roomId: string): Promise<Room> {
  * Room 참가
  * 실패 시 mock room 반환
  */
-export async function joinRoom(roomId: string): Promise<Room> {
+export async function joinRoom(roomId: string, token?: string): Promise<Room> {
   try {
     return await apiFetch<Room>(`/rooms/${roomId}/join`, {
       method: "POST",
+      token,
     });
   } catch (err) {
     console.warn("[api] joinRoom fallback to mock:", err);
@@ -139,9 +148,9 @@ export async function joinRoom(roomId: string): Promise<Room> {
 /**
  * Room 퇴장
  */
-export async function leaveRoom(roomId: string): Promise<void> {
+export async function leaveRoom(roomId: string, token?: string): Promise<void> {
   try {
-    await apiFetch<void>(`/rooms/${roomId}/leave`, { method: "POST" });
+    await apiFetch<void>(`/rooms/${roomId}/leave`, { method: "POST", token });
   } catch (err) {
     console.warn("[api] leaveRoom error (ignored):", err);
   }
@@ -151,10 +160,14 @@ export async function leaveRoom(roomId: string): Promise<void> {
  * 게임 시작
  * 실패 시 그냥 넘어가 게임 페이지로 이동하도록 한다.
  */
-export async function startGame(roomId: string): Promise<{ id: string }> {
+export async function startGame(
+  roomId: string,
+  token?: string,
+): Promise<{ id: string }> {
   try {
     return await apiFetch<{ id: string }>(`/rooms/${roomId}/start`, {
       method: "POST",
+      token,
     });
   } catch (err) {
     console.warn("[api] startGame fallback to mock:", err);
@@ -179,9 +192,9 @@ export interface MyProfile {
   winRate?: number;
 }
 
-export async function getMyProfile(): Promise<MyProfile> {
+export async function getMyProfile(token?: string): Promise<MyProfile> {
   try {
-    return await apiFetch<MyProfile>("/auth/me");
+    return await apiFetch<MyProfile>("/auth/me", { token });
   } catch (err) {
     console.warn("[api] getMyProfile fallback to mock:", err);
     return {
