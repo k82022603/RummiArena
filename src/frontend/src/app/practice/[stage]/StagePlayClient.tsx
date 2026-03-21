@@ -15,6 +15,8 @@ interface StagePlayClientProps {
   stageNum: StageNumber;
 }
 
+const MAX_STAGE = STAGE_NUMBERS[STAGE_NUMBERS.length - 1];
+
 // localStorage 키
 const LS_COMPLETED_KEY = "practice_completed_stages";
 const LS_BEST_SCORES_KEY = "practice_best_scores";
@@ -109,6 +111,14 @@ export default function StagePlayClient({ stageNum }: StagePlayClientProps) {
   }, [stageNum, router]);
 
   // ------------------------------------------------------------------
+  // 처음부터 다시 (Stage 6 완료 후)
+  // ------------------------------------------------------------------
+
+  const handleRestartAll = useCallback(() => {
+    router.push("/practice/1");
+  }, [router]);
+
+  // ------------------------------------------------------------------
   // 다시 하기
   // ------------------------------------------------------------------
 
@@ -122,7 +132,7 @@ export default function StagePlayClient({ stageNum }: StagePlayClientProps) {
   // 렌더링
   // ------------------------------------------------------------------
 
-  const hasNext = stageNum < STAGE_NUMBERS[STAGE_NUMBERS.length - 1];
+  const hasNext = stageNum < MAX_STAGE;
 
   return (
     <>
@@ -143,6 +153,7 @@ export default function StagePlayClient({ stageNum }: StagePlayClientProps) {
         onNextStage={hasNext ? handleNextStage : undefined}
         onRetry={handleRetry}
         onBackToList={() => router.push("/practice")}
+        onRestartAll={!hasNext ? handleRestartAll : undefined}
       />
 
       {/* 메인 레이아웃 */}

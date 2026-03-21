@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { StageNumber } from "@/lib/practice/stage-configs";
+import { STAGE_NUMBERS } from "@/lib/practice/stage-configs";
 import StageSelector from "@/components/practice/StageSelector";
 
 const LS_COMPLETED_KEY = "practice_completed_stages";
@@ -33,8 +34,8 @@ function loadBestScores(): Partial<Record<StageNumber, number>> {
 /**
  * 연습 모드 스테이지 선택 화면 (Client Component)
  *
- * - Stage 1~3: 그룹 만들기 / 런 만들기 / 조커 활용
- * - Stage 1은 기본 잠금 해제, 이후는 이전 스테이지 완료 시 해제
+ * - Stage 1~6: 그룹 / 런 / 조커 활용 / 조커 마스터 / 복합 배치 / 루미큐브 마스터
+ * - Stage 1은 기본 잠금 해제, 이후는 이전 스테이지 완료 시 순차 해제
  * - 완료/최고 점수 정보는 localStorage에서 로드
  */
 export default function PracticeClient() {
@@ -49,10 +50,15 @@ export default function PracticeClient() {
     setBestScores(loadBestScores());
   }, []);
 
-  // 잠금 해제된 스테이지: Stage 1은 항상 열림, 이후는 이전 완료 시
+  // 잠금 해제된 스테이지: Stage 1은 항상 열림, 이후는 이전 완료 시 순차 해제
   const unlockedStages: StageNumber[] = [1];
-  if (completedStages.includes(1)) unlockedStages.push(2);
-  if (completedStages.includes(2)) unlockedStages.push(3);
+  for (let i = 1; i < STAGE_NUMBERS.length; i++) {
+    const prev = STAGE_NUMBERS[i - 1];
+    const curr = STAGE_NUMBERS[i];
+    if (completedStages.includes(prev)) {
+      unlockedStages.push(curr);
+    }
+  }
 
   return (
     <main className="min-h-screen bg-app-bg text-text-primary">
