@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { BaseAdapter } from './base.adapter';
 import { ModelInfo } from '../common/interfaces/ai-adapter.interface';
+import { MoveRequestDto } from '../common/dto/move-request.dto';
+import { MoveResponseDto } from '../common/dto/move-response.dto';
 import { PromptBuilderService } from '../prompt/prompt-builder.service';
 import { ResponseParserService } from '../common/parser/response-parser.service';
 
@@ -10,10 +12,15 @@ import { ResponseParserService } from '../common/parser/response-parser.service'
  * Ollama 로컬 LLM 어댑터.
  * 로컬에서 실행되므로 API 비용이 없다.
  * 응답 속도와 품질은 하드웨어에 따라 변동된다.
- * 기본 모델: llama3.2 (변경 가능)
+ * 기본 모델: gemma3:4b (변경 가능)
+ *
+ * 4B 소형 모델의 JSON 오류율이 높으므로 최소 재시도 횟수를 5회로 보장한다.
  */
 @Injectable()
 export class OllamaAdapter extends BaseAdapter {
+  /** 4B 소형 모델 JSON 오류율 대응: 최소 재시도 횟수 (MoveRequest.maxRetries < 이 값이면 override) */
+  static readonly MIN_RETRIES = 5;
+
   private readonly baseUrl: string;
   private readonly defaultModel: string;
 
@@ -29,7 +36,7 @@ export class OllamaAdapter extends BaseAdapter {
     );
     this.defaultModel = this.configService.get<string>(
       'OLLAMA_DEFAULT_MODEL',
-      'llama3.2',
+      'gemma3:4b',
     );
   }
 
@@ -39,6 +46,25 @@ export class OllamaAdapter extends BaseAdapter {
       modelName: this.defaultModel,
       baseUrl: this.baseUrl,
     };
+  }
+
+  /**
+   * 4B 소형 모델의 JSON 오류율 대응을 위해 maxRetries를 MIN_RETRIES(5) 이상으로 보장한다.
+   * 요청자가 더 높은 값을 지정한 경우에는 그대로 사용한다.
+   */
+  async generateMove(request: MoveRequestDto): Promise<MoveResponseDto> {
+    const adjustedRequest: MoveRequestDto =
+      request.maxRetries < OllamaAdapter.MIN_RETRIES
+        ? { ...request, maxRetries: OllamaAdapter.MIN_RETRIES }
+        : request;
+
+    if (request.maxRetries < OllamaAdapter.MIN_RETRIES) {
+      this.logger.log(
+        `[OllamaAdapter] maxRetries ${request.maxRetries} → ${OllamaAdapter.MIN_RETRIES} (4B 모델 JSON 오류율 대응)`,
+      );
+    }
+
+    return super.generateMove(adjustedRequest);
   }
 
   async healthCheck(): Promise<boolean> {
@@ -56,6 +82,7 @@ export class OllamaAdapter extends BaseAdapter {
     systemPrompt: string,
     userPrompt: string,
     timeoutMs: number,
+    temperature: number,
   ): Promise<{
     content: string;
     promptTokens: number;
@@ -74,7 +101,7 @@ export class OllamaAdapter extends BaseAdapter {
         format: 'json',
         stream: false,
         options: {
-          temperature: 0.7,
+          temperature,
           num_predict: 1024,
         },
       },

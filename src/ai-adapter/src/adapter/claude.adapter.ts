@@ -68,6 +68,7 @@ export class ClaudeAdapter extends BaseAdapter {
     systemPrompt: string,
     userPrompt: string,
     timeoutMs: number,
+    temperature: number,
   ): Promise<{
     content: string;
     promptTokens: number;
@@ -80,7 +81,7 @@ export class ClaudeAdapter extends BaseAdapter {
         system: systemPrompt,
         messages: [{ role: 'user', content: userPrompt }],
         max_tokens: 1024,
-        temperature: 0.7,
+        temperature,
       },
       {
         headers: {

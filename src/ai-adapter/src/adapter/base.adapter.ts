@@ -3,10 +3,22 @@ import {
   AiAdapterInterface,
   ModelInfo,
 } from '../common/interfaces/ai-adapter.interface';
-import { MoveRequestDto } from '../common/dto/move-request.dto';
+import { MoveRequestDto, Difficulty } from '../common/dto/move-request.dto';
 import { MoveResponseDto } from '../common/dto/move-response.dto';
 import { PromptBuilderService } from '../prompt/prompt-builder.service';
 import { ResponseParserService } from '../common/parser/response-parser.service';
+
+/**
+ * 난이도별 LLM temperature 기본값.
+ * beginner(1.0): 높은 창의성으로 실수 유발
+ * intermediate(0.7): 균형 잡힌 탐색
+ * expert(0.3): 낮은 랜덤성으로 최적 수 집중
+ */
+export const DIFFICULTY_TEMPERATURE: Record<Difficulty, number> = {
+  beginner: 1.0,
+  intermediate: 0.7,
+  expert: 0.3,
+};
 
 /**
  * 모든 LLM 어댑터의 공통 기반 클래스.
@@ -26,12 +38,15 @@ export abstract class BaseAdapter implements AiAdapterInterface {
 
   /**
    * LLM API를 직접 호출하는 메서드. 각 어댑터에서 구현한다.
+   * @param temperature 샘플링 온도 (0.0~1.0). 높을수록 창의적, 낮을수록 결정론적.
+   *   난이도별 권장값: beginner=1.0 / intermediate=0.7 / expert=0.3
    * @returns 원시 응답 텍스트와 토큰 사용량
    */
   protected abstract callLlm(
     systemPrompt: string,
     userPrompt: string,
     timeoutMs: number,
+    temperature: number,
   ): Promise<{
     content: string;
     promptTokens: number;
@@ -50,6 +65,7 @@ export abstract class BaseAdapter implements AiAdapterInterface {
     const modelInfo = this.getModelInfo();
     const systemPrompt = this.promptBuilder.buildSystemPrompt(request);
     const totalStartTime = Date.now();
+    const temperature = DIFFICULTY_TEMPERATURE[request.difficulty] ?? 0.7;
 
     let lastErrorReason = '';
 
@@ -67,7 +83,7 @@ export abstract class BaseAdapter implements AiAdapterInterface {
             );
 
       this.logger.log(
-        `[${modelInfo.modelType}] gameId=${request.gameId} attempt=${attempt + 1}/${request.maxRetries}`,
+        `[${modelInfo.modelType}] gameId=${request.gameId} attempt=${attempt + 1}/${request.maxRetries} temperature=${temperature}`,
       );
 
       try {
@@ -75,6 +91,7 @@ export abstract class BaseAdapter implements AiAdapterInterface {
           systemPrompt,
           userPrompt,
           request.timeoutMs,
+          temperature,
         );
 
         const latencyMs = Date.now() - attemptStartTime;

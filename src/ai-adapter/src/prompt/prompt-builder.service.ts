@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { MoveRequestDto, Difficulty } from '../common/dto/move-request.dto';
 import { buildSystemPrompt } from './persona.templates';
+import { DIFFICULTY_TEMPERATURE } from '../adapter/base.adapter';
 
 /**
  * 게임 상태와 캐릭터 설정을 LLM 프롬프트로 변환하는 서비스.
@@ -128,5 +129,13 @@ export class PromptBuilderService {
       expert: 5,
     };
     return limits[difficulty];
+  }
+
+  /**
+   * 난이도를 LLM temperature 값으로 변환한다.
+   * beginner(1.0): 창의적 실수 유발 / intermediate(0.7): 균형 / expert(0.3): 최적 수 집중
+   */
+  getTemperature(difficulty: Difficulty): number {
+    return DIFFICULTY_TEMPERATURE[difficulty] ?? 0.7;
   }
 }

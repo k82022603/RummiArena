@@ -54,6 +54,7 @@ export class OpenAiAdapter extends BaseAdapter {
     systemPrompt: string,
     userPrompt: string,
     timeoutMs: number,
+    temperature: number,
   ): Promise<{
     content: string;
     promptTokens: number;
@@ -69,7 +70,7 @@ export class OpenAiAdapter extends BaseAdapter {
         ],
         // JSON mode: 반드시 JSON 형식으로 응답
         response_format: { type: 'json_object' },
-        temperature: 0.7,
+        temperature,
         max_tokens: 1024,
       },
       {
