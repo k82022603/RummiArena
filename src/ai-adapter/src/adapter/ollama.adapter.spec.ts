@@ -266,6 +266,104 @@ describe('OllamaAdapter', () => {
   });
 
   // -----------------------------------------------------------------------
+  // MIN_RETRIES 상수 및 maxRetries 보정 로직
+  // -----------------------------------------------------------------------
+  describe('MIN_RETRIES 상수 및 maxRetries 보정', () => {
+    it('MIN_RETRIES 상수는 5이다', () => {
+      expect(OllamaAdapter.MIN_RETRIES).toBe(5);
+    });
+
+    it('maxRetries가 MIN_RETRIES(5)보다 크면 보정 없이 그대로 사용한다', async () => {
+      const validContent = JSON.stringify({ action: 'draw', reasoning: '드로우' });
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(makeOllamaApiResponse(validContent));
+
+      // maxRetries=7 > MIN_RETRIES=5 이므로 보정 없이 7 그대로
+      const response = await adapter.generateMove(
+        makeMoveRequest({ maxRetries: 7 }),
+      );
+
+      expect(response.action).toBe('draw');
+      // 첫 시도에 성공하므로 retryCount=0
+      expect(response.metadata.retryCount).toBe(0);
+      expect(mockedAxios.post).toHaveBeenCalledTimes(1);
+    });
+
+    it('maxRetries가 MIN_RETRIES(5)와 동일하면 보정 없이 그대로 사용한다', async () => {
+      const validContent = JSON.stringify({ action: 'draw', reasoning: '드로우' });
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(makeOllamaApiResponse(validContent));
+
+      const response = await adapter.generateMove(
+        makeMoveRequest({ maxRetries: 5 }),
+      );
+
+      expect(response.action).toBe('draw');
+      expect(response.metadata.retryCount).toBe(0);
+    });
+
+    it('maxRetries=1이 MIN_RETRIES=5로 보정되면 fallback 시 retryCount=5이다', async () => {
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValue(makeOllamaApiResponse('파싱 불가'));
+
+      const response = await adapter.generateMove(
+        makeMoveRequest({ maxRetries: 1 }),
+      );
+
+      expect(response.metadata.isFallbackDraw).toBe(true);
+      expect(response.metadata.retryCount).toBe(OllamaAdapter.MIN_RETRIES);
+      expect(mockedAxios.post).toHaveBeenCalledTimes(OllamaAdapter.MIN_RETRIES);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // generateMove() - temperature 파라미터 검증
+  // -----------------------------------------------------------------------
+  describe('generateMove() - temperature 파라미터', () => {
+    it('beginner 난이도는 temperature=1.0으로 API를 호출한다', async () => {
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(
+          makeOllamaApiResponse(JSON.stringify({ action: 'draw' })),
+        );
+
+      await adapter.generateMove(makeMoveRequest({ difficulty: 'beginner' }));
+
+      const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
+      expect(body.options.temperature).toBe(1.0);
+    });
+
+    it('intermediate 난이도는 temperature=0.7로 API를 호출한다', async () => {
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(
+          makeOllamaApiResponse(JSON.stringify({ action: 'draw' })),
+        );
+
+      await adapter.generateMove(makeMoveRequest({ difficulty: 'intermediate' }));
+
+      const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
+      expect(body.options.temperature).toBe(0.7);
+    });
+
+    it('expert 난이도는 temperature=0.3으로 API를 호출한다', async () => {
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(
+          makeOllamaApiResponse(JSON.stringify({ action: 'draw' })),
+        );
+
+      await adapter.generateMove(makeMoveRequest({ difficulty: 'expert' }));
+
+      const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
+      expect(body.options.temperature).toBe(0.3);
+    });
+  });
+
+  // -----------------------------------------------------------------------
   // generateMove() - Ollama API 호출 파라미터 검증
   // -----------------------------------------------------------------------
   describe('generateMove() - API 호출 파라미터', () => {

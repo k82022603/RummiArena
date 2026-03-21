@@ -119,4 +119,23 @@ describe('PromptBuilderService', () => {
       expect(service.getHistoryLimit('expert')).toBe(5);
     });
   });
+
+  describe('getTemperature', () => {
+    it('beginner는 temperature 1.0을 반환한다 (창의적 실수 유발)', () => {
+      expect(service.getTemperature('beginner')).toBe(1.0);
+    });
+
+    it('intermediate는 temperature 0.7을 반환한다 (균형 잡힌 탐색)', () => {
+      expect(service.getTemperature('intermediate')).toBe(0.7);
+    });
+
+    it('expert는 temperature 0.3을 반환한다 (최적 수 집중)', () => {
+      expect(service.getTemperature('expert')).toBe(0.3);
+    });
+
+    it('알 수 없는 difficulty가 전달되면 기본값 0.7을 반환한다', () => {
+      // 타입 단언으로 잘못된 값 시뮬레이션
+      expect(service.getTemperature('unknown' as 'beginner')).toBe(0.7);
+    });
+  });
 });
