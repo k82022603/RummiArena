@@ -22,6 +22,7 @@ import PlayerCard from "@/components/game/PlayerCard";
 import TurnTimer from "@/components/game/TurnTimer";
 import ConnectionStatus from "@/components/game/ConnectionStatus";
 import ErrorToast from "@/components/game/ErrorToast";
+import ReconnectToast from "@/components/game/ReconnectToast";
 import Tile from "@/components/tile/Tile";
 import {
   MOCK_GAME_STATE,
@@ -332,6 +333,7 @@ export default function GameClient({ roomId }: GameClientProps) {
   return (
     <>
       <ErrorToast />
+      <ReconnectToast />
     <DndContext
       sensors={sensors}
       collisionDetection={closestCenter}
