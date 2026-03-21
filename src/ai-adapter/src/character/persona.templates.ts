@@ -286,7 +286,10 @@ export const CHARACTER_PROFILES: Record<CharacterType, CharacterProfile> = {
     name: 'rookie',
     displayName: '루키',
     strategyDescription: '단순한 수로 가장 큰 그룹부터 내려놓는 초보자',
-    strengths: ['예측 가능한 행동으로 상대가 경계하지 않음', '실수가 의외의 혼란을 유발할 수 있음'],
+    strengths: [
+      '예측 가능한 행동으로 상대가 경계하지 않음',
+      '실수가 의외의 혼란을 유발할 수 있음',
+    ],
     weaknesses: ['테이블 재배치 미활용', '조커 활용 미숙', '장기 전략 부재'],
   },
   calculator: {
@@ -301,7 +304,11 @@ export const CHARACTER_PROFILES: Record<CharacterType, CharacterProfile> = {
     displayName: '상어',
     strategyDescription: '빠른 클리어와 상대 방해로 압도하는 공격형 플레이어',
     strengths: ['빠른 게임 종료', '상대 방해 효과', '압박형 심리전'],
-    weaknesses: ['드로우 파일이 많을 때 불리', '장기전 지속력 부족', '방어적 상황 대처 미숙'],
+    weaknesses: [
+      '드로우 파일이 많을 때 불리',
+      '장기전 지속력 부족',
+      '방어적 상황 대처 미숙',
+    ],
   },
   fox: {
     name: 'fox',
@@ -315,13 +322,22 @@ export const CHARACTER_PROFILES: Record<CharacterType, CharacterProfile> = {
     displayName: '벽',
     strategyDescription: '방어와 생존으로 장기전을 유도하는 끈질긴 수비형',
     strengths: ['장기전 내구력', '상대 차단 효과', '최종 점수 최소화'],
-    weaknesses: ['공격적 게임 페이스에 취약', '드로우 파일 소진 시 약세', '빠른 상대에게 뒤처짐'],
+    weaknesses: [
+      '공격적 게임 페이스에 취약',
+      '드로우 파일 소진 시 약세',
+      '빠른 상대에게 뒤처짐',
+    ],
   },
   wildcard: {
     name: 'wildcard',
     displayName: '와일드카드',
-    strategyDescription: '예측 불가능한 즉흥 전략으로 상대를 혼란에 빠뜨리는 불규칙 플레이어',
+    strategyDescription:
+      '예측 불가능한 즉흥 전략으로 상대를 혼란에 빠뜨리는 불규칙 플레이어',
     strengths: ['예측 불가능성', '상대 분석 무력화', '다양한 전략 구사'],
-    weaknesses: ['일관성 부재로 자신도 불확실', '최적 수 포기 가능성', '운에 의존하는 경향'],
+    weaknesses: [
+      '일관성 부재로 자신도 불확실',
+      '최적 수 포기 가능성',
+      '운에 의존하는 경향',
+    ],
   },
 };

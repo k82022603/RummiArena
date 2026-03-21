@@ -265,7 +265,9 @@ describe('OpenAiAdapter', () => {
           makeOpenAiResponse(JSON.stringify({ action: 'draw' })),
         );
 
-      await adapter.generateMove(makeMoveRequest({ difficulty: 'intermediate' }));
+      await adapter.generateMove(
+        makeMoveRequest({ difficulty: 'intermediate' }),
+      );
 
       const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
       expect(body.temperature).toBe(0.7);

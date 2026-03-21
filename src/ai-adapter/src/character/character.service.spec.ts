@@ -224,7 +224,11 @@ describe('CharacterService', () => {
     });
 
     it('Level 0이면 psychWarfarePrompt가 빈 문자열이다', () => {
-      const result = service.getCharacterPrompt('calculator', 'intermediate', 0);
+      const result = service.getCharacterPrompt(
+        'calculator',
+        'intermediate',
+        0,
+      );
       expect(result.psychWarfarePrompt).toBe('');
     });
 
@@ -282,16 +286,13 @@ describe('CharacterService', () => {
   // getCharacterProfile()
   // -----------------------------------------------------------------------
   describe('getCharacterProfile()', () => {
-    it.each(ALL_CHARACTERS)(
-      '%s 캐릭터 프로필을 반환한다',
-      (character) => {
-        const profile = service.getCharacterProfile(character);
-        expect(profile.name).toBe(character);
-        expect(profile.displayName).toBeTruthy();
-        expect(profile.strengths.length).toBeGreaterThan(0);
-        expect(profile.weaknesses.length).toBeGreaterThan(0);
-      },
-    );
+    it.each(ALL_CHARACTERS)('%s 캐릭터 프로필을 반환한다', (character) => {
+      const profile = service.getCharacterProfile(character);
+      expect(profile.name).toBe(character);
+      expect(profile.displayName).toBeTruthy();
+      expect(profile.strengths.length).toBeGreaterThan(0);
+      expect(profile.weaknesses.length).toBeGreaterThan(0);
+    });
   });
 
   // -----------------------------------------------------------------------
