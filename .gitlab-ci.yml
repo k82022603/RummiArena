@@ -67,6 +67,14 @@ variables:
     - src/frontend/node_modules/
     - .cache/npm/
 
+.node-admin-cache: &node-admin-cache
+  key:
+    files:
+      - src/admin/package-lock.json
+  paths:
+    - src/admin/node_modules/
+    - .cache/npm/
+
 # =============================================================================
 # Lint Stage — 코드 스타일 및 정적 문법 검사
 # =============================================================================
@@ -113,6 +121,23 @@ lint-frontend:
     policy: pull-push
   script:
     - cd src/frontend
+    - npm ci --prefer-offline
+    - npm run lint
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "develop"
+  interruptible: true
+
+lint-admin:
+  stage: lint
+  <<: *local-runner
+  image: node:20-alpine
+  cache:
+    <<: *node-admin-cache
+    policy: pull-push
+  script:
+    - cd src/admin
     - npm ci --prefer-offline
     - npm run lint
   rules:
@@ -321,6 +346,25 @@ build-frontend:
         --no-progress
         $DOCKER_IMAGE/frontend:$CI_COMMIT_SHA
 
+build-admin:
+  <<: *build-common
+  script:
+    - docker build
+        --target runner
+        --tag $DOCKER_IMAGE/admin:$CI_COMMIT_SHA
+        --tag $DOCKER_IMAGE/admin:latest
+        --cache-from $DOCKER_IMAGE/admin:latest
+        src/admin/
+    - docker push $DOCKER_IMAGE/admin:$CI_COMMIT_SHA
+    - docker push $DOCKER_IMAGE/admin:latest
+    - docker run --rm
+        -v /var/run/docker.sock:/var/run/docker.sock
+        aquasec/trivy:latest image
+        --exit-code 1
+        --severity CRITICAL
+        --no-progress
+        $DOCKER_IMAGE/admin:$CI_COMMIT_SHA
+
 # =============================================================================
 # Update GitOps Stage — ArgoCD가 감시하는 dev-values.yaml 이미지 태그 업데이트
 # =============================================================================
@@ -340,6 +384,7 @@ update-gitops:
     - 'sed -i "s|registry.gitlab.com/k82022603/rummiarena/game-server:.*|registry.gitlab.com/k82022603/rummiarena/game-server:$CI_COMMIT_SHA|g" helm/environments/dev-values.yaml'
     - 'sed -i "s|registry.gitlab.com/k82022603/rummiarena/ai-adapter:.*|registry.gitlab.com/k82022603/rummiarena/ai-adapter:$CI_COMMIT_SHA|g" helm/environments/dev-values.yaml'
     - 'sed -i "s|registry.gitlab.com/k82022603/rummiarena/frontend:.*|registry.gitlab.com/k82022603/rummiarena/frontend:$CI_COMMIT_SHA|g" helm/environments/dev-values.yaml'
+    - 'sed -i "s|registry.gitlab.com/k82022603/rummiarena/admin:.*|registry.gitlab.com/k82022603/rummiarena/admin:$CI_COMMIT_SHA|g" helm/environments/dev-values.yaml'
     - git add helm/environments/dev-values.yaml
     - 'git diff --staged --quiet || git commit -m "ci: update image tags to $CI_COMMIT_SHA [skip ci]"'
     - git push
@@ -350,3 +395,4 @@ update-gitops:
     - build-game-server
     - build-ai-adapter
     - build-frontend
+    - build-admin

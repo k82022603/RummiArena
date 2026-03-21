@@ -1,0 +1,5 @@
+apiVersion: v2
+name: admin
+description: RummiArena Admin Panel (Next.js)
+version: 0.1.0
+appVersion: "0.1.0"
