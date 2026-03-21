@@ -8,11 +8,19 @@ import (
 )
 
 type Config struct {
-	Server ServerConfig
-	DB     DBConfig
-	Redis  RedisConfig
-	JWT    JWTConfig
-	AppEnv string // "dev" | "staging" | "production"
+	Server    ServerConfig
+	DB        DBConfig
+	Redis     RedisConfig
+	JWT       JWTConfig
+	AIAdapter AIAdapterConfig
+	AppEnv    string // "dev" | "staging" | "production"
+}
+
+// AIAdapterConfig ai-adapter 서비스 연결 설정
+type AIAdapterConfig struct {
+	BaseURL    string
+	Token      string
+	TimeoutSec int
 }
 
 type ServerConfig struct {
@@ -51,6 +59,9 @@ func Load() (*Config, error) {
 	viper.SetDefault("REDIS_PORT", "6379")
 	viper.SetDefault("REDIS_PASSWORD", "")
 	viper.SetDefault("JWT_SECRET", "")
+	viper.SetDefault("AI_ADAPTER_URL", "http://ai-adapter:3000")
+	viper.SetDefault("AI_ADAPTER_INTERNAL_TOKEN", "")
+	viper.SetDefault("AI_ADAPTER_TIMEOUT_SEC", 180)
 
 	viper.AutomaticEnv()
 
@@ -74,6 +85,11 @@ func Load() (*Config, error) {
 		},
 		JWT: JWTConfig{
 			Secret: viper.GetString("JWT_SECRET"),
+		},
+		AIAdapter: AIAdapterConfig{
+			BaseURL:    viper.GetString("AI_ADAPTER_URL"),
+			Token:      viper.GetString("AI_ADAPTER_INTERNAL_TOKEN"),
+			TimeoutSec: viper.GetInt("AI_ADAPTER_TIMEOUT_SEC"),
 		},
 	}
 
