@@ -1,5 +1,6 @@
 import { PromptBuilderService } from './prompt-builder.service';
 import { MoveRequestDto, GameStateDto } from '../common/dto/move-request.dto';
+import { CharacterService } from '../character/character.service';
 
 describe('PromptBuilderService', () => {
   let service: PromptBuilderService;
@@ -26,10 +27,11 @@ describe('PromptBuilderService', () => {
   });
 
   beforeEach(() => {
+    // CharacterService 없이 생성 — 레거시(구 템플릿) 폴백 경로
     service = new PromptBuilderService();
   });
 
-  describe('buildSystemPrompt', () => {
+  describe('buildSystemPrompt (레거시 폴백 — CharacterService 없음)', () => {
     it('시스템 프롬프트에 게임 규칙이 포함된다', () => {
       const prompt = service.buildSystemPrompt(makeRequest());
       expect(prompt).toContain('루미큐브');
@@ -56,6 +58,82 @@ describe('PromptBuilderService', () => {
         makeRequest({ psychologyLevel: 3 }),
       );
       expect(prompt).toContain('블러핑');
+    });
+  });
+
+  describe('buildSystemPrompt (CharacterService 주입 — 신 템플릿 경로)', () => {
+    let serviceWithCharacter: PromptBuilderService;
+    let characterService: CharacterService;
+
+    beforeEach(() => {
+      characterService = new CharacterService();
+      serviceWithCharacter = new PromptBuilderService(characterService);
+    });
+
+    it('CharacterService가 주입되면 getCharacterPrompt에 위임한다', () => {
+      const spy = jest
+        .spyOn(characterService, 'getCharacterPrompt')
+        .mockReturnValue({
+          systemPrompt: 'mocked-system-prompt',
+          psychWarfarePrompt: '',
+        });
+
+      const result = serviceWithCharacter.buildSystemPrompt(makeRequest());
+
+      expect(spy).toHaveBeenCalledWith('shark', 'expert', 2);
+      expect(result).toBe('mocked-system-prompt');
+    });
+
+    it('CharacterService 주입 시 shark 캐릭터 시스템 프롬프트를 반환한다', () => {
+      const prompt = serviceWithCharacter.buildSystemPrompt(
+        makeRequest({ persona: 'shark' }),
+      );
+      // 신 템플릿(persona.templates.ts)의 shark systemPrompt 키워드 확인
+      expect(prompt).toContain('공격');
+    });
+
+    it('CharacterService 주입 시 rookie 캐릭터 시스템 프롬프트를 반환한다', () => {
+      const prompt = serviceWithCharacter.buildSystemPrompt(
+        makeRequest({ persona: 'rookie' }),
+      );
+      expect(prompt).toContain('초보');
+    });
+
+    it('CharacterService 주입 시 calculator 캐릭터 시스템 프롬프트를 반환한다', () => {
+      const prompt = serviceWithCharacter.buildSystemPrompt(
+        makeRequest({ persona: 'calculator' }),
+      );
+      expect(prompt).toContain('확률');
+    });
+
+    it('CharacterService 주입 시 fox 캐릭터 시스템 프롬프트를 반환한다', () => {
+      const prompt = serviceWithCharacter.buildSystemPrompt(
+        makeRequest({ persona: 'fox' }),
+      );
+      expect(prompt).toContain('교활');
+    });
+
+    it('CharacterService 주입 시 wall 캐릭터 시스템 프롬프트를 반환한다', () => {
+      const prompt = serviceWithCharacter.buildSystemPrompt(
+        makeRequest({ persona: 'wall' }),
+      );
+      expect(prompt).toContain('방어');
+    });
+
+    it('CharacterService 주입 시 wildcard 캐릭터 시스템 프롬프트를 반환한다', () => {
+      const prompt = serviceWithCharacter.buildSystemPrompt(
+        makeRequest({ persona: 'wildcard' }),
+      );
+      expect(prompt).toContain('예측');
+    });
+  });
+
+  describe('buildSystemPrompt (CharacterService 없음 — 레거시 폴백 명시 검증)', () => {
+    it('CharacterService가 undefined이면 레거시 buildSystemPrompt를 사용한다', () => {
+      const legacyService = new PromptBuilderService(undefined);
+      const prompt = legacyService.buildSystemPrompt(makeRequest());
+      // 구 템플릿의 BASE_SYSTEM_PROMPT 포함 여부 확인
+      expect(prompt).toContain('루미큐브(Rummikub) 게임 AI 플레이어');
     });
   });
 

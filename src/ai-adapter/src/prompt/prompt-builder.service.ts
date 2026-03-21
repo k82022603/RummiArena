@@ -1,19 +1,43 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { MoveRequestDto, Difficulty } from '../common/dto/move-request.dto';
-import { buildSystemPrompt } from './persona.templates';
+import { buildSystemPrompt as legacyBuildSystemPrompt } from './persona.templates';
 import { DIFFICULTY_TEMPERATURE } from '../adapter/base.adapter';
+import { CharacterService } from '../character/character.service';
+import {
+  CharacterType,
+  DifficultyLevel,
+  PsychWarfareLevel,
+} from '../character/character.types';
 
 /**
  * 게임 상태와 캐릭터 설정을 LLM 프롬프트로 변환하는 서비스.
  * 모든 어댑터에서 공통으로 사용한다.
+ *
+ * CharacterService가 주입되면 신 템플릿(PERSONA_TEMPLATES)을 사용한다.
+ * CharacterService가 없으면 구 템플릿(buildSystemPrompt)으로 폴백한다.
  */
 @Injectable()
 export class PromptBuilderService {
+  constructor(
+    @Optional() private readonly characterService?: CharacterService,
+  ) {}
+
   /**
    * MoveRequest로부터 시스템 프롬프트를 생성한다.
+   * CharacterService가 주입된 경우 신 템플릿을 사용하고,
+   * 없으면 구 템플릿(legacyBuildSystemPrompt)으로 폴백한다.
    */
   buildSystemPrompt(request: MoveRequestDto): string {
-    return buildSystemPrompt(
+    if (this.characterService) {
+      const result = this.characterService.getCharacterPrompt(
+        request.persona as CharacterType,
+        request.difficulty as DifficultyLevel,
+        request.psychologyLevel as PsychWarfareLevel,
+      );
+      return result.systemPrompt;
+    }
+    // CharacterService 없으면 구 템플릿 사용 (fallback)
+    return legacyBuildSystemPrompt(
       request.persona,
       request.difficulty,
       request.psychologyLevel,

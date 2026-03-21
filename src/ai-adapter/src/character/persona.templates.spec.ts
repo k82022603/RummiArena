@@ -24,12 +24,9 @@ describe('PERSONA_TEMPLATES', () => {
   // 모든 캐릭터 템플릿 존재 확인
   // -----------------------------------------------------------------------
   describe('템플릿 존재 확인', () => {
-    it.each(ALL_CHARACTERS)(
-      '%s 캐릭터 템플릿이 존재한다',
-      (character) => {
-        expect(PERSONA_TEMPLATES[character]).toBeDefined();
-      },
-    );
+    it.each(ALL_CHARACTERS)('%s 캐릭터 템플릿이 존재한다', (character) => {
+      expect(PERSONA_TEMPLATES[character]).toBeDefined();
+    });
 
     it('6개 캐릭터 템플릿이 모두 정의되어 있다', () => {
       expect(Object.keys(PERSONA_TEMPLATES)).toHaveLength(6);
@@ -211,19 +208,16 @@ describe('CHARACTER_PROFILES', () => {
     expect(Object.keys(CHARACTER_PROFILES)).toHaveLength(6);
   });
 
-  it.each(ALL_CHARACTERS)(
-    '%s 프로필에 필수 필드가 존재한다',
-    (character) => {
-      const profile = CHARACTER_PROFILES[character];
-      expect(profile.name).toBe(character);
-      expect(profile.displayName).toBeTruthy();
-      expect(profile.strategyDescription).toBeTruthy();
-      expect(profile.strengths).toBeInstanceOf(Array);
-      expect(profile.weaknesses).toBeInstanceOf(Array);
-      expect(profile.strengths.length).toBeGreaterThan(0);
-      expect(profile.weaknesses.length).toBeGreaterThan(0);
-    },
-  );
+  it.each(ALL_CHARACTERS)('%s 프로필에 필수 필드가 존재한다', (character) => {
+    const profile = CHARACTER_PROFILES[character];
+    expect(profile.name).toBe(character);
+    expect(profile.displayName).toBeTruthy();
+    expect(profile.strategyDescription).toBeTruthy();
+    expect(profile.strengths).toBeInstanceOf(Array);
+    expect(profile.weaknesses).toBeInstanceOf(Array);
+    expect(profile.strengths.length).toBeGreaterThan(0);
+    expect(profile.weaknesses.length).toBeGreaterThan(0);
+  });
 
   it('모든 캐릭터의 displayName이 서로 다르다', () => {
     const displayNames = ALL_CHARACTERS.map(

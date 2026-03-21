@@ -274,7 +274,10 @@ describe('OllamaAdapter', () => {
     });
 
     it('maxRetries가 MIN_RETRIES(5)보다 크면 보정 없이 그대로 사용한다', async () => {
-      const validContent = JSON.stringify({ action: 'draw', reasoning: '드로우' });
+      const validContent = JSON.stringify({
+        action: 'draw',
+        reasoning: '드로우',
+      });
       mockedAxios.post = jest
         .fn()
         .mockResolvedValueOnce(makeOllamaApiResponse(validContent));
@@ -291,7 +294,10 @@ describe('OllamaAdapter', () => {
     });
 
     it('maxRetries가 MIN_RETRIES(5)와 동일하면 보정 없이 그대로 사용한다', async () => {
-      const validContent = JSON.stringify({ action: 'draw', reasoning: '드로우' });
+      const validContent = JSON.stringify({
+        action: 'draw',
+        reasoning: '드로우',
+      });
       mockedAxios.post = jest
         .fn()
         .mockResolvedValueOnce(makeOllamaApiResponse(validContent));
@@ -343,7 +349,9 @@ describe('OllamaAdapter', () => {
           makeOllamaApiResponse(JSON.stringify({ action: 'draw' })),
         );
 
-      await adapter.generateMove(makeMoveRequest({ difficulty: 'intermediate' }));
+      await adapter.generateMove(
+        makeMoveRequest({ difficulty: 'intermediate' }),
+      );
 
       const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
       expect(body.options.temperature).toBe(0.7);
