@@ -2,6 +2,7 @@ package config
 
 import (
 	"log"
+	"os"
 
 	"github.com/spf13/viper"
 )
@@ -79,7 +80,12 @@ func Load() (*Config, error) {
 	if cfg.DB.Password == "" {
 		log.Println("[WARN] DB_PASSWORD is not set — set via environment variable for production")
 	}
+
 	if cfg.JWT.Secret == "" {
+		if cfg.AppEnv == "production" {
+			log.Fatal("[FATAL] JWT_SECRET must be set in production environment — refusing to start")
+			os.Exit(1) // log.Fatal already calls os.Exit(1); kept for explicit intent
+		}
 		log.Println("[WARN] JWT_SECRET is not set — set via environment variable for production")
 	}
 

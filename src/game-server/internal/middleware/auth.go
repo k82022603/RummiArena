@@ -8,12 +8,16 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-const ctxKeyUserID = "userID"
+const (
+	ctxKeyUserID = "userID"
+	ctxKeyRole   = "role"
+)
 
 // Claims is the JWT payload structure.
 type Claims struct {
 	UserID string `json:"sub"`
 	Email  string `json:"email"`
+	Role   string `json:"role"` // e.g. "user", "admin"
 	jwt.RegisteredClaims
 }
 
@@ -55,6 +59,7 @@ func JWTAuth(secret string) gin.HandlerFunc {
 		}
 
 		c.Set(ctxKeyUserID, claims.UserID)
+		c.Set(ctxKeyRole, claims.Role)
 		c.Next()
 	}
 }
