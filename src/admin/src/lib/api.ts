@@ -21,6 +21,7 @@ import {
   type DashboardSummary,
   type HealthStatus,
 } from "./mock-data";
+import { getAdminToken } from "./auth";
 
 // ------------------------------------------------------------------
 // 설정
@@ -85,12 +86,18 @@ export async function fetchHealth(): Promise<HealthStatus> {
 
 /**
  * game-server에서 활성 방 목록을 가져온다.
- * JWT 인증 없이 호출하며 실패 시 mock 데이터 반환.
+ * Authorization: Bearer 토큰을 포함하여 호출하며 실패 시 mock 데이터 반환.
  */
 export async function fetchRooms(): Promise<AdminGame[]> {
   if (USE_MOCK) return getMockRooms();
   try {
+    const token = await getAdminToken();
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
     const res = await fetch(`${API_BASE}/api/rooms`, {
+      headers,
       next: { revalidate: 10 },
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
