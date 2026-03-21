@@ -97,7 +97,7 @@ describe('OllamaAdapter', () => {
       expect(info.baseUrl).toBe('http://172.21.32.1:11434');
     });
 
-    it('환경변수 미설정 시 기본값(localhost:11434, llama3.2)을 반환한다', () => {
+    it('환경변수 미설정 시 기본값(localhost:11434, gemma3:4b)을 반환한다', () => {
       const configWithDefaults = {
         get: jest.fn((key: string, defaultValue?: string) => defaultValue),
       } as unknown as ConfigService;
@@ -109,7 +109,7 @@ describe('OllamaAdapter', () => {
 
       const info = adapterWithDefaults.getModelInfo();
       expect(info.baseUrl).toBe('http://localhost:11434');
-      expect(info.modelName).toBe('llama3.2');
+      expect(info.modelName).toBe('gemma3:4b');
     });
   });
 
@@ -234,6 +234,7 @@ describe('OllamaAdapter', () => {
 
     it('maxRetries 모두 실패하면 강제 드로우(isFallbackDraw=true)를 반환한다', async () => {
       // 모든 응답을 파싱 불가 텍스트로 설정
+      // OllamaAdapter.MIN_RETRIES(5)로 보정되므로 실제 시도 횟수는 5회
       mockedAxios.post = jest
         .fn()
         .mockResolvedValue(makeOllamaApiResponse('파싱 불가 응답'));
@@ -244,20 +245,23 @@ describe('OllamaAdapter', () => {
 
       expect(response.action).toBe('draw');
       expect(response.metadata.isFallbackDraw).toBe(true);
-      expect(response.metadata.retryCount).toBe(3);
-      expect(mockedAxios.post).toHaveBeenCalledTimes(3);
+      // maxRetries=3이 MIN_RETRIES=5로 보정되므로 retryCount=5
+      expect(response.metadata.retryCount).toBe(OllamaAdapter.MIN_RETRIES);
+      expect(mockedAxios.post).toHaveBeenCalledTimes(OllamaAdapter.MIN_RETRIES);
     });
 
     it('axios 네트워크 오류 시 재시도 후 강제 드로우를 반환한다', async () => {
       mockedAxios.post = jest.fn().mockRejectedValue(new Error('ECONNREFUSED'));
 
+      // maxRetries=2가 MIN_RETRIES=5로 보정됨
       const response = await adapter.generateMove(
         makeMoveRequest({ maxRetries: 2 }),
       );
 
       expect(response.action).toBe('draw');
       expect(response.metadata.isFallbackDraw).toBe(true);
-      expect(response.metadata.retryCount).toBe(2);
+      // MIN_RETRIES=5로 보정되므로 retryCount=5
+      expect(response.metadata.retryCount).toBe(OllamaAdapter.MIN_RETRIES);
     });
   });
 
