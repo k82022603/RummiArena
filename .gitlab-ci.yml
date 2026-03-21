@@ -161,18 +161,17 @@ test-go:
     - apk add --no-cache gcc musl-dev
   script:
     - cd src/game-server
-    # 커버리지 프로파일 수집 (cobertura XML은 go-junit-report로 변환)
+    # 커버리지 프로파일 수집
     - go test ./... -v
         -coverprofile=coverage.out
         -covermode=atomic
         -timeout 120s
     - go tool cover -func=coverage.out
-    # SonarQube 경로 정합: module 경로 → 프로젝트 상대 경로로 변환 (go tool cover 이후 실행)
-    - sed "s|github.com/k82022603/RummiArena/game-server/|src/game-server/|g" coverage.out > coverage_sonar.out
-    - mv coverage_sonar.out coverage.out
-    # XML 변환 (GitLab Coverage 리포트)
+    # XML 변환 (GitLab Coverage 리포트) — 원본 module 경로로 gocover-cobertura 실행
     - GOBIN=/usr/local/bin go install github.com/boumenot/gocover-cobertura@latest
     - gocover-cobertura < coverage.out > coverage.xml
+    # SonarQube용 경로 변환: module 경로 → 프로젝트 상대 경로 (별도 파일로 유지)
+    - sed "s|github.com/k82022603/RummiArena/game-server/|src/game-server/|g" coverage.out > coverage_sonar.out
   coverage: '/total:\s+\(statements\)\s+(\d+\.\d+)%/'
   artifacts:
     reports:
@@ -181,6 +180,7 @@ test-go:
         path: src/game-server/coverage.xml
     paths:
       - src/game-server/coverage.out
+      - src/game-server/coverage_sonar.out
       - src/game-server/coverage.xml
     expire_in: 7 days
   rules:
@@ -236,7 +236,7 @@ sonarqube:
         -Dsonar.sources=src/
         -Dsonar.exclusions="**/node_modules/**,**/*.test.go,**/*.spec.ts,**/*.spec.js,**/dist/**,**/coverage/**"
         -Dsonar.coverage.exclusions="src/frontend/**,src/admin/**"
-        -Dsonar.go.coverage.reportPaths=src/game-server/coverage.out
+        -Dsonar.go.coverage.reportPaths=src/game-server/coverage_sonar.out
         -Dsonar.javascript.lcov.reportPaths=src/ai-adapter/coverage/lcov.info
   needs:
     - test-go
