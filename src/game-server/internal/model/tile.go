@@ -43,6 +43,7 @@ type GameStateRedis struct {
 	Table       []*SetOnTable `json:"table"`
 	Players     []PlayerState `json:"players"`
 	TurnStartAt int64         `json:"turnStartAt"`
+	TurnCount   int           `json:"turnCount"`
 }
 
 // PlayerState holds per-player in-memory state cached in Redis.
@@ -52,4 +53,9 @@ type PlayerState struct {
 	PlayerType     string   `json:"playerType"`
 	HasInitialMeld bool     `json:"hasInitialMeld"`
 	Rack           []string `json:"rack"`
+	// AI 플레이어 설정 (PlayerType이 AI_* 인 경우에만 사용)
+	AIModel      string `json:"aiModel,omitempty"`
+	AIPersona    string `json:"aiPersona,omitempty"`
+	AIDifficulty string `json:"aiDifficulty,omitempty"`
+	AIPsychLevel int    `json:"aiPsychLevel,omitempty"`
 }

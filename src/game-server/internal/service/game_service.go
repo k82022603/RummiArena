@@ -129,6 +129,10 @@ func (s *gameService) newGame(
 			PlayerType:     p.Type,
 			HasInitialMeld: false,
 			Rack:           rack,
+			AIModel:        p.AIModel,
+			AIPersona:      p.Persona,
+			AIDifficulty:   p.Difficulty,
+			AIPsychLevel:   p.AIPsychologyLevel,
 		}
 	}
 
@@ -372,6 +376,7 @@ func (s *gameService) advanceToNextTurn(state *model.GameStateRedis) (*GameActio
 	nextSeat := advanceTurn(state)
 	state.CurrentSeat = nextSeat
 	state.TurnStartAt = time.Now().Unix()
+	state.TurnCount++
 
 	if err := s.gameRepo.SaveGameState(state); err != nil {
 		return nil, fmt.Errorf("game_service: save after confirm: %w", err)
@@ -422,6 +427,7 @@ func (s *gameService) DrawTile(gameID string, seat int) (*GameActionResult, erro
 	nextSeat := advanceTurn(state)
 	state.CurrentSeat = nextSeat
 	state.TurnStartAt = time.Now().Unix()
+	state.TurnCount++
 
 	if err := s.gameRepo.SaveGameState(state); err != nil {
 		return nil, fmt.Errorf("game_service: save after draw: %w", err)
