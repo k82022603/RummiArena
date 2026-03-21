@@ -262,6 +262,45 @@ describe('ClaudeAdapter', () => {
       );
       expect(callLlmCall).toBeDefined();
     });
+
+    it('beginner 난이도는 요청 바디에 temperature=1.0을 포함한다', async () => {
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(
+          makeClaudeResponse(JSON.stringify({ action: 'draw' })),
+        );
+
+      await adapter.generateMove(makeMoveRequest({ difficulty: 'beginner' }));
+
+      const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
+      expect(body.temperature).toBe(1.0);
+    });
+
+    it('intermediate 난이도는 요청 바디에 temperature=0.7을 포함한다', async () => {
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(
+          makeClaudeResponse(JSON.stringify({ action: 'draw' })),
+        );
+
+      await adapter.generateMove(makeMoveRequest({ difficulty: 'intermediate' }));
+
+      const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
+      expect(body.temperature).toBe(0.7);
+    });
+
+    it('expert 난이도는 요청 바디에 temperature=0.3을 포함한다', async () => {
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(
+          makeClaudeResponse(JSON.stringify({ action: 'draw' })),
+        );
+
+      await adapter.generateMove(makeMoveRequest({ difficulty: 'expert' }));
+
+      const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
+      expect(body.temperature).toBe(0.3);
+    });
   });
 
   // -----------------------------------------------------------------------
