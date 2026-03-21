@@ -86,6 +86,12 @@ export interface DashboardSummary {
   aiVsHumanRatio: { ai: number; human: number };
 }
 
+export interface HealthStatus {
+  status: "ok" | "degraded" | "unreachable";
+  uptime?: number;
+  version?: string;
+}
+
 // ------------------------------------------------------------------
 // 대시보드 요약 Mock
 // ------------------------------------------------------------------
@@ -243,3 +249,11 @@ export const MOCK_DIFFICULTY_STATS: DifficultyStats[] = [
   { difficulty: "intermediate", avgScore: 18, avgTurns: 38, totalGames: 195 },
   { difficulty: "beginner",     avgScore: -22, avgTurns: 45, totalGames: 225 },
 ];
+
+// ------------------------------------------------------------------
+// getMockRooms: 활성/대기 게임만 필터링하여 반환 (FINISHED 제외)
+// ------------------------------------------------------------------
+
+export function getMockRooms(): AdminGame[] {
+  return MOCK_GAMES.filter((g) => g.status !== "FINISHED");
+}

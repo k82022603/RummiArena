@@ -1,4 +1,5 @@
-import { getDashboard } from "@/lib/api";
+import { getDashboard, fetchHealth, fetchRooms } from "@/lib/api";
+import ServerStatus from "@/components/ServerStatus";
 
 interface StatCardProps {
   title: string;
@@ -18,13 +19,22 @@ function StatCard({ title, value, sub, accent = "text-white" }: StatCardProps) {
 }
 
 export default async function DashboardPage() {
-  const data = await getDashboard();
+  const [data, health, rooms] = await Promise.all([
+    getDashboard(),
+    fetchHealth(),
+    fetchRooms(),
+  ]);
 
   const { ai, human } = data.aiVsHumanRatio;
 
   return (
     <div>
       <h1 className="text-xl font-bold text-white mb-6">대시보드</h1>
+
+      {/* 서버 상태 배너 */}
+      <div className="mb-6">
+        <ServerStatus health={health} activeRooms={rooms.length} />
+      </div>
 
       {/* 통계 카드 4개 */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">

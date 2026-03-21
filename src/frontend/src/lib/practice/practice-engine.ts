@@ -321,37 +321,50 @@ export function calculateScore(groups: TableGroup[]): number {
 /**
  * 스테이지 목표(goal)에 따라 클리어 여부를 판정한다.
  *
- * - "group": 유효한 그룹 1개 이상
- * - "run":   유효한 런 1개 이상
- * - "joker": 조커를 포함하고 유효한 세트 1개 이상
+ * - "group":  유효한 그룹 1개 이상
+ * - "run":    유효한 런 1개 이상
+ * - "joker":  조커를 포함하고 유효한 세트 1개 이상
+ * - "multi":  유효한 세트 2개 이상 (그룹 1개 + 런 1개 이상 포함)
+ * - "master": 유효한 세트의 타일 합산 수 12개 이상
  */
 export function isStageClear(
   groups: TableGroup[],
-  goal: "group" | "run" | "joker"
+  goal: "group" | "run" | "joker" | "multi" | "master"
 ): boolean {
   if (groups.length === 0) return false;
 
   switch (goal) {
     case "group":
-      return groups.some((g) => {
-        const result = validateGroup(g.tiles);
-        return result.valid;
-      });
+      return groups.some((g) => validateGroup(g.tiles).valid);
 
     case "run":
-      return groups.some((g) => {
-        const result = validateRun(g.tiles);
-        return result.valid;
-      });
+      return groups.some((g) => validateRun(g.tiles).valid);
 
     case "joker":
       return groups.some((g) => {
         const hasJoker = g.tiles.some((t) => t === "JK1" || t === "JK2");
         if (!hasJoker) return false;
-        const groupResult = validateGroup(g.tiles);
-        if (groupResult.valid) return true;
-        const runResult = validateRun(g.tiles);
-        return runResult.valid;
+        return validateGroup(g.tiles).valid || validateRun(g.tiles).valid;
       });
+
+    case "multi": {
+      // 유효한 세트가 2개 이상이며, 그룹 1개 + 런 1개 이상 포함해야 클리어
+      const validGroups = groups.filter((g) => validateGroup(g.tiles).valid);
+      const validRuns = groups.filter((g) => validateRun(g.tiles).valid);
+      return validGroups.length >= 1 && validRuns.length >= 1;
+    }
+
+    case "master": {
+      // 유효한 세트에 포함된 타일 수 합산 12개 이상
+      let tileCount = 0;
+      for (const g of groups) {
+        const isValidGroup = validateGroup(g.tiles).valid;
+        const isValidRun = validateRun(g.tiles).valid;
+        if (isValidGroup || isValidRun) {
+          tileCount += g.tiles.length;
+        }
+      }
+      return tileCount >= 12;
+    }
   }
 }

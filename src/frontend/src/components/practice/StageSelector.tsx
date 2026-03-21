@@ -17,10 +17,13 @@ const GOAL_LABEL: Record<string, string> = {
   group: "그룹",
   run: "런",
   joker: "조커",
+  multi: "복합",
+  master: "마스터",
 };
 
 /**
- * 스테이지 1~3 선택 카드 목록
+ * 스테이지 1~6 선택 카드 목록
+ * STAGE_NUMBERS와 STAGE_CONFIGS를 동적으로 읽어 렌더링한다.
  */
 const StageSelector = memo(function StageSelector({
   unlockedStages,
@@ -29,7 +32,7 @@ const StageSelector = memo(function StageSelector({
 }: StageSelectorProps) {
   return (
     <div
-      className="grid grid-cols-1 sm:grid-cols-3 gap-4"
+      className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
       role="list"
       aria-label="스테이지 목록"
     >
