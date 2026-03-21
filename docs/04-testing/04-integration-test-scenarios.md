@@ -1326,19 +1326,19 @@ gantt
     axisFormat %m/%d
 
     section Sprint 1
-    시나리오 1: curl 수동 테스트           :done, s1a, 2026-03-13, 2d
-    시나리오 3: 에러 핸들링 curl 테스트     :active, s1b, 2026-03-14, 1d
+    시나리오1 curl 수동 테스트              :done, s1a, 2026-03-13, 2d
+    시나리오3 에러 핸들링 curl 테스트       :active, s1b, 2026-03-14, 1d
     Go httptest 자동화 (Room API)          :s1c, 2026-03-15, 3d
 
     section Sprint 2
-    시나리오 2: 멀티플레이 테스트           :s2a, 2026-03-18, 2d
-    시나리오 4: 방 관리 테스트              :s2b, 2026-03-19, 1d
-    시나리오 6: Mock Fallback              :s2c, 2026-03-20, 1d
+    시나리오2 멀티플레이 테스트             :s2a, 2026-03-18, 2d
+    시나리오4 방 관리 테스트                :s2b, 2026-03-19, 1d
+    시나리오6 Mock Fallback                :s2c, 2026-03-20, 1d
     Go httptest 자동화 (Game API)          :s2d, 2026-03-20, 3d
 
     section Sprint 3
     Playwright E2E 기본 흐름               :s3a, 2026-03-25, 3d
-    시나리오 5: 연습 모드 (API 구현 후)    :s3b, 2026-03-27, 2d
+    시나리오5 연습 모드 API 구현 후         :s3b, 2026-03-27, 2d
     WebSocket 통합 테스트                  :s3c, 2026-03-28, 3d
 ```
 

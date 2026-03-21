@@ -106,7 +106,7 @@ flowchart LR
     Lobby -->|방 만들기| Create["/room/create\n 방 설정 폼"]
     Lobby -->|방 참가| Waiting
     Create -->|생성 완료| Waiting["/room/[roomId]\n 대기실"]
-    Waiting -->|게임 시작\n(status=PLAYING)| Game["/game/[roomId]\n 게임 보드"]
+    Waiting -->|게임 시작 status=PLAYING| Game["/game/[roomId]\n 게임 보드"]
     Waiting -->|나가기| Lobby
     Game -->|게임 종료| GameEnd["게임 종료 오버레이"]
     GameEnd -->|로비로| Lobby

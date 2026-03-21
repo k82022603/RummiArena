@@ -14,7 +14,7 @@
 Feature 브랜치를 분리하면 병합 오버헤드만 증가하고 실익이 없으므로, 모든 커밋을 main에 직접 푸시한다.
 
 ```mermaid
-gitgraph
+gitGraph
     commit id: "Sprint 0 기획/설계"
     commit id: "인프라 구축"
     commit id: "Go 스캐폴딩"
@@ -39,7 +39,7 @@ gitgraph
 협업자가 추가되거나 CI 파이프라인이 본격 가동(Sprint 2)되면, feature 브랜치를 도입한다.
 
 ```mermaid
-gitgraph
+gitGraph
     commit id: "main 안정화"
     branch feature/game-engine
     commit id: "엔진 코어 구현"
