@@ -126,7 +126,7 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 ### MVP 완료 기준
 - [ ] 로컬 K8s에서 Human 2명이 WebSocket으로 게임 가능
 - [x] 게임 규칙 정상 동작 (그룹/런/조커/30점) — engine 테스트 69/69
-- [ ] CI 파이프라인에서 빌드 + 테스트 통과
+- [x] CI 파이프라인에서 빌드 + 테스트 통과 — GitLab CI 13개 job ALL GREEN (2026-03-21)
 
 ---
 
@@ -134,15 +134,15 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 
 ### Sprint 4: AI Adapter
 - [ ] LangChain/LangGraph PoC 비교 → 방식 결정
-- [ ] AI Adapter 공통 인터페이스
-- [ ] OpenAI Adapter 구현
-- [ ] Claude Adapter 구현
-- [ ] DeepSeek Adapter 구현
-- [ ] Ollama Adapter 구현
-- [ ] 프롬프트 설계 (전략별/캐릭터별/심리전 레벨별)
-- [ ] 재시도 + Fallback 로직
+- [x] AI Adapter 공통 인터페이스 — AIClientInterface (game-server), AI Move API 계약서 (2026-03-21)
+- [x] OpenAI Adapter 구현 — OpenAiAdapter 완료 (Sprint 1)
+- [x] Claude Adapter 구현 — ClaudeAdapter 완료 (Sprint 1)
+- [x] DeepSeek Adapter 구현 — DeepSeekAdapter 완료 (Sprint 1)
+- [x] Ollama Adapter 구현 — OllamaAdapter + gemma3:4b (Sprint 1)
+- [x] 프롬프트 설계 (전략별/캐릭터별/심리전 레벨별) — persona.templates.ts 6캐릭터 × 3난이도 × 4레벨 (2026-03-21)
+- [x] 재시도 + Fallback 로직 — 최대 3회 재시도, fallback DRAW (Sprint 1)
 - [ ] AI 호출 로그/메트릭 수집
-- [ ] Dockerfile + Helm Chart
+- [x] Dockerfile + Helm Chart — ai-adapter 완료 (Sprint 1)
 
 ### Sprint 5: 멀티플레이 완성 + 연습 모드
 - [ ] Room 기반 세션 관리 (생명주기 전체)
@@ -150,20 +150,22 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 - [ ] 턴 오케스트레이터 (Human ↔ AI 턴 전환)
 - [ ] 테이블 재배치 동기화
 - [ ] 연결 끊김/재연결 처리
-- [ ] 1인 연습 모드 (Stage 1~6)
+- [x] 1인 연습 모드 Stage 1~3 — PracticeBoard + dnd-kit + joker-aware validation (2026-03-21)
+- [ ] 1인 연습 모드 Stage 4~6
 - [ ] 통합 테스트 (2~4인 Human+AI 게임)
 
 ### AI 연동 완료 기준
 - [ ] Human 1 + AI 3 (서로 다른 모델) 게임 정상 동작
-- [ ] AI 캐릭터 (하수/중수/고수) 차이 확인
-- [ ] 1인 연습 Stage 1~5 동작
+- [x] AI 캐릭터 (하수/중수/고수) 차이 확인 — CharacterService + DIFFICULTY_TEMPERATURE 구현 (2026-03-21)
+- [x] 1인 연습 Stage 1~3 동작 — 구현 완료 (2026-03-21)
 
 ---
 
 ## Phase 4: 플랫폼 기능 확장 (Sprint 6)
 
-- [ ] 관리자 대시보드 (활성 Room, 유저 관리, 강제 종료)
-- [ ] AI 모델별 통계 (승률, 평균 응답시간, 토큰)
+- [x] 관리자 대시보드 초기 구현 (Next.js, recharts, mock 데이터) — 실제 API 연동 미완 (2026-03-21)
+- [x] AI 모델별 통계 UI (승률, 평균 응답시간) — mock 데이터 기반, 실 데이터 연동 미완 (2026-03-21)
+- [ ] 관리자 대시보드 실 API 연동 (game-server REST)
 - [ ] 카카오톡 알림 연동 (빌드/배포/게임 결과)
 - [ ] ELO 랭킹 시스템
 - [ ] 게임 복기 (4분할 뷰, game_snapshots 기반 턴별 리플레이)
@@ -271,38 +273,20 @@ docs/
 
 ## 현재 진행 상황
 
-**Phase 2 진행 중 (Sprint 1)** — Sprint 1 Day 4 완료
+**Phase 2 진행 중 (Sprint 2)** — Sprint 1 완료 + Sprint 2 Day 1 완료 (2026-03-21)
 
-Sprint 1 Day 1 (2026-03-13):
-- game-server 12개 REST API 완전 구현
-- Game Engine 69개 단위 테스트 (96.5% 커버리지)
-- AI Adapter /move 엔드포인트 + 4개 어댑터 + fallback DRAW
-- K8s 5개 서비스 Helm chart 배포, 통합 테스트 31/31 (100%) PASS
+Sprint 1 (2026-03-13 ~ 2026-03-21, 28/28 SP = 100%):
+- Game Engine 69개 단위 테스트 (96.5% 커버리지), REST API 12개, WebSocket Hub 실구현
+- AI Adapter 4개 어댑터 + Fallback DRAW, 통합 테스트 50개 GREEN
+- K8s ArgoCD Synced+Healthy (5개 서비스), GitLab CI **13개 job ALL GREEN**
+- SonarQube RummiArena-Dev Quality Gate: new_coverage ≥ 30%, duplication ≤ 10%
 
-Sprint 1 Day 2 (2026-03-14):
-- docs/00-tools/ 도구 매뉴얼 26개 전체 완성 (신규 13 + 현행화 4)
-- docs/03-development/ 개발 가이드 7개 전체 완성 (신규 4 + 현행화 3)
-- **WebSocket Hub 실구현** (ws_message/ws_hub/ws_connection/ws_handler, 테스트 7/7)
-- **Frontend WebSocket 프로토콜 연동** (6파일, envelope 형식 정렬)
+Sprint 2 Day 1 (2026-03-21):
+- **사전 미팅**: AI Move API 인터페이스 계약 확정 (docs/02-design/11-ai-move-api-contract.md)
+- **#21**: Go AI HTTP 클라이언트 (AIClientInterface) + E2E 게임 흐름 11개 테스트
+- **#20**: NestJS AI 캐릭터 시스템 (6캐릭터 × 3난이도 × 4심리전 레벨, 254개 테스트 GREEN)
+- **#22**: Next.js 관리자 대시보드 초기 구현 (recharts 승률 차트, mock 데이터)
+- **#23**: Frontend 연습 모드 Stage 1~3 (dnd-kit + joker-aware + localStorage)
+- Frontend ESLint: exit code 0 ✅
 
-Sprint 1 Day 3 (2026-03-15):
-- **SonarQube** http://localhost:9001 UP (Elasticsearch heap 수정)
-- **통합 테스트 50개 GREEN** (신규 8개: JokerSwap, InitialMeld, DrawAction, PlaceTiles 등)
-- **PLACE_TILES 실시간 프리뷰** (pendingGroupIds 상태, 노란 점선 미확정 표시)
-- **INVALID_MOVE 에러 UI** (에러 코드 한글 매핑 4종, ErrorToast 3초 자동 소멸)
-- **glab CLI 1.89.0 설치** + GitLab 프로젝트 생성 + GitHub/GitLab 동시 push 설정
-- **Sprint 2 GitHub Issues** #18~#23 등록 (30 SP)
-- 문서 4개 신규: SonarQube 가이드(648줄), GitLab CI/CD(541줄), Runner 가이드(782줄), Quality Gate(505줄)
-- **SonarQube 첫 분석 완료** — 3개 프로젝트 Quality Gate PASSED (bugs=0, vulns=0)
-- **코드 스멜 18→5** (CRITICAL 13건 해소: 문자열 상수화 + Cognitive Complexity 리팩토링)
-- **Go 커버리지 28.4%** SonarQube 반영 (engine 95.8%, service 58.1%)
-
-Sprint 1 Day 4 (2026-03-16):
-- **GitLab Runner K8s 설치 완료** — Runner ID 52262488, gitlab-runner NS, online
-- **`.gitlab-ci.yml` lint/test GREEN** — golangci-lint v2.1, golang:1.24, GOBIN=/usr/local/bin, sonar-scanner-cli:5.0
-- **Go lint 5건 + NestJS lint 2건** 해결
-- **CVE 3건 수정** — next 15.2.6, multer overrides 2.1.0, golang-jwt v5.2.2
-- **CI 이미지 버전 가이드 신규** (09-gitlab-cicd-setup.md 8절)
-- quality 단계(sonarqube + trivy-fs) 진행 중 → 내일 확인
-
-다음 단계: quality 단계 GREEN → build → update-gitops → 전체 파이프라인 GREEN → E2E 테스트
+다음 단계: Sprint 2 Day 2 (2026-03-29) — LLM 실제 호출 연동, WebSocket 멀티플레이, Stage 4~6
