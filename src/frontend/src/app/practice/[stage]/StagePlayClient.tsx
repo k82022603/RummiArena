@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { StageNumber } from "@/lib/practice/stage-configs";
 import { STAGE_CONFIGS, STAGE_NUMBERS } from "@/lib/practice/stage-configs";
@@ -70,6 +71,7 @@ function saveBestScore(stage: StageNumber, score: number) {
  */
 export default function StagePlayClient({ stageNum }: StagePlayClientProps) {
   const router = useRouter();
+  const { data: session } = useSession();
   const config = STAGE_CONFIGS[stageNum];
 
   const [showTutorial, setShowTutorial] = useState(true);
@@ -99,15 +101,19 @@ export default function StagePlayClient({ stageNum }: StagePlayClientProps) {
       saveCompleted(updated);
       setCompletedStages(updated);
 
-      // 서버 동기화 stub (실패해도 무시)
-      savePracticeProgress({
-        userId: 'guest',
-        stage: stageNum,
-        completedAt: new Date().toISOString(),
-        score,
-      }).catch(() => {});
+      // 서버 동기화 (실패해도 무시 - localStorage 우선)
+      const token = (session?.user as { token?: string } | undefined)?.token ?? "";
+      savePracticeProgress(
+        {
+          userId: (session?.user?.name ?? "guest"),
+          stage: stageNum,
+          completedAt: new Date().toISOString(),
+          score,
+        },
+        token
+      ).catch(() => {});
     },
-    [stageNum]
+    [stageNum, session]
   );
 
   // ------------------------------------------------------------------

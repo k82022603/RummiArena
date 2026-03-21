@@ -53,7 +53,7 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
   const isMounted = useRef(true);
   const seqRef = useRef(0);
 
-  const { setStatus, setLastError } = useWSStore();
+  const { setStatus, setLastError, setReconnectNotice } = useWSStore();
   const {
     setMyTiles,
     setGameState,
@@ -185,7 +185,9 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
           break;
         }
         case "PLAYER_RECONNECT": {
-          console.info("[WS] PLAYER_RECONNECT");
+          const payload = msg.payload as { seat: number; displayName: string; userId: string };
+          setReconnectNotice({ displayName: payload.displayName, seat: payload.seat });
+          console.info("[WS] PLAYER_RECONNECT seat=%d %s", payload.seat, payload.displayName);
           break;
         }
         case "AI_THINKING": {
@@ -227,6 +229,7 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
       setMySeat,
       setTurnNumber,
       resetPending,
+      setReconnectNotice,
     ]
   );
 

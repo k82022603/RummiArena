@@ -8,6 +8,8 @@ interface WSStore {
   setStatus: (s: WSConnectionStatus) => void;
   lastError: string | null;
   setLastError: (e: string | null) => void;
+  reconnectNotice: { displayName: string; seat: number } | null;
+  setReconnectNotice: (n: { displayName: string; seat: number } | null) => void;
 }
 
 export const useWSStore = create<WSStore>()((set) => ({
@@ -15,4 +17,6 @@ export const useWSStore = create<WSStore>()((set) => ({
   setStatus: (status) => set({ status }),
   lastError: null,
   setLastError: (lastError) => set({ lastError }),
+  reconnectNotice: null,
+  setReconnectNotice: (reconnectNotice) => set({ reconnectNotice }),
 }));
