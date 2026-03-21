@@ -41,7 +41,7 @@ func main() {
 
 	gin.SetMode(cfg.Server.Mode)
 
-	router := buildRouter(cfg, logger, redisClient, gameStateRepo, roomRepo)
+	router := buildRouter(cfg, logger, db, redisClient, gameStateRepo, roomRepo)
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Server.Port,
@@ -85,6 +85,7 @@ func initGameStateRepo(redisClient *redis.Client, logger *zap.Logger) repository
 func buildRouter(
 	cfg *config.Config,
 	logger *zap.Logger,
+	db *gorm.DB,
 	redisClient *redis.Client,
 	gameStateRepo repository.MemoryGameStateRepository,
 	roomRepo repository.MemoryRoomRepository,
@@ -110,13 +111,22 @@ func buildRouter(
 	wsHandler := handler.NewWSHandler(wsHub, roomSvc, gameSvc, turnSvc, aiClient, cfg.JWT.Secret, logger)
 	authHandler := handler.NewAuthHandler(cfg.JWT.Secret)
 
+	// DB가 nil이면 practiceHandler를 nil로 두어 라우트 등록을 건너뛴다.
+	var practiceHandler *handler.PracticeHandler
+	if db != nil {
+		practiceRepo := repository.NewPostgresPracticeRepo(db)
+		practiceHandler = handler.NewPracticeHandler(practiceRepo, logger)
+	} else {
+		logger.Warn("postgres unavailable — practice API disabled")
+	}
+
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.Use(middleware.ZapLogger(logger))
 
 	registerSystemRoutes(router, redisClient)
 	registerWSRoutes(router, wsHandler)
-	registerAPIRoutes(router, cfg, roomHandler, gameHandler, authHandler)
+	registerAPIRoutes(router, cfg, roomHandler, gameHandler, authHandler, practiceHandler)
 
 	return router
 }
@@ -142,12 +152,14 @@ func registerWSRoutes(router *gin.Engine, wsHandler *handler.WSHandler) {
 
 // registerAPIRoutes REST API 라우트 그룹을 등록한다.
 // APP_ENV=dev 일 때는 /api/auth/dev-login 엔드포인트를 추가로 등록한다.
+// practiceHandler가 nil이면 /api/practice 라우트는 등록하지 않는다.
 func registerAPIRoutes(
 	router *gin.Engine,
 	cfg *config.Config,
 	roomHandler *handler.RoomHandler,
 	gameHandler *handler.GameHandler,
 	authHandler *handler.AuthHandler,
+	practiceHandler *handler.PracticeHandler,
 ) {
 	api := router.Group("/api")
 
@@ -177,6 +189,15 @@ func registerAPIRoutes(
 		games.POST("/:id/confirm", gameHandler.ConfirmTurn)
 		games.POST("/:id/draw", gameHandler.DrawTile)
 		games.POST("/:id/reset", gameHandler.ResetTurn)
+	}
+
+	if practiceHandler != nil {
+		practice := api.Group("/practice")
+		practice.Use(middleware.JWTAuth(cfg.JWT.Secret))
+		{
+			practice.POST("/progress", practiceHandler.SaveProgress)
+			practice.GET("/progress", practiceHandler.GetProgress)
+		}
 	}
 }
 
