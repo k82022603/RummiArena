@@ -25,7 +25,7 @@ stages:
   - update-gitops
 
 variables:
-  DOCKER_IMAGE: registry.gitlab.com/$CI_PROJECT_PATH
+  DOCKER_IMAGE: registry.gitlab.com/k82022603/rummiarena
   DOCKER_DRIVER: overlay2
   DOCKER_TLS_CERTDIR: ""          # DinD TLS 비활성화 (로컬 러너)
   SONAR_PROJECT_KEY: rummiarena
