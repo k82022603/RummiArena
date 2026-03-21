@@ -265,7 +265,7 @@ build-game-server:
   <<: *build-common
   script:
     - docker build
-        --target production
+        --target runner
         --tag $DOCKER_IMAGE/game-server:$CI_COMMIT_SHA
         --tag $DOCKER_IMAGE/game-server:latest
         --label "org.opencontainers.image.revision=$CI_COMMIT_SHA"
@@ -287,7 +287,7 @@ build-ai-adapter:
   <<: *build-common
   script:
     - docker build
-        --target production
+        --target runner
         --tag $DOCKER_IMAGE/ai-adapter:$CI_COMMIT_SHA
         --tag $DOCKER_IMAGE/ai-adapter:latest
         --cache-from $DOCKER_IMAGE/ai-adapter:latest
@@ -306,7 +306,7 @@ build-frontend:
   <<: *build-common
   script:
     - docker build
-        --target production
+        --target runner
         --tag $DOCKER_IMAGE/frontend:$CI_COMMIT_SHA
         --tag $DOCKER_IMAGE/frontend:latest
         --cache-from $DOCKER_IMAGE/frontend:latest
