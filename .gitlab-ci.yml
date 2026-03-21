@@ -166,6 +166,8 @@ test-go:
         -coverprofile=coverage.out
         -covermode=atomic
         -timeout 120s
+    # SonarQube 경로 정합: module 경로 → 프로젝트 상대 경로로 변환
+    - sed -i "s|github.com/k82022603/RummiArena/game-server/|src/game-server/|g" coverage.out
     - go tool cover -func=coverage.out
     # XML 변환 (GitLab Coverage 리포트)
     - GOBIN=/usr/local/bin go install github.com/boumenot/gocover-cobertura@latest
@@ -232,8 +234,9 @@ sonarqube:
         -Dsonar.qualitygate.wait=true
         -Dsonar.sources=src/
         -Dsonar.exclusions="**/node_modules/**,**/*.test.go,**/*.spec.ts,**/*.spec.js,**/dist/**,**/coverage/**"
+        -Dsonar.coverage.exclusions="src/frontend/**,src/admin/**"
         -Dsonar.go.coverage.reportPaths=src/game-server/coverage.out
-        -Dsonar.javascript.lcov.reportPaths=src/ai-adapter/coverage/lcov.info,src/frontend/coverage/lcov.info
+        -Dsonar.javascript.lcov.reportPaths=src/ai-adapter/coverage/lcov.info
   needs:
     - test-go
     - test-nest
