@@ -327,7 +327,10 @@ build-frontend:
 
 update-gitops:
   stage: update-gitops
-  image: alpine/git:latest
+  <<: *local-runner
+  image:
+    name: alpine/git:latest
+    entrypoint: [""]
   before_script:
     - git config --global user.email "ci@rummiarena.local"
     - git config --global user.name "GitLab CI Bot"
