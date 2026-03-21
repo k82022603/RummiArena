@@ -28,24 +28,24 @@ gantt
     axisFormat %m/%d
 
     section Phase 1 - 기획 & 환경
-        Sprint 0: 기획/인프라/Backend 결정   :done, s0, 2026-03-08, 2026-03-28
+        Sprint 0 기획/인프라/Backend 결정    :done, s0, 2026-03-08, 2026-03-28
 
     section Phase 2 - 핵심 게임 (MVP)
-        Sprint 1: 게임 엔진                  :s1, 2026-03-29, 2026-04-11
-        Sprint 2: 백엔드 API                 :s2, 2026-04-12, 2026-04-25
-        Sprint 3: 프론트엔드 + 연습모드       :s3, 2026-04-26, 2026-05-09
+        Sprint 1 게임 엔진                   :s1, 2026-03-29, 2026-04-11
+        Sprint 2 백엔드 API                  :s2, 2026-04-12, 2026-04-25
+        Sprint 3 프론트엔드 + 연습모드        :s3, 2026-04-26, 2026-05-09
 
     section Phase 3 - AI & 멀티플레이
-        Sprint 4: AI Adapter                 :s4, 2026-05-10, 2026-05-23
-        Sprint 5: 멀티플레이 완성             :s5, 2026-05-24, 2026-06-06
+        Sprint 4 AI Adapter                  :s4, 2026-05-10, 2026-05-23
+        Sprint 5 멀티플레이 완성              :s5, 2026-05-24, 2026-06-06
 
     section Phase 4 - 플랫폼 확장
-        Sprint 6: 관리자/랭킹/알림            :s6, 2026-06-07, 2026-06-20
+        Sprint 6 관리자/랭킹/알림             :s6, 2026-06-07, 2026-06-20
 
     section Phase 5 - DevSecOps 고도화
-        Sprint 7: Observability              :s7, 2026-06-21, 2026-07-04
-        Sprint 8: 보안 고도화                 :s8, 2026-07-05, 2026-07-18
-        Sprint 9: Service Mesh               :s9, 2026-07-19, 2026-08-01
+        Sprint 7 Observability               :s7, 2026-06-21, 2026-07-04
+        Sprint 8 보안 고도화                  :s8, 2026-07-05, 2026-07-18
+        Sprint 9 Service Mesh                :s9, 2026-07-19, 2026-08-01
 
     section Phase 6 - 운영 & 실험
         운영/토너먼트/분석                    :op, 2026-08-02, 2026-08-15

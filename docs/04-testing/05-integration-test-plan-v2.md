@@ -318,7 +318,7 @@ sequenceDiagram
     GS-->>QA: 201 {id, roomCode, status}
 
     Note over QA,Verify: 데이터 정합성 검증
-    QA->>Verify: pg_query "SELECT * FROM games WHERE id='...';"
+    QA->>Verify: pg_query SELECT * FROM games WHERE id=...
     Verify-->>QA: DB 레코드 반환
     QA->>QA: API 응답 vs DB 레코드 비교
 ```

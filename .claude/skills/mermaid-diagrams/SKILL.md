@@ -23,6 +23,26 @@ Mermaid를 사용한 다이어그램 작성 표준을 정의합니다.
 
 ---
 
+## ⚠️ GitHub 렌더링 주의사항 (Breaking Rules)
+
+GitHub의 Mermaid 렌더러는 표준 Mermaid와 미묘하게 다르다. 아래 규칙을 반드시 지킨다.
+
+| 규칙 | 잘못된 예 | 올바른 예 |
+|------|-----------|-----------|
+| **gantt 작업명에 `:` 금지** | `Sprint 1: 게임 엔진  :s1, ...` | `Sprint 1 게임 엔진  :s1, ...` |
+| **flowchart edge label에 `\n` 금지** | `A -->|시작\n완료| B` | `A -->|시작 완료| B` |
+| **gitGraph 대소문자** | ` ```mermaid\ngitgraph` | ` ```mermaid\ngitGraph` |
+| **sequenceDiagram 메시지에 `;` 금지** | `A->>B: SELECT * WHERE id='x';` | `A->>B: SELECT * WHERE id=x` |
+| **sequenceDiagram 메시지에 `'` 주의** | `A->>B: WHERE id='abc'` | `A->>B: WHERE id=abc` |
+
+> **gantt 작업명 규칙 상세**: `gantt`에서 첫 번째 `:`는 작업명과 속성(status/id/날짜)의 구분자이다.
+> 작업명 안에 `:`를 쓰면 파싱 오류가 발생한다. 공백 또는 ` -`로 대체할 것.
+
+> **`\n` 제한 상세**: `\n`은 노드 라벨(`A["줄1\n줄2"]`) 안에서는 사용 가능하나,
+> 엣지 라벨(`|텍스트|`) 안에서는 불가하다.
+
+---
+
 ## Flowchart Patterns
 
 ### 기본 플로우차트
