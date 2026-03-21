@@ -23,14 +23,15 @@ const (
 
 // RoomPlayer 방 안의 플레이어 정보 (응답용)
 type RoomPlayer struct {
-	Seat        int        `json:"seat"`
-	UserID      string     `json:"userId,omitempty"`
-	DisplayName string     `json:"displayName,omitempty"`
-	Type        string     `json:"type"` // HUMAN | AI_OPENAI | AI_CLAUDE | AI_LLAMA | AI_DEEPSEEK
-	Status      SeatStatus `json:"status"`
-	Persona     string     `json:"persona,omitempty"`
-	Difficulty  string     `json:"difficulty,omitempty"`
-	AIModel     string     `json:"aiModel,omitempty"`
+	Seat              int        `json:"seat"`
+	UserID            string     `json:"userId,omitempty"`
+	DisplayName       string     `json:"displayName,omitempty"`
+	Type              string     `json:"type"` // HUMAN | AI_OPENAI | AI_CLAUDE | AI_LLAMA | AI_DEEPSEEK
+	Status            SeatStatus `json:"status"`
+	Persona           string     `json:"persona,omitempty"`
+	Difficulty        string     `json:"difficulty,omitempty"`
+	AIModel           string     `json:"aiModel,omitempty"`
+	AIPsychologyLevel int        `json:"aiPsychologyLevel,omitempty"`
 }
 
 // RoomSettings 방 설정

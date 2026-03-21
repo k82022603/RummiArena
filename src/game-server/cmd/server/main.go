@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
+	"github.com/k82022603/RummiArena/game-server/internal/client"
 	"github.com/k82022603/RummiArena/game-server/internal/config"
 	"github.com/k82022603/RummiArena/game-server/internal/handler"
 	"github.com/k82022603/RummiArena/game-server/internal/infra"
@@ -92,11 +93,21 @@ func buildRouter(
 	gameSvc := service.NewGameService(gameStateRepo)
 	turnSvc := service.NewTurnService(gameStateRepo, gameSvc)
 
+	// AI Client: AI_ADAPTER_URL이 설정되지 않으면 nil로 두어 AI 턴을 비활성화한다.
+	var aiClient client.AIClientInterface
+	if cfg.AIAdapter.BaseURL != "" {
+		timeout := time.Duration(cfg.AIAdapter.TimeoutSec) * time.Second
+		aiClient = client.NewAIClient(cfg.AIAdapter.BaseURL, cfg.AIAdapter.Token, timeout)
+		logger.Info("ai-adapter client configured", zap.String("url", cfg.AIAdapter.BaseURL))
+	} else {
+		logger.Warn("AI_ADAPTER_URL not set — AI turns disabled")
+	}
+
 	wsHub := handler.NewHub(logger)
 
 	roomHandler := handler.NewRoomHandler(roomSvc)
 	gameHandler := handler.NewGameHandler(gameSvc)
-	wsHandler := handler.NewWSHandler(wsHub, roomSvc, gameSvc, turnSvc, cfg.JWT.Secret, logger)
+	wsHandler := handler.NewWSHandler(wsHub, roomSvc, gameSvc, turnSvc, aiClient, cfg.JWT.Secret, logger)
 	authHandler := handler.NewAuthHandler(cfg.JWT.Secret)
 
 	router := gin.New()

@@ -1,9 +1,11 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -11,6 +13,7 @@ import (
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
 
+	"github.com/k82022603/RummiArena/game-server/internal/client"
 	"github.com/k82022603/RummiArena/game-server/internal/model"
 	"github.com/k82022603/RummiArena/game-server/internal/service"
 )
@@ -27,16 +30,19 @@ type WSHandler struct {
 	roomSvc   service.RoomService
 	gameSvc   service.GameService
 	turnSvc   service.TurnService
+	aiClient  client.AIClientInterface // nil이면 AI 기능 비활성화
 	jwtSecret string
 	logger    *zap.Logger
 }
 
-// NewWSHandler WSHandler 생성자
+// NewWSHandler WSHandler 생성자.
+// aiClient는 nil을 허용하며, nil이면 AI 턴 자동 처리가 비활성화된다.
 func NewWSHandler(
 	hub *Hub,
 	roomSvc service.RoomService,
 	gameSvc service.GameService,
 	turnSvc service.TurnService,
+	aiClient client.AIClientInterface,
 	jwtSecret string,
 	logger *zap.Logger,
 ) *WSHandler {
@@ -45,6 +51,7 @@ func NewWSHandler(
 		roomSvc:   roomSvc,
 		gameSvc:   gameSvc,
 		turnSvc:   turnSvc,
+		aiClient:  aiClient,
 		jwtSecret: jwtSecret,
 		logger:    logger,
 	}
@@ -577,8 +584,10 @@ func (h *WSHandler) broadcastTurnEnd(conn *Connection, state *model.GameStateRed
 func (h *WSHandler) broadcastTurnStart(roomID string, state *model.GameStateRedis) {
 	playerIdx := findPlayerBySeatInState(state.Players, state.CurrentSeat)
 	playerType := "HUMAN"
+	var currentPlayer *model.PlayerState
 	if playerIdx >= 0 {
 		playerType = state.Players[playerIdx].PlayerType
+		currentPlayer = &state.Players[playerIdx]
 	}
 
 	h.hub.BroadcastToRoom(roomID, &WSMessage{
@@ -590,6 +599,11 @@ func (h *WSHandler) broadcastTurnStart(roomID string, state *model.GameStateRedi
 			TurnStartedAt: time.Unix(state.TurnStartAt, 0).UTC().Format(time.RFC3339),
 		},
 	})
+
+	// AI 플레이어이면 비동기로 자동 수행
+	if h.aiClient != nil && currentPlayer != nil && strings.HasPrefix(playerType, "AI_") {
+		go h.handleAITurn(roomID, state.GameID, currentPlayer, state)
+	}
 }
 
 func (h *WSHandler) broadcastGameOver(conn *Connection, state *model.GameStateRedis) {
@@ -622,6 +636,248 @@ func (h *WSHandler) broadcastGameOver(conn *Connection, state *model.GameStateRe
 			Results:    results,
 		},
 	})
+}
+
+// ============================================================
+// AI Turn Orchestrator
+// ============================================================
+
+// handleAITurn AI 플레이어의 턴을 비동기로 처리한다.
+// ai-adapter에 MoveRequest를 전송하고 응답에 따라 배치 또는 강제 드로우를 수행한다.
+func (h *WSHandler) handleAITurn(roomID, gameID string, player *model.PlayerState, state *model.GameStateRedis) {
+	const aiTurnTimeout = 200 * time.Second
+
+	ctx, cancel := context.WithTimeout(context.Background(), aiTurnTimeout)
+	defer cancel()
+
+	aiModel := playerTypeToModel(player.PlayerType)
+
+	opponents := buildOpponentInfo(state.Players, player.SeatOrder)
+	tableGroups := buildTableGroups(state.Table)
+
+	req := &client.MoveRequest{
+		GameID:          gameID,
+		PlayerID:        player.UserID,
+		Model:           aiModel,
+		Persona:         player.AIPersona,
+		Difficulty:      player.AIDifficulty,
+		PsychologyLevel: player.AIPsychLevel,
+		MaxRetries:      3,
+		TimeoutMs:       30000,
+		GameState: client.MoveGameState{
+			TableGroups:     tableGroups,
+			MyTiles:         player.Rack,
+			Opponents:       opponents,
+			DrawPileCount:   len(state.DrawPile),
+			TurnNumber:      state.TurnCount,
+			InitialMeldDone: player.HasInitialMeld,
+		},
+	}
+
+	h.logger.Info("ws: AI turn start",
+		zap.String("gameId", gameID),
+		zap.String("playerId", player.UserID),
+		zap.Int("seat", player.SeatOrder),
+		zap.String("model", aiModel),
+	)
+
+	resp, err := h.aiClient.GenerateMove(ctx, req)
+	if err != nil {
+		h.logger.Error("ws: AI move failed, forcing draw",
+			zap.String("gameId", gameID),
+			zap.Int("seat", player.SeatOrder),
+			zap.Error(err),
+		)
+		h.forceAIDraw(roomID, gameID, player.SeatOrder)
+		return
+	}
+
+	if resp.Action == "place" && len(resp.TilesFromRack) > 0 {
+		h.processAIPlace(roomID, gameID, player.SeatOrder, resp)
+	} else {
+		h.forceAIDraw(roomID, gameID, player.SeatOrder)
+	}
+}
+
+// processAIPlace AI의 배치 응답을 검증하고 턴을 확정한다.
+// 검증 실패 시 강제 드로우로 폴백한다.
+func (h *WSHandler) processAIPlace(roomID, gameID string, seat int, resp *client.MoveResponse) {
+	tableGroups := make([]service.TilePlacement, len(resp.TableGroups))
+	for i, g := range resp.TableGroups {
+		tableGroups[i] = service.TilePlacement{Tiles: g.Tiles}
+	}
+
+	req := &service.ConfirmRequest{
+		Seat:          seat,
+		TableGroups:   tableGroups,
+		TilesFromRack: resp.TilesFromRack,
+	}
+
+	result, err := h.gameSvc.ConfirmTurn(gameID, req)
+	if err != nil || (result != nil && !result.Success) {
+		errCode := ""
+		if result != nil {
+			errCode = result.ErrorCode
+		}
+		h.logger.Warn("ws: AI place invalid, falling back to draw",
+			zap.String("gameId", gameID),
+			zap.Int("seat", seat),
+			zap.String("errorCode", errCode),
+		)
+		h.forceAIDraw(roomID, gameID, seat)
+		return
+	}
+
+	state := result.GameState
+	if result.GameEnded {
+		h.broadcastGameOverFromState(roomID, state)
+		return
+	}
+
+	h.broadcastTurnEndFromState(roomID, seat, state, "PLACE_TILES", len(resp.TilesFromRack))
+	h.broadcastTurnStart(roomID, state)
+}
+
+// forceAIDraw AI 드로우를 강제로 수행한다.
+// ai-adapter 호출 실패 또는 배치 검증 실패 시 폴백으로 사용한다.
+func (h *WSHandler) forceAIDraw(roomID, gameID string, seat int) {
+	result, err := h.gameSvc.DrawTile(gameID, seat)
+	if err != nil {
+		h.logger.Error("ws: AI force draw failed",
+			zap.String("gameId", gameID),
+			zap.Int("seat", seat),
+			zap.Error(err),
+		)
+		return
+	}
+
+	state := result.GameState
+	if result.GameEnded {
+		h.broadcastGameOverFromState(roomID, state)
+		return
+	}
+
+	// TILE_DRAWN: AI 드로우는 전원에게 nil 타일 코드로 브로드캐스트
+	playerIdx := findPlayerBySeatInState(state.Players, seat)
+	playerTileCount := 0
+	if playerIdx >= 0 {
+		playerTileCount = len(state.Players[playerIdx].Rack)
+	}
+	h.hub.BroadcastToRoom(roomID, &WSMessage{
+		Type: S2CTileDrawn,
+		Payload: TileDrawnPayload{
+			Seat:            seat,
+			DrawnTile:       nil,
+			DrawPileCount:   len(state.DrawPile),
+			PlayerTileCount: playerTileCount,
+		},
+	})
+
+	h.broadcastTurnEndFromState(roomID, seat, state, "DRAW_TILE", 0)
+	h.broadcastTurnStart(roomID, state)
+}
+
+// broadcastTurnEndFromState Connection 없이 roomID 기반으로 TURN_END를 브로드캐스트한다.
+// AI 턴 처리에서 Connection이 존재하지 않을 때 사용한다.
+func (h *WSHandler) broadcastTurnEndFromState(roomID string, seat int, state *model.GameStateRedis, action string, tilesPlaced int) {
+	playerIdx := findPlayerBySeatInState(state.Players, seat)
+	playerTileCount := 0
+	hasInitialMeld := false
+	if playerIdx >= 0 {
+		playerTileCount = len(state.Players[playerIdx].Rack)
+		hasInitialMeld = state.Players[playerIdx].HasInitialMeld
+	}
+
+	h.hub.BroadcastToRoom(roomID, &WSMessage{
+		Type: S2CTurnEnd,
+		Payload: TurnEndPayload{
+			Seat:             seat,
+			Action:           action,
+			TableGroups:      stateTableToWSGroups(state.Table),
+			TilesPlacedCount: tilesPlaced,
+			PlayerTileCount:  playerTileCount,
+			HasInitialMeld:   hasInitialMeld,
+			DrawPileCount:    len(state.DrawPile),
+			NextSeat:         state.CurrentSeat,
+		},
+	})
+}
+
+// broadcastGameOverFromState Connection 없이 roomID 기반으로 GAME_OVER를 브로드캐스트한다.
+// AI 턴에서 게임이 종료될 때 사용한다.
+func (h *WSHandler) broadcastGameOverFromState(roomID string, state *model.GameStateRedis) {
+	results := make([]WSPlayerResult, len(state.Players))
+	for i, p := range state.Players {
+		results[i] = WSPlayerResult{
+			Seat:           p.SeatOrder,
+			PlayerType:     p.PlayerType,
+			RemainingTiles: p.Rack,
+			IsWinner:       len(p.Rack) == 0,
+		}
+	}
+
+	winnerSeat := -1
+	winnerID := ""
+	for _, p := range state.Players {
+		if len(p.Rack) == 0 {
+			winnerSeat = p.SeatOrder
+			winnerID = p.UserID
+			break
+		}
+	}
+
+	h.hub.BroadcastToRoom(roomID, &WSMessage{
+		Type: S2CGameOver,
+		Payload: GameOverPayload{
+			EndType:    "NORMAL",
+			WinnerID:   winnerID,
+			WinnerSeat: winnerSeat,
+			Results:    results,
+		},
+	})
+}
+
+// playerTypeToModel PlayerType 문자열을 ai-adapter model 식별자로 변환한다.
+func playerTypeToModel(playerType string) string {
+	switch playerType {
+	case "AI_OPENAI":
+		return "openai"
+	case "AI_CLAUDE":
+		return "claude"
+	case "AI_DEEPSEEK":
+		return "deepseek"
+	case "AI_LLAMA":
+		return "ollama"
+	default:
+		return "ollama"
+	}
+}
+
+// buildOpponentInfo 현재 플레이어를 제외한 상대 목록을 빌드한다.
+func buildOpponentInfo(players []model.PlayerState, mySeat int) []client.OpponentInfo {
+	var opponents []client.OpponentInfo
+	for _, p := range players {
+		if p.SeatOrder != mySeat {
+			opponents = append(opponents, client.OpponentInfo{
+				PlayerID:       p.UserID,
+				RemainingTiles: len(p.Rack),
+			})
+		}
+	}
+	return opponents
+}
+
+// buildTableGroups SetOnTable 슬라이스를 client.TileGroup 슬라이스로 변환한다.
+func buildTableGroups(table []*model.SetOnTable) []client.TileGroup {
+	groups := make([]client.TileGroup, len(table))
+	for i, s := range table {
+		tiles := make([]string, len(s.Tiles))
+		for j, t := range s.Tiles {
+			tiles[j] = t.Code
+		}
+		groups[i] = client.TileGroup{Tiles: tiles}
+	}
+	return groups
 }
 
 func (h *WSHandler) handleDisconnect(conn *Connection) {

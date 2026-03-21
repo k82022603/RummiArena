@@ -79,7 +79,7 @@ func buildTestRouter(t *testing.T, appEnv string) *gin.Engine {
 
 	roomHandler := handler.NewRoomHandler(roomSvc)
 	gameHandler := handler.NewGameHandler(gameSvc)
-	wsHandler := handler.NewWSHandler(wsHub, roomSvc, gameSvc, turnSvc, e2eJWTSecret, logger)
+	wsHandler := handler.NewWSHandler(wsHub, roomSvc, gameSvc, turnSvc, nil, e2eJWTSecret, logger)
 	authHandler := handler.NewAuthHandler(e2eJWTSecret)
 
 	router := gin.New()
