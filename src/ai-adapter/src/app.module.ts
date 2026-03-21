@@ -4,6 +4,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { HealthModule } from './health/health.module';
 import { MoveModule } from './move/move.module';
+import { CharacterModule } from './character/character.module';
 
 /**
  * RummiArena AI Adapter 루트 모듈.
@@ -21,6 +22,7 @@ import { MoveModule } from './move/move.module';
     }),
     HealthModule,
     MoveModule,
+    CharacterModule,
   ],
   controllers: [AppController],
   providers: [AppService],

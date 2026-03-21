@@ -7,6 +7,7 @@ import { DeepSeekAdapter } from '../adapter/deepseek.adapter';
 import { OllamaAdapter } from '../adapter/ollama.adapter';
 import { PromptBuilderService } from '../prompt/prompt-builder.service';
 import { ResponseParserService } from '../common/parser/response-parser.service';
+import { CharacterService } from '../character/character.service';
 
 /**
  * Move 모듈.
@@ -23,6 +24,7 @@ import { ResponseParserService } from '../common/parser/response-parser.service'
     OllamaAdapter,
     PromptBuilderService,
     ResponseParserService,
+    CharacterService,
   ],
 })
 export class MoveModule {}
