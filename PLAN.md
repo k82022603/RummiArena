@@ -122,6 +122,9 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 - [x] GitLab Runner 등록 (K8s Executor, runner-id 52262488) — 2026-03-16
 - [x] dev-login 엔드포인트 (APP_ENV=dev, 게스트 JWT 발급) — 2026-03-15
 - [x] ai-adapter 테스트 110개 GREEN (adapter 100% coverage) — 2026-03-15
+- [x] SonarQube Quality Gate RummiArena-Dev 연결 (new_coverage ≥ 30%) — 2026-03-21
+- [x] SonarQube coverage.out 경로 패치 (sed 순서 수정) — 2026-03-21
+- [x] Practice Progress API (Go) — POST/GET /api/practice/progress — 2026-03-21
 
 ### MVP 완료 기준
 - [x] 로컬 K8s에서 Human 2명이 WebSocket으로 게임 가능 — ws_multiplayer_test.go 7개 테스트 PASS (2026-03-21)
@@ -149,7 +152,7 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 - [ ] Human + AI 혼합 매칭
 - [x] 턴 오케스트레이터 (Human ↔ AI 턴 전환) — AI Turn Orchestrator goroutine + forceAIDraw 폴백 (2026-03-21)
 - [ ] 테이블 재배치 동기화
-- [ ] 연결 끊김/재연결 처리 (PLAYER_RECONNECT Frontend UX 미완)
+- [x] 연결 끊김/재연결 처리 — PLAYER_RECONNECT Frontend 토스트 UI 구현 (2026-03-21)
 - [x] 1인 연습 모드 Stage 1~3 — PracticeBoard + dnd-kit + joker-aware validation (2026-03-21)
 - [x] 1인 연습 모드 Stage 4~6 — 조커 마스터/복합 배치/루미큐브 마스터 (2026-03-21)
 - [x] 통합 테스트 (Human 2명 WebSocket 대전) — ws_multiplayer_test.go 7개 PASS (2026-03-21)
@@ -169,7 +172,7 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 - [x] 관리자 인증 — getAdminToken() 3단계 fallback (env → sessionStorage → dev-login) (2026-03-21)
 - [x] AI 모델별 통계 UI (승률, 평균 응답시간) — mock 데이터 기반, 실 데이터 연동 미완 (2026-03-21)
 - [ ] 카카오톡 알림 연동 (빌드/배포/게임 결과)
-- [ ] ELO 랭킹 시스템
+- [ ] ELO 랭킹 시스템 — 설계 완료 (docs/01-planning/10-phase4-elo-design.md), Issues #25~#27 등록
 - [ ] 게임 복기 (4분할 뷰, game_snapshots 기반 턴별 리플레이)
 
 ---
