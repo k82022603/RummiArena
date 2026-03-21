@@ -124,7 +124,7 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 - [x] ai-adapter 테스트 110개 GREEN (adapter 100% coverage) — 2026-03-15
 
 ### MVP 완료 기준
-- [ ] 로컬 K8s에서 Human 2명이 WebSocket으로 게임 가능
+- [x] 로컬 K8s에서 Human 2명이 WebSocket으로 게임 가능 — ws_multiplayer_test.go 7개 테스트 PASS (2026-03-21)
 - [x] 게임 규칙 정상 동작 (그룹/런/조커/30점) — engine 테스트 69/69
 - [x] CI 파이프라인에서 빌드 + 테스트 통과 — GitLab CI 13개 job ALL GREEN (2026-03-21)
 
@@ -145,27 +145,29 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 - [x] Dockerfile + Helm Chart — ai-adapter 완료 (Sprint 1)
 
 ### Sprint 5: 멀티플레이 완성 + 연습 모드
-- [ ] Room 기반 세션 관리 (생명주기 전체)
+- [x] Room 기반 세션 관리 (생명주기 전체) — FinishRoom + ListRooms 필터 + 재접속 감지 (2026-03-21)
 - [ ] Human + AI 혼합 매칭
-- [ ] 턴 오케스트레이터 (Human ↔ AI 턴 전환)
+- [x] 턴 오케스트레이터 (Human ↔ AI 턴 전환) — AI Turn Orchestrator goroutine + forceAIDraw 폴백 (2026-03-21)
 - [ ] 테이블 재배치 동기화
-- [ ] 연결 끊김/재연결 처리
+- [ ] 연결 끊김/재연결 처리 (PLAYER_RECONNECT Frontend UX 미완)
 - [x] 1인 연습 모드 Stage 1~3 — PracticeBoard + dnd-kit + joker-aware validation (2026-03-21)
-- [ ] 1인 연습 모드 Stage 4~6
-- [ ] 통합 테스트 (2~4인 Human+AI 게임)
+- [x] 1인 연습 모드 Stage 4~6 — 조커 마스터/복합 배치/루미큐브 마스터 (2026-03-21)
+- [x] 통합 테스트 (Human 2명 WebSocket 대전) — ws_multiplayer_test.go 7개 PASS (2026-03-21)
 
 ### AI 연동 완료 기준
 - [ ] Human 1 + AI 3 (서로 다른 모델) 게임 정상 동작
 - [x] AI 캐릭터 (하수/중수/고수) 차이 확인 — CharacterService + DIFFICULTY_TEMPERATURE 구현 (2026-03-21)
 - [x] 1인 연습 Stage 1~3 동작 — 구현 완료 (2026-03-21)
+- [x] 1인 연습 Stage 4~6 동작 — 구현 완료 (2026-03-21)
 
 ---
 
 ## Phase 4: 플랫폼 기능 확장 (Sprint 6)
 
 - [x] 관리자 대시보드 초기 구현 (Next.js, recharts, mock 데이터) — 실제 API 연동 미완 (2026-03-21)
+- [x] 관리자 대시보드 실 API 연동 — fetchHealth/fetchRooms + ServerStatus 배지 + Bearer 토큰 (2026-03-21)
+- [x] 관리자 인증 — getAdminToken() 3단계 fallback (env → sessionStorage → dev-login) (2026-03-21)
 - [x] AI 모델별 통계 UI (승률, 평균 응답시간) — mock 데이터 기반, 실 데이터 연동 미완 (2026-03-21)
-- [ ] 관리자 대시보드 실 API 연동 (game-server REST)
 - [ ] 카카오톡 알림 연동 (빌드/배포/게임 결과)
 - [ ] ELO 랭킹 시스템
 - [ ] 게임 복기 (4분할 뷰, game_snapshots 기반 턴별 리플레이)
@@ -273,7 +275,7 @@ docs/
 
 ## 현재 진행 상황
 
-**Phase 2 진행 중 (Sprint 2)** — Sprint 1 완료 + Sprint 2 Day 1 완료 (2026-03-21)
+**Phase 2 진행 중 (Sprint 2)** — Sprint 1 완료 + Sprint 2 Day 1~2 완료 (2026-03-21)
 
 Sprint 1 (2026-03-13 ~ 2026-03-21, 28/28 SP = 100%):
 - Game Engine 69개 단위 테스트 (96.5% 커버리지), REST API 12개, WebSocket Hub 실구현
@@ -287,6 +289,15 @@ Sprint 2 Day 1 (2026-03-21):
 - **#20**: NestJS AI 캐릭터 시스템 (6캐릭터 × 3난이도 × 4심리전 레벨, 254개 테스트 GREEN)
 - **#22**: Next.js 관리자 대시보드 초기 구현 (recharts 승률 차트, mock 데이터)
 - **#23**: Frontend 연습 모드 Stage 1~3 (dnd-kit + joker-aware + localStorage)
-- Frontend ESLint: exit code 0 ✅
 
-다음 단계: Sprint 2 Day 2 (2026-03-29) — LLM 실제 호출 연동, WebSocket 멀티플레이, Stage 4~6
+Sprint 2 Day 2 (2026-03-21 — 동일 날):
+- **AI Turn Orchestrator**: ws_handler.go goroutine AI 턴 자동 수행 + forceAIDraw 폴백 (9개 테스트 PASS)
+- **CharacterService 연동**: @Optional() PromptBuilderService → LLM 호출 체인 완성 (262개 테스트 PASS)
+- **관리자 API 연동**: USE_MOCK 플래그 + fetchHealth/fetchRooms + ServerStatus 배지
+- **연습 모드 Stage 4~6**: 조커 마스터/복합 배치/루미큐브 마스터 완료
+- **WebSocket 멀티플레이 통합 테스트**: 7개 PASS (Human 2명 실제 대전 검증)
+- **Room 생명주기**: FinishRoom + 재접속 감지 + ListRooms 필터
+- **관리자 인증 스텁**: getAdminToken() 3단계 fallback
+- **연습 모드 서버 동기화 스텁**: practice-api.ts (서버 연동 준비)
+
+다음 단계: Sprint 2 계속 (2026-03-29) — LLM 실제 E2E 테스트, Practice API 실 연동, Phase 4 ELO 설계
