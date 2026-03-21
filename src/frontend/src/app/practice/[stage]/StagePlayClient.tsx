@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import type { StageNumber } from "@/lib/practice/stage-configs";
 import { STAGE_CONFIGS, STAGE_NUMBERS } from "@/lib/practice/stage-configs";
+import { savePracticeProgress } from "@/lib/practice/practice-api";
 import PracticeBoard from "@/components/practice/PracticeBoard";
 import HintPanel from "@/components/practice/HintPanel";
 import ProgressBar from "@/components/practice/ProgressBar";
@@ -97,6 +98,14 @@ export default function StagePlayClient({ stageNum }: StagePlayClientProps) {
       }
       saveCompleted(updated);
       setCompletedStages(updated);
+
+      // 서버 동기화 stub (실패해도 무시)
+      savePracticeProgress({
+        userId: 'guest',
+        stage: stageNum,
+        completedAt: new Date().toISOString(),
+        score,
+      }).catch(() => {});
     },
     [stageNum]
   );
