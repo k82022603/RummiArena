@@ -166,9 +166,10 @@ test-go:
         -coverprofile=coverage.out
         -covermode=atomic
         -timeout 120s
-    # SonarQube 경로 정합: module 경로 → 프로젝트 상대 경로로 변환
-    - sed -i "s|github.com/k82022603/RummiArena/game-server/|src/game-server/|g" coverage.out
     - go tool cover -func=coverage.out
+    # SonarQube 경로 정합: module 경로 → 프로젝트 상대 경로로 변환 (go tool cover 이후 실행)
+    - sed "s|github.com/k82022603/RummiArena/game-server/|src/game-server/|g" coverage.out > coverage_sonar.out
+    - mv coverage_sonar.out coverage.out
     # XML 변환 (GitLab Coverage 리포트)
     - GOBIN=/usr/local/bin go install github.com/boumenot/gocover-cobertura@latest
     - gocover-cobertura < coverage.out > coverage.xml
