@@ -98,9 +98,23 @@ func (h *WSHandler) HandleWS(c *gin.Context) {
 		h.sendGameState(conn)
 	}
 
-	// Hub 등록 + PLAYER_JOIN 브로드캐스트
-	h.hub.Register(conn)
-	h.broadcastPlayerJoin(conn)
+	// Hub 등록
+	wasReconnect := h.hub.Register(conn)
+
+	if wasReconnect {
+		// 재연결 브로드캐스트 (본인 제외)
+		h.hub.BroadcastToRoomExcept(conn.roomID, conn.userID, &WSMessage{
+			Type: S2CPlayerReconnect,
+			Payload: map[string]interface{}{
+				"seat":        conn.seat,
+				"displayName": conn.displayName,
+				"userId":      conn.userID,
+			},
+		})
+	} else {
+		// 신규 참가 브로드캐스트
+		h.broadcastPlayerJoin(conn)
+	}
 
 	// 메시지 루프 (ReadPump은 연결 종료 시 반환)
 	conn.ReadPump(h.handleMessage)
@@ -636,6 +650,14 @@ func (h *WSHandler) broadcastGameOver(conn *Connection, state *model.GameStateRe
 			Results:    results,
 		},
 	})
+
+	// Room 상태 FINISHED 처리
+	if err := h.roomSvc.FinishRoom(conn.roomID); err != nil {
+		h.logger.Warn("ws: FinishRoom failed",
+			zap.String("roomID", conn.roomID),
+			zap.Error(err),
+		)
+	}
 }
 
 // ============================================================
@@ -835,6 +857,14 @@ func (h *WSHandler) broadcastGameOverFromState(roomID string, state *model.GameS
 			Results:    results,
 		},
 	})
+
+	// Room 상태 FINISHED 처리
+	if err := h.roomSvc.FinishRoom(roomID); err != nil {
+		h.logger.Warn("ws: FinishRoom failed",
+			zap.String("roomID", roomID),
+			zap.Error(err),
+		)
+	}
 }
 
 // playerTypeToModel PlayerType 문자열을 ai-adapter model 식별자로 변환한다.

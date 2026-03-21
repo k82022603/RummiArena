@@ -25,7 +25,8 @@ func NewHub(logger *zap.Logger) *Hub {
 
 // Register adds a connection to a room.
 // If the same user already has a connection in the room, the old one is evicted.
-func (h *Hub) Register(conn *Connection) {
+// Returns true if this was a reconnect (an existing connection was evicted).
+func (h *Hub) Register(conn *Connection) (wasReconnect bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -38,6 +39,7 @@ func (h *Hub) Register(conn *Connection) {
 	// Evict duplicate connection
 	if existing, exists := room[conn.userID]; exists {
 		existing.CloseWithReason(CloseDuplicate, "중복 접속")
+		wasReconnect = true
 	}
 
 	room[conn.userID] = conn
@@ -45,7 +47,9 @@ func (h *Hub) Register(conn *Connection) {
 		zap.String("room", conn.roomID),
 		zap.String("user", conn.userID),
 		zap.Int("seat", conn.seat),
+		zap.Bool("reconnect", wasReconnect),
 	)
+	return wasReconnect
 }
 
 // Unregister removes a connection from a room.

@@ -63,11 +63,28 @@ func (h *RoomHandler) CreateRoom(c *gin.Context) {
 }
 
 // ListRooms GET /api/rooms
+// ?status= 쿼리 파라미터로 필터링 가능 (기본값: WAITING, PLAYING만 반환)
+// ?status=ALL 이면 FINISHED/CANCELLED 포함 전체 반환
 func (h *RoomHandler) ListRooms(c *gin.Context) {
 	rooms, err := h.roomSvc.ListRooms()
 	if err != nil {
 		handleServiceError(c, err)
 		return
+	}
+
+	// status 쿼리 파라미터 필터링
+	// memory_repo의 ListRooms는 이미 WAITING+PLAYING만 반환하지만,
+	// status=ALL 요청 시에는 GetRoom 기반이 아닌 이 필터만으로는 불충분하므로
+	// 기본 동작은 그대로 유지하고, ALL이 아닌 특정 status 값이 오면 추가 필터링한다.
+	statusFilter := c.DefaultQuery("status", "")
+	if statusFilter != "" && statusFilter != "ALL" {
+		filtered := make([]*model.RoomState, 0, len(rooms))
+		for _, r := range rooms {
+			if string(r.Status) == statusFilter {
+				filtered = append(filtered, r)
+			}
+		}
+		rooms = filtered
 	}
 
 	details := make([]*model.RoomDetail, 0, len(rooms))

@@ -130,3 +130,33 @@ func TestHub_CleanupEmptyRoom(t *testing.T) {
 
 	assert.False(t, exists, "empty room should be cleaned up")
 }
+
+func TestHub_Register_Reconnect(t *testing.T) {
+	hub := NewHub(testLogger())
+
+	conn1 := &Connection{roomID: "room-1", userID: "user-1", seat: 0, send: make(chan []byte, 10)}
+	conn2 := &Connection{roomID: "room-1", userID: "user-1", seat: 0, send: make(chan []byte, 10)}
+
+	wasReconnect1 := hub.Register(conn1)
+	assert.False(t, wasReconnect1, "최초 연결은 재연결이 아니어야 한다")
+
+	wasReconnect2 := hub.Register(conn2)
+	assert.True(t, wasReconnect2, "같은 userID로 두 번째 연결은 재연결이어야 한다")
+
+	assert.Equal(t, 1, hub.RoomConnectionCount("room-1"), "재연결 후 연결 수는 1이어야 한다")
+}
+
+func TestHub_Register_DifferentUsers_NotReconnect(t *testing.T) {
+	hub := NewHub(testLogger())
+
+	conn1 := &Connection{roomID: "room-1", userID: "user-1", seat: 0, send: make(chan []byte, 10)}
+	conn2 := &Connection{roomID: "room-1", userID: "user-2", seat: 1, send: make(chan []byte, 10)}
+
+	wasReconnect1 := hub.Register(conn1)
+	assert.False(t, wasReconnect1, "최초 연결은 재연결이 아니어야 한다")
+
+	wasReconnect2 := hub.Register(conn2)
+	assert.False(t, wasReconnect2, "다른 userID는 재연결이 아니어야 한다")
+
+	assert.Equal(t, 2, hub.RoomConnectionCount("room-1"))
+}
