@@ -8,45 +8,61 @@ global:
   imageTag: latest
   imagePullPolicy: IfNotPresent
 
-# 아래 섹션은 Sprint 1부터 활성화
-# gameServer:
-#   replicas: 1
-#   image:
-#     repository: registry.gitlab.com/k82022603/rummiarena/game-server
-#     tag: latest
-#   resources:
-#     requests:
-#       cpu: "100m"
-#       memory: "128Mi"
-#     limits:
-#       cpu: "500m"
-#       memory: "512Mi"
-#   env:
-#     LOG_LEVEL: debug
-#     AI_ADAPTER_URL: "http://ai-adapter:8081"
+# game-server 이미지 오버라이드 (update-gitops CI job이 tag를 업데이트)
+gameServer:
+  replicas: 1
+  image:
+    repository: registry.gitlab.com/k82022603/rummiarena/game-server
+    tag: latest
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+  env:
+    LOG_LEVEL: debug
+    AI_ADAPTER_URL: "http://ai-adapter:8081"
 
-# aiAdapter:
-#   replicas: 1
-#   image:
-#     repository: registry.gitlab.com/k82022603/rummiarena/ai-adapter
-#     tag: latest
-#   resources:
-#     requests:
-#       cpu: "100m"
-#       memory: "128Mi"
-#     limits:
-#       cpu: "500m"
-#       memory: "512Mi"
+# ai-adapter 이미지 오버라이드
+aiAdapter:
+  replicas: 1
+  image:
+    repository: registry.gitlab.com/k82022603/rummiarena/ai-adapter
+    tag: latest
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
 
-# frontend:
-#   replicas: 1
-#   image:
-#     repository: registry.gitlab.com/k82022603/rummiarena/frontend
-#     tag: latest
-#   resources:
-#     requests:
-#       cpu: "50m"
-#       memory: "64Mi"
-#     limits:
-#       cpu: "300m"
-#       memory: "256Mi"
+# frontend 이미지 오버라이드
+frontend:
+  replicas: 1
+  image:
+    repository: registry.gitlab.com/k82022603/rummiarena/frontend
+    tag: latest
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "64Mi"
+    limits:
+      cpu: "300m"
+      memory: "256Mi"
+
+# admin 이미지 오버라이드 (Sprint 2 신규)
+admin:
+  replicas: 1
+  image:
+    repository: registry.gitlab.com/k82022603/rummiarena/admin
+    tag: latest
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "64Mi"
+    limits:
+      cpu: "300m"
+      memory: "256Mi"
