@@ -23,6 +23,7 @@ type RoomService interface {
 	LeaveRoom(roomID, userID string) (*model.RoomState, error)
 	StartGame(roomID, hostUserID string) (*model.GameStateRedis, error)
 	DeleteRoom(roomID, hostUserID string) error
+	FinishRoom(roomID string) error
 }
 
 // CreateRoomRequest Room 생성 요청 DTO
@@ -274,6 +275,21 @@ func (s *roomService) DeleteRoom(roomID, hostUserID string) error {
 	}
 
 	return s.roomRepo.DeleteRoom(roomID)
+}
+
+// FinishRoom 게임 종료 시 방 상태를 FINISHED로 변경한다.
+// 이미 FINISHED/CANCELLED 상태이면 no-op으로 처리한다.
+func (s *roomService) FinishRoom(roomID string) error {
+	room, err := s.roomRepo.GetRoom(roomID)
+	if err != nil {
+		return &ServiceError{Code: "NOT_FOUND", Message: errMsgRoomNotFound, Status: 404}
+	}
+	if room.Status == model.RoomStatusFinished || room.Status == model.RoomStatusCancelled {
+		return nil // 이미 종료됨
+	}
+	room.Status = model.RoomStatusFinished
+	room.UpdatedAt = time.Now().UTC()
+	return s.roomRepo.SaveRoom(room)
 }
 
 // generateRoomCode 4자리 대문자 알파벳 방 코드를 생성한다.
