@@ -329,7 +329,7 @@ describe('OllamaAdapter', () => {
   // generateMove() - temperature 파라미터 검증
   // -----------------------------------------------------------------------
   describe('generateMove() - temperature 파라미터', () => {
-    it('beginner 난이도는 temperature=0.9로 API를 호출한다', async () => {
+    it('beginner 난이도는 temperature=0.7로 API를 호출한다 (Ollama: max 0.7 clamp)', async () => {
       mockedAxios.post = jest
         .fn()
         .mockResolvedValueOnce(
@@ -339,7 +339,8 @@ describe('OllamaAdapter', () => {
       await adapter.generateMove(makeMoveRequest({ difficulty: 'beginner' }));
 
       const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
-      expect(body.options.temperature).toBe(0.9);
+      // #31: Ollama 소형 모델 JSON 형식 준수율 향상을 위해 temperature를 max 0.7로 clamp
+      expect(body.options.temperature).toBe(0.7);
     });
 
     it('intermediate 난이도는 temperature=0.7로 API를 호출한다', async () => {
@@ -404,6 +405,20 @@ describe('OllamaAdapter', () => {
       expect(body.messages).toHaveLength(2);
       expect(body.messages[0].role).toBe('system');
       expect(body.messages[1].role).toBe('user');
+    });
+
+    it('options에 num_predict=256과 stop 토큰이 포함된다 (#31 응답 속도 개선)', async () => {
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(
+          makeOllamaApiResponse(JSON.stringify({ action: 'draw' })),
+        );
+
+      await adapter.generateMove(makeMoveRequest());
+
+      const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
+      expect(body.options.num_predict).toBe(256);
+      expect(body.options.stop).toEqual(['\n\n', '```']);
     });
 
     it('timeoutMs를 axios 타임아웃에 전달한다', async () => {

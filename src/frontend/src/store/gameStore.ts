@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import type { TileCode, TableGroup } from "@/types/tile";
 import type { Player, GameState, Room } from "@/types/game";
+import type { GameOverPayload } from "@/types/websocket";
 
 interface GameStore {
   // 방 정보
@@ -59,6 +60,10 @@ interface GameStore {
   gameEnded: boolean;
   setGameEnded: (v: boolean) => void;
 
+  // GAME_OVER 페이로드 (승자/패자 상세)
+  gameOverResult: GameOverPayload | null;
+  setGameOverResult: (result: GameOverPayload | null) => void;
+
   // pending 상태만 초기화 (INVALID_MOVE 롤백 시 사용)
   resetPending: () => void;
 
@@ -80,6 +85,7 @@ const initialState = {
   aiThinkingSeat: null,
   turnNumber: 1,
   gameEnded: false,
+  gameOverResult: null,
 };
 
 export const useGameStore = create<GameStore>()(
@@ -103,6 +109,7 @@ export const useGameStore = create<GameStore>()(
     setAIThinkingSeat: (aiThinkingSeat) => set({ aiThinkingSeat }),
     setTurnNumber: (turnNumber) => set({ turnNumber }),
     setGameEnded: (gameEnded) => set({ gameEnded }),
+    setGameOverResult: (gameOverResult) => set({ gameOverResult }),
 
     resetPending: () =>
       set({

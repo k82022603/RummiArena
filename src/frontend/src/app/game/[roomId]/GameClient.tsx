@@ -27,6 +27,8 @@ import ReconnectToast from "@/components/game/ReconnectToast";
 import Tile from "@/components/tile/Tile";
 
 import type { TileCode, TableGroup } from "@/types/tile";
+import type { GameOverPayload } from "@/types/websocket";
+import type { Player } from "@/types/game";
 
 interface GameClientProps {
   roomId: string;
@@ -84,10 +86,36 @@ function DrawPileVisual({ count }: { count: number }) {
 }
 
 // ------------------------------------------------------------------
+// 플레이어 표시 이름 헬퍼 (HumanPlayer에만 displayName 있음)
+// ------------------------------------------------------------------
+
+function getPlayerDisplayName(player: Player | null | undefined, fallback: string): string {
+  if (!player) return fallback;
+  if (player.type === "HUMAN") return player.displayName;
+  return fallback;
+}
+
+// ------------------------------------------------------------------
 // 게임 종료 오버레이
 // ------------------------------------------------------------------
 
-function GameEndedOverlay({ onLobby }: { onLobby: () => void }) {
+function GameEndedOverlay({
+  onLobby,
+  result,
+  players,
+}: {
+  onLobby: () => void;
+  result?: GameOverPayload | null;
+  players: Player[];
+}) {
+  const winner = result?.results.find((r) => r.isWinner);
+  const winnerPlayer = winner
+    ? players.find((p) => p.seat === winner.seat)
+    : null;
+  const winnerName = winner
+    ? getPlayerDisplayName(winnerPlayer, `Seat ${winner.seat}`)
+    : null;
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -101,17 +129,72 @@ function GameEndedOverlay({ onLobby }: { onLobby: () => void }) {
         initial={{ scale: 0.85, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ type: "spring", stiffness: 300, damping: 25 }}
-        className="bg-card-bg border border-border rounded-2xl p-8 max-w-sm w-full mx-4 text-center"
+        className="bg-card-bg border border-border rounded-2xl p-8 max-w-md w-full mx-4"
       >
-        <div className="text-4xl mb-4" aria-hidden="true">
-          🏆
+        {/* 상단: 트로피 + 제목 */}
+        <div className="text-center mb-6">
+          <div className="text-4xl mb-3" aria-hidden="true">
+            [trophy]
+          </div>
+          <h2 className="text-tile-2xl font-bold text-text-primary mb-1">
+            게임 종료
+          </h2>
+          {winnerName && (
+            <p className="text-tile-base text-warning font-semibold">
+              {winnerName} 승리!
+            </p>
+          )}
+          {!result && (
+            <p className="text-text-secondary text-tile-sm">
+              결과를 집계하는 중입니다.
+            </p>
+          )}
         </div>
-        <h2 className="text-tile-2xl font-bold text-text-primary mb-2">
-          게임 종료
-        </h2>
-        <p className="text-text-secondary text-tile-sm mb-6">
-          결과를 집계하는 중입니다.
-        </p>
+
+        {/* 결과 테이블 */}
+        {result && result.results.length > 0 && (
+          <div className="mb-6">
+            <table className="w-full text-tile-sm" aria-label="게임 결과">
+              <thead>
+                <tr className="border-b border-border text-text-secondary">
+                  <th className="py-1.5 text-left font-medium">플레이어</th>
+                  <th className="py-1.5 text-center font-medium">남은 타일</th>
+                  <th className="py-1.5 text-center font-medium">결과</th>
+                </tr>
+              </thead>
+              <tbody>
+                {result.results.map((r) => {
+                  const player = players.find((p) => p.seat === r.seat);
+                  const name = getPlayerDisplayName(player, `Seat ${r.seat}`);
+                  return (
+                    <tr
+                      key={r.seat}
+                      className={`border-b border-border/50 ${
+                        r.isWinner ? "bg-warning/5" : ""
+                      }`}
+                    >
+                      <td className="py-2 text-text-primary font-medium">
+                        {name}
+                      </td>
+                      <td className="py-2 text-center font-mono text-text-secondary">
+                        {r.remainingTiles.length}장
+                      </td>
+                      <td className="py-2 text-center">
+                        {r.isWinner ? (
+                          <span className="text-warning font-bold">승</span>
+                        ) : (
+                          <span className="text-text-secondary">패</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* 하단: 로비로 버튼 */}
         <button
           type="button"
           onClick={onLobby}
@@ -162,6 +245,7 @@ export default function GameClient({ roomId }: GameClientProps) {
     setMyTiles,
     gameEnded,
     setGameEnded,
+    gameOverResult,
   } = useGameStore();
 
   const { mySeat: roomMySeat } = useRoomStore();
@@ -305,6 +389,8 @@ export default function GameClient({ roomId }: GameClientProps) {
           setGameEnded(false);
           router.push("/lobby");
         }}
+        result={gameOverResult}
+        players={players}
       />
     );
   }
