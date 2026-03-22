@@ -85,3 +85,5 @@ type EloHistory struct {
 	OpponentAvgRating  *int      `gorm:"column:opponent_avg_rating"                       json:"opponentAvgRating,omitempty"`
 	CreatedAt          time.Time `gorm:"column:created_at"                                json:"createdAt"`
 }
+
+func (EloHistory) TableName() string { return "elo_history" }
