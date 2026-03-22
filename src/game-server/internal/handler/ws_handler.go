@@ -14,7 +14,9 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/k82022603/RummiArena/game-server/internal/client"
+	"github.com/k82022603/RummiArena/game-server/internal/engine"
 	"github.com/k82022603/RummiArena/game-server/internal/model"
+	"github.com/k82022603/RummiArena/game-server/internal/repository"
 	"github.com/k82022603/RummiArena/game-server/internal/service"
 )
 
@@ -30,13 +32,15 @@ type WSHandler struct {
 	roomSvc   service.RoomService
 	gameSvc   service.GameService
 	turnSvc   service.TurnService
-	aiClient  client.AIClientInterface // nil이면 AI 기능 비활성화
+	aiClient  client.AIClientInterface  // nil이면 AI 기능 비활성화
+	eloRepo   repository.EloRepository  // nil이면 ELO 업데이트 건너뜀
 	jwtSecret string
 	logger    *zap.Logger
 }
 
 // NewWSHandler WSHandler 생성자.
 // aiClient는 nil을 허용하며, nil이면 AI 턴 자동 처리가 비활성화된다.
+// eloRepo는 nil을 허용하며, nil이면 게임 종료 시 ELO 업데이트가 비활성화된다.
 func NewWSHandler(
 	hub *Hub,
 	roomSvc service.RoomService,
@@ -55,6 +59,11 @@ func NewWSHandler(
 		jwtSecret: jwtSecret,
 		logger:    logger,
 	}
+}
+
+// WithEloRepo EloRepository를 WSHandler에 주입한다 (함수형 옵션 대신 setter 사용).
+func (h *WSHandler) WithEloRepo(eloRepo repository.EloRepository) {
+	h.eloRepo = eloRepo
 }
 
 // HandleWS GET /ws?roomId={roomId}
@@ -651,6 +660,9 @@ func (h *WSHandler) broadcastGameOver(conn *Connection, state *model.GameStateRe
 		},
 	})
 
+	// ELO 업데이트 (비동기)
+	go h.updateElo(state)
+
 	// Room 상태 FINISHED 처리
 	if err := h.roomSvc.FinishRoom(conn.roomID); err != nil {
 		h.logger.Warn("ws: FinishRoom failed",
@@ -858,6 +870,9 @@ func (h *WSHandler) broadcastGameOverFromState(roomID string, state *model.GameS
 		},
 	})
 
+	// ELO 업데이트 (비동기)
+	go h.updateElo(state)
+
 	// Room 상태 FINISHED 처리
 	if err := h.roomSvc.FinishRoom(roomID); err != nil {
 		h.logger.Warn("ws: FinishRoom failed",
@@ -865,6 +880,168 @@ func (h *WSHandler) broadcastGameOverFromState(roomID string, state *model.GameS
 			zap.Error(err),
 		)
 	}
+}
+
+// updateElo 게임 종료 후 ELO 레이팅을 업데이트한다.
+// eloRepo가 nil이거나 PRACTICE 모드이면 건너뛴다.
+// 순위는 남은 타일 수 기준으로 결정한다 (0장=1위, 이후 타일 적은 순).
+func (h *WSHandler) updateElo(state *model.GameStateRedis) {
+	if h.eloRepo == nil {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 순위 결정: 남은 타일 수 오름차순 (타일 0장 = 1위)
+	type playerRank struct {
+		userID     string
+		tileCount  int
+	}
+	ranked := make([]playerRank, 0, len(state.Players))
+	for _, p := range state.Players {
+		if p.UserID == "" {
+			continue // AI 가상 유저 없는 경우 스킵
+		}
+		ranked = append(ranked, playerRank{userID: p.UserID, tileCount: len(p.Rack)})
+	}
+	if len(ranked) < 2 {
+		return
+	}
+
+	// 타일 수 오름차순 정렬 후 rank 부여
+	for i := 0; i < len(ranked)-1; i++ {
+		for j := i + 1; j < len(ranked); j++ {
+			if ranked[i].tileCount > ranked[j].tileCount {
+				ranked[i], ranked[j] = ranked[j], ranked[i]
+			}
+		}
+	}
+
+	// 현재 ELO 레이팅과 게임 플레이 수 수집
+	currentRatings := make(map[string]int, len(ranked))
+	currentGames := make(map[string]int, len(ranked))
+	for _, pr := range ranked {
+		rec, err := h.eloRepo.GetByUserID(ctx, pr.userID)
+		if err != nil {
+			currentRatings[pr.userID] = 1000 // 기본값
+			currentGames[pr.userID] = 0
+		} else {
+			currentRatings[pr.userID] = rec.Rating
+			currentGames[pr.userID] = rec.GamesPlayed
+		}
+	}
+
+	// PlayerResult 빌드
+	players := make([]engine.PlayerResult, len(ranked))
+	for i, pr := range ranked {
+		players[i] = engine.PlayerResult{
+			UserID:      pr.userID,
+			Rank:        i + 1,
+			GamesPlayed: currentGames[pr.userID],
+		}
+	}
+
+	// ELO 계산
+	changes := engine.CalcElo(players, currentRatings)
+	if len(changes) == 0 {
+		return
+	}
+
+	now := time.Now().UTC()
+
+	// DB 업데이트: 각 플레이어별 Upsert + History
+	for i, ch := range changes {
+		// EloRating Upsert
+		gamesPlayed := currentGames[ch.UserID] + 1
+		winStreak := 0
+		wins := 0
+		losses := 0
+
+		// 기존 레코드를 가져와 연승/승패 업데이트
+		existing, err := h.eloRepo.GetByUserID(ctx, ch.UserID)
+		if err == nil {
+			wins = existing.Wins
+			losses = existing.Losses
+			winStreak = existing.WinStreak
+		}
+
+		isWinner := players[i].Rank == 1
+		if isWinner {
+			wins++
+			winStreak++
+		} else {
+			losses++
+			winStreak = 0
+		}
+
+		bestStreak := winStreak
+		peakRating := ch.NewRating
+		if err == nil {
+			if existing.BestStreak > bestStreak {
+				bestStreak = existing.BestStreak
+			}
+			if existing.PeakRating > peakRating {
+				peakRating = existing.PeakRating
+			}
+		}
+
+		rating := &model.EloRating{
+			UserID:      ch.UserID,
+			Rating:      ch.NewRating,
+			Tier:        ch.NewTier,
+			Wins:        wins,
+			Losses:      losses,
+			GamesPlayed: gamesPlayed,
+			WinStreak:   winStreak,
+			BestStreak:  bestStreak,
+			PeakRating:  peakRating,
+			LastGameAt:  &now,
+		}
+
+		if upsertErr := h.eloRepo.Upsert(ctx, rating); upsertErr != nil {
+			h.logger.Error("ws: elo upsert failed",
+				zap.String("userID", ch.UserID),
+				zap.Error(upsertErr),
+			)
+		}
+
+		// EloHistory 삽입
+		history := &model.EloHistory{
+			UserID:       ch.UserID,
+			GameID:       state.GameID,
+			RatingBefore: ch.OldRating,
+			RatingAfter:  ch.NewRating,
+			RatingDelta:  ch.Delta,
+			KFactor:      int(getWSKFactor(ch.OldRating, currentGames[ch.UserID])),
+		}
+
+		if histErr := h.eloRepo.AddHistory(ctx, history); histErr != nil {
+			h.logger.Error("ws: elo history insert failed",
+				zap.String("userID", ch.UserID),
+				zap.Error(histErr),
+			)
+		}
+
+		h.logger.Info("ws: elo updated",
+			zap.String("userID", ch.UserID),
+			zap.Int("oldRating", ch.OldRating),
+			zap.Int("newRating", ch.NewRating),
+			zap.Int("delta", ch.Delta),
+			zap.String("tier", ch.NewTier),
+		)
+	}
+}
+
+// getWSKFactor K-Factor 결정 래퍼 (ws_handler 내부 사용).
+func getWSKFactor(rating, gamesPlayed int) float64 {
+	if gamesPlayed < 30 {
+		return 40
+	}
+	if rating >= 2000 {
+		return 24
+	}
+	return 32
 }
 
 // playerTypeToModel PlayerType 문자열을 ai-adapter model 식별자로 변환한다.

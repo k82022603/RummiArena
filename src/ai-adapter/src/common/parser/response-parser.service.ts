@@ -86,15 +86,22 @@ export class ResponseParserService {
     const tilesFromRack = obj.tilesFromRack as string[] | undefined;
 
     // 타일 그룹 유효성 검증
+    // 소형 LLM(4B급)이 "place"를 선택하면서 빈 tiles를 반환하는 경우를 draw로 변환한다.
     if (
       !tileGroupsRaw ||
       !Array.isArray(tileGroupsRaw) ||
       tileGroupsRaw.length === 0
     ) {
+      this.logger.warn(
+        '[ResponseParser] action=place이지만 tableGroups가 비어있음 → draw로 변환',
+      );
       return {
-        success: false,
-        errorReason:
-          'action이 "place"이지만 tableGroups가 비어있거나 없습니다.',
+        success: true,
+        response: {
+          action: 'draw',
+          reasoning: '배치할 유효한 그룹이 없어 드로우합니다.',
+          metadata: fullMetadata,
+        },
       };
     }
 
@@ -105,9 +112,16 @@ export class ResponseParserService {
         !Array.isArray(group.tiles) ||
         group.tiles.length < 3
       ) {
+        this.logger.warn(
+          `[ResponseParser] 그룹 tiles 수 부족(${group.tiles?.length ?? 0}) → draw로 변환`,
+        );
         return {
-          success: false,
-          errorReason: `그룹의 타일 수가 3개 미만입니다: ${JSON.stringify(group)}`,
+          success: true,
+          response: {
+            action: 'draw',
+            reasoning: '타일 수가 부족한 그룹이 있어 드로우합니다.',
+            metadata: fullMetadata,
+          },
         };
       }
       const tileCodeError = this.validateTileCodes(group.tiles);
