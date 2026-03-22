@@ -31,7 +31,7 @@ func NewPostgresDB(cfg config.DBConfig, logger *zap.Logger) (*gorm.DB, error) {
 		PreferSimpleProtocol: true, // pgx prepared statement 비활성화 (PgBouncer 호환)
 	}), &gorm.Config{
 		Logger:                                   gormLog,
-		DisableForeignKeyConstraintWhenMigrating: false,
+		DisableForeignKeyConstraintWhenMigrating: true, // EloHistory 등 감사 로그 테이블 FK 자동생성 방지
 	})
 	if err != nil {
 		return nil, fmt.Errorf("infra: open postgres: %w", err)
