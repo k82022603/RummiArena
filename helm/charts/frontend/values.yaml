@@ -20,8 +20,8 @@ resources:
 
 env:
   NODE_ENV: "production"
-  NEXT_PUBLIC_API_URL: "http://game-server.rummikub.svc.cluster.local:8080/api"
-  NEXT_PUBLIC_WS_URL: "ws://game-server.rummikub.svc.cluster.local:8080/ws"
+  NEXT_PUBLIC_API_URL: "http://localhost:30080/api"
+  NEXT_PUBLIC_WS_URL: "ws://localhost:30080/ws"
   NEXTAUTH_URL: "http://localhost:30000"
   GAME_SERVER_INTERNAL_URL: "http://game-server.rummikub.svc.cluster.local:8080"
   GOOGLE_CLIENT_ID: ""

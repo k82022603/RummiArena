@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { getGames } from "@/lib/api";
 import GameCard from "@/components/GameCard";
 
