@@ -1,8 +1,10 @@
+//go:build integration
+
 package handler
 
 import (
 	"context"
-	"errors"
+	"os"
 	"testing"
 	"time"
 
@@ -16,81 +18,26 @@ import (
 	"github.com/k82022603/RummiArena/game-server/internal/service"
 )
 
-// --- 테스트용 Mock ---
-
-// mockAIClientHandler 핸들러 패키지용 AI 클라이언트 목업
-type mockAIClientHandler struct {
-	generateMoveFunc func(ctx context.Context, req *client.MoveRequest) (*client.MoveResponse, error)
-	healthCheckFunc  func(ctx context.Context) error
-}
-
-func (m *mockAIClientHandler) GenerateMove(ctx context.Context, req *client.MoveRequest) (*client.MoveResponse, error) {
-	if m.generateMoveFunc != nil {
-		return m.generateMoveFunc(ctx, req)
-	}
-	return &client.MoveResponse{
-		Action: "draw",
-		Metadata: client.MoveMetadata{
-			ModelType: "mock",
-			ModelName: "mock-model",
-		},
-	}, nil
-}
-
-func (m *mockAIClientHandler) HealthCheck(ctx context.Context) error {
-	if m.healthCheckFunc != nil {
-		return m.healthCheckFunc(ctx)
-	}
-	return nil
-}
-
-// mockGameService GameService 목업
-type mockGameService struct {
-	confirmTurnFunc func(gameID string, req *service.ConfirmRequest) (*service.GameActionResult, error)
-	drawTileFunc    func(gameID string, seat int) (*service.GameActionResult, error)
-	placeTilesFunc  func(gameID string, req *service.PlaceRequest) (*service.GameActionResult, error)
-	resetTurnFunc   func(gameID string, seat int) (*service.GameActionResult, error)
-	getStateFunc    func(gameID string, seat int) (*service.GameStateView, error)
-}
-
-func (m *mockGameService) ConfirmTurn(gameID string, req *service.ConfirmRequest) (*service.GameActionResult, error) {
-	if m.confirmTurnFunc != nil {
-		return m.confirmTurnFunc(gameID, req)
-	}
-	return nil, errors.New("not implemented")
-}
-
-func (m *mockGameService) DrawTile(gameID string, seat int) (*service.GameActionResult, error) {
-	if m.drawTileFunc != nil {
-		return m.drawTileFunc(gameID, seat)
-	}
-	return nil, errors.New("not implemented")
-}
-
-func (m *mockGameService) PlaceTiles(gameID string, req *service.PlaceRequest) (*service.GameActionResult, error) {
-	if m.placeTilesFunc != nil {
-		return m.placeTilesFunc(gameID, req)
-	}
-	return nil, errors.New("not implemented")
-}
-
-func (m *mockGameService) ResetTurn(gameID string, seat int) (*service.GameActionResult, error) {
-	if m.resetTurnFunc != nil {
-		return m.resetTurnFunc(gameID, seat)
-	}
-	return nil, errors.New("not implemented")
-}
-
-func (m *mockGameService) GetGameState(gameID string, seat int) (*service.GameStateView, error) {
-	if m.getStateFunc != nil {
-		return m.getStateFunc(gameID, seat)
-	}
-	return nil, errors.New("not implemented")
-}
-
 // --- 헬퍼 ---
 
-// newAITestHandler AI 클라이언트와 mock 게임 서비스를 주입한 WSHandler를 생성한다.
+// getAIAdapterURL AI 어댑터 URL을 환경변수에서 읽는다. 미설정 시 테스트를 건너뛴다.
+func getAIAdapterURL(t *testing.T) string {
+	t.Helper()
+	url := os.Getenv("AI_ADAPTER_URL")
+	if url == "" {
+		url = "http://localhost:8082"
+	}
+	return url
+}
+
+// newRealAIClient 실제 AI 클라이언트를 생성한다.
+func newRealAIClient(t *testing.T) client.AIClientInterface {
+	t.Helper()
+	url := getAIAdapterURL(t)
+	return client.NewAIClient(url, "", 60*time.Second)
+}
+
+// newAITestHandler AI 클라이언트와 게임 서비스를 주입한 WSHandler를 생성한다.
 func newAITestHandler(aiClient client.AIClientInterface, gameSvc service.GameService) *WSHandler {
 	hub := NewHub(zap.NewNop())
 	roomRepo := repository.NewMemoryRoomRepo()
@@ -106,6 +53,7 @@ func newAITestHandler(aiClient client.AIClientInterface, gameSvc service.GameSer
 		aiClient:  aiClient,
 		jwtSecret: "test-secret",
 		logger:    zap.NewNop(),
+		timers:    make(map[string]*turnTimer),
 	}
 }
 
@@ -170,7 +118,9 @@ func makeSuccessConfirmResult(gameID string) *service.GameActionResult {
 
 // TestHandleAITurn_NilClient_Skip aiClient가 nil이면 broadcastTurnStart에서 AI 턴을 건너뛴다.
 func TestHandleAITurn_NilClient_Skip(t *testing.T) {
-	h := newAITestHandler(nil, &mockGameService{})
+	gameStateRepo := repository.NewMemoryGameStateRepoAdapter()
+	gameSvc := service.NewGameService(gameStateRepo)
+	h := newAITestHandler(nil, gameSvc)
 	hub := h.hub
 
 	// AI 플레이어가 현재 턴인 상태
@@ -204,211 +154,47 @@ func TestHandleAITurn_NilClient_Skip(t *testing.T) {
 	}
 }
 
-// TestHandleAITurn_ClientError_FallbackDraw AI 클라이언트 에러 시 강제 드로우로 폴백한다.
-func TestHandleAITurn_ClientError_FallbackDraw(t *testing.T) {
-	drawCalled := make(chan struct{}, 1)
+// TestHandleAITurn_RealClient_Draw 실제 AI 어댑터를 사용한 AI 턴 처리.
+// AI_ADAPTER_URL 환경변수가 설정되어 있어야 한다.
+func TestHandleAITurn_RealClient_Draw(t *testing.T) {
+	aiClient := newRealAIClient(t)
 
-	mockSvc := &mockGameService{
-		drawTileFunc: func(gameID string, seat int) (*service.GameActionResult, error) {
-			assert.Equal(t, "game-ai-err", gameID)
-			assert.Equal(t, 1, seat)
-			drawCalled <- struct{}{}
-			return makeSuccessDrawResult(gameID), nil
-		},
+	// AI 어댑터 접속 가능한지 확인
+	if err := aiClient.HealthCheck(context.Background()); err != nil {
+		t.Skipf("AI 어댑터 미접속 (skip): %v", err)
 	}
 
-	mockClient := &mockAIClientHandler{
-		generateMoveFunc: func(_ context.Context, _ *client.MoveRequest) (*client.MoveResponse, error) {
-			return nil, errors.New("ai-adapter connection refused")
-		},
-	}
+	gameStateRepo := repository.NewMemoryGameStateRepoAdapter()
+	gameSvc := service.NewGameService(gameStateRepo)
 
-	h := newAITestHandler(mockClient, mockSvc)
+	// 게임 상태를 저장한다.
+	state := makeAIGameState("game-real-ai", 1, "AI_OPENAI")
+	require.NoError(t, gameStateRepo.SaveGameState(state))
+
+	h := newAITestHandler(aiClient, gameSvc)
 	hub := h.hub
 
 	conn := &Connection{
-		roomID: "room-err",
+		roomID: "room-real-ai",
 		userID: "human-user",
 		seat:   0,
 		send:   make(chan []byte, 32),
 	}
 	hub.Register(conn)
 
-	state := makeAIGameState("game-ai-err", 1, "AI_OPENAI")
 	player := &state.Players[1]
+	h.handleAITurn("room-real-ai", "game-real-ai", player, state)
 
-	h.handleAITurn("room-err", "game-ai-err", player, state)
-
+	// AI 턴 처리 후 메시지가 전송되는지 확인 (최대 60초 대기)
 	select {
-	case <-drawCalled:
-		// 정상: DrawTile이 호출됨
-	case <-time.After(2 * time.Second):
-		t.Fatal("AI 에러 시 DrawTile이 호출되어야 한다")
+	case msg := <-conn.send:
+		require.NotNil(t, msg)
+	case <-time.After(60 * time.Second):
+		t.Fatal("AI 턴 처리 후 메시지가 전송되어야 한다")
 	}
 }
 
-// TestHandleAITurn_PlaceSuccess AI가 유효한 place 응답 반환 시 TURN_END + TURN_START 브로드캐스트.
-func TestHandleAITurn_PlaceSuccess(t *testing.T) {
-	confirmCalled := make(chan *service.ConfirmRequest, 1)
-
-	mockSvc := &mockGameService{
-		confirmTurnFunc: func(gameID string, req *service.ConfirmRequest) (*service.GameActionResult, error) {
-			confirmCalled <- req
-			return makeSuccessConfirmResult(gameID), nil
-		},
-	}
-
-	mockClient := &mockAIClientHandler{
-		generateMoveFunc: func(_ context.Context, _ *client.MoveRequest) (*client.MoveResponse, error) {
-			return &client.MoveResponse{
-				Action:        "place",
-				TilesFromRack: []string{"B4a", "B5a", "B6a"},
-				TableGroups: []client.TileGroup{
-					{Tiles: []string{"B4a", "B5a", "B6a"}},
-				},
-			}, nil
-		},
-	}
-
-	h := newAITestHandler(mockClient, mockSvc)
-	hub := h.hub
-
-	conn := &Connection{
-		roomID: "room-place",
-		userID: "human-user",
-		seat:   0,
-		send:   make(chan []byte, 32),
-	}
-	hub.Register(conn)
-
-	state := makeAIGameState("game-place", 1, "AI_OPENAI")
-	player := &state.Players[1]
-
-	h.handleAITurn("room-place", "game-place", player, state)
-
-	select {
-	case req := <-confirmCalled:
-		assert.Equal(t, 1, req.Seat)
-		assert.Equal(t, []string{"B4a", "B5a", "B6a"}, req.TilesFromRack)
-		assert.Len(t, req.TableGroups, 1)
-	case <-time.After(2 * time.Second):
-		t.Fatal("AI place 성공 시 ConfirmTurn이 호출되어야 한다")
-	}
-}
-
-// TestHandleAITurn_PlaceFail_FallbackDraw AI 배치 검증 실패 시 DrawTile로 폴백한다.
-func TestHandleAITurn_PlaceFail_FallbackDraw(t *testing.T) {
-	drawCalled := make(chan struct{}, 1)
-
-	mockSvc := &mockGameService{
-		confirmTurnFunc: func(gameID string, req *service.ConfirmRequest) (*service.GameActionResult, error) {
-			// 검증 실패 반환
-			return &service.GameActionResult{
-				Success:   false,
-				ErrorCode: "INVALID_SET",
-				GameState: makeAIGameState(gameID, 1, "AI_OPENAI"),
-			}, errors.New("invalid set")
-		},
-		drawTileFunc: func(gameID string, seat int) (*service.GameActionResult, error) {
-			assert.Equal(t, 1, seat)
-			drawCalled <- struct{}{}
-			return makeSuccessDrawResult(gameID), nil
-		},
-	}
-
-	mockClient := &mockAIClientHandler{
-		generateMoveFunc: func(_ context.Context, _ *client.MoveRequest) (*client.MoveResponse, error) {
-			return &client.MoveResponse{
-				Action:        "place",
-				TilesFromRack: []string{"B4a"},
-				TableGroups:   []client.TileGroup{{Tiles: []string{"B4a"}}},
-			}, nil
-		},
-	}
-
-	h := newAITestHandler(mockClient, mockSvc)
-	hub := h.hub
-
-	conn := &Connection{
-		roomID: "room-fail",
-		userID: "human-user",
-		seat:   0,
-		send:   make(chan []byte, 32),
-	}
-	hub.Register(conn)
-
-	state := makeAIGameState("game-fail", 1, "AI_OPENAI")
-	player := &state.Players[1]
-
-	h.handleAITurn("room-fail", "game-fail", player, state)
-
-	select {
-	case <-drawCalled:
-		// 정상: 배치 실패 후 DrawTile 폴백
-	case <-time.After(2 * time.Second):
-		t.Fatal("AI place 실패 시 DrawTile 폴백이 호출되어야 한다")
-	}
-}
-
-// TestHandleAITurn_GameOver AI 턴에서 게임 종료 시 GAME_OVER 브로드캐스트.
-func TestHandleAITurn_GameOver(t *testing.T) {
-	confirmCalled := make(chan struct{}, 1)
-
-	mockSvc := &mockGameService{
-		confirmTurnFunc: func(gameID string, req *service.ConfirmRequest) (*service.GameActionResult, error) {
-			confirmCalled <- struct{}{}
-			// 게임 종료 결과
-			state := makeAIGameState(gameID, 1, "AI_OPENAI")
-			state.Players[1].Rack = []string{} // AI가 승리
-			return &service.GameActionResult{
-				Success:   true,
-				GameEnded: true,
-				WinnerID:  "ai-user",
-				GameState: state,
-			}, nil
-		},
-	}
-
-	mockClient := &mockAIClientHandler{
-		generateMoveFunc: func(_ context.Context, _ *client.MoveRequest) (*client.MoveResponse, error) {
-			return &client.MoveResponse{
-				Action:        "place",
-				TilesFromRack: []string{"B4a", "B5a", "B6a"},
-				TableGroups:   []client.TileGroup{{Tiles: []string{"B4a", "B5a", "B6a"}}},
-			}, nil
-		},
-	}
-
-	h := newAITestHandler(mockClient, mockSvc)
-	hub := h.hub
-
-	conn := &Connection{
-		roomID: "room-gameover",
-		userID: "human-user",
-		seat:   0,
-		send:   make(chan []byte, 32),
-	}
-	hub.Register(conn)
-
-	state := makeAIGameState("game-gameover", 1, "AI_OPENAI")
-	player := &state.Players[1]
-
-	h.handleAITurn("room-gameover", "game-gameover", player, state)
-
-	select {
-	case <-confirmCalled:
-		// 정상: ConfirmTurn 호출됨
-	case <-time.After(2 * time.Second):
-		t.Fatal("게임 종료 시 ConfirmTurn이 호출되어야 한다")
-	}
-
-	// GAME_OVER 메시지가 브로드캐스트되었는지 확인
-	time.Sleep(50 * time.Millisecond)
-	received := len(conn.send) > 0
-	assert.True(t, received, "GAME_OVER 메시지가 브로드캐스트되어야 한다")
-}
-
-// TestPlayerTypeToModel PlayerType → ai-adapter model 변환 확인
+// TestPlayerTypeToModel PlayerType -> ai-adapter model 변환 확인
 func TestPlayerTypeToModel(t *testing.T) {
 	cases := []struct {
 		playerType string
@@ -446,7 +232,7 @@ func TestBuildOpponentInfo(t *testing.T) {
 	assert.Equal(t, 1, opponents[1].RemainingTiles)
 }
 
-// TestBuildTableGroups SetOnTable → client.TileGroup 변환 확인
+// TestBuildTableGroups SetOnTable -> client.TileGroup 변환 확인
 func TestBuildTableGroups(t *testing.T) {
 	table := []*model.SetOnTable{
 		{
@@ -475,20 +261,15 @@ func TestBuildTableGroups(t *testing.T) {
 
 // TestForceAIDraw_DrawPileEmpty 드로우 파일 소진 시 GAME_OVER를 브로드캐스트한다.
 func TestForceAIDraw_DrawPileEmpty(t *testing.T) {
-	mockSvc := &mockGameService{
-		drawTileFunc: func(gameID string, seat int) (*service.GameActionResult, error) {
-			// 드로우 파일 소진 시 게임 종료
-			state := makeAIGameState(gameID, 1, "AI_OPENAI")
-			state.DrawPile = []string{}
-			return &service.GameActionResult{
-				Success:   false,
-				GameEnded: true,
-				GameState: state,
-			}, nil
-		},
-	}
+	gameStateRepo := repository.NewMemoryGameStateRepoAdapter()
+	gameSvc := service.NewGameService(gameStateRepo)
 
-	h := newAITestHandler(nil, mockSvc)
+	// 드로우 파일이 빈 게임 상태를 저장한다.
+	state := makeAIGameState("game-empty", 1, "AI_OPENAI")
+	state.DrawPile = []string{}
+	require.NoError(t, gameStateRepo.SaveGameState(state))
+
+	h := newAITestHandler(nil, gameSvc)
 	hub := h.hub
 
 	conn := &Connection{

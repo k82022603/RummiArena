@@ -10,7 +10,7 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
-import type { AiModelStats } from "@/lib/mock-data";
+import type { AiModelStats } from "@/lib/types";
 
 interface StatsChartProps {
   data: AiModelStats[];

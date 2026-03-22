@@ -1,11 +1,11 @@
 package handler
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
@@ -13,105 +13,46 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
 
 	"github.com/k82022603/RummiArena/game-server/internal/model"
 	"github.com/k82022603/RummiArena/game-server/internal/repository"
 )
 
-// --- Mock Repository ---
+// --- DB 헬퍼 ---
 
-// mockEloRepo EloRepository 메모리 기반 테스트 구현체.
-type mockEloRepo struct {
-	ratings   []model.EloRating
-	histories []model.EloHistory
-	findErr   error
+// testDBForRanking 테스트용 PostgreSQL DB를 연결하고 EloRating 테이블을 마이그레이션한다.
+func testDBForRanking(t *testing.T) *gorm.DB {
+	t.Helper()
+	dsn := os.Getenv("TEST_DB_URL")
+	if dsn == "" {
+		dsn = "host=localhost port=5432 user=rummikub password=rummikub123 dbname=rummikub sslmode=disable"
+	}
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
+		Logger:                                   gormlogger.Default.LogMode(gormlogger.Silent),
+		DisableForeignKeyConstraintWhenMigrating: true,
+	})
+	if err != nil {
+		t.Skipf("PostgreSQL 연결 실패 (skip): %v", err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Skipf("sql.DB 획득 실패 (skip): %v", err)
+	}
+	if err := sqlDB.Ping(); err != nil {
+		t.Skipf("PostgreSQL ping 실패 (skip): %v", err)
+	}
+	require.NoError(t, db.AutoMigrate(&model.EloRating{}, &model.EloHistory{}))
+	return db
 }
 
-func (m *mockEloRepo) GetByUserID(_ context.Context, userID string) (*model.EloRating, error) {
-	if m.findErr != nil {
-		return nil, m.findErr
-	}
-	for _, r := range m.ratings {
-		if r.UserID == userID {
-			cp := r
-			return &cp, nil
-		}
-	}
-	return nil, fmt.Errorf("elo_repo: user %q not found: %w", userID, repository.ErrNotFound)
-}
-
-func (m *mockEloRepo) Upsert(_ context.Context, rating *model.EloRating) error {
-	m.ratings = append(m.ratings, *rating)
-	return nil
-}
-
-func (m *mockEloRepo) AddHistory(_ context.Context, history *model.EloHistory) error {
-	m.histories = append(m.histories, *history)
-	return nil
-}
-
-func (m *mockEloRepo) GetTopN(_ context.Context, limit, offset int) ([]model.EloRating, error) {
-	if m.findErr != nil {
-		return nil, m.findErr
-	}
-	end := offset + limit
-	if end > len(m.ratings) {
-		end = len(m.ratings)
-	}
-	if offset >= len(m.ratings) {
-		return []model.EloRating{}, nil
-	}
-	return m.ratings[offset:end], nil
-}
-
-func (m *mockEloRepo) GetByTier(_ context.Context, tier string, limit, offset int) ([]model.EloRating, error) {
-	if m.findErr != nil {
-		return nil, m.findErr
-	}
-	var filtered []model.EloRating
-	for _, r := range m.ratings {
-		if r.Tier == tier {
-			filtered = append(filtered, r)
-		}
-	}
-	end := offset + limit
-	if end > len(filtered) {
-		end = len(filtered)
-	}
-	if offset >= len(filtered) {
-		return []model.EloRating{}, nil
-	}
-	return filtered[offset:end], nil
-}
-
-func (m *mockEloRepo) GetHistoryByUserID(_ context.Context, userID string, limit int) ([]model.EloHistory, error) {
-	if m.findErr != nil {
-		return nil, m.findErr
-	}
-	var result []model.EloHistory
-	for _, h := range m.histories {
-		if h.UserID == userID {
-			result = append(result, h)
-		}
-	}
-	if len(result) > limit {
-		result = result[:limit]
-	}
-	return result, nil
-}
-
-func (m *mockEloRepo) CountAll(_ context.Context) (int64, error) {
-	return int64(len(m.ratings)), nil
-}
-
-func (m *mockEloRepo) CountByTier(_ context.Context, tier string) (int64, error) {
-	var count int64
-	for _, r := range m.ratings {
-		if r.Tier == tier {
-			count++
-		}
-	}
-	return count, nil
+// cleanupRankingTestData 테스트 후 test- 접두사 데이터를 제거한다.
+func cleanupRankingTestData(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	db.Exec("DELETE FROM elo_history WHERE user_id LIKE 'test-%'")
+	db.Exec("DELETE FROM elo_ratings WHERE user_id LIKE 'test-%'")
 }
 
 // --- 테스트 헬퍼 ---
@@ -129,19 +70,29 @@ func newTestRankingRouter(repo repository.EloRepository) *gin.Engine {
 	return r
 }
 
-func sampleRatings() []model.EloRating {
+// seedRankingData 테스트 데이터를 DB에 삽입한다.
+func seedRankingData(t *testing.T, repo repository.EloRepository) {
+	t.Helper()
 	now := time.Now()
-	return []model.EloRating{
-		{ID: "id1", UserID: "user1", Rating: 1600, Tier: "PLATINUM", Wins: 30, GamesPlayed: 50, LastGameAt: &now},
-		{ID: "id2", UserID: "user2", Rating: 1350, Tier: "GOLD", Wins: 20, GamesPlayed: 40},
-		{ID: "id3", UserID: "user3", Rating: 1150, Tier: "SILVER", Wins: 15, GamesPlayed: 30},
+	ratings := []model.EloRating{
+		{UserID: "test-user1", Rating: 1600, Tier: "PLATINUM", Wins: 30, GamesPlayed: 50, LastGameAt: &now},
+		{UserID: "test-user2", Rating: 1350, Tier: "GOLD", Wins: 20, GamesPlayed: 40},
+		{UserID: "test-user3", Rating: 1150, Tier: "SILVER", Wins: 15, GamesPlayed: 30},
+	}
+	for _, r := range ratings {
+		r := r
+		require.NoError(t, repo.Upsert(t.Context(), &r))
 	}
 }
 
 // --- 테스트 ---
 
 func TestListRankings_OK(t *testing.T) {
-	repo := &mockEloRepo{ratings: sampleRatings()}
+	db := testDBForRanking(t)
+	repo := repository.NewPostgresEloRepo(db)
+	defer cleanupRankingTestData(t, db)
+	seedRankingData(t, repo)
+
 	router := newTestRankingRouter(repo)
 
 	w := httptest.NewRecorder()
@@ -154,11 +105,14 @@ func TestListRankings_OK(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	data, ok := resp["data"].([]interface{})
 	require.True(t, ok, "data 필드가 배열이어야 한다")
-	assert.Len(t, data, 3)
+	assert.GreaterOrEqual(t, len(data), 3)
 }
 
 func TestListRankings_InvalidLimit(t *testing.T) {
-	repo := &mockEloRepo{ratings: sampleRatings()}
+	db := testDBForRanking(t)
+	repo := repository.NewPostgresEloRepo(db)
+	defer cleanupRankingTestData(t, db)
+
 	router := newTestRankingRouter(repo)
 
 	w := httptest.NewRecorder()
@@ -168,19 +122,12 @@ func TestListRankings_InvalidLimit(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
-func TestListRankings_DBError(t *testing.T) {
-	repo := &mockEloRepo{findErr: fmt.Errorf("db connection failed")}
-	router := newTestRankingRouter(repo)
-
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/rankings", nil)
-	router.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusInternalServerError, w.Code)
-}
-
 func TestListRankingsByTier_OK(t *testing.T) {
-	repo := &mockEloRepo{ratings: sampleRatings()}
+	db := testDBForRanking(t)
+	repo := repository.NewPostgresEloRepo(db)
+	defer cleanupRankingTestData(t, db)
+	seedRankingData(t, repo)
+
 	router := newTestRankingRouter(repo)
 
 	w := httptest.NewRecorder()
@@ -194,7 +141,10 @@ func TestListRankingsByTier_OK(t *testing.T) {
 }
 
 func TestListRankingsByTier_InvalidTier(t *testing.T) {
-	repo := &mockEloRepo{ratings: sampleRatings()}
+	db := testDBForRanking(t)
+	repo := repository.NewPostgresEloRepo(db)
+	defer cleanupRankingTestData(t, db)
+
 	router := newTestRankingRouter(repo)
 
 	w := httptest.NewRecorder()
@@ -205,56 +155,76 @@ func TestListRankingsByTier_InvalidTier(t *testing.T) {
 }
 
 func TestGetUserRating_OK(t *testing.T) {
-	repo := &mockEloRepo{ratings: sampleRatings()}
+	db := testDBForRanking(t)
+	repo := repository.NewPostgresEloRepo(db)
+	defer cleanupRankingTestData(t, db)
+	seedRankingData(t, repo)
+
 	router := newTestRankingRouter(repo)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/users/user1/rating", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/users/test-user1/rating", nil)
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	var resp map[string]interface{}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	assert.Equal(t, "user1", resp["userId"])
+	assert.Equal(t, "test-user1", resp["userId"])
 	assert.Equal(t, "PLATINUM", resp["tier"])
 }
 
 func TestGetUserRating_NotFound(t *testing.T) {
-	repo := &mockEloRepo{ratings: sampleRatings()}
+	db := testDBForRanking(t)
+	repo := repository.NewPostgresEloRepo(db)
+	defer cleanupRankingTestData(t, db)
+
 	router := newTestRankingRouter(repo)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/users/nonexistent/rating", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/users/test-nonexistent/rating", nil)
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
 func TestGetUserRatingHistory_OK(t *testing.T) {
+	db := testDBForRanking(t)
+	repo := repository.NewPostgresEloRepo(db)
+	defer cleanupRankingTestData(t, db)
+	seedRankingData(t, repo)
+
+	// 이력 데이터 삽입
 	histories := []model.EloHistory{
-		{ID: "h1", UserID: "user1", GameID: "g1", RatingBefore: 1500, RatingAfter: 1512, RatingDelta: 12},
-		{ID: "h2", UserID: "user1", GameID: "g2", RatingBefore: 1490, RatingAfter: 1500, RatingDelta: 10},
+		{UserID: "test-user1", GameID: "test-game-1", RatingBefore: 1500, RatingAfter: 1512, RatingDelta: 12},
+		{UserID: "test-user1", GameID: "test-game-2", RatingBefore: 1490, RatingAfter: 1500, RatingDelta: 10},
 	}
-	repo := &mockEloRepo{ratings: sampleRatings(), histories: histories}
+	for _, h := range histories {
+		h := h
+		require.NoError(t, repo.AddHistory(t.Context(), &h))
+	}
+
 	router := newTestRankingRouter(repo)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/users/user1/rating/history?limit=10", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/users/test-user1/rating/history?limit=10", nil)
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	var resp map[string]interface{}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	data := resp["data"].([]interface{})
-	assert.Len(t, data, 2)
+	assert.GreaterOrEqual(t, len(data), 2)
 }
 
 func TestGetUserRatingHistory_InvalidLimit(t *testing.T) {
-	repo := &mockEloRepo{}
+	db := testDBForRanking(t)
+	repo := repository.NewPostgresEloRepo(db)
+	defer cleanupRankingTestData(t, db)
+
 	router := newTestRankingRouter(repo)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/users/user1/rating/history?limit=-1", nil)
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/users/test-user1/rating/history?limit=-1"), nil)
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)

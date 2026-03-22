@@ -11,7 +11,7 @@ import (
 	"github.com/k82022603/RummiArena/game-server/internal/model"
 )
 
-const gameStateTTL = 24 * time.Hour
+const gameStateTTL = 2 * time.Hour
 
 // GameStateRepository defines the Redis-backed game state operations.
 type GameStateRepository interface {

@@ -538,7 +538,10 @@ func TestWSMultiplayer_Ping_Pong(t *testing.T) {
 // TestWSMultiplayer_FullTurnCycle
 // ============================================================
 
-// TestWSMultiplayer_FullTurnCycle 5턴 동안 드로우 반복 후 게임 상태 일관성을 검증하는 메인 시나리오.
+// TestWSMultiplayer_FullTurnCycle 1턴 드로우 → 턴 전환 → 교착 판정(2번째 드로우) 흐름을 검증한다.
+// 2인 게임에서 양측이 모두 1번씩 드로우하면 ConsecutivePassCount == 2 == len(players)이므로 교착이 발동한다.
+// 1번째 드로우: TILE_DRAWN + TURN_END + TURN_START 정상 수신
+// 2번째 드로우: GAME_OVER 수신 (교착 판정)
 func TestWSMultiplayer_FullTurnCycle(t *testing.T) {
 	router := buildTestRouter(t, "dev")
 	srv := httptest.NewServer(router)
@@ -558,66 +561,65 @@ func TestWSMultiplayer_FullTurnCycle(t *testing.T) {
 	initialDrawPileCount := int(hostGS["drawPileCount"].(float64))
 	currentSeat := int(hostGS["currentSeat"].(float64))
 
-	const numTurns = 5
-
-	for i := range numTurns {
-		// 현재 턴 플레이어를 선택한다.
-		var turnClient, otherClient *wsTestClient
-		if currentSeat == hostClient.seat {
-			turnClient = hostClient
-			otherClient = guestClient
-		} else {
-			turnClient = guestClient
-			otherClient = hostClient
-		}
-
-		// 현재 턴 플레이어가 DRAW_TILE을 전송한다.
-		turnClient.sendMsg(handler.C2SDrawTile, struct{}{})
-
-		// TILE_DRAWN 수신 (본인 + 상대)
-		ownDrawn := turnClient.readMsgOfType(handler.S2CTileDrawn)
-		ownDrawnPayload := decodePayload(ownDrawn.Payload)
-		assert.NotNil(t, ownDrawnPayload["drawnTile"],
-			"턴 %d: 본인의 drawnTile이 null이 아니어야 한다", i+1)
-
-		otherDrawn := otherClient.readMsgOfType(handler.S2CTileDrawn)
-		otherDrawnPayload := decodePayload(otherDrawn.Payload)
-		assert.Nil(t, otherDrawnPayload["drawnTile"],
-			"턴 %d: 상대의 drawnTile은 null이어야 한다", i+1)
-
-		// TURN_END 수신 (전원)
-		turnEnd := turnClient.readMsgOfType(handler.S2CTurnEnd)
-		turnEndPayload := decodePayload(turnEnd.Payload)
-		_ = otherClient.readMsgOfType(handler.S2CTurnEnd)
-
-		assert.Equal(t, "DRAW_TILE", turnEndPayload["action"],
-			"턴 %d: TURN_END.action은 DRAW_TILE이어야 한다", i+1)
-
-		nextSeat := int(turnEndPayload["nextSeat"].(float64))
-		assert.NotEqual(t, currentSeat, nextSeat,
-			"턴 %d: 드로우 후 턴이 다른 플레이어로 넘어가야 한다", i+1)
-
-		// TURN_START 수신 (전원)
-		nextTurnStart := turnClient.readMsgOfType(handler.S2CTurnStart)
-		nextTurnPayload := decodePayload(nextTurnStart.Payload)
-		_ = otherClient.readMsgOfType(handler.S2CTurnStart)
-
-		// TURN_START.seat이 nextSeat과 일치해야 한다.
-		assert.Equal(t, float64(nextSeat), nextTurnPayload["seat"],
-			"턴 %d: TURN_START.seat이 nextSeat과 일치해야 한다", i+1)
-
-		currentSeat = nextSeat
+	// --- 1번째 드로우: 정상 턴 전환 검증 ---
+	var turnClient, otherClient *wsTestClient
+	if currentSeat == hostClient.seat {
+		turnClient = hostClient
+		otherClient = guestClient
+	} else {
+		turnClient = guestClient
+		otherClient = hostClient
 	}
 
-	// 5번 드로우 후 drawPileCount가 감소했는지 확인한다.
-	// 마지막 TILE_DRAWN의 drawPileCount를 활용한다.
-	// (turnClient가 루프 종료 시점에 hostClient 또는 guestClient 중 하나)
-	// GAME_STATE를 HTTP로 조회하여 확인한다.
-	getGameResp := doRequest(t, srv, http.MethodGet, "/api/games/"+hostGS["gameId"].(string)+"?seat=0", hToken, nil)
-	require.Equal(t, http.StatusOK, getGameResp.StatusCode)
-	gameStateBody := decodeJSON(t, getGameResp)
-	finalDrawPile := int(gameStateBody["drawPileCount"].(float64))
+	turnClient.sendMsg(handler.C2SDrawTile, struct{}{})
 
-	assert.Less(t, finalDrawPile, initialDrawPileCount,
-		"5턴 드로우 후 drawPileCount(%d)가 초기값(%d)보다 작아야 한다", finalDrawPile, initialDrawPileCount)
+	// TILE_DRAWN 수신
+	ownDrawn := turnClient.readMsgOfType(handler.S2CTileDrawn)
+	ownDrawnPayload := decodePayload(ownDrawn.Payload)
+	assert.NotNil(t, ownDrawnPayload["drawnTile"], "1번째 드로우: 본인의 drawnTile이 null이 아니어야 한다")
+
+	otherDrawn := otherClient.readMsgOfType(handler.S2CTileDrawn)
+	otherDrawnPayload := decodePayload(otherDrawn.Payload)
+	assert.Nil(t, otherDrawnPayload["drawnTile"], "1번째 드로우: 상대의 drawnTile은 null이어야 한다")
+
+	// TURN_END 수신
+	turnEnd := turnClient.readMsgOfType(handler.S2CTurnEnd)
+	turnEndPayload := decodePayload(turnEnd.Payload)
+	_ = otherClient.readMsgOfType(handler.S2CTurnEnd)
+	assert.Equal(t, "DRAW_TILE", turnEndPayload["action"])
+
+	nextSeat := int(turnEndPayload["nextSeat"].(float64))
+	assert.NotEqual(t, currentSeat, nextSeat, "드로우 후 턴이 다른 플레이어로 넘어가야 한다")
+
+	// TURN_START 수신
+	nextTurnStart := turnClient.readMsgOfType(handler.S2CTurnStart)
+	nextTurnPayload := decodePayload(nextTurnStart.Payload)
+	_ = otherClient.readMsgOfType(handler.S2CTurnStart)
+	assert.Equal(t, float64(nextSeat), nextTurnPayload["seat"])
+
+	// 1번 드로우 후 drawPileCount가 감소했는지 확인
+	firstDrawPileCount := int(ownDrawnPayload["drawPileCount"].(float64))
+	assert.Less(t, firstDrawPileCount, initialDrawPileCount,
+		"드로우 후 drawPileCount(%d)가 초기값(%d)보다 작아야 한다", firstDrawPileCount, initialDrawPileCount)
+
+	// --- 2번째 드로우: 교착 판정 발동 → GAME_OVER 수신 ---
+	currentSeat = nextSeat
+	if currentSeat == hostClient.seat {
+		turnClient = hostClient
+		otherClient = guestClient
+	} else {
+		turnClient = guestClient
+		otherClient = hostClient
+	}
+
+	turnClient.sendMsg(handler.C2SDrawTile, struct{}{})
+
+	// 교착 판정: TILE_DRAWN 없이 GAME_OVER 수신
+	gameOver := turnClient.readMsgOfType(handler.S2CGameOver)
+	gameOverPayload := decodePayload(gameOver.Payload)
+	assert.NotNil(t, gameOverPayload, "교착 판정: GAME_OVER 페이로드가 있어야 한다")
+
+	// 상대도 GAME_OVER 수신
+	otherGameOver := otherClient.readMsgOfType(handler.S2CGameOver)
+	assert.NotNil(t, decodePayload(otherGameOver.Payload))
 }

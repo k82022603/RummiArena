@@ -27,11 +27,21 @@ func NewRoomHandler(roomSvc service.RoomService) *RoomHandler {
 	return &RoomHandler{roomSvc: roomSvc}
 }
 
+// aiPlayerReq AI 플레이어 설정
+type aiPlayerReq struct {
+	Type            string `json:"type"`
+	Persona         string `json:"persona"`
+	Difficulty      string `json:"difficulty"`
+	PsychologyLevel int    `json:"psychologyLevel"`
+}
+
 // createRoomRequest POST /api/rooms 요청 바디
 type createRoomRequest struct {
-	Name           string `json:"name"           binding:"max=50"`
-	PlayerCount    int    `json:"playerCount"    binding:"required,min=2,max=4"`
-	TurnTimeoutSec int    `json:"turnTimeoutSec" binding:"required,min=30,max=120"`
+	Name           string        `json:"name"           binding:"max=50"`
+	PlayerCount    int           `json:"playerCount"    binding:"required,min=2,max=4"`
+	TurnTimeoutSec int           `json:"turnTimeoutSec" binding:"required,min=30,max=120"`
+	DisplayName    string        `json:"displayName"    binding:"max=50"`
+	AIPlayers      []aiPlayerReq `json:"aiPlayers"`
 }
 
 // CreateRoom POST /api/rooms
@@ -48,11 +58,23 @@ func (h *RoomHandler) CreateRoom(c *gin.Context) {
 		return
 	}
 
+	aiPlayers := make([]service.AIPlayerRequest, 0, len(req.AIPlayers))
+	for _, ai := range req.AIPlayers {
+		aiPlayers = append(aiPlayers, service.AIPlayerRequest{
+			Type:            ai.Type,
+			Persona:         ai.Persona,
+			Difficulty:      ai.Difficulty,
+			PsychologyLevel: ai.PsychologyLevel,
+		})
+	}
+
 	room, err := h.roomSvc.CreateRoom(&service.CreateRoomRequest{
-		Name:           req.Name,
-		PlayerCount:    req.PlayerCount,
-		TurnTimeoutSec: req.TurnTimeoutSec,
-		HostUserID:     userID,
+		Name:            req.Name,
+		PlayerCount:     req.PlayerCount,
+		TurnTimeoutSec:  req.TurnTimeoutSec,
+		HostUserID:      userID,
+		HostDisplayName: req.DisplayName,
+		AIPlayers:       aiPlayers,
 	})
 	if err != nil {
 		handleServiceError(c, err)
@@ -129,7 +151,12 @@ func (h *RoomHandler) JoinRoom(c *gin.Context) {
 		return
 	}
 
-	if err := h.roomSvc.JoinRoom(roomID, userID); err != nil {
+	var body struct {
+		DisplayName string `json:"displayName" binding:"max=50"`
+	}
+	_ = c.ShouldBindJSON(&body)
+
+	if err := h.roomSvc.JoinRoom(roomID, userID, body.DisplayName); err != nil {
 		handleServiceError(c, err)
 		return
 	}
@@ -219,14 +246,21 @@ func (h *RoomHandler) DeleteRoom(c *gin.Context) {
 
 // roomStateToDetail RoomState를 API 응답 DTO인 RoomDetail로 변환한다.
 func roomStateToDetail(r *model.RoomState) *model.RoomDetail {
+	activeCount := 0
+	for _, p := range r.Players {
+		if p.Status != model.SeatStatusEmpty {
+			activeCount++
+		}
+	}
 	return &model.RoomDetail{
 		ID:          r.ID,
 		RoomCode:    r.RoomCode,
 		Name:        r.Name,
 		Status:      r.Status,
 		HostUserID:  r.HostID,
-		PlayerCount: r.MaxPlayers,
+		PlayerCount: activeCount,
 		Settings: model.RoomSettings{
+			PlayerCount:          r.MaxPlayers,
 			TurnTimeoutSec:       r.TurnTimeoutSec,
 			InitialMeldThreshold: 30,
 		},

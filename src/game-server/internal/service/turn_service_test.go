@@ -197,7 +197,8 @@ func TestTurnService_HandleTimeout_ForcesDrawAndAdvancesTurn(t *testing.T) {
 }
 
 func TestTurnService_HandleTimeout_EmptyDrawPile_GameEnds(t *testing.T) {
-	// 드로우 파일이 비었을 때 타임아웃 → 게임 종료
+	// 드로우 파일이 비었을 때 타임아웃 → 교착 판정 후 게임 종료
+	// rack0=R5a(5점), rack1=K1a(1점) → 점수 낮은 u1(seat1)이 승자
 	rack0 := []string{"R5a"}
 	rack1 := []string{"K1a"}
 	state := &model.GameStateRedis{
@@ -216,8 +217,12 @@ func TestTurnService_HandleTimeout_EmptyDrawPile_GameEnds(t *testing.T) {
 
 	result, err := ts.HandleTimeout("ts-game-5", 0)
 	require.NoError(t, err)
-	assert.False(t, result.Success)
-	assert.True(t, result.GameState.Status == model.GameStatusFinished)
+	// 교착 판정: 점수 기반 승자 결정 → Success: true, GameEnded: true
+	assert.True(t, result.Success)
+	assert.Equal(t, model.GameStatusFinished, result.GameState.Status)
+	// K1a(1점) < R5a(5점) → u1 승리
+	assert.Equal(t, "u1", result.GameState.Players[1].UserID)
+	assert.Equal(t, "STALEMATE", result.ErrorCode)
 }
 
 // --- TestTurnService_GetCurrentSeat ---

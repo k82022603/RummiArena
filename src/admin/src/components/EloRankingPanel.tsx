@@ -17,14 +17,14 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
-import { TIER_COLORS } from "@/lib/mock-data";
+import { TIER_COLORS } from "@/lib/api";
 import type {
   EloTier,
   EloRankingEntry,
   EloRankingsResponse,
   EloSummary,
   EloTierDistribution,
-} from "@/lib/mock-data";
+} from "@/lib/types";
 
 // ------------------------------------------------------------------
 // 상수

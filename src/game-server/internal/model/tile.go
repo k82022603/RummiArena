@@ -36,14 +36,16 @@ type SetOnTable struct {
 
 // GameStateRedis is the Redis-cached game state structure.
 type GameStateRedis struct {
-	GameID      string        `json:"gameId"`
-	Status      GameStatus    `json:"status"`
-	CurrentSeat int           `json:"currentSeat"`
-	DrawPile    []string      `json:"drawPile"`
-	Table       []*SetOnTable `json:"table"`
-	Players     []PlayerState `json:"players"`
-	TurnStartAt int64         `json:"turnStartAt"`
-	TurnCount   int           `json:"turnCount"`
+	GameID               string        `json:"gameId"`
+	Status               GameStatus    `json:"status"`
+	CurrentSeat          int           `json:"currentSeat"`
+	DrawPile             []string      `json:"drawPile"`
+	Table                []*SetOnTable `json:"table"`
+	Players              []PlayerState `json:"players"`
+	TurnStartAt          int64         `json:"turnStartAt"`
+	TurnCount            int           `json:"turnCount"`
+	ConsecutivePassCount int           `json:"consecutivePassCount"` // 연속 드로우 횟수 (교착 판정용)
+	TurnTimeoutSec       int           `json:"turnTimeoutSec"`        // 타이머 에이전트가 사용할 필드
 }
 
 // PlayerState holds per-player in-memory state cached in Redis.

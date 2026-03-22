@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getGame } from "@/lib/api";
-import type { PlayerType } from "@/lib/mock-data";
+import type { PlayerType } from "@/lib/types";
 
 const PLAYER_TYPE_LABEL: Record<PlayerType, string> = {
   HUMAN:        "Human",

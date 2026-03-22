@@ -26,12 +26,12 @@ COPY --from=deps /app/node_modules ./node_modules
 # 소스 전체 복사
 COPY . .
 
-# Next.js 빌드 시 필요한 런타임 환경변수만 ARG로 주입
-# (빌드 타임에 하드코딩되지 않도록 NEXT_PUBLIC_ 변수는 빌드 ARG로 전달)
-ARG NEXT_PUBLIC_API_URL=http://game-server:8080/api
+# GAME_SERVER_INTERNAL_URL: next.config.ts rewrite 대상 (빌드 타임에 컴파일됨)
+# NEXT_PUBLIC_WS_URL: 브라우저 WebSocket 주소 (클라이언트 번들에 포함)
+ARG GAME_SERVER_INTERNAL_URL=http://game-server:8080
 ARG NEXT_PUBLIC_WS_URL=ws://game-server:8080
 
-ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV GAME_SERVER_INTERNAL_URL=${GAME_SERVER_INTERNAL_URL}
 ENV NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL}
 # 텔레메트리 비활성화 (빌드 시간 단축)
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -52,6 +52,9 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # standalone 서버가 바인딩할 호스트 (0.0.0.0 필수 — 컨테이너 외부 접근)
 ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
+# next.config.ts rewrite 런타임 대상 (K8s 서비스명으로 오버라이드 가능)
+ENV GAME_SERVER_INTERNAL_URL=http://game-server:8080
+# NEXTAUTH_URL, NEXTAUTH_SECRET 는 K8s Secret으로 주입 (여기에 하드코딩하지 말 것)
 
 # Next.js standalone 출력물 복사
 # standalone에 server.js + 필요한 node_modules가 포함됨

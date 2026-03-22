@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { AdminGame, GameStatus } from "@/lib/mock-data";
+import type { AdminGame, GameStatus } from "@/lib/types";
 
 interface GameCardProps {
   game: AdminGame;
