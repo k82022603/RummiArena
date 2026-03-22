@@ -257,3 +257,106 @@ export const MOCK_DIFFICULTY_STATS: DifficultyStats[] = [
 export function getMockRooms(): AdminGame[] {
   return MOCK_GAMES.filter((g) => g.status !== "FINISHED");
 }
+
+// ------------------------------------------------------------------
+// ELO 랭킹 타입 정의
+// ------------------------------------------------------------------
+
+export type EloTier =
+  | "UNRANKED"
+  | "BRONZE"
+  | "SILVER"
+  | "GOLD"
+  | "PLATINUM"
+  | "DIAMOND";
+
+export interface EloRankingEntry {
+  rank: number;
+  userId: string;
+  displayName: string;
+  avatarUrl?: string;
+  rating: number;
+  tier: EloTier;
+  wins: number;
+  losses: number;
+  draws: number;
+  gamesPlayed: number;
+  winRate: number;
+  winStreak: number;
+}
+
+export interface EloRankingsResponse {
+  rankings: EloRankingEntry[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface EloSummary {
+  totalRankedUsers: number;
+  topRating: number;
+  avgRating: number;
+}
+
+export interface EloTierDistribution {
+  tier: EloTier;
+  count: number;
+  color: string;
+}
+
+// ------------------------------------------------------------------
+// ELO Mock 데이터
+// ------------------------------------------------------------------
+
+export const TIER_COLORS: Record<EloTier, string> = {
+  UNRANKED: "#9CA3AF",
+  BRONZE:   "#B45309",
+  SILVER:   "#6B7280",
+  GOLD:     "#D97706",
+  PLATINUM: "#0EA5E9",
+  DIAMOND:  "#7C3AED",
+};
+
+export const MOCK_ELO_RANKINGS: EloRankingEntry[] = [
+  { rank: 1,  userId: "u-101", displayName: "루미고수",   rating: 2041, tier: "DIAMOND",  wins: 98,  losses: 22, draws: 5,  gamesPlayed: 125, winRate: 78.4, winStreak: 7  },
+  { rank: 2,  userId: "u-102", displayName: "전략왕",     rating: 1987, tier: "DIAMOND",  wins: 87,  losses: 31, draws: 4,  gamesPlayed: 122, winRate: 71.3, winStreak: 3  },
+  { rank: 3,  userId: "u-103", displayName: "타일마스터", rating: 1854, tier: "PLATINUM", wins: 74,  losses: 28, draws: 6,  gamesPlayed: 108, winRate: 68.5, winStreak: 5  },
+  { rank: 4,  userId: "u-104", displayName: "AI_CLAUDE",  rating: 1823, tier: "PLATINUM", wins: 71,  losses: 30, draws: 3,  gamesPlayed: 104, winRate: 68.3, winStreak: 2  },
+  { rank: 5,  userId: "u-105", displayName: "알고리즘",   rating: 1791, tier: "PLATINUM", wins: 65,  losses: 35, draws: 2,  gamesPlayed: 102, winRate: 63.7, winStreak: 0  },
+  { rank: 6,  userId: "u-106", displayName: "AI_OPENAI",  rating: 1734, tier: "PLATINUM", wins: 62,  losses: 38, draws: 4,  gamesPlayed: 104, winRate: 59.6, winStreak: 1  },
+  { rank: 7,  userId: "u-107", displayName: "빠른손",     rating: 1682, tier: "PLATINUM", wins: 59,  losses: 41, draws: 3,  gamesPlayed: 103, winRate: 57.3, winStreak: 0  },
+  { rank: 8,  userId: "u-108", displayName: "애벌레",     rating: 1523, tier: "GOLD",     wins: 42,  losses: 18, draws: 3,  gamesPlayed: 63,  winRate: 66.7, winStreak: 5  },
+  { rank: 9,  userId: "u-109", displayName: "AI_DEEPSEEK",rating: 1487, tier: "GOLD",     wins: 51,  losses: 46, draws: 5,  gamesPlayed: 102, winRate: 50.0, winStreak: 0  },
+  { rank: 10, userId: "u-110", displayName: "은빛달",     rating: 1421, tier: "GOLD",     wins: 38,  losses: 35, draws: 2,  gamesPlayed: 75,  winRate: 50.7, winStreak: 2  },
+  { rank: 11, userId: "u-111", displayName: "묵직한타일", rating: 1388, tier: "GOLD",     wins: 34,  losses: 38, draws: 4,  gamesPlayed: 76,  winRate: 44.7, winStreak: 0  },
+  { rank: 12, userId: "u-112", displayName: "Player2",    rating: 1312, tier: "GOLD",     wins: 28,  losses: 40, draws: 1,  gamesPlayed: 69,  winRate: 40.6, winStreak: 0  },
+  { rank: 13, userId: "u-113", displayName: "AI_LLAMA",   rating: 1278, tier: "SILVER",   wins: 44,  losses: 71, draws: 6,  gamesPlayed: 121, winRate: 36.4, winStreak: 0  },
+  { rank: 14, userId: "u-114", displayName: "뉴비프로",   rating: 1241, tier: "SILVER",   wins: 22,  losses: 38, draws: 2,  gamesPlayed: 62,  winRate: 35.5, winStreak: 1  },
+  { rank: 15, userId: "u-115", displayName: "서울타일러", rating: 1198, tier: "SILVER",   wins: 19,  losses: 41, draws: 3,  gamesPlayed: 63,  winRate: 30.2, winStreak: 0  },
+  { rank: 16, userId: "u-116", displayName: "조커달인",   rating: 1153, tier: "SILVER",   wins: 17,  losses: 44, draws: 1,  gamesPlayed: 62,  winRate: 27.4, winStreak: 0  },
+  { rank: 17, userId: "u-117", displayName: "Guest_7f3a", rating: 987,  tier: "BRONZE",   wins: 8,   losses: 18, draws: 0,  gamesPlayed: 26,  winRate: 30.8, winStreak: 0  },
+  { rank: 18, userId: "u-118", displayName: "뉴비123",    rating: 954,  tier: "BRONZE",   wins: 5,   losses: 21, draws: 1,  gamesPlayed: 27,  winRate: 18.5, winStreak: 0  },
+  { rank: 19, userId: "u-119", displayName: "Guest_2b9c", rating: 921,  tier: "BRONZE",   wins: 4,   losses: 22, draws: 0,  gamesPlayed: 26,  winRate: 15.4, winStreak: 0  },
+  { rank: 20, userId: "u-120", displayName: "첫발걸음",   rating: 1000, tier: "UNRANKED", wins: 3,   losses: 5,  draws: 0,  gamesPlayed: 8,   winRate: 37.5, winStreak: 0  },
+];
+
+export const MOCK_ELO_SUMMARY: EloSummary = {
+  totalRankedUsers: 19,
+  topRating: 2041,
+  avgRating: Math.round(
+    MOCK_ELO_RANKINGS.filter((r) => r.tier !== "UNRANKED").reduce((s, r) => s + r.rating, 0) /
+    MOCK_ELO_RANKINGS.filter((r) => r.tier !== "UNRANKED").length
+  ),
+};
+
+export function getMockEloTierDistribution(): EloTierDistribution[] {
+  const countByTier: Record<EloTier, number> = {
+    UNRANKED: 0, BRONZE: 0, SILVER: 0, GOLD: 0, PLATINUM: 0, DIAMOND: 0,
+  };
+  for (const entry of MOCK_ELO_RANKINGS) {
+    countByTier[entry.tier]++;
+  }
+  return (Object.entries(countByTier) as [EloTier, number][])
+    .filter(([, count]) => count > 0)
+    .map(([tier, count]) => ({ tier, count, color: TIER_COLORS[tier] }));
+}

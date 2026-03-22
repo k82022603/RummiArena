@@ -12,7 +12,11 @@ import {
   MOCK_AI_MODEL_STATS,
   MOCK_PERSONA_STATS,
   MOCK_DIFFICULTY_STATS,
+  MOCK_ELO_RANKINGS,
+  MOCK_ELO_SUMMARY,
+  TIER_COLORS,
   getMockRooms,
+  getMockEloTierDistribution,
   type AdminGame,
   type AdminUser,
   type AiModelStats,
@@ -20,6 +24,10 @@ import {
   type DifficultyStats,
   type DashboardSummary,
   type HealthStatus,
+  type EloTier,
+  type EloRankingsResponse,
+  type EloSummary,
+  type EloTierDistribution,
 } from "./mock-data";
 import { getAdminToken } from "./auth";
 
@@ -139,4 +147,112 @@ export async function getPersonaStats(): Promise<PersonaStats[]> {
 
 export async function getDifficultyStats(): Promise<DifficultyStats[]> {
   return fetchApi("/admin/stats/difficulty", MOCK_DIFFICULTY_STATS);
+}
+
+// ------------------------------------------------------------------
+// ELO 랭킹 API
+// ------------------------------------------------------------------
+
+/**
+ * 전체 ELO 리더보드를 가져온다.
+ * tier 인자가 주어지면 /api/rankings/tier/:tier 를 호출한다.
+ */
+export async function getEloRankings(
+  limit = 20,
+  offset = 0,
+  tier?: EloTier,
+): Promise<EloRankingsResponse> {
+  const mockRankings = tier
+    ? MOCK_ELO_RANKINGS.filter((r) => r.tier === tier)
+    : MOCK_ELO_RANKINGS;
+
+  const mockResponse: EloRankingsResponse = {
+    rankings: mockRankings.slice(offset, offset + limit),
+    total: mockRankings.length,
+    limit,
+    offset,
+  };
+
+  if (USE_MOCK) return mockResponse;
+
+  try {
+    const token = await getAdminToken();
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const endpoint = tier
+      ? `${API_BASE}/api/rankings/tier/${tier}?limit=${limit}&offset=${offset}`
+      : `${API_BASE}/api/rankings?limit=${limit}&offset=${offset}`;
+
+    const res = await fetch(endpoint, { headers, next: { revalidate: 30 } });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json() as Promise<EloRankingsResponse>;
+  } catch {
+    console.warn("[admin/api] getEloRankings failed, falling back to mock");
+    return mockResponse;
+  }
+}
+
+/**
+ * ELO 요약 통계 (총 랭크 유저, 최고/평균 레이팅)
+ */
+export async function getEloSummary(): Promise<EloSummary> {
+  if (USE_MOCK) return MOCK_ELO_SUMMARY;
+  try {
+    const token = await getAdminToken();
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    // game-server가 별도 summary 엔드포인트를 제공하기 전까지 rankings에서 계산
+    const res = await fetch(`${API_BASE}/api/rankings?limit=100&offset=0`, {
+      headers,
+      next: { revalidate: 60 },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = (await res.json()) as EloRankingsResponse;
+    const ranked = data.rankings.filter((r) => r.tier !== "UNRANKED");
+    return {
+      totalRankedUsers: ranked.length,
+      topRating: ranked.length > 0 ? Math.max(...ranked.map((r) => r.rating)) : 0,
+      avgRating:
+        ranked.length > 0
+          ? Math.round(ranked.reduce((s, r) => s + r.rating, 0) / ranked.length)
+          : 0,
+    };
+  } catch {
+    console.warn("[admin/api] getEloSummary failed, falling back to mock");
+    return MOCK_ELO_SUMMARY;
+  }
+}
+
+/**
+ * 티어별 인원 분포 (파이 차트용)
+ */
+export async function getEloTierDistribution(): Promise<EloTierDistribution[]> {
+  if (USE_MOCK) return getMockEloTierDistribution();
+  try {
+    const token = await getAdminToken();
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(`${API_BASE}/api/rankings?limit=200&offset=0`, {
+      headers,
+      next: { revalidate: 60 },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const { rankings } = (await res.json()) as EloRankingsResponse;
+
+    // 서버 응답 데이터로 티어별 집계
+    const countByTier: Partial<Record<EloTier, number>> = {};
+    for (const r of rankings) {
+      countByTier[r.tier] = (countByTier[r.tier] ?? 0) + 1;
+    }
+    const TIER_ORDER: EloTier[] = ["UNRANKED", "BRONZE", "SILVER", "GOLD", "PLATINUM", "DIAMOND"];
+    return TIER_ORDER
+      .filter((t) => (countByTier[t] ?? 0) > 0)
+      .map((t) => ({ tier: t, count: countByTier[t] ?? 0, color: TIER_COLORS[t] }));
+  } catch {
+    console.warn("[admin/api] getEloTierDistribution failed, falling back to mock");
+    return getMockEloTierDistribution();
+  }
 }
