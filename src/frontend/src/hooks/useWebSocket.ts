@@ -25,7 +25,7 @@ import type {
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8080";
 const MAX_RECONNECT_ATTEMPTS = 5;
-const RECONNECT_DELAY_MS = 2000;
+const INITIAL_RECONNECT_DELAY_MS = 3000; // 3s, 6s, 12s, 24s, 48s (2x backoff)
 
 /**
  * 서버 에러 코드 → 한글 메시지 매핑 (websocket-protocol.md 기반)
@@ -172,6 +172,7 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
         case "GAME_OVER": {
           const payload = msg.payload as GameOverPayload;
           console.info("[WS] GAME_OVER", payload);
+          useGameStore.getState().setGameOverResult(payload);
           setGameEnded(true);
           break;
         }
@@ -273,7 +274,7 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
         if (reconnectAttempts.current < MAX_RECONNECT_ATTEMPTS) {
           setStatus("reconnecting");
           reconnectAttempts.current += 1;
-          const delay = RECONNECT_DELAY_MS * Math.pow(1.5, reconnectAttempts.current - 1);
+          const delay = INITIAL_RECONNECT_DELAY_MS * Math.pow(2, reconnectAttempts.current - 1);
           reconnectTimer.current = setTimeout(() => {
             if (isMounted.current) connect();
           }, delay);

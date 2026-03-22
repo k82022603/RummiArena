@@ -28,19 +28,28 @@ export class PromptBuilderService {
    * 없으면 구 템플릿(legacyBuildSystemPrompt)으로 폴백한다.
    */
   buildSystemPrompt(request: MoveRequestDto): string {
+    let systemPrompt: string;
+
     if (this.characterService) {
       const result = this.characterService.getCharacterPrompt(
         request.persona as CharacterType,
         request.difficulty as DifficultyLevel,
         request.psychologyLevel as PsychWarfareLevel,
       );
-      return result.systemPrompt;
+      systemPrompt = result.systemPrompt;
+    } else {
+      // CharacterService 없으면 구 템플릿 사용 (fallback)
+      systemPrompt = legacyBuildSystemPrompt(
+        request.persona,
+        request.difficulty,
+        request.psychologyLevel,
+      );
     }
-    // CharacterService 없으면 구 템플릿 사용 (fallback)
-    return legacyBuildSystemPrompt(
-      request.persona,
-      request.difficulty,
-      request.psychologyLevel,
+
+    // 모든 시스템 프롬프트에 JSON-only 강제 문구 추가 (소형 모델 JSON 오류율 대응)
+    return (
+      systemPrompt +
+      '\n\nIMPORTANT: Respond ONLY with a valid JSON object. No explanation, no markdown, no code blocks. Output raw JSON only.'
     );
   }
 
@@ -120,7 +129,19 @@ export class PromptBuilderService {
     lines.push(`  심리전 레벨: Level ${request.psychologyLevel}`);
 
     lines.push('');
-    lines.push('위 게임 상태를 분석하여 최적의 수를 JSON 형식으로 응답하세요.');
+    lines.push('## 응답 형식 (반드시 이 JSON만 출력, 설명/마크다운 금지)');
+    lines.push('드로우할 때:');
+    lines.push('{"action":"draw","reasoning":"이유"}');
+    lines.push('');
+    lines.push('배치할 때:');
+    lines.push(
+      '{"action":"place","tableGroups":[{"tiles":["R1a","R2a","R3a"]}],"tilesFromRack":["R1a","R2a","R3a"],"reasoning":"이유"}',
+    );
+    lines.push('');
+    lines.push(
+      '규칙: action은 "place" 또는 "draw"만 가능. tableGroups의 각 그룹은 타일 3개 이상.',
+    );
+    lines.push('지금 즉시 JSON만 출력하라:');
 
     return lines.join('\n');
   }
@@ -138,7 +159,8 @@ export class PromptBuilderService {
       basePrompt +
       `\n\n## 재시도 안내 (시도 ${attemptNumber + 1}회)\n` +
       `이전 응답이 유효하지 않습니다: ${errorReason}\n` +
-      `반드시 유효한 JSON 형식과 올바른 게임 규칙을 지켜서 다시 응답하세요.`
+      `반드시 유효한 JSON 형식과 올바른 게임 규칙을 지켜서 다시 응답하세요.` +
+      `\n## 주의: JSON 객체만 출력. 설명, 마크다운 코드블록, 추가 텍스트 금지. 반드시 {"action":...} 형식으로만.`
     );
   }
 

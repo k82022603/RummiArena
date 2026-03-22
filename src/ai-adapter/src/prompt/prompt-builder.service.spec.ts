@@ -93,7 +93,9 @@ describe('PromptBuilderService', () => {
       const result = serviceWithCharacter.buildSystemPrompt(makeRequest());
 
       expect(spy).toHaveBeenCalledWith('shark', 'expert', 2);
-      expect(result).toBe('mocked-system-prompt');
+      expect(result).toContain('mocked-system-prompt');
+      // #31: JSON-only 강제 접미사가 추가되므로 정확 일치 대신 포함 검증
+      expect(result).toContain('Respond ONLY with a valid JSON object');
     });
 
     it('CharacterService 주입 시 shark 캐릭터 시스템 프롬프트를 반환한다', () => {
