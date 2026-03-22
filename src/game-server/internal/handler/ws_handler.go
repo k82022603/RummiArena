@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -23,7 +24,20 @@ import (
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
-		return true // TODO: 프로덕션에서는 origin 검증
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			return true // non-browser client (curl, server-to-server)
+		}
+		allowed := os.Getenv("CORS_ALLOWED_ORIGINS")
+		if allowed == "" {
+			return false
+		}
+		for _, o := range strings.Split(allowed, ",") {
+			if strings.TrimSpace(o) == origin {
+				return true
+			}
+		}
+		return false
 	},
 }
 

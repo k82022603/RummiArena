@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   DndContext,
   DragEndEvent,
@@ -25,11 +25,7 @@ import ConnectionStatus from "@/components/game/ConnectionStatus";
 import ErrorToast from "@/components/game/ErrorToast";
 import ReconnectToast from "@/components/game/ReconnectToast";
 import Tile from "@/components/tile/Tile";
-import {
-  MOCK_GAME_STATE,
-  MOCK_MY_TILES,
-  MOCK_PLAYERS,
-} from "@/lib/mock-data";
+
 import type { TileCode, TableGroup } from "@/types/tile";
 
 interface GameClientProps {
@@ -164,9 +160,6 @@ export default function GameClient({ roomId }: GameClientProps) {
     addPendingGroupId,
     clearPendingGroupIds,
     setMyTiles,
-    setGameState,
-    setPlayers,
-    setRemainingMs,
     gameEnded,
     setGameEnded,
   } = useGameStore();
@@ -176,21 +169,6 @@ export default function GameClient({ roomId }: GameClientProps) {
   const [activeDragCode, setActiveDragCode] = useState<TileCode | null>(null);
   const isDragging = activeDragCode !== null;
 
-  // mock 데이터 초기화 (game-server 미연결 시 UI 데모용)
-  useEffect(() => {
-    if (players.length === 0) {
-      setPlayers(MOCK_PLAYERS);
-    }
-    if (!gameState) {
-      setGameState(MOCK_GAME_STATE);
-      setRemainingMs(MOCK_GAME_STATE.turnTimeoutSec * 1000);
-    }
-    if (myTiles.length === 0) {
-      setMyTiles([...MOCK_MY_TILES] as TileCode[]);
-    }
-  // 마운트 시 1회만 실행
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // 실제 내 seat: roomStore의 mySeat 우선, gameStore의 mySeat 차선
   const effectiveMySeat = roomMySeat ?? mySeat;

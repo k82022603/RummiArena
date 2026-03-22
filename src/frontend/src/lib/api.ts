@@ -1,15 +1,11 @@
 /**
  * game-server REST API 클라이언트
  *
- * API 호출 실패 시 mock-data로 fallback한다.
  * NEXT_PUBLIC_API_URL 환경변수로 엔드포인트를 설정한다.
+ * 예: http://localhost:8080/api
  */
 
 import type { Room } from "@/types/game";
-import {
-  MOCK_ROOMS,
-  createMockRoom,
-} from "./mock-data";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080/api";
@@ -74,106 +70,50 @@ export interface CreateRoomParams {
   }>;
 }
 
-/**
- * Room 생성
- * 실패 시 mock 데이터로 fallback (개발/데모 환경)
- */
+/** Room 생성 */
 export async function createRoom(
   params: CreateRoomParams,
   token?: string,
 ): Promise<Room> {
-  try {
-    return await apiFetch<Room>("/rooms", {
-      method: "POST",
-      body: JSON.stringify(params),
-      token,
-    });
-  } catch (err) {
-    console.warn("[api] createRoom fallback to mock:", err);
-    return createMockRoom({
-      playerCount: params.playerCount,
-      turnTimeoutSec: params.turnTimeoutSec,
-    });
-  }
+  return apiFetch<Room>("/rooms", {
+    method: "POST",
+    body: JSON.stringify(params),
+    token,
+  });
 }
 
-/**
- * Room 목록 조회
- * 실패 시 mock 데이터로 fallback
- */
+/** Room 목록 조회 */
 export async function getRooms(token?: string): Promise<Room[]> {
-  try {
-    return await apiFetch<Room[]>("/rooms", { token });
-  } catch (err) {
-    console.warn("[api] getRooms fallback to mock:", err);
-    return MOCK_ROOMS;
-  }
+  return apiFetch<Room[]>("/rooms", { token });
 }
 
-/**
- * Room 상세 조회
- * 실패 시 mock 데이터에서 찾아 반환
- */
+/** Room 상세 조회 */
 export async function getRoom(roomId: string, token?: string): Promise<Room> {
-  try {
-    return await apiFetch<Room>(`/rooms/${roomId}`, { token });
-  } catch (err) {
-    console.warn("[api] getRoom fallback to mock:", err);
-    const found =
-      MOCK_ROOMS.find((r) => r.id === roomId || r.roomCode === roomId);
-    if (found) return found;
-    throw new Error("방을 찾을 수 없습니다.");
-  }
+  return apiFetch<Room>(`/rooms/${roomId}`, { token });
 }
 
-/**
- * Room 참가
- * 실패 시 mock room 반환
- */
+/** Room 참가 */
 export async function joinRoom(roomId: string, token?: string): Promise<Room> {
-  try {
-    return await apiFetch<Room>(`/rooms/${roomId}/join`, {
-      method: "POST",
-      token,
-    });
-  } catch (err) {
-    console.warn("[api] joinRoom fallback to mock:", err);
-    const found =
-      MOCK_ROOMS.find((r) => r.id === roomId || r.roomCode === roomId);
-    if (found) return found;
-    throw new Error("방 참가에 실패했습니다.");
-  }
+  return apiFetch<Room>(`/rooms/${roomId}/join`, {
+    method: "POST",
+    token,
+  });
 }
 
-/**
- * Room 퇴장
- */
+/** Room 퇴장 */
 export async function leaveRoom(roomId: string, token?: string): Promise<void> {
-  try {
-    await apiFetch<void>(`/rooms/${roomId}/leave`, { method: "POST", token });
-  } catch (err) {
-    console.warn("[api] leaveRoom error (ignored):", err);
-  }
+  await apiFetch<void>(`/rooms/${roomId}/leave`, { method: "POST", token });
 }
 
-/**
- * 게임 시작
- * 실패 시 그냥 넘어가 게임 페이지로 이동하도록 한다.
- */
+/** 게임 시작 */
 export async function startGame(
   roomId: string,
   token?: string,
 ): Promise<{ id: string }> {
-  try {
-    return await apiFetch<{ id: string }>(`/rooms/${roomId}/start`, {
-      method: "POST",
-      token,
-    });
-  } catch (err) {
-    console.warn("[api] startGame fallback to mock:", err);
-    // 게임 서버가 없을 때도 UI 흐름을 계속할 수 있게 roomId를 그대로 반환
-    return { id: roomId };
-  }
+  return apiFetch<{ id: string }>(`/rooms/${roomId}/start`, {
+    method: "POST",
+    token,
+  });
 }
 
 // ------------------------------------------------------------------
@@ -193,19 +133,5 @@ export interface MyProfile {
 }
 
 export async function getMyProfile(token?: string): Promise<MyProfile> {
-  try {
-    return await apiFetch<MyProfile>("/auth/me", { token });
-  } catch (err) {
-    console.warn("[api] getMyProfile fallback to mock:", err);
-    return {
-      id: "user-me",
-      email: "user@example.com",
-      displayName: "애벌레",
-      role: "ROLE_USER",
-      eloRating: 1247,
-      totalGames: 142,
-      wins: 77,
-      winRate: 54.2,
-    };
-  }
+  return apiFetch<MyProfile>("/auth/me", { token });
 }

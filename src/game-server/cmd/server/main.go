@@ -5,9 +5,11 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
@@ -138,6 +140,28 @@ func buildRouter(
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.Use(middleware.ZapLogger(logger))
+	// CORS 허용 Origin 목록: CORS_ALLOWED_ORIGINS 환경변수에서 읽음 (쉼표 구분)
+	// 미설정 시 기본값: localhost:3000, localhost:30000 (로컬 개발용)
+	allowedOrigins := []string{"http://localhost:3000", "http://localhost:30000"}
+	if envOrigins := os.Getenv("CORS_ALLOWED_ORIGINS"); envOrigins != "" {
+		parts := strings.Split(envOrigins, ",")
+		trimmed := make([]string, 0, len(parts))
+		for _, p := range parts {
+			if t := strings.TrimSpace(p); t != "" {
+				trimmed = append(trimmed, t)
+			}
+		}
+		if len(trimmed) > 0 {
+			allowedOrigins = trimmed
+		}
+	}
+	router.Use(cors.New(cors.Config{
+		AllowOrigins:     allowedOrigins,
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+	}))
 
 	registerSystemRoutes(router, redisClient)
 	registerWSRoutes(router, wsHandler)

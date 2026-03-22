@@ -7,7 +7,6 @@ import { useEffect, useState, useCallback } from "react";
 import { getRooms } from "@/lib/api";
 import { useRoomStore } from "@/store/roomStore";
 import type { Room } from "@/types/game";
-import { MOCK_LOBBY_STATS } from "@/lib/mock-data";
 
 // ------------------------------------------------------------------
 // Room 카드
@@ -174,59 +173,14 @@ function MyProfileCard() {
 // ------------------------------------------------------------------
 
 function StatsPanel() {
-  const stats = MOCK_LOBBY_STATS;
-
   return (
-    <div className="flex flex-col gap-3">
-      {/* KPI 카드들 */}
-      <div className="p-4 bg-card-bg rounded-xl border border-border">
-        <h3 className="text-tile-sm font-semibold text-text-secondary mb-3 uppercase tracking-wider">
-          현재 현황
-        </h3>
-        <div className="grid grid-cols-2 gap-2">
-          <div className="bg-panel-bg rounded-lg p-2 text-center">
-            <p className="text-tile-xl font-bold text-success">{stats.onlineCount}</p>
-            <p className="text-tile-xs text-text-secondary">접속 중</p>
-          </div>
-          <div className="bg-panel-bg rounded-lg p-2 text-center">
-            <p className="text-tile-xl font-bold text-warning">{stats.activeGames}</p>
-            <p className="text-tile-xs text-text-secondary">진행 중</p>
-          </div>
-          <div className="bg-panel-bg rounded-lg p-2 text-center">
-            <p className="text-tile-xl font-bold text-text-primary">{stats.waitingRooms}</p>
-            <p className="text-tile-xs text-text-secondary">대기 중</p>
-          </div>
-          <div className="bg-panel-bg rounded-lg p-2 text-center">
-            <p className="text-tile-xl font-bold text-text-primary">{stats.todayGames}</p>
-            <p className="text-tile-xs text-text-secondary">오늘 게임</p>
-          </div>
-        </div>
-      </div>
-
-      {/* 최근 우승자 */}
-      <div className="p-4 bg-card-bg rounded-xl border border-border">
-        <h3 className="text-tile-sm font-semibold text-text-secondary mb-3 uppercase tracking-wider">
-          최근 우승자
-        </h3>
-        <div className="flex flex-col gap-2">
-          {stats.recentWinners.map((w, i) => (
-            <div
-              key={i}
-              className="flex items-center justify-between text-tile-sm"
-            >
-              <span className="text-text-primary">{w.name}</span>
-              <div className="flex items-center gap-2">
-                <span className="text-text-secondary">{w.result}</span>
-                {w.eloChange !== "AI" && (
-                  <span className="text-success font-mono text-tile-xs">
-                    {w.eloChange}
-                  </span>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+    <div className="p-4 bg-card-bg rounded-xl border border-border">
+      <h3 className="text-tile-sm font-semibold text-text-secondary mb-3 uppercase tracking-wider">
+        현재 현황
+      </h3>
+      <p className="text-tile-xs text-text-secondary text-center py-4">
+        통계 준비 중
+      </p>
     </div>
   );
 }
@@ -254,12 +208,16 @@ export default function LobbyClient() {
   const loadRooms = useCallback(async () => {
     setIsLoading(true);
     try {
-      const data = await getRooms();
+      const token = (session as { accessToken?: string } | null)?.accessToken ?? undefined;
+      const data = await getRooms(token);
       setRooms(data);
+    } catch (err) {
+      console.error("[lobby] getRooms failed:", err);
+      setRooms([]);
     } finally {
       setIsLoading(false);
     }
-  }, [setRooms, setIsLoading]);
+  }, [session, setRooms, setIsLoading]);
 
   useEffect(() => {
     void loadRooms();

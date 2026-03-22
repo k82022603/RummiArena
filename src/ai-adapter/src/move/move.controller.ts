@@ -5,7 +5,9 @@ import {
   Logger,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
+import { InternalTokenGuard } from '../common/guards/internal-token.guard';
 import {
   IsEnum,
   IsNotEmpty,
@@ -161,6 +163,7 @@ export class MoveController {
    * POST /move
    */
   @Post()
+  @UseGuards(InternalTokenGuard)
   @HttpCode(HttpStatus.OK)
   async generateMove(@Body() body: PostMoveBodyDto): Promise<MoveResponseDto> {
     this.logger.log(

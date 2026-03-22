@@ -22,8 +22,14 @@ env:
   NODE_ENV: "production"
   NEXT_PUBLIC_API_URL: "http://game-server.rummikub.svc.cluster.local:8080/api"
   NEXT_PUBLIC_WS_URL: "ws://game-server.rummikub.svc.cluster.local:8080/ws"
-  NEXTAUTH_SECRET: "dev-nextauth-secret-for-k8s"
   NEXTAUTH_URL: "http://localhost:30000"
+  GAME_SERVER_INTERNAL_URL: "http://game-server.rummikub.svc.cluster.local:8080"
+  GOOGLE_CLIENT_ID: ""
+
+secrets:
+  # 실제 값은 kubectl patch 또는 외부 Secret으로 주입 (Git에 커밋하지 말 것)
+  GOOGLE_CLIENT_SECRET: ""
+  NEXTAUTH_SECRET: ""
 
 livenessProbe:
   path: /
