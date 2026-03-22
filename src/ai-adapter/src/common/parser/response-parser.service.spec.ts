@@ -92,15 +92,16 @@ describe('ResponseParserService', () => {
       expect(result.errorReason).toContain('action');
     });
 
-    it('place인데 tableGroups가 없으면 실패한다', () => {
+    it('place인데 tableGroups가 없으면 draw로 자동 변환한다 (소형 LLM 대응)', () => {
       const raw = makeRaw('{"action": "place", "tilesFromRack": ["R7a"]}');
       const result = parser.parse(raw, baseMetadata, 0);
 
-      expect(result.success).toBe(false);
-      expect(result.errorReason).toContain('tableGroups');
+      // 소형 LLM(4B급)이 place+빈 tableGroups를 반환하면 draw로 변환한다
+      expect(result.success).toBe(true);
+      expect(result.response?.action).toBe('draw');
     });
 
-    it('그룹 타일이 3개 미만이면 실패한다', () => {
+    it('그룹 타일이 3개 미만이면 draw로 자동 변환한다 (소형 LLM 대응)', () => {
       const raw = makeRaw(
         JSON.stringify({
           action: 'place',
@@ -110,8 +111,9 @@ describe('ResponseParserService', () => {
       );
       const result = parser.parse(raw, baseMetadata, 0);
 
-      expect(result.success).toBe(false);
-      expect(result.errorReason).toContain('3개 미만');
+      // 타일 수 부족 그룹도 draw로 변환한다
+      expect(result.success).toBe(true);
+      expect(result.response?.action).toBe('draw');
     });
 
     it('유효하지 않은 타일 코드를 거부한다', () => {

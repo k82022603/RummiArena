@@ -73,6 +73,7 @@ func AutoMigrate(db *gorm.DB, logger *zap.Logger) error {
 		&model.GameSnapshot{},
 		&model.AICallLog{},
 		&model.EloHistory{},
+		&model.EloRating{},
 		&model.PracticeProgress{},
 	}
 

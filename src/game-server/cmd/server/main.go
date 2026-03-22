@@ -111,13 +111,19 @@ func buildRouter(
 	wsHandler := handler.NewWSHandler(wsHub, roomSvc, gameSvc, turnSvc, aiClient, cfg.JWT.Secret, logger)
 	authHandler := handler.NewAuthHandler(cfg.JWT.Secret)
 
-	// DB가 nil이면 practiceHandler를 nil로 두어 라우트 등록을 건너뛴다.
+	// DB가 nil이면 practiceHandler, rankingHandler를 nil로 두어 라우트 등록을 건너뛴다.
 	var practiceHandler *handler.PracticeHandler
+	var rankingHandler *handler.RankingHandler
 	if db != nil {
 		practiceRepo := repository.NewPostgresPracticeRepo(db)
 		practiceHandler = handler.NewPracticeHandler(practiceRepo, logger)
+
+		eloRepo := repository.NewPostgresEloRepo(db)
+		rankingHandler = handler.NewRankingHandler(eloRepo, logger)
+		wsHandler.WithEloRepo(eloRepo)
 	} else {
 		logger.Warn("postgres unavailable — practice API disabled")
+		logger.Warn("postgres unavailable — ranking API disabled")
 	}
 
 	router := gin.New()
@@ -126,7 +132,7 @@ func buildRouter(
 
 	registerSystemRoutes(router, redisClient)
 	registerWSRoutes(router, wsHandler)
-	registerAPIRoutes(router, cfg, roomHandler, gameHandler, authHandler, practiceHandler)
+	registerAPIRoutes(router, cfg, roomHandler, gameHandler, authHandler, practiceHandler, rankingHandler)
 
 	return router
 }
@@ -152,7 +158,7 @@ func registerWSRoutes(router *gin.Engine, wsHandler *handler.WSHandler) {
 
 // registerAPIRoutes REST API 라우트 그룹을 등록한다.
 // APP_ENV=dev 일 때는 /api/auth/dev-login 엔드포인트를 추가로 등록한다.
-// practiceHandler가 nil이면 /api/practice 라우트는 등록하지 않는다.
+// practiceHandler/rankingHandler가 nil이면 해당 라우트는 등록하지 않는다.
 func registerAPIRoutes(
 	router *gin.Engine,
 	cfg *config.Config,
@@ -160,6 +166,7 @@ func registerAPIRoutes(
 	gameHandler *handler.GameHandler,
 	authHandler *handler.AuthHandler,
 	practiceHandler *handler.PracticeHandler,
+	rankingHandler *handler.RankingHandler,
 ) {
 	api := router.Group("/api")
 
@@ -197,6 +204,26 @@ func registerAPIRoutes(
 		{
 			practice.POST("/progress", practiceHandler.SaveProgress)
 			practice.GET("/progress", practiceHandler.GetProgress)
+		}
+	}
+
+	if rankingHandler != nil {
+		// 전체 랭킹 / 티어별 랭킹: 인증 불필요 (공개 API)
+		rankings := api.Group("/rankings")
+		{
+			rankings.GET("", rankingHandler.ListRankings)
+			rankings.GET("/tier/:tier", rankingHandler.ListRankingsByTier)
+		}
+
+		// 개인 ELO 조회: 공개, 이력 조회: 인증 필요
+		users := api.Group("/users")
+		{
+			users.GET("/:id/rating", rankingHandler.GetUserRating)
+			usersAuth := users.Group("")
+			usersAuth.Use(middleware.JWTAuth(cfg.JWT.Secret))
+			{
+				usersAuth.GET("/:id/rating/history", rankingHandler.GetUserRatingHistory)
+			}
 		}
 	}
 }
