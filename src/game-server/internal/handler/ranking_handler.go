@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"github.com/k82022603/RummiArena/game-server/internal/model"
@@ -118,6 +119,10 @@ func (h *RankingHandler) GetUserRating(c *gin.Context) {
 		respondError(c, http.StatusBadRequest, "INVALID_REQUEST", "user ID가 필요합니다.")
 		return
 	}
+	if _, err := uuid.Parse(userID); err != nil {
+		respondError(c, http.StatusBadRequest, "INVALID_REQUEST", "user ID는 UUID 형식이어야 합니다.")
+		return
+	}
 
 	rating, err := h.eloRepo.GetByUserID(c.Request.Context(), userID)
 	if err != nil {
@@ -140,6 +145,10 @@ func (h *RankingHandler) GetUserRatingHistory(c *gin.Context) {
 	userID := c.Param("id")
 	if userID == "" {
 		respondError(c, http.StatusBadRequest, "INVALID_REQUEST", "user ID가 필요합니다.")
+		return
+	}
+	if _, err := uuid.Parse(userID); err != nil {
+		respondError(c, http.StatusBadRequest, "INVALID_REQUEST", "user ID는 UUID 형식이어야 합니다.")
 		return
 	}
 
