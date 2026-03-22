@@ -58,14 +58,15 @@ type GameService interface {
 // GameStateView 1인칭 뷰 게임 상태.
 // 요청한 플레이어의 랙은 전체 공개, 상대는 tileCount만 포함한다.
 type GameStateView struct {
-	GameID      string             `json:"gameId"`
-	Status      string             `json:"status"`
-	CurrentSeat int                `json:"currentSeat"`
-	Table       []TilePlacement    `json:"table"`
-	MyRack      []string           `json:"myRack"`
-	Players     []PlayerView       `json:"players"`
-	DrawPileCount int              `json:"drawPileCount"`
-	TurnStartAt int64              `json:"turnStartAt"`
+	GameID         string          `json:"gameId"`
+	Status         string          `json:"status"`
+	CurrentSeat    int             `json:"currentSeat"`
+	Table          []TilePlacement `json:"table"`
+	MyRack         []string        `json:"myRack"`
+	Players        []PlayerView    `json:"players"`
+	DrawPileCount  int             `json:"drawPileCount"`
+	TurnStartAt    int64           `json:"turnStartAt"`
+	TurnTimeoutSec int             `json:"turnTimeoutSec"`
 }
 
 // PlayerView 상대방 뷰 (타일 수만 공개)
@@ -137,13 +138,14 @@ func (s *gameService) newGame(
 	}
 
 	state := &model.GameStateRedis{
-		GameID:      gameID,
-		Status:      model.GameStatusPlaying,
-		CurrentSeat: 0,
-		DrawPile:    drawPile,
-		Table:       []*model.SetOnTable{},
-		Players:     playerStates,
-		TurnStartAt: time.Now().Unix(),
+		GameID:         gameID,
+		Status:         model.GameStatusPlaying,
+		CurrentSeat:    0,
+		DrawPile:       drawPile,
+		Table:          []*model.SetOnTable{},
+		Players:        playerStates,
+		TurnStartAt:    time.Now().Unix(),
+		TurnTimeoutSec: turnTimeoutSec,
 	}
 
 	if err := s.gameRepo.SaveGameState(state); err != nil {
@@ -197,14 +199,15 @@ func (s *gameService) GetGameState(gameID string, requestingSeat int) (*GameStat
 	}
 
 	return &GameStateView{
-		GameID:        state.GameID,
-		Status:        string(state.Status),
-		CurrentSeat:   state.CurrentSeat,
-		Table:         table,
-		MyRack:        myRack,
-		Players:       playerViews,
-		DrawPileCount: len(state.DrawPile),
-		TurnStartAt:   state.TurnStartAt,
+		GameID:         state.GameID,
+		Status:         string(state.Status),
+		CurrentSeat:    state.CurrentSeat,
+		Table:          table,
+		MyRack:         myRack,
+		Players:        playerViews,
+		DrawPileCount:  len(state.DrawPile),
+		TurnStartAt:    state.TurnStartAt,
+		TurnTimeoutSec: state.TurnTimeoutSec,
 	}, nil
 }
 
@@ -291,6 +294,7 @@ func (s *gameService) ConfirmTurn(gameID string, req *ConfirmRequest) (*GameActi
 	// 검증 통과: 테이블 + 랙 확정
 	state.Table = tableAfter
 	state.Players[playerIdx].Rack = rackAfter
+	state.ConsecutivePassCount = 0 // 배치 성공: 교착 카운터 리셋
 
 	if !state.Players[playerIdx].HasInitialMeld && len(req.TilesFromRack) > 0 {
 		state.Players[playerIdx].HasInitialMeld = true
@@ -371,6 +375,70 @@ func (s *gameService) finishGame(state *model.GameStateRedis, playerIdx int) (*G
 	}, nil
 }
 
+// finishGameStalemate 교착 상태(드로우 파일 소진 or 전원 1라운드 패스) 시 타일 점수 기반 승자를 판정한다.
+// 점수 규칙: 조커=30점, 일반 타일=숫자 그대로. 낮은 점수가 이긴다.
+// 동점 시: 타일 수 적은 쪽 승리. 모두 동점이면 WinnerID = "" (무승부).
+func (s *gameService) finishGameStalemate(state *model.GameStateRedis) (*GameActionResult, error) {
+	state.Status = model.GameStatusFinished
+
+	type scored struct {
+		idx   int
+		score int
+		count int
+	}
+
+	scores := make([]scored, len(state.Players))
+	for i, p := range state.Players {
+		total := 0
+		for _, code := range p.Rack {
+			total += tileScore(code)
+		}
+		scores[i] = scored{idx: i, score: total, count: len(p.Rack)}
+	}
+
+	// 최솟값 찾기
+	best := scores[0]
+	for _, sc := range scores[1:] {
+		if sc.score < best.score || (sc.score == best.score && sc.count < best.count) {
+			best = sc
+		}
+	}
+
+	// 동점 확인: best와 score+count 모두 동일한 다른 플레이어가 있으면 무승부
+	winnerID := state.Players[best.idx].UserID
+	for _, sc := range scores {
+		if sc.idx != best.idx && sc.score == best.score && sc.count == best.count {
+			winnerID = "" // 무승부
+			break
+		}
+	}
+
+	if err := s.gameRepo.SaveGameState(state); err != nil {
+		return nil, fmt.Errorf("game_service: save after stalemate: %w", err)
+	}
+	return &GameActionResult{
+		Success:   true,
+		NextSeat:  state.CurrentSeat,
+		GameEnded: true,
+		WinnerID:  winnerID,
+		GameState: state,
+		ErrorCode: "STALEMATE",
+	}, nil
+}
+
+// tileScore 타일 코드에서 점수를 계산한다.
+// 조커(JK1, JK2) = 30점, 일반 타일 = 숫자값.
+func tileScore(code string) int {
+	if len(code) >= 2 && code[:2] == "JK" {
+		return engine.JokerScore
+	}
+	parsed, err := engine.Parse(code)
+	if err != nil {
+		return 0
+	}
+	return parsed.Number
+}
+
 // advanceToNextTurn 다음 플레이어 턴으로 전환하고 상태를 저장한 후 결과를 반환한다.
 func (s *gameService) advanceToNextTurn(state *model.GameStateRedis) (*GameActionResult, error) {
 	nextSeat := advanceTurn(state)
@@ -401,27 +469,23 @@ func (s *gameService) DrawTile(gameID string, seat int) (*GameActionResult, erro
 	}
 
 	if len(state.DrawPile) == 0 {
-		// 드로우 파일 소진: 게임 종료 (승자 없음)
-		state.Status = model.GameStatusFinished
-		if err := s.gameRepo.SaveGameState(state); err != nil {
-			return nil, fmt.Errorf("game_service: save after pile empty: %w", err)
-		}
-		return &GameActionResult{
-			Success:   false,
-			NextSeat:  seat,
-			GameEnded: true,
-			ErrorCode: engine.ErrDrawPileEmpty,
-			GameState: state,
-		}, nil
+		// 드로우 파일 소진: 점수 기반 승자 판정 후 교착 종료
+		return s.finishGameStalemate(state)
 	}
 
 	// 1장 드로우
 	drawnCode := state.DrawPile[0]
 	state.DrawPile = state.DrawPile[1:]
 	state.Players[playerIdx].Rack = append(state.Players[playerIdx].Rack, drawnCode)
+	state.ConsecutivePassCount++ // 드로우 = 패스: 교착 카운터 증가
 
 	// 스냅샷 제거 (드로우하면 턴 종료, 되돌리기 불가)
 	delete(s.snapshots, snapshotKey(gameID, seat))
+
+	// 교착 판정: 전원이 연속으로 1회 이상 드로우했으면 교착
+	if state.ConsecutivePassCount >= len(state.Players) {
+		return s.finishGameStalemate(state)
+	}
 
 	// 다음 턴
 	nextSeat := advanceTurn(state)

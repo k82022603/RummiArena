@@ -19,19 +19,29 @@ type RoomService interface {
 	CreateRoom(req *CreateRoomRequest) (*model.RoomState, error)
 	GetRoom(id string) (*model.RoomState, error)
 	ListRooms() ([]*model.RoomState, error)
-	JoinRoom(roomID, userID string) error
+	JoinRoom(roomID, userID, displayName string) error
 	LeaveRoom(roomID, userID string) (*model.RoomState, error)
 	StartGame(roomID, hostUserID string) (*model.GameStateRedis, error)
 	DeleteRoom(roomID, hostUserID string) error
 	FinishRoom(roomID string) error
 }
 
+// AIPlayerRequest AI 플레이어 설정 DTO
+type AIPlayerRequest struct {
+	Type            string
+	Persona         string
+	Difficulty      string
+	PsychologyLevel int
+}
+
 // CreateRoomRequest Room 생성 요청 DTO
 type CreateRoomRequest struct {
-	Name           string `json:"name"`
-	PlayerCount    int    `json:"playerCount"`
-	TurnTimeoutSec int    `json:"turnTimeoutSec"`
-	HostUserID     string `json:"-"`
+	Name            string
+	PlayerCount     int
+	TurnTimeoutSec  int
+	HostUserID      string
+	HostDisplayName string
+	AIPlayers       []AIPlayerRequest
 }
 
 type roomService struct {
@@ -74,19 +84,33 @@ func (s *roomService) CreateRoom(req *CreateRoomRequest) (*model.RoomState, erro
 	roomID := uuid.New().String()
 	roomCode := generateRoomCode()
 
-	// seats: 0번은 호스트, 나머지는 EMPTY
+	// seats: 0번은 호스트, AI 플레이어 순서대로, 나머지는 EMPTY
 	players := make([]model.RoomPlayer, req.PlayerCount)
 	players[0] = model.RoomPlayer{
-		Seat:   0,
-		UserID: req.HostUserID,
-		Type:   "HUMAN",
-		Status: model.SeatStatusConnected,
+		Seat:        0,
+		UserID:      req.HostUserID,
+		DisplayName: req.HostDisplayName,
+		Type:        "HUMAN",
+		Status:      model.SeatStatusConnected,
 	}
 	for i := 1; i < req.PlayerCount; i++ {
-		players[i] = model.RoomPlayer{
-			Seat:   i,
-			Type:   "HUMAN",
-			Status: model.SeatStatusEmpty,
+		aiIdx := i - 1
+		if aiIdx < len(req.AIPlayers) {
+			ai := req.AIPlayers[aiIdx]
+			players[i] = model.RoomPlayer{
+				Seat:              i,
+				Type:              ai.Type,
+				Persona:           ai.Persona,
+				Difficulty:        ai.Difficulty,
+				AIPsychologyLevel: ai.PsychologyLevel,
+				Status:            model.SeatStatusReady,
+			}
+		} else {
+			players[i] = model.RoomPlayer{
+				Seat:   i,
+				Type:   "HUMAN",
+				Status: model.SeatStatusEmpty,
+			}
 		}
 	}
 
@@ -130,7 +154,7 @@ func (s *roomService) ListRooms() ([]*model.RoomState, error) {
 
 // JoinRoom 빈 seat에 userId 플레이어를 배정한다.
 // 이미 참여한 경우, 방이 꽉 찼을 경우, 게임이 시작된 경우 에러를 반환한다.
-func (s *roomService) JoinRoom(roomID, userID string) error {
+func (s *roomService) JoinRoom(roomID, userID, displayName string) error {
 	room, err := s.roomRepo.GetRoom(roomID)
 	if err != nil {
 		return &ServiceError{Code: "NOT_FOUND", Message: errMsgRoomNotFound, Status: 404}
@@ -160,10 +184,11 @@ func (s *roomService) JoinRoom(roomID, userID string) error {
 	}
 
 	room.Players[emptySeat] = model.RoomPlayer{
-		Seat:   emptySeat,
-		UserID: userID,
-		Type:   "HUMAN",
-		Status: model.SeatStatusConnected,
+		Seat:        emptySeat,
+		UserID:      userID,
+		DisplayName: displayName,
+		Type:        "HUMAN",
+		Status:      model.SeatStatusConnected,
 	}
 	room.UpdatedAt = time.Now().UTC()
 

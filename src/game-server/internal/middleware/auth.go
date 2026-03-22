@@ -73,3 +73,4 @@ func UserIDFromContext(c *gin.Context) (string, bool) {
 	id, ok := v.(string)
 	return id, ok
 }
+

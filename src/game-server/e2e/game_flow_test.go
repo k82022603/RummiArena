@@ -1,11 +1,10 @@
 // Package e2e contains end-to-end integration tests for the game-server.
 // Tests use httptest.NewServer with a real gin router and in-memory repositories.
-// AI client is replaced with a mock to avoid external dependencies.
+// AI 클라이언트 의존 테스트는 AI_ADAPTER_URL 환경변수가 설정되어 있을 때만 실행한다.
 package e2e
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -32,35 +31,9 @@ const (
 	guestUserID  = "guest-user-e2e-002"
 )
 
-// mockAIClient E2E 테스트용 AI 클라이언트 목업.
-// AIClientInterface를 구현하여 외부 ai-adapter 호출을 대체한다.
-type mockAIClient struct {
-	generateMoveFunc func(ctx context.Context, req *client.MoveRequest) (*client.MoveResponse, error)
-	healthCheckFunc  func(ctx context.Context) error
-}
-
-func (m *mockAIClient) GenerateMove(ctx context.Context, req *client.MoveRequest) (*client.MoveResponse, error) {
-	if m.generateMoveFunc != nil {
-		return m.generateMoveFunc(ctx, req)
-	}
-	return &client.MoveResponse{
-		Action: "draw",
-		Metadata: client.MoveMetadata{
-			ModelType: "mock",
-			ModelName: "mock-model",
-		},
-	}, nil
-}
-
-func (m *mockAIClient) HealthCheck(ctx context.Context) error {
-	if m.healthCheckFunc != nil {
-		return m.healthCheckFunc(ctx)
-	}
-	return nil
-}
-
 // buildTestRouter E2E 테스트용 gin 라우터를 구성한다.
 // 인메모리 레포지터리를 사용하며 DB/Redis 의존성이 없다.
+// AI_ADAPTER_URL이 설정되어 있으면 실제 AI 클라이언트를, 아니면 nil을 사용한다.
 // APP_ENV=dev 조건을 직접 제어하여 dev-login 엔드포인트를 노출한다.
 func buildTestRouter(t *testing.T, appEnv string) *gin.Engine {
 	t.Helper()
@@ -75,11 +48,17 @@ func buildTestRouter(t *testing.T, appEnv string) *gin.Engine {
 	gameSvc := service.NewGameService(gameStateRepo)
 	turnSvc := service.NewTurnService(gameStateRepo, gameSvc)
 
+	// AI 클라이언트: AI_ADAPTER_URL이 설정되어 있으면 실제 클라이언트를 사용한다.
+	var aiClient client.AIClientInterface
+	if aiURL := os.Getenv("AI_ADAPTER_URL"); aiURL != "" {
+		aiClient = client.NewAIClient(aiURL, "", 60*time.Second)
+	}
+
 	wsHub := handler.NewHub(logger)
 
 	roomHandler := handler.NewRoomHandler(roomSvc)
 	gameHandler := handler.NewGameHandler(gameSvc)
-	wsHandler := handler.NewWSHandler(wsHub, roomSvc, gameSvc, turnSvc, nil, e2eJWTSecret, logger)
+	wsHandler := handler.NewWSHandler(wsHub, roomSvc, gameSvc, turnSvc, aiClient, e2eJWTSecret, logger)
 	authHandler := handler.NewAuthHandler(e2eJWTSecret)
 
 	router := gin.New()
@@ -182,11 +161,11 @@ func TestMain(m *testing.M) {
 
 // TestFullGameFlow 전체 게임 흐름 E2E 테스트
 //
-// 1. dev-login → JWT 발급
-// 2. POST /api/rooms → 방 생성 (playerCount=2, turnTimeoutSec=60)
-// 3. POST /api/rooms/:id/join → 두 번째 플레이어 참여
-// 4. POST /api/rooms/:id/start → 게임 시작
-// 5. GET /api/rooms/:id → 게임 상태 확인 (status=PLAYING)
+// 1. dev-login -> JWT 발급
+// 2. POST /api/rooms -> 방 생성 (playerCount=2, turnTimeoutSec=60)
+// 3. POST /api/rooms/:id/join -> 두 번째 플레이어 참여
+// 4. POST /api/rooms/:id/start -> 게임 시작
+// 5. GET /api/rooms/:id -> 게임 상태 확인 (status=PLAYING)
 func TestFullGameFlow(t *testing.T) {
 	router := buildTestRouter(t, "dev")
 	srv := httptest.NewServer(router)
@@ -217,7 +196,12 @@ func TestFullGameFlow(t *testing.T) {
 	require.NotEmpty(t, roomID)
 	assert.Equal(t, "WAITING", roomBody["status"])
 	assert.Equal(t, hostUserID, roomBody["hostUserId"])
-	assert.Equal(t, float64(2), roomBody["playerCount"])
+	// playerCount는 현재 참가 중인 플레이어 수(호스트 1명)를 반환한다.
+	// 최대 플레이어 수는 settings.playerCount 에서 확인한다.
+	assert.Equal(t, float64(1), roomBody["playerCount"])
+	settings, ok := roomBody["settings"].(map[string]interface{})
+	require.True(t, ok, "settings 필드가 존재해야 한다")
+	assert.Equal(t, float64(2), settings["playerCount"], "설정된 최대 플레이어 수는 2여야 한다")
 
 	// Step 3: 두 번째 플레이어 참여
 	guestToken := issueDevToken(t, guestUserID)
@@ -279,33 +263,33 @@ func TestRoomCreationValidation(t *testing.T) {
 	hostToken := issueDevToken(t, hostUserID)
 
 	tests := []struct {
-		name    string
-		body    map[string]interface{}
+		name     string
+		body     map[string]interface{}
 		wantCode int
 	}{
 		{
-			name:    "playerCount 누락",
-			body:    map[string]interface{}{"turnTimeoutSec": 60},
+			name:     "playerCount 누락",
+			body:     map[string]interface{}{"turnTimeoutSec": 60},
 			wantCode: http.StatusBadRequest,
 		},
 		{
-			name:    "turnTimeoutSec 누락",
-			body:    map[string]interface{}{"playerCount": 2},
+			name:     "turnTimeoutSec 누락",
+			body:     map[string]interface{}{"playerCount": 2},
 			wantCode: http.StatusBadRequest,
 		},
 		{
-			name:    "playerCount 범위 초과 (5)",
-			body:    map[string]interface{}{"playerCount": 5, "turnTimeoutSec": 60},
+			name:     "playerCount 범위 초과 (5)",
+			body:     map[string]interface{}{"playerCount": 5, "turnTimeoutSec": 60},
 			wantCode: http.StatusBadRequest,
 		},
 		{
-			name:    "playerCount 범위 미만 (1)",
-			body:    map[string]interface{}{"playerCount": 1, "turnTimeoutSec": 60},
+			name:     "playerCount 범위 미만 (1)",
+			body:     map[string]interface{}{"playerCount": 1, "turnTimeoutSec": 60},
 			wantCode: http.StatusBadRequest,
 		},
 		{
-			name:    "turnTimeoutSec 범위 초과 (200)",
-			body:    map[string]interface{}{"playerCount": 2, "turnTimeoutSec": 200},
+			name:     "turnTimeoutSec 범위 초과 (200)",
+			body:     map[string]interface{}{"playerCount": 2, "turnTimeoutSec": 200},
 			wantCode: http.StatusBadRequest,
 		},
 	}
@@ -385,7 +369,7 @@ func TestStartGame_OnlyHostCanStart(t *testing.T) {
 	require.Equal(t, http.StatusOK, joinResp.StatusCode)
 	joinResp.Body.Close() //nolint:errcheck
 
-	// 게스트가 시작 시도 → 403
+	// 게스트가 시작 시도 -> 403
 	startResp := doRequest(t, srv, http.MethodPost, "/api/rooms/"+roomID+"/start", guestToken, nil)
 	defer startResp.Body.Close() //nolint:errcheck
 
@@ -401,7 +385,7 @@ func TestGetRoom_AfterStart(t *testing.T) {
 	hostToken := issueDevToken(t, hostUserID)
 	guestToken := issueDevToken(t, guestUserID)
 
-	// 방 생성 → 참가 → 시작
+	// 방 생성 -> 참가 -> 시작
 	createResp := doRequest(t, srv, http.MethodPost, "/api/rooms", hostToken, map[string]interface{}{
 		"playerCount":    2,
 		"turnTimeoutSec": 60,
@@ -459,52 +443,4 @@ func TestUnauthorizedAccess(t *testing.T) {
 			assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 		})
 	}
-}
-
-// TestMockAIClient_Interface mockAIClient이 AIClientInterface를 만족하는지 컴파일 시간 검증.
-// 향후 AI 플레이어 턴 처리 서비스에 주입될 mock의 인터페이스 적합성을 보장한다.
-func TestMockAIClient_Interface(t *testing.T) {
-	mock := &mockAIClient{}
-	// interface 타입 할당으로 컴파일 시간에 AIClientInterface 충족 여부를 검증한다.
-	var _ client.AIClientInterface = mock
-
-	// 기본 동작 확인: generateMoveFunc 미설정 시 draw를 반환한다.
-	resp, err := mock.GenerateMove(context.Background(), &client.MoveRequest{
-		GameID:   "test-game",
-		PlayerID: "ai-seat-0",
-		Model:    "mock",
-	})
-	require.NoError(t, err)
-	assert.Equal(t, "draw", resp.Action)
-	assert.Equal(t, "mock", resp.Metadata.ModelType)
-
-	// healthCheck 기본 동작 확인
-	err = mock.HealthCheck(context.Background())
-	require.NoError(t, err)
-}
-
-// TestMockAIClient_CustomFunc 커스텀 함수 주입 테스트
-func TestMockAIClient_CustomFunc(t *testing.T) {
-	placeResp := &client.MoveResponse{
-		Action:        "place",
-		TilesFromRack: []string{"R7a"},
-		TableGroups:   []client.TileGroup{{Tiles: []string{"R7a", "B7a", "K7b"}}},
-		Metadata: client.MoveMetadata{
-			ModelType:      "mock",
-			ModelName:      "custom-mock",
-			IsFallbackDraw: false,
-		},
-	}
-
-	mock := &mockAIClient{
-		generateMoveFunc: func(_ context.Context, _ *client.MoveRequest) (*client.MoveResponse, error) {
-			return placeResp, nil
-		},
-	}
-
-	resp, err := mock.GenerateMove(context.Background(), &client.MoveRequest{})
-	require.NoError(t, err)
-	assert.Equal(t, "place", resp.Action)
-	assert.Equal(t, []string{"R7a"}, resp.TilesFromRack)
-	assert.False(t, resp.Metadata.IsFallbackDraw)
 }

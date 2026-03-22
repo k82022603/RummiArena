@@ -7,8 +7,7 @@
 
 import type { Room } from "@/types/game";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080/api";
+const API_BASE = "/api";
 
 // ------------------------------------------------------------------
 // 공통 fetch 래퍼
@@ -72,7 +71,7 @@ export interface CreateRoomParams {
 
 /** Room 생성 */
 export async function createRoom(
-  params: CreateRoomParams,
+  params: CreateRoomParams & { displayName?: string },
   token?: string,
 ): Promise<Room> {
   return apiFetch<Room>("/rooms", {
@@ -84,7 +83,8 @@ export async function createRoom(
 
 /** Room 목록 조회 */
 export async function getRooms(token?: string): Promise<Room[]> {
-  return apiFetch<Room[]>("/rooms", { token });
+  const res = await apiFetch<{ rooms: Room[]; total: number }>("/rooms", { token });
+  return res.rooms ?? [];
 }
 
 /** Room 상세 조회 */
@@ -93,9 +93,14 @@ export async function getRoom(roomId: string, token?: string): Promise<Room> {
 }
 
 /** Room 참가 */
-export async function joinRoom(roomId: string, token?: string): Promise<Room> {
+export async function joinRoom(
+  roomId: string,
+  token?: string,
+  displayName?: string,
+): Promise<Room> {
   return apiFetch<Room>(`/rooms/${roomId}/join`, {
     method: "POST",
+    body: JSON.stringify({ displayName }),
     token,
   });
 }

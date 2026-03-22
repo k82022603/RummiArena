@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -41,17 +43,37 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
+const wsSessionTTL = 2 * time.Hour
+
+// turnTimer 진행 중인 단일 턴 타이머를 표현한다.
+type turnTimer struct {
+	cancel context.CancelFunc
+	gameID string
+	seat   int
+}
+
+// wsSessionData Redis에 저장되는 WebSocket 세션 정보.
+type wsSessionData struct {
+	UserID      string `json:"userId"`
+	RoomID      string `json:"roomId"`
+	Seat        int    `json:"seat"`
+	DisplayName string `json:"displayName"`
+	ConnectedAt int64  `json:"connectedAt"`
+}
+
 // WSHandler WebSocket 핸들러
 type WSHandler struct {
 	hub         *Hub
 	roomSvc     service.RoomService
 	gameSvc     service.GameService
 	turnSvc     service.TurnService
-	aiClient    client.AIClientInterface  // nil이면 AI 기능 비활성화
-	eloRepo     repository.EloRepository  // nil이면 ELO 업데이트 건너뜀
-	redisClient *redis.Client             // nil이면 Redis Sorted Set 업데이트 건너뜀
+	aiClient    client.AIClientInterface // nil이면 AI 기능 비활성화
+	eloRepo     repository.EloRepository // nil이면 ELO 업데이트 건너뜀
+	redisClient *redis.Client            // nil이면 Redis Sorted Set 업데이트 건너뜀
 	jwtSecret   string
 	logger      *zap.Logger
+	timers      map[string]*turnTimer // key: gameID
+	timersMu    sync.Mutex
 }
 
 // NewWSHandler WSHandler 생성자.
@@ -74,6 +96,7 @@ func NewWSHandler(
 		aiClient:  aiClient,
 		jwtSecret: jwtSecret,
 		logger:    logger,
+		timers:    make(map[string]*turnTimer),
 	}
 }
 
@@ -127,10 +150,14 @@ func (h *WSHandler) HandleWS(c *gin.Context) {
 	// GAME_STATE 전송 (게임이 진행 중인 경우)
 	if conn.gameID != "" {
 		h.sendGameState(conn)
+		h.restoreTimerIfNeeded(conn.roomID, conn.gameID)
 	}
 
 	// Hub 등록
 	wasReconnect := h.hub.Register(conn)
+
+	// Redis 세션 저장 (multi-Pod 지원)
+	h.saveSessionToRedis(conn)
 
 	if wasReconnect {
 		// 재연결 브로드캐스트 (본인 제외)
@@ -411,8 +438,9 @@ func (h *WSHandler) handleConfirmTurn(conn *Connection, env *WSEnvelope) {
 	}
 	h.broadcastTurnEnd(conn, state, "PLACE_TILES", tilesPlaced)
 
-	// TURN_START 브로드캐스트 (다음 턴)
+	// TURN_START 브로드캐스트 (다음 턴) + 타이머 시작
 	h.broadcastTurnStart(conn.roomID, state)
+	h.startTurnTimer(conn.roomID, conn.gameID, state.CurrentSeat, state.TurnTimeoutSec)
 }
 
 func (h *WSHandler) handleDrawTile(conn *Connection) {
@@ -479,9 +507,10 @@ func (h *WSHandler) handleDrawTile(conn *Connection) {
 		},
 	})
 
-	// TURN_END + TURN_START
+	// TURN_END + TURN_START + 타이머 시작
 	h.broadcastTurnEnd(conn, state, "DRAW_TILE", 0)
 	h.broadcastTurnStart(conn.roomID, state)
+	h.startTurnTimer(conn.roomID, conn.gameID, state.CurrentSeat, state.TurnTimeoutSec)
 }
 
 func (h *WSHandler) handleResetTurn(conn *Connection) {
@@ -582,7 +611,7 @@ func (h *WSHandler) sendGameState(conn *Connection) {
 			MyRack:         view.MyRack,
 			Players:        players,
 			DrawPileCount:  view.DrawPileCount,
-			TurnTimeoutSec: 60, // TODO: 설정에서 가져오기
+			TurnTimeoutSec: view.TurnTimeoutSec,
 			TurnStartedAt:  time.Unix(view.TurnStartAt, 0).UTC().Format(time.RFC3339),
 		},
 	})
@@ -640,7 +669,7 @@ func (h *WSHandler) broadcastTurnStart(roomID string, state *model.GameStateRedi
 		Payload: TurnStartPayload{
 			Seat:          state.CurrentSeat,
 			PlayerType:    playerType,
-			TimeoutSec:    60, // TODO: 설정에서 가져오기
+			TimeoutSec:    state.TurnTimeoutSec,
 			TurnStartedAt: time.Unix(state.TurnStartAt, 0).UTC().Format(time.RFC3339),
 		},
 	})
@@ -652,6 +681,9 @@ func (h *WSHandler) broadcastTurnStart(roomID string, state *model.GameStateRedi
 }
 
 func (h *WSHandler) broadcastGameOver(conn *Connection, state *model.GameStateRedis) {
+	// 게임 종료 시 진행 중인 타이머 취소
+	h.cancelTurnTimer(conn.gameID)
+
 	results := make([]WSPlayerResult, len(state.Players))
 	for i, p := range state.Players {
 		results[i] = WSPlayerResult{
@@ -792,6 +824,7 @@ func (h *WSHandler) processAIPlace(roomID, gameID string, seat int, resp *client
 
 	h.broadcastTurnEndFromState(roomID, seat, state, "PLACE_TILES", len(resp.TilesFromRack))
 	h.broadcastTurnStart(roomID, state)
+	h.startTurnTimer(roomID, gameID, state.CurrentSeat, state.TurnTimeoutSec)
 }
 
 // forceAIDraw AI 드로우를 강제로 수행한다.
@@ -831,6 +864,265 @@ func (h *WSHandler) forceAIDraw(roomID, gameID string, seat int) {
 
 	h.broadcastTurnEndFromState(roomID, seat, state, "DRAW_TILE", 0)
 	h.broadcastTurnStart(roomID, state)
+	h.startTurnTimer(roomID, gameID, state.CurrentSeat, state.TurnTimeoutSec)
+}
+
+// ============================================================
+// Turn Timer
+// ============================================================
+
+// startTurnTimer 현재 턴 플레이어의 타이머를 시작한다.
+// 기존 타이머가 있으면 먼저 취소하고 새로 시작한다.
+// timeoutSec이 0 이하이면 타이머를 시작하지 않는다.
+func (h *WSHandler) startTurnTimer(roomID, gameID string, seat, timeoutSec int) {
+	if timeoutSec <= 0 {
+		return
+	}
+
+	h.timersMu.Lock()
+	if existing, ok := h.timers[gameID]; ok {
+		existing.cancel()
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	h.timers[gameID] = &turnTimer{cancel: cancel, gameID: gameID, seat: seat}
+	h.timersMu.Unlock()
+
+	h.saveTimerToRedis(gameID, seat, timeoutSec)
+
+	go func() {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(time.Duration(timeoutSec) * time.Second):
+		}
+
+		h.logger.Info("ws: turn timer expired",
+			zap.String("gameId", gameID),
+			zap.Int("seat", seat),
+		)
+
+		result, err := h.turnSvc.HandleTimeout(gameID, seat)
+		if err != nil {
+			h.logger.Error("ws: HandleTimeout failed",
+				zap.String("gameId", gameID),
+				zap.Int("seat", seat),
+				zap.Error(err),
+			)
+			return
+		}
+
+		h.timersMu.Lock()
+		delete(h.timers, gameID)
+		h.timersMu.Unlock()
+		h.deleteTimerFromRedis(gameID)
+
+		if result.GameState == nil {
+			return
+		}
+
+		state := result.GameState
+
+		// TILE_DRAWN 브로드캐스트 (타임아웃 강제 드로우)
+		playerIdx := findPlayerBySeatInState(state.Players, seat)
+		playerTileCount := 0
+		if playerIdx >= 0 {
+			playerTileCount = len(state.Players[playerIdx].Rack)
+		}
+		h.hub.BroadcastToRoom(roomID, &WSMessage{
+			Type: S2CTileDrawn,
+			Payload: TileDrawnPayload{
+				Seat:            seat,
+				DrawnTile:       nil,
+				DrawPileCount:   len(state.DrawPile),
+				PlayerTileCount: playerTileCount,
+			},
+		})
+
+		if state.Status == model.GameStatusFinished {
+			h.broadcastGameOverFromState(roomID, state)
+			return
+		}
+
+		h.broadcastTurnEndFromState(roomID, seat, state, "TIMEOUT", 0)
+		h.broadcastTurnStart(roomID, state)
+		h.startTurnTimer(roomID, gameID, state.CurrentSeat, state.TurnTimeoutSec)
+	}()
+}
+
+// cancelTurnTimer 특정 게임의 턴 타이머를 취소한다.
+func (h *WSHandler) cancelTurnTimer(gameID string) {
+	h.timersMu.Lock()
+	if t, ok := h.timers[gameID]; ok {
+		t.cancel()
+		delete(h.timers, gameID)
+	}
+	h.timersMu.Unlock()
+	h.deleteTimerFromRedis(gameID)
+}
+
+// ============================================================
+// Redis Timer Storage (B2)
+// ============================================================
+
+func timerKey(gameID string) string {
+	return fmt.Sprintf("game:%s:timer", gameID)
+}
+
+// saveTimerToRedis Redis에 타이머 만료 시각과 seat을 저장한다.
+// 형식: "{seat}:{expiryUnixSeconds}", TTL=timeoutSec
+func (h *WSHandler) saveTimerToRedis(gameID string, seat, timeoutSec int) {
+	if h.redisClient == nil {
+		return
+	}
+	expiry := time.Now().Unix() + int64(timeoutSec)
+	val := fmt.Sprintf("%d:%d", seat, expiry)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := h.redisClient.Set(ctx, timerKey(gameID), val, time.Duration(timeoutSec)*time.Second).Err(); err != nil {
+		h.logger.Warn("ws: save timer to redis failed",
+			zap.String("gameId", gameID),
+			zap.Error(err),
+		)
+	}
+}
+
+// deleteTimerFromRedis Redis에서 타이머 키를 삭제한다.
+func (h *WSHandler) deleteTimerFromRedis(gameID string) {
+	if h.redisClient == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_ = h.redisClient.Del(ctx, timerKey(gameID)).Err()
+}
+
+// restoreTimerIfNeeded 서버 재시작 후 Redis에서 타이머를 복구한다.
+// 인메모리 타이머가 없고 Redis 키가 존재할 때만 복구를 수행한다.
+func (h *WSHandler) restoreTimerIfNeeded(roomID, gameID string) {
+	if h.redisClient == nil {
+		return
+	}
+
+	h.timersMu.Lock()
+	_, exists := h.timers[gameID]
+	h.timersMu.Unlock()
+	if exists {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	val, err := h.redisClient.Get(ctx, timerKey(gameID)).Result()
+	if err != nil {
+		return
+	}
+
+	parts := strings.SplitN(val, ":", 2)
+	if len(parts) != 2 {
+		return
+	}
+	seat, err1 := strconv.Atoi(parts[0])
+	expiryUnix, err2 := strconv.ParseInt(parts[1], 10, 64)
+	if err1 != nil || err2 != nil {
+		return
+	}
+
+	remaining := time.Unix(expiryUnix, 0).Sub(time.Now())
+	if remaining <= 0 {
+		// 재시작 중 타이머 만료 → 즉시 HandleTimeout 실행
+		go func() {
+			result, handleErr := h.turnSvc.HandleTimeout(gameID, seat)
+			h.deleteTimerFromRedis(gameID)
+			if handleErr != nil {
+				h.logger.Error("ws: restore timer HandleTimeout failed",
+					zap.String("gameId", gameID),
+					zap.Int("seat", seat),
+					zap.Error(handleErr),
+				)
+				return
+			}
+			if result.GameState == nil {
+				return
+			}
+			state := result.GameState
+			playerIdx := findPlayerBySeatInState(state.Players, seat)
+			playerTileCount := 0
+			if playerIdx >= 0 {
+				playerTileCount = len(state.Players[playerIdx].Rack)
+			}
+			h.hub.BroadcastToRoom(roomID, &WSMessage{
+				Type: S2CTileDrawn,
+				Payload: TileDrawnPayload{
+					Seat:            seat,
+					DrawnTile:       nil,
+					DrawPileCount:   len(state.DrawPile),
+					PlayerTileCount: playerTileCount,
+				},
+			})
+			if state.Status == model.GameStatusFinished {
+				h.broadcastGameOverFromState(roomID, state)
+				return
+			}
+			h.broadcastTurnEndFromState(roomID, seat, state, "TIMEOUT", 0)
+			h.broadcastTurnStart(roomID, state)
+			h.startTurnTimer(roomID, gameID, state.CurrentSeat, state.TurnTimeoutSec)
+		}()
+		return
+	}
+
+	remainingSec := int(remaining.Seconds()) + 1
+	h.logger.Info("ws: restoring turn timer from Redis",
+		zap.String("gameId", gameID),
+		zap.Int("seat", seat),
+		zap.Int("remainingSec", remainingSec),
+	)
+	h.startTurnTimer(roomID, gameID, seat, remainingSec)
+}
+
+// ============================================================
+// Redis Session Storage (C1)
+// ============================================================
+
+func wsSessionKey(userID, roomID string) string {
+	return fmt.Sprintf("ws:session:%s:%s", userID, roomID)
+}
+
+// saveSessionToRedis Redis에 WebSocket 세션 정보를 저장한다 (multi-Pod 지원).
+func (h *WSHandler) saveSessionToRedis(conn *Connection) {
+	if h.redisClient == nil {
+		return
+	}
+	data := wsSessionData{
+		UserID:      conn.userID,
+		RoomID:      conn.roomID,
+		Seat:        conn.seat,
+		DisplayName: conn.displayName,
+		ConnectedAt: time.Now().Unix(),
+	}
+	b, err := json.Marshal(data)
+	if err != nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := h.redisClient.Set(ctx, wsSessionKey(conn.userID, conn.roomID), b, wsSessionTTL).Err(); err != nil {
+		h.logger.Warn("ws: save session to redis failed",
+			zap.String("userID", conn.userID),
+			zap.String("roomID", conn.roomID),
+			zap.Error(err),
+		)
+	}
+}
+
+// deleteSessionFromRedis Redis에서 WebSocket 세션 키를 삭제한다.
+func (h *WSHandler) deleteSessionFromRedis(conn *Connection) {
+	if h.redisClient == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_ = h.redisClient.Del(ctx, wsSessionKey(conn.userID, conn.roomID)).Err()
 }
 
 // broadcastTurnEndFromState Connection 없이 roomID 기반으로 TURN_END를 브로드캐스트한다.
@@ -862,6 +1154,9 @@ func (h *WSHandler) broadcastTurnEndFromState(roomID string, seat int, state *mo
 // broadcastGameOverFromState Connection 없이 roomID 기반으로 GAME_OVER를 브로드캐스트한다.
 // AI 턴에서 게임이 종료될 때 사용한다.
 func (h *WSHandler) broadcastGameOverFromState(roomID string, state *model.GameStateRedis) {
+	// 게임 종료 시 진행 중인 타이머 취소
+	h.cancelTurnTimer(state.GameID)
+
 	results := make([]WSPlayerResult, len(state.Players))
 	for i, p := range state.Players {
 		results[i] = WSPlayerResult{
@@ -1151,6 +1446,8 @@ func buildTableGroups(table []*model.SetOnTable) []client.TileGroup {
 }
 
 func (h *WSHandler) handleDisconnect(conn *Connection) {
+	h.deleteSessionFromRedis(conn)
+
 	h.logger.Info("ws: disconnected",
 		zap.String("user", conn.userID),
 		zap.Int("seat", conn.seat),

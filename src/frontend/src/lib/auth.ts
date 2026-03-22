@@ -101,6 +101,10 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       // 세션에 accessToken 노출 (클라이언트 → WebSocket 인증용)
       session.accessToken = token.accessToken as string;
+      // session.user.id 노출 (userId 기반 비교 로직용)
+      if (session.user) {
+        session.user.id = token.sub;
+      }
       return session;
     },
   },

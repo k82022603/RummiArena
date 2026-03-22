@@ -2,11 +2,14 @@ import type { DefaultSession, DefaultJWT } from "next-auth";
 
 /**
  * next-auth 타입 확장
- * session.accessToken 을 사용하기 위한 모듈 오그멘테이션
+ * session.accessToken, session.user.id 를 사용하기 위한 모듈 오그멘테이션
  */
 declare module "next-auth" {
   interface Session extends DefaultSession {
     accessToken?: string;
+    user?: DefaultSession["user"] & {
+      id?: string;
+    };
   }
 }
 

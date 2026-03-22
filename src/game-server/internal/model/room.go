@@ -36,6 +36,7 @@ type RoomPlayer struct {
 
 // RoomSettings 방 설정
 type RoomSettings struct {
+	PlayerCount          int `json:"playerCount"`
 	TurnTimeoutSec       int `json:"turnTimeoutSec"`
 	InitialMeldThreshold int `json:"initialMeldThreshold"`
 }

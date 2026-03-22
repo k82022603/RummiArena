@@ -75,11 +75,12 @@ export default function CreateRoomClient() {
     setError(null);
 
     try {
-      const token = (session as { accessToken?: string } | null)?.accessToken ?? undefined;
+      const token = session?.accessToken;
       const room = await createRoom({
         playerCount,
         turnTimeoutSec,
         aiPlayers: aiSlots,
+        displayName: session?.user?.name ?? undefined,
       }, token);
 
       // roomStore에 현재 방 저장

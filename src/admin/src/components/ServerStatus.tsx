@@ -6,7 +6,7 @@
  * - unreachable: 빨강 배지
  */
 
-import type { HealthStatus } from "@/lib/mock-data";
+import type { HealthStatus } from "@/lib/types";
 
 interface ServerStatusProps {
   health: HealthStatus;

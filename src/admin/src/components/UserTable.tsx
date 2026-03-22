@@ -1,4 +1,4 @@
-import type { AdminUser } from "@/lib/mock-data";
+import type { AdminUser } from "@/lib/types";
 
 interface UserTableProps {
   users: AdminUser[];

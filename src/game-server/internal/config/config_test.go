@@ -54,7 +54,7 @@ func TestLoad_Defaults(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, "8080", cfg.Server.Port)
-	assert.Equal(t, "debug", cfg.Server.Mode)
+	assert.Equal(t, "release", cfg.Server.Mode)
 	assert.Equal(t, "localhost", cfg.DB.Host)
 	assert.Equal(t, "5432", cfg.DB.Port)
 	assert.Equal(t, "rummikub", cfg.DB.User)

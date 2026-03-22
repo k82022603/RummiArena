@@ -47,7 +47,7 @@ function SeatSlot({ seat, player, isHost, isMe }: SeatSlotProps) {
 
   let name = "대기 중...";
   if (isHuman) {
-    name = (player as HumanPlayer).displayName;
+    name = (player as HumanPlayer).displayName ?? "플레이어";
   } else if (isAI && player) {
     const aiType = AI_TYPE_LABEL[player.type] ?? player.type;
     const persona =
@@ -164,6 +164,7 @@ export default function WaitingRoomClient({
 }: WaitingRoomClientProps) {
   const router = useRouter();
   const { data: session } = useSession();
+  const token = session?.accessToken;
   const { currentRoom, setCurrentRoom, mySeat, setMySeat } = useRoomStore();
   const { setRoom } = useGameStore();
 
@@ -178,7 +179,7 @@ export default function WaitingRoomClient({
     setIsLoading(true);
     setError(null);
     try {
-      const data = await getRoom(roomId);
+      const data = await getRoom(roomId, token);
       setLocalRoom(data);
       setCurrentRoom(data);
 
@@ -186,7 +187,7 @@ export default function WaitingRoomClient({
       const mePlayer = data.players.find(
         (p) =>
           p.type === "HUMAN" &&
-          (p as HumanPlayer).userId === session?.user?.email
+          (p as HumanPlayer).userId === session?.user?.id
       );
       if (mePlayer) {
         setMySeat(mePlayer.seat);
@@ -196,7 +197,7 @@ export default function WaitingRoomClient({
     } finally {
       setIsLoading(false);
     }
-  }, [roomId, session, setCurrentRoom, setMySeat]);
+  }, [roomId, token, session, setCurrentRoom, setMySeat]);
 
   useEffect(() => {
     void loadRoom();
@@ -229,7 +230,7 @@ export default function WaitingRoomClient({
     setIsStarting(true);
     setError(null);
     try {
-      await startGame(room.id);
+      await startGame(room.id, token);
       setRoom(room);
       router.push(`/game/${room.id}`);
     } catch (err) {
@@ -240,7 +241,11 @@ export default function WaitingRoomClient({
 
   const handleLeave = async () => {
     if (room) {
-      await leaveRoom(room.id);
+      try {
+        await leaveRoom(room.id, token);
+      } catch {
+        // leaveRoom 실패해도 로비로 이동
+      }
       setCurrentRoom(null);
     }
     router.push("/lobby");
@@ -248,7 +253,7 @@ export default function WaitingRoomClient({
 
   // 내가 호스트인지 확인
   const isHost =
-    room?.hostUserId === session?.user?.email ||
+    room?.hostUserId === session?.user?.id ||
     mySeat === 0;
 
   // 최소 2명 충족 여부

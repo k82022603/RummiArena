@@ -575,18 +575,20 @@ func TestDrawTile_NormalDraw(t *testing.T) {
 	assert.Equal(t, 1, saved.CurrentSeat)
 }
 
-func TestDrawTile_EmptyPile_GameEnds(t *testing.T) {
-	// 드로우 파일이 비어있을 때 → GameEnded:true, Success:false
+func TestDrawTile_EmptyPile_Stalemate(t *testing.T) {
+	// 드로우 파일이 비어있을 때 → 교착 판정: 점수 낮은 플레이어 승리
+	// rack0=R5a(5점), rack1=K1a(1점) → user-B(seat1) 승리
 	rack0 := []string{"R5a"}
 	rack1 := []string{"K1a"}
 	state := newTestGameState("game-41", twoPlayerState(rack0, rack1), []string{}) // 빈 파일
 	svc, repo := seedRepo(t, state)
 
 	result, err := svc.DrawTile("game-41", 0)
-	require.NoError(t, err) // 에러가 아닌 정상 반환
-	assert.False(t, result.Success)
+	require.NoError(t, err)
+	assert.True(t, result.Success)  // 교착 판정은 정상 종료
 	assert.True(t, result.GameEnded)
-	assert.Equal(t, engine.ErrDrawPileEmpty, result.ErrorCode)
+	assert.Equal(t, "STALEMATE", result.ErrorCode)
+	assert.Equal(t, "user-B", result.WinnerID) // K1a(1점) < R5a(5점)
 
 	saved, _ := repo.GetGameState("game-41")
 	assert.Equal(t, model.GameStatusFinished, saved.Status)
@@ -687,12 +689,16 @@ func TestTurnAdvancement_AfterConfirm_TwoPlayers(t *testing.T) {
 
 func TestTurnAdvancement_AfterDraw_ThreePlayers(t *testing.T) {
 	// 3인 게임에서 DrawTile 순서 확인: seat 0 → 1 → 2 → 0
+	// 교착 판정(ConsecutivePassCount >= 3)을 피하기 위해 드로우 사이에
+	// ConfirmTurn으로 카운터를 리셋하지 않고, 드로우를 2번만 검증한 뒤
+	// 나머지는 턴 순환 구조로 확인한다.
+	// 전원 드로우 라운드 완성 시 교착 종료되므로 2번까지만 연속 드로우 검증.
 	players := []model.PlayerState{
 		{SeatOrder: 0, UserID: "u0", PlayerType: "HUMAN", Rack: []string{"R1a"}},
 		{SeatOrder: 1, UserID: "u1", PlayerType: "HUMAN", Rack: []string{"R2a"}},
 		{SeatOrder: 2, UserID: "u2", PlayerType: "HUMAN", Rack: []string{"R3a"}},
 	}
-	drawPile := []string{"K1a", "K2a", "K3a"}
+	drawPile := []string{"K1a", "K2a", "K3a", "K4a"}
 	state := &model.GameStateRedis{
 		GameID:      "game-51",
 		Status:      model.GameStatusPlaying,
@@ -702,22 +708,22 @@ func TestTurnAdvancement_AfterDraw_ThreePlayers(t *testing.T) {
 		Players:     players,
 		TurnStartAt: time.Now().Unix(),
 	}
-	svc, repo := seedRepo(t, state)
+	svc, _ := seedRepo(t, state)
 
 	r0, err := svc.DrawTile("game-51", 0)
 	require.NoError(t, err)
-	assert.Equal(t, 1, r0.NextSeat)
+	assert.Equal(t, 1, r0.NextSeat) // seat 0 → seat 1
 
 	r1, err := svc.DrawTile("game-51", 1)
 	require.NoError(t, err)
-	assert.Equal(t, 2, r1.NextSeat)
+	assert.Equal(t, 2, r1.NextSeat) // seat 1 → seat 2
 
+	// 3번째 드로우는 교착 판정 발동 (ConsecutivePassCount=3 == len(players))
+	// finishGameStalemate 반환: GameEnded=true
 	r2, err := svc.DrawTile("game-51", 2)
 	require.NoError(t, err)
-	assert.Equal(t, 0, r2.NextSeat)
-
-	saved, _ := repo.GetGameState("game-51")
-	assert.Equal(t, 0, saved.CurrentSeat)
+	assert.True(t, r2.GameEnded)
+	assert.Equal(t, "STALEMATE", r2.ErrorCode)
 }
 
 // --- TestWinCondition ---
@@ -898,4 +904,129 @@ func TestConfirmTurn_HasInitialMeld_SkipsThirtyPointCheck(t *testing.T) {
 	assert.True(t, result.Success)
 	assert.False(t, result.GameEnded) // K9a가 랙에 남아 있어 게임 종료 아님
 	assert.Equal(t, 1, result.NextSeat)
+}
+
+// --- TestStalemate ---
+
+func TestStalemate_TwoPlayers_ConsecutiveDraw(t *testing.T) {
+	// 2인 게임: 각자 1회씩 드로우 → ConsecutivePassCount=2 == len(players) → 교착
+	// rack0=R5a+R6a(11점), rack1=K1a(1점) → user-B 승리
+	rack0 := []string{"R5a", "R6a"}
+	rack1 := []string{"K1a"}
+	drawPile := []string{"Y1a", "Y2a", "Y3a"}
+	state := newTestGameState("stale-01", twoPlayerState(rack0, rack1), drawPile)
+	svc, repo := seedRepo(t, state)
+
+	// seat 0 드로우 → ConsecutivePassCount=1, 아직 교착 아님
+	r0, err := svc.DrawTile("stale-01", 0)
+	require.NoError(t, err)
+	assert.False(t, r0.GameEnded)
+	assert.Equal(t, 1, r0.NextSeat)
+
+	// seat 1 드로우 → ConsecutivePassCount=2 == 2명 → 교착 판정
+	r1, err := svc.DrawTile("stale-01", 1)
+	require.NoError(t, err)
+	assert.True(t, r1.GameEnded)
+	assert.Equal(t, "STALEMATE", r1.ErrorCode)
+	assert.Equal(t, "user-B", r1.WinnerID) // K1a(1점) < R5a+R6a+Y1a(drawn)
+
+	saved, _ := repo.GetGameState("stale-01")
+	assert.Equal(t, model.GameStatusFinished, saved.Status)
+}
+
+func TestStalemate_ConfirmTurn_ResetsCounter(t *testing.T) {
+	// 3인 게임: seat0 드로우(카운터=1) → seat1 ConfirmTurn 성공(카운터=0) →
+	// seat2 드로우(카운터=1) → seat0 드로우(카운터=2) → 교착 미발동 확인
+	// ConsecutivePassCount < 3이므로 아직 교착 아님
+	players := []model.PlayerState{
+		{SeatOrder: 0, UserID: "u0", PlayerType: "HUMAN", HasInitialMeld: true, Rack: []string{"R1a", "K1a"}},
+		{SeatOrder: 1, UserID: "u1", PlayerType: "HUMAN", HasInitialMeld: true, Rack: []string{"R10a", "B10a", "Y10a", "K5a"}},
+		{SeatOrder: 2, UserID: "u2", PlayerType: "HUMAN", HasInitialMeld: true, Rack: []string{"B1a", "K2a"}},
+	}
+	drawPile := []string{"Y9a", "Y8a", "Y7a", "Y6a", "Y5a"}
+	state := &model.GameStateRedis{
+		GameID:      "stale-02",
+		Status:      model.GameStatusPlaying,
+		CurrentSeat: 0,
+		DrawPile:    drawPile,
+		Table: []*model.SetOnTable{
+			{ID: "init-run", Tiles: []*model.Tile{{Code: "R3a"}, {Code: "R4a"}, {Code: "R5a"}}},
+		},
+		Players:     players,
+		TurnStartAt: time.Now().Unix(),
+	}
+	repo := repository.NewMemoryGameStateRepo()
+	require.NoError(t, repo.SaveGameState(state))
+	svc := NewGameService(repo)
+
+	// seat 0: 드로우 → ConsecutivePassCount=1
+	r0, err := svc.DrawTile("stale-02", 0)
+	require.NoError(t, err)
+	assert.False(t, r0.GameEnded, "카운터=1/3: 교착 아님")
+
+	// seat 1: R10a+B10a+Y10a 그룹 ConfirmTurn → ConsecutivePassCount=0 리셋
+	tilesFromRack := []string{"R10a", "B10a", "Y10a"}
+	tableAfter := []TilePlacement{
+		{ID: "init-run", Tiles: []string{"R3a", "R4a", "R5a"}},
+		{ID: "new-grp", Tiles: tilesFromRack},
+	}
+	_, err = svc.PlaceTiles("stale-02", &PlaceRequest{
+		Seat: 1, TableGroups: tableAfter, TilesFromRack: tilesFromRack,
+	})
+	require.NoError(t, err)
+	r1c, err := svc.ConfirmTurn("stale-02", &ConfirmRequest{
+		Seat: 1, TableGroups: tableAfter, TilesFromRack: tilesFromRack,
+	})
+	require.NoError(t, err)
+	assert.False(t, r1c.GameEnded, "ConfirmTurn 성공: 카운터 리셋, 교착 아님")
+
+	// seat 2: 드로우 → ConsecutivePassCount=1 (리셋 후 첫 드로우)
+	r2, err := svc.DrawTile("stale-02", 2)
+	require.NoError(t, err)
+	assert.False(t, r2.GameEnded, "카운터=1/3: 교착 아님")
+
+	// seat 0: 드로우 → ConsecutivePassCount=2/3: 교착 아님
+	r0b, err := svc.DrawTile("stale-02", 0)
+	require.NoError(t, err)
+	assert.False(t, r0b.GameEnded, "카운터=2/3: 교착 아님")
+}
+
+func TestStalemate_Joker_Score30(t *testing.T) {
+	// 조커 점수 검증: 조커(30점) > 일반 타일 → 일반 타일 보유자 승리
+	// rack0=JK1(30점), rack1=R13a(13점) → user-B 승리
+	rack0 := []string{"JK1"}
+	rack1 := []string{"R13a"}
+	state := newTestGameState("stale-03", twoPlayerState(rack0, rack1), []string{})
+	svc, _ := seedRepo(t, state)
+
+	result, err := svc.DrawTile("stale-03", 0) // 드로우 파일 소진 → 즉시 교착
+	require.NoError(t, err)
+	assert.True(t, result.GameEnded)
+	assert.Equal(t, "STALEMATE", result.ErrorCode)
+	assert.Equal(t, "user-B", result.WinnerID) // R13a(13점) < JK1(30점)
+}
+
+func TestStalemate_Draw_WhenScoreAndCountEqual(t *testing.T) {
+	// 완전 동점 (점수+타일 수 모두 같음) → WinnerID = "" (무승부)
+	// rack0=R5a(5점 1장), rack1=B5a(5점 1장) → 무승부
+	rack0 := []string{"R5a"}
+	rack1 := []string{"B5a"}
+	state := newTestGameState("stale-04", twoPlayerState(rack0, rack1), []string{})
+	svc, _ := seedRepo(t, state)
+
+	result, err := svc.DrawTile("stale-04", 0)
+	require.NoError(t, err)
+	assert.True(t, result.GameEnded)
+	assert.Equal(t, "STALEMATE", result.ErrorCode)
+	assert.Equal(t, "", result.WinnerID) // 무승부
+}
+
+func TestTileScore_Helper(t *testing.T) {
+	// tileScore 헬퍼 단위 테스트
+	assert.Equal(t, 30, tileScore("JK1"))
+	assert.Equal(t, 30, tileScore("JK2"))
+	assert.Equal(t, 7, tileScore("R7a"))
+	assert.Equal(t, 13, tileScore("B13b"))
+	assert.Equal(t, 1, tileScore("Y1a"))
+	assert.Equal(t, 0, tileScore("INVALID")) // 파싱 실패 → 0점
 }

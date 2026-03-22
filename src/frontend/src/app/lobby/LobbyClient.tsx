@@ -4,7 +4,7 @@ import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState, useCallback } from "react";
-import { getRooms } from "@/lib/api";
+import { getRooms, joinRoom } from "@/lib/api";
 import { useRoomStore } from "@/store/roomStore";
 import type { Room } from "@/types/game";
 
@@ -33,7 +33,7 @@ function RoomCard({
   onJoin,
 }: {
   room: Room;
-  onJoin: (id: string) => void;
+  onJoin: (id: string) => void | Promise<void>;
 }) {
   const status = STATUS_LABEL[room.status] ?? STATUS_LABEL["WAITING"];
   const aiPlayers = room.players.filter((p): p is Extract<typeof p, { persona: string }> =>
@@ -104,7 +104,7 @@ function RoomCard({
       {/* 참가 버튼 */}
       <button
         type="button"
-        onClick={() => onJoin(room.id)}
+        onClick={() => void onJoin(room.id)}
         disabled={room.status !== "WAITING"}
         className={[
           "ml-4 px-4 py-1.5 rounded-lg font-medium text-tile-sm transition-colors",
@@ -208,7 +208,7 @@ export default function LobbyClient() {
   const loadRooms = useCallback(async () => {
     setIsLoading(true);
     try {
-      const token = (session as { accessToken?: string } | null)?.accessToken ?? undefined;
+      const token = session?.accessToken;
       const data = await getRooms(token);
       setRooms(data);
     } catch (err) {
@@ -233,7 +233,13 @@ export default function LobbyClient() {
     }
   };
 
-  const handleJoinRoom = (roomId: string) => {
+  const handleJoinRoom = async (roomId: string) => {
+    const token = session?.accessToken;
+    try {
+      await joinRoom(roomId, token, session?.user?.name ?? undefined);
+    } catch {
+      // joinRoom 실패 시에도 대기실로 이동 (서버에서 이미 참가 처리된 경우 대비)
+    }
     router.push(`/room/${roomId}`);
   };
 

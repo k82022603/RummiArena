@@ -8,18 +8,56 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/k82022603/RummiArena/game-server/internal/middleware"
-	"github.com/k82022603/RummiArena/game-server/internal/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
+
+	"github.com/k82022603/RummiArena/game-server/internal/middleware"
+	"github.com/k82022603/RummiArena/game-server/internal/model"
+	"github.com/k82022603/RummiArena/game-server/internal/repository"
 )
 
 const testJWTSecret = "test-secret-for-unit-tests"
+
+// --- DB 헬퍼 ---
+
+// testDBForAuth 테스트용 PostgreSQL DB를 연결하고 User 테이블을 마이그레이션한다.
+func testDBForAuth(t *testing.T) *gorm.DB {
+	t.Helper()
+	dsn := os.Getenv("TEST_DB_URL")
+	if dsn == "" {
+		dsn = "host=localhost port=5432 user=rummikub password=REDACTED_DB_PASSWORD dbname=rummikub sslmode=disable"
+	}
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
+		Logger:                                   gormlogger.Default.LogMode(gormlogger.Silent),
+		DisableForeignKeyConstraintWhenMigrating: true,
+	})
+	if err != nil {
+		t.Skipf("PostgreSQL 연결 실패 (skip): %v", err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Skipf("sql.DB 획득 실패 (skip): %v", err)
+	}
+	if err := sqlDB.Ping(); err != nil {
+		t.Skipf("PostgreSQL ping 실패 (skip): %v", err)
+	}
+	require.NoError(t, db.AutoMigrate(&model.User{}))
+	return db
+}
+
+// cleanupAuthTestData 테스트 후 test- 접두사 유저 데이터를 제거한다.
+func cleanupAuthTestData(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	db.Exec("DELETE FROM users WHERE google_id LIKE 'test-%'")
+}
 
 // ---- DevLogin 테스트 ----
 
@@ -349,55 +387,67 @@ func TestUpsertUser_NoUserRepo_EmptyName(t *testing.T) {
 	assert.Equal(t, "myuser@google.com", email)
 }
 
-// TestUpsertUser_WithMockRepo_NewUser 신규 사용자 생성 테스트
-func TestUpsertUser_WithMockRepo_NewUser(t *testing.T) {
-	mockRepo := &mockUserRepo{
-		users:          map[string]*model.User{},
-		notFoundOnGet:  true,
-	}
-	h := NewAuthHandler(testJWTSecret).WithUserRepo(mockRepo)
+// TestUpsertUser_WithRealRepo_NewUser 실제 DB를 사용한 신규 사용자 생성 테스트
+func TestUpsertUser_WithRealRepo_NewUser(t *testing.T) {
+	db := testDBForAuth(t)
+	defer cleanupAuthTestData(t, db)
+
+	userRepo := repository.NewPostgresUserRepo(db)
+	h := NewAuthHandler(testJWTSecret).WithUserRepo(userRepo)
 
 	gc := &googleIDTokenClaims{
-		Sub:   "new-google-sub",
-		Email: "newuser@gmail.com",
+		Sub:   "test-new-google-sub",
+		Email: "test-newuser@gmail.com",
 		Name:  "신규사용자",
 	}
 
 	userID, displayName, email := h.upsertUser(context.Background(), gc)
-	// CreateUser 호출 후 newUser.ID가 비어있으면 sub 반환 (ID가 DB에서 생성됨)
 	assert.NotEmpty(t, userID)
 	assert.Equal(t, "신규사용자", displayName)
-	assert.Equal(t, "newuser@gmail.com", email)
-	assert.True(t, mockRepo.createCalled)
+	assert.Equal(t, "test-newuser@gmail.com", email)
+
+	// DB에서 실제로 생성되었는지 확인
+	found, err := userRepo.GetUserByGoogleID(context.Background(), "test-new-google-sub")
+	require.NoError(t, err)
+	assert.Equal(t, "test-newuser@gmail.com", found.Email)
+	assert.Equal(t, "신규사용자", found.DisplayName)
 }
 
-// TestUpsertUser_WithMockRepo_ExistingUser 기존 사용자 업데이트 테스트
-func TestUpsertUser_WithMockRepo_ExistingUser(t *testing.T) {
+// TestUpsertUser_WithRealRepo_ExistingUser 실제 DB를 사용한 기존 사용자 업데이트 테스트
+func TestUpsertUser_WithRealRepo_ExistingUser(t *testing.T) {
+	db := testDBForAuth(t)
+	defer cleanupAuthTestData(t, db)
+
+	userRepo := repository.NewPostgresUserRepo(db)
+
+	// 먼저 사용자를 생성한다.
 	existingUser := &model.User{
-		ID:          "existing-user-uuid",
-		GoogleID:    "existing-google-sub",
-		Email:       "old@gmail.com",
+		GoogleID:    "test-existing-google-sub",
+		Email:       "test-old@gmail.com",
 		DisplayName: "이전이름",
 		Role:        model.UserRoleUser,
 		EloRating:   1200,
 	}
-	mockRepo := &mockUserRepo{
-		users:          map[string]*model.User{"existing-google-sub": existingUser},
-		notFoundOnGet:  false,
-	}
-	h := NewAuthHandler(testJWTSecret).WithUserRepo(mockRepo)
+	require.NoError(t, userRepo.CreateUser(context.Background(), existingUser))
+
+	h := NewAuthHandler(testJWTSecret).WithUserRepo(userRepo)
 
 	gc := &googleIDTokenClaims{
-		Sub:   "existing-google-sub",
-		Email: "new@gmail.com",
+		Sub:   "test-existing-google-sub",
+		Email: "test-new@gmail.com",
 		Name:  "새이름",
 	}
 
 	userID, displayName, email := h.upsertUser(context.Background(), gc)
-	assert.Equal(t, "existing-user-uuid", userID)
+	assert.Equal(t, existingUser.ID, userID)
 	assert.Equal(t, "새이름", displayName)
-	assert.Equal(t, "new@gmail.com", email)
-	assert.True(t, mockRepo.updateCalled)
+	assert.Equal(t, "test-new@gmail.com", email)
+
+	// DB에서 실제로 업데이트되었는지 확인
+	updated, err := userRepo.GetUserByGoogleID(context.Background(), "test-existing-google-sub")
+	require.NoError(t, err)
+	assert.Equal(t, "새이름", updated.DisplayName)
+	assert.Equal(t, "test-new@gmail.com", updated.Email)
 }
 
 // ---- GoogleLoginByIDToken 테스트 ----
@@ -515,46 +565,4 @@ func TestGoogleLoginByIDToken_Success(t *testing.T) {
 	assert.True(t, parsed.Valid)
 	assert.Equal(t, "google-uid-xyz", claims.UserID)
 	assert.Equal(t, "user@gmail.com", claims.Email)
-}
-
-// ---- 목(mock) UserRepository ----
-
-type mockUserRepo struct {
-	users          map[string]*model.User // key: googleID
-	notFoundOnGet  bool
-	createCalled   bool
-	updateCalled   bool
-}
-
-func (m *mockUserRepo) CreateUser(_ context.Context, user *model.User) error {
-	m.createCalled = true
-	user.ID = "new-created-uuid"
-	m.users[user.GoogleID] = user
-	return nil
-}
-
-func (m *mockUserRepo) GetUserByID(_ context.Context, id string) (*model.User, error) {
-	for _, u := range m.users {
-		if u.ID == id {
-			return u, nil
-		}
-	}
-	return nil, fmt.Errorf("not found")
-}
-
-func (m *mockUserRepo) GetUserByGoogleID(_ context.Context, googleID string) (*model.User, error) {
-	if m.notFoundOnGet {
-		return nil, gorm.ErrRecordNotFound
-	}
-	user, ok := m.users[googleID]
-	if !ok {
-		return nil, gorm.ErrRecordNotFound
-	}
-	return user, nil
-}
-
-func (m *mockUserRepo) UpdateUser(_ context.Context, user *model.User) error {
-	m.updateCalled = true
-	m.users[user.GoogleID] = user
-	return nil
 }
