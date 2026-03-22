@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
 	"github.com/k82022603/RummiArena/game-server/internal/client"
@@ -28,14 +29,15 @@ var upgrader = websocket.Upgrader{
 
 // WSHandler WebSocket 핸들러
 type WSHandler struct {
-	hub       *Hub
-	roomSvc   service.RoomService
-	gameSvc   service.GameService
-	turnSvc   service.TurnService
-	aiClient  client.AIClientInterface  // nil이면 AI 기능 비활성화
-	eloRepo   repository.EloRepository  // nil이면 ELO 업데이트 건너뜀
-	jwtSecret string
-	logger    *zap.Logger
+	hub         *Hub
+	roomSvc     service.RoomService
+	gameSvc     service.GameService
+	turnSvc     service.TurnService
+	aiClient    client.AIClientInterface  // nil이면 AI 기능 비활성화
+	eloRepo     repository.EloRepository  // nil이면 ELO 업데이트 건너뜀
+	redisClient *redis.Client             // nil이면 Redis Sorted Set 업데이트 건너뜀
+	jwtSecret   string
+	logger      *zap.Logger
 }
 
 // NewWSHandler WSHandler 생성자.
@@ -64,6 +66,12 @@ func NewWSHandler(
 // WithEloRepo EloRepository를 WSHandler에 주입한다 (함수형 옵션 대신 setter 사용).
 func (h *WSHandler) WithEloRepo(eloRepo repository.EloRepository) {
 	h.eloRepo = eloRepo
+}
+
+// WithRedisClient Redis 클라이언트를 WSHandler에 주입한다.
+// nil이면 Redis Sorted Set 업데이트가 비활성화된다.
+func (h *WSHandler) WithRedisClient(rc *redis.Client) {
+	h.redisClient = rc
 }
 
 // HandleWS GET /ws?roomId={roomId}
@@ -1004,6 +1012,9 @@ func (h *WSHandler) updateElo(state *model.GameStateRedis) {
 				zap.String("userID", ch.UserID),
 				zap.Error(upsertErr),
 			)
+		} else {
+			// PostgreSQL Upsert 성공 후 Redis Sorted Set 업데이트
+			h.updateEloRedis(ctx, ch)
 		}
 
 		// EloHistory 삽입
@@ -1031,6 +1042,44 @@ func (h *WSHandler) updateElo(state *model.GameStateRedis) {
 			zap.String("tier", ch.NewTier),
 		)
 	}
+}
+
+// updateEloRedis Redis Sorted Set에 ELO 랭킹을 업데이트한다.
+// redisClient가 nil이면 조용히 건너뛴다.
+// ranking:global       → ZADD {rating} {userID}
+// ranking:tier:{tier}  → ZADD {rating} {userID}
+// 티어 변경 시 이전 티어 Set에서 ZRem으로 제거한다.
+func (h *WSHandler) updateEloRedis(ctx context.Context, ch engine.EloChange) {
+	if h.redisClient == nil {
+		return
+	}
+
+	score := float64(ch.NewRating)
+	pipe := h.redisClient.Pipeline()
+
+	pipe.ZAdd(ctx, "ranking:global", redis.Z{Score: score, Member: ch.UserID})
+	pipe.ZAdd(ctx, fmt.Sprintf("ranking:tier:%s", ch.NewTier), redis.Z{Score: score, Member: ch.UserID})
+
+	if ch.OldTier != ch.NewTier {
+		pipe.ZRem(ctx, fmt.Sprintf("ranking:tier:%s", ch.OldTier), ch.UserID)
+	}
+
+	if _, err := pipe.Exec(ctx); err != nil {
+		h.logger.Warn("ws: redis ranking update failed",
+			zap.String("userID", ch.UserID),
+			zap.String("oldTier", ch.OldTier),
+			zap.String("newTier", ch.NewTier),
+			zap.Int("newRating", ch.NewRating),
+			zap.Error(err),
+		)
+		return
+	}
+
+	h.logger.Info("ws: redis ranking updated",
+		zap.String("userID", ch.UserID),
+		zap.String("newTier", ch.NewTier),
+		zap.Int("newRating", ch.NewRating),
+	)
 }
 
 // getWSKFactor K-Factor 결정 래퍼 (ws_handler 내부 사용).

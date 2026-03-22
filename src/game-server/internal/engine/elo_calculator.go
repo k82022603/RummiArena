@@ -17,6 +17,7 @@ type EloChange struct {
 	OldRating int
 	NewRating int
 	Delta     int
+	OldTier   string
 	NewTier   string
 }
 
@@ -77,6 +78,7 @@ func CalcElo(players []PlayerResult, currentRatings map[string]int) []EloChange 
 			OldRating: ratingA,
 			NewRating: newRating,
 			Delta:     newRating - ratingA,
+			OldTier:   GetTier(ratingA, p.GamesPlayed),
 			NewTier:   GetTier(newRating, newGamesPlayed),
 		}
 	}

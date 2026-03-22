@@ -126,6 +126,11 @@ func buildRouter(
 		logger.Warn("postgres unavailable — ranking API disabled")
 	}
 
+	// Redis가 가용하면 ELO Sorted Set 업데이트 활성화
+	if redisClient != nil {
+		wsHandler.WithRedisClient(redisClient)
+	}
+
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.Use(middleware.ZapLogger(logger))
