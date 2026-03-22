@@ -109,7 +109,8 @@ func buildRouter(
 	roomHandler := handler.NewRoomHandler(roomSvc)
 	gameHandler := handler.NewGameHandler(gameSvc)
 	wsHandler := handler.NewWSHandler(wsHub, roomSvc, gameSvc, turnSvc, aiClient, cfg.JWT.Secret, logger)
-	authHandler := handler.NewAuthHandler(cfg.JWT.Secret)
+	authHandler := handler.NewAuthHandler(cfg.JWT.Secret).
+		WithGoogleOAuth(cfg.GoogleOAuth.ClientID, cfg.GoogleOAuth.ClientSecret)
 
 	// DB가 nil이면 practiceHandler, rankingHandler를 nil로 두어 라우트 등록을 건너뛴다.
 	var practiceHandler *handler.PracticeHandler
@@ -121,6 +122,9 @@ func buildRouter(
 		eloRepo := repository.NewPostgresEloRepo(db)
 		rankingHandler = handler.NewRankingHandler(eloRepo, logger)
 		wsHandler.WithEloRepo(eloRepo)
+
+		userRepo := repository.NewPostgresUserRepo(db)
+		authHandler.WithUserRepo(userRepo)
 	} else {
 		logger.Warn("postgres unavailable — practice API disabled")
 		logger.Warn("postgres unavailable — ranking API disabled")
@@ -175,9 +179,14 @@ func registerAPIRoutes(
 ) {
 	api := router.Group("/api")
 
-	// 개발 전용 엔드포인트: JWT 없이 접근 가능
+	// 인증 엔드포인트: JWT 없이 접근 가능
+	auth := api.Group("/auth")
+	// Google OAuth (authorization code 방식): 항상 등록
+	auth.POST("/google", authHandler.GoogleLogin)
+	// Google OAuth (id_token 방식, next-auth SSR 연동): 항상 등록
+	auth.POST("/google/token", authHandler.GoogleLoginByIDToken)
+	// 개발 전용: APP_ENV=dev 일 때만 등록
 	if cfg.AppEnv == "dev" {
-		auth := api.Group("/auth")
 		auth.POST("/dev-login", authHandler.DevLogin)
 	}
 

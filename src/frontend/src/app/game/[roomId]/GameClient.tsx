@@ -19,6 +19,7 @@ import { useRoomStore } from "@/store/roomStore";
 import GameBoard from "@/components/game/GameBoard";
 import PlayerRack from "@/components/game/PlayerRack";
 import PlayerCard from "@/components/game/PlayerCard";
+import ActionBar from "@/components/game/ActionBar";
 import TurnTimer from "@/components/game/TurnTimer";
 import ConnectionStatus from "@/components/game/ConnectionStatus";
 import ErrorToast from "@/components/game/ErrorToast";
@@ -485,61 +486,13 @@ export default function GameClient({ roomId }: GameClientProps) {
               />
 
               {/* 액션 버튼 */}
-              <AnimatePresence>
-                {isMyTurn && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 8 }}
-                    className="flex gap-2 mt-2"
-                  >
-                    <button
-                      type="button"
-                      onClick={handleDraw}
-                      disabled={!!pendingTableGroups}
-                      className={[
-                        "flex-1 py-2.5 rounded-xl font-medium text-tile-sm",
-                        "bg-card-bg border border-border hover:border-border-active",
-                        "disabled:opacity-40 disabled:cursor-not-allowed",
-                        "transition-colors",
-                      ].join(" ")}
-                      aria-label="타일 드로우"
-                    >
-                      드로우
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleUndo}
-                      disabled={!pendingTableGroups}
-                      className={[
-                        "px-4 py-2.5 rounded-xl font-medium text-tile-sm",
-                        "bg-card-bg border border-border",
-                        "hover:border-danger/60 hover:text-danger",
-                        "disabled:opacity-40 disabled:cursor-not-allowed",
-                        "transition-colors",
-                      ].join(" ")}
-                      aria-label="이번 턴 배치 초기화 (서버에 RESET_TURN 전송)"
-                      title="이번 턴에 놓은 타일을 모두 되돌립니다"
-                    >
-                      <span aria-hidden="true">↺</span> 초기화
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleConfirm}
-                      disabled={!pendingTableGroups}
-                      className={[
-                        "flex-1 py-2.5 rounded-xl font-bold text-tile-sm",
-                        "bg-warning text-gray-900 hover:bg-yellow-400",
-                        "disabled:opacity-40 disabled:cursor-not-allowed",
-                        "transition-colors",
-                      ].join(" ")}
-                      aria-label="배치 확정"
-                    >
-                      확정
-                    </button>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+              <ActionBar
+                isMyTurn={isMyTurn}
+                hasPending={!!pendingTableGroups}
+                onDraw={handleDraw}
+                onUndo={handleUndo}
+                onConfirm={handleConfirm}
+              />
             </div>
           </main>
         </div>

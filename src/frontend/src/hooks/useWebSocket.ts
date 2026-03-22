@@ -4,6 +4,7 @@ import { useEffect, useRef, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { useWSStore } from "@/store/wsStore";
 import { useGameStore } from "@/store/gameStore";
+import { getGameToken } from "@/lib/authToken";
 import type {
   WSEnvelope,
   C2SMessageType,
@@ -234,7 +235,9 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
   );
 
   const connect = useCallback(() => {
-    if (!isMounted.current || !session?.accessToken) return;
+    // next-auth session.accessToken 우선, 없으면 localStorage fallback
+    const token = getGameToken(session?.accessToken);
+    if (!isMounted.current || !token) return;
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
     setStatus("connecting");
@@ -254,7 +257,7 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
         seqRef.current = 1;
         const authMsg: WSEnvelope = {
           type: "AUTH",
-          payload: { token: session.accessToken as string },
+          payload: { token },
           seq: seqRef.current,
           timestamp: new Date().toISOString(),
         };
@@ -318,13 +321,15 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
 
   useEffect(() => {
     isMounted.current = true;
-    if (enabled && session?.accessToken) connect();
+    // next-auth 세션 토큰 또는 localStorage 토큰이 있을 때만 연결 시작
+    if (enabled && getGameToken(session?.accessToken)) connect();
     return () => {
       isMounted.current = false;
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
       wsRef.current?.close(1000, "component unmount");
     };
     // connect를 의존성에서 제외: 세션/roomId 변경 시만 재연결
+    // localStorage 토큰은 페이지 로드 시 1회만 읽으므로 별도 추적 불필요
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, roomId, session?.accessToken]);
 

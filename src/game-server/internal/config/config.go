@@ -8,12 +8,19 @@ import (
 )
 
 type Config struct {
-	Server    ServerConfig
-	DB        DBConfig
-	Redis     RedisConfig
-	JWT       JWTConfig
-	AIAdapter AIAdapterConfig
-	AppEnv    string // "dev" | "staging" | "production"
+	Server      ServerConfig
+	DB          DBConfig
+	Redis       RedisConfig
+	JWT         JWTConfig
+	AIAdapter   AIAdapterConfig
+	GoogleOAuth GoogleOAuthConfig
+	AppEnv      string // "dev" | "staging" | "production"
+}
+
+// GoogleOAuthConfig Google OAuth 2.0 클라이언트 설정
+type GoogleOAuthConfig struct {
+	ClientID     string
+	ClientSecret string
 }
 
 // AIAdapterConfig ai-adapter 서비스 연결 설정
@@ -62,6 +69,8 @@ func Load() (*Config, error) {
 	viper.SetDefault("AI_ADAPTER_URL", "http://ai-adapter:3000")
 	viper.SetDefault("AI_ADAPTER_INTERNAL_TOKEN", "")
 	viper.SetDefault("AI_ADAPTER_TIMEOUT_SEC", 180)
+	viper.SetDefault("GOOGLE_CLIENT_ID", "")
+	viper.SetDefault("GOOGLE_CLIENT_SECRET", "")
 
 	viper.AutomaticEnv()
 
@@ -90,6 +99,10 @@ func Load() (*Config, error) {
 			BaseURL:    viper.GetString("AI_ADAPTER_URL"),
 			Token:      viper.GetString("AI_ADAPTER_INTERNAL_TOKEN"),
 			TimeoutSec: viper.GetInt("AI_ADAPTER_TIMEOUT_SEC"),
+		},
+		GoogleOAuth: GoogleOAuthConfig{
+			ClientID:     viper.GetString("GOOGLE_CLIENT_ID"),
+			ClientSecret: viper.GetString("GOOGLE_CLIENT_SECRET"),
 		},
 	}
 

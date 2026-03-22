@@ -10,6 +10,8 @@ interface WSStore {
   setLastError: (e: string | null) => void;
   reconnectNotice: { displayName: string; seat: number } | null;
   setReconnectNotice: (n: { displayName: string; seat: number } | null) => void;
+  /** 재연결 알림 배너를 닫을 때 사용 */
+  clearReconnectNotice: () => void;
 }
 
 export const useWSStore = create<WSStore>()((set) => ({
@@ -19,4 +21,5 @@ export const useWSStore = create<WSStore>()((set) => ({
   setLastError: (lastError) => set({ lastError }),
   reconnectNotice: null,
   setReconnectNotice: (reconnectNotice) => set({ reconnectNotice }),
+  clearReconnectNotice: () => set({ reconnectNotice: null }),
 }));

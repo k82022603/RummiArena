@@ -39,6 +39,18 @@ describe('PromptBuilderService', () => {
       expect(prompt).toContain('JSON');
     });
 
+    it('JSON-only 강제 지시가 시스템 프롬프트 앞에 포함된다 (#31 gemma3:4b 최적화)', () => {
+      const prompt = service.buildSystemPrompt(makeRequest());
+      expect(prompt).toContain('You MUST respond with ONLY a valid JSON object');
+      expect(prompt).toContain('No explanation, no markdown, no code blocks');
+    });
+
+    it('few-shot 예시가 시스템 프롬프트에 포함된다 (#31 gemma3:4b 최적화)', () => {
+      const prompt = service.buildSystemPrompt(makeRequest());
+      expect(prompt).toContain('"action":"draw"');
+      expect(prompt).toContain('"action":"place"');
+    });
+
     it('캐릭터 지시문이 포함된다', () => {
       const prompt = service.buildSystemPrompt(
         makeRequest({ persona: 'shark' }),
@@ -126,6 +138,25 @@ describe('PromptBuilderService', () => {
       );
       expect(prompt).toContain('예측');
     });
+
+    it('CharacterService 주입 시 모든 캐릭터 프롬프트에 JSON-only 지시가 포함된다 (#31)', () => {
+      const characters = [
+        'rookie',
+        'calculator',
+        'shark',
+        'fox',
+        'wall',
+        'wildcard',
+      ] as const;
+      characters.forEach((persona) => {
+        const prompt = serviceWithCharacter.buildSystemPrompt(
+          makeRequest({ persona }),
+        );
+        expect(prompt).toContain('You MUST respond with ONLY a valid JSON object');
+        expect(prompt).toContain('"action":"draw"');
+        expect(prompt).toContain('"action":"place"');
+      });
+    });
   });
 
   describe('buildSystemPrompt (CharacterService 없음 — 레거시 폴백 명시 검증)', () => {
@@ -199,8 +230,8 @@ describe('PromptBuilderService', () => {
   });
 
   describe('getTemperature', () => {
-    it('beginner는 temperature 1.0을 반환한다 (창의적 실수 유발)', () => {
-      expect(service.getTemperature('beginner')).toBe(1.0);
+    it('beginner는 temperature 0.9를 반환한다 (창의적 실수 유발, JSON 오류율 감소)', () => {
+      expect(service.getTemperature('beginner')).toBe(0.9);
     });
 
     it('intermediate는 temperature 0.7을 반환한다 (균형 잡힌 탐색)', () => {
