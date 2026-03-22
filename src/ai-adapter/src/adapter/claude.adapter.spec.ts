@@ -263,7 +263,7 @@ describe('ClaudeAdapter', () => {
       expect(callLlmCall).toBeDefined();
     });
 
-    it('beginner 난이도는 요청 바디에 temperature=1.0을 포함한다', async () => {
+    it('beginner 난이도는 요청 바디에 temperature=0.9를 포함한다', async () => {
       mockedAxios.post = jest
         .fn()
         .mockResolvedValueOnce(
@@ -273,7 +273,7 @@ describe('ClaudeAdapter', () => {
       await adapter.generateMove(makeMoveRequest({ difficulty: 'beginner' }));
 
       const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
-      expect(body.temperature).toBe(1.0);
+      expect(body.temperature).toBe(0.9);
     });
 
     it('intermediate 난이도는 요청 바디에 temperature=0.7을 포함한다', async () => {

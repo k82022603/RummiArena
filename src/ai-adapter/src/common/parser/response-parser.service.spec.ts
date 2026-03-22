@@ -61,6 +61,24 @@ describe('ResponseParserService', () => {
       expect(result.response?.action).toBe('draw');
     });
 
+    it('앞뒤에 설명 텍스트가 있어도 JSON을 추출한다 (#31 gemma3:4b 파싱 강화)', () => {
+      const raw = makeRaw(
+        '여기 내 응답입니다:\n{"action": "draw", "reasoning": "드로우"}\n위와 같이 선택합니다.',
+      );
+      const result = parser.parse(raw, baseMetadata, 0);
+      expect(result.success).toBe(true);
+      expect(result.response?.action).toBe('draw');
+    });
+
+    it('코드 블록 없는 ```json 마커 없이도 JSON을 추출한다 (#31 gemma3:4b 파싱 강화)', () => {
+      const raw = makeRaw(
+        '```\n{"action": "draw", "reasoning": "드로우"}\n```',
+      );
+      const result = parser.parse(raw, baseMetadata, 0);
+      expect(result.success).toBe(true);
+      expect(result.response?.action).toBe('draw');
+    });
+
     it('조커 타일 코드(JK1, JK2)를 허용한다', () => {
       const raw = makeRaw(
         JSON.stringify({

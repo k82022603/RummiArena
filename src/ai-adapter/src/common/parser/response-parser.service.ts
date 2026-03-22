@@ -182,21 +182,32 @@ export class ResponseParserService {
   /**
    * LLM 응답 텍스트에서 JSON 객체를 추출한다.
    * 코드 블록(```json ... ```) 또는 순수 JSON 형식을 모두 지원한다.
+   *
+   * 추출 순서:
+   * 1. 마크다운 코드 블록(```json ... ```) 내부에서 추출
+   * 2. 코드 블록이 없으면 전체 텍스트에서 { ... } 정규식으로 추출
+   * 3. 그래도 실패하면 indexOf/lastIndexOf 방식으로 폴백
    */
   private extractJson(content: string): unknown {
-    // 코드 블록 제거 시도
+    // 1단계: 코드 블록 제거 시도
     const codeBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
-    const jsonStr = codeBlockMatch ? codeBlockMatch[1].trim() : content.trim();
+    let jsonStr = codeBlockMatch ? codeBlockMatch[1].trim() : content.trim();
 
-    // JSON 객체 경계 찾기 (중첩 구조 처리)
-    const startIdx = jsonStr.indexOf('{');
-    const endIdx = jsonStr.lastIndexOf('}');
-    if (startIdx === -1 || endIdx === -1) {
-      throw new Error('응답에서 JSON 객체를 찾을 수 없습니다.');
+    // 2단계: {…} 정규식으로 JSON 객체 추출 (앞뒤 설명문 제거)
+    const jsonObjectMatch = jsonStr.match(/\{[\s\S]*\}/);
+    if (jsonObjectMatch) {
+      jsonStr = jsonObjectMatch[0];
+    } else {
+      // 3단계: indexOf/lastIndexOf 폴백 (정규식이 실패한 경우)
+      const startIdx = jsonStr.indexOf('{');
+      const endIdx = jsonStr.lastIndexOf('}');
+      if (startIdx === -1 || endIdx === -1) {
+        throw new Error('응답에서 JSON 객체를 찾을 수 없습니다.');
+      }
+      jsonStr = jsonStr.slice(startIdx, endIdx + 1);
     }
 
-    const extracted = jsonStr.slice(startIdx, endIdx + 1);
-    return JSON.parse(extracted);
+    return JSON.parse(jsonStr);
   }
 
   /**

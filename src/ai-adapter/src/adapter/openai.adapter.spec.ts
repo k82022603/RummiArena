@@ -245,7 +245,7 @@ describe('OpenAiAdapter', () => {
       expect(config.timeout).toBe(20000);
     });
 
-    it('beginner 난이도는 temperature=1.0으로 API를 호출한다', async () => {
+    it('beginner 난이도는 temperature=0.9로 API를 호출한다', async () => {
       mockedAxios.post = jest
         .fn()
         .mockResolvedValueOnce(
@@ -255,7 +255,7 @@ describe('OpenAiAdapter', () => {
       await adapter.generateMove(makeMoveRequest({ difficulty: 'beginner' }));
 
       const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
-      expect(body.temperature).toBe(1.0);
+      expect(body.temperature).toBe(0.9);
     });
 
     it('intermediate 난이도는 temperature=0.7로 API를 호출한다', async () => {

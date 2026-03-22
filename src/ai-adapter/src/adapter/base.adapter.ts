@@ -10,12 +10,12 @@ import { ResponseParserService } from '../common/parser/response-parser.service'
 
 /**
  * 난이도별 LLM temperature 기본값.
- * beginner(1.0): 높은 창의성으로 실수 유발
+ * beginner(0.9): 창의적 실수 유발하되 JSON 오류율 감소를 위해 1.0에서 낮춤
  * intermediate(0.7): 균형 잡힌 탐색
  * expert(0.3): 낮은 랜덤성으로 최적 수 집중
  */
 export const DIFFICULTY_TEMPERATURE: Record<Difficulty, number> = {
-  beginner: 1.0,
+  beginner: 0.9,
   intermediate: 0.7,
   expert: 0.3,
 };

@@ -62,11 +62,36 @@ export const authOptions: NextAuthOptions = {
   providers,
   callbacks: {
     async jwt({ token, account, user }) {
-      // 최초 로그인 시 access_token을 토큰에 저장 (Google OAuth)
-      if (account?.access_token) {
-        token.accessToken = account.access_token;
+      // Google OAuth 최초 로그인: next-auth가 code 교환 완료 후 id_token 전달
+      // game-server POST /api/auth/google/token으로 id_token을 교환하여 game-server JWT 획득
+      if (account?.provider === "google" && account.id_token) {
+        try {
+          const gameServerUrl =
+            process.env.GAME_SERVER_INTERNAL_URL ?? "http://localhost:8080";
+          const res = await fetch(`${gameServerUrl}/api/auth/google/token`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ idToken: account.id_token }),
+          });
+          if (res.ok) {
+            const data = (await res.json()) as {
+              token: string;
+              userId: string;
+              displayName: string;
+            };
+            token.accessToken = data.token;
+            token.sub = data.userId;
+            token.name = data.displayName;
+          } else {
+            // game-server 연결 실패 시 fallback: Google access_token 사용
+            token.accessToken = account.access_token;
+          }
+        } catch {
+          // 네트워크 오류 시 fallback
+          token.accessToken = account.access_token;
+        }
       }
-      // Credentials 로그인 시 user.accessToken 저장
+      // Credentials(dev-login) 로그인 시 user.accessToken 저장
       const userWithToken = user as unknown as { accessToken?: string };
       if (userWithToken?.accessToken) {
         token.accessToken = userWithToken.accessToken;
