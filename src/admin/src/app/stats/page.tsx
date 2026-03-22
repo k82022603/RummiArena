@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { getAiModelStats, getPersonaStats, getDifficultyStats } from "@/lib/api";
 import StatsChart from "@/components/StatsChart";
 

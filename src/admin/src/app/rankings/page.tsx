@@ -7,7 +7,7 @@
 import { getEloRankings, getEloSummary, getEloTierDistribution } from "@/lib/api";
 import EloRankingPanel from "@/components/EloRankingPanel";
 
-export const revalidate = 30;
+export const dynamic = "force-dynamic";
 
 export default async function RankingsPage() {
   const [rankings, summary, tierDistribution] = await Promise.all([

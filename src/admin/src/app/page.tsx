@@ -1,6 +1,8 @@
 import { getDashboard, fetchHealth, fetchRooms } from "@/lib/api";
 import ServerStatus from "@/components/ServerStatus";
 
+export const dynamic = "force-dynamic";
+
 interface StatCardProps {
   title: string;
   value: string | number;

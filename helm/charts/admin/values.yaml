@@ -20,7 +20,7 @@ resources:
 
 env:
   NODE_ENV: "production"
-  NEXT_PUBLIC_API_URL: "http://game-server.rummikub.svc.cluster.local:8080/api"
+  NEXT_PUBLIC_API_URL: "http://localhost:30080/api"
   NEXTAUTH_SECRET: "dev-nextauth-secret-for-k8s"
   NEXTAUTH_URL: "http://localhost:30001"
 
