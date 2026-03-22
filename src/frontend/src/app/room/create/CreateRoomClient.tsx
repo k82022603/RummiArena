@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useSession } from "next-auth/react";
 import { motion } from "framer-motion";
 import { createRoom } from "@/lib/api";
 import { useRoomStore } from "@/store/roomStore";
@@ -44,6 +45,7 @@ const DEFAULT_AI: AISlot = {
  */
 export default function CreateRoomClient() {
   const router = useRouter();
+  const { data: session } = useSession();
   const { setCurrentRoom } = useRoomStore();
 
   const [playerCount, setPlayerCount] = useState<2 | 3 | 4>(4);
@@ -73,11 +75,12 @@ export default function CreateRoomClient() {
     setError(null);
 
     try {
+      const token = (session as { accessToken?: string } | null)?.accessToken ?? undefined;
       const room = await createRoom({
         playerCount,
         turnTimeoutSec,
         aiPlayers: aiSlots,
-      });
+      }, token);
 
       // roomStore에 현재 방 저장
       setCurrentRoom(room);

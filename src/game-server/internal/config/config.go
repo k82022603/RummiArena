@@ -2,7 +2,6 @@ package config
 
 import (
 	"log"
-	"os"
 
 	"github.com/spf13/viper"
 )
@@ -56,7 +55,7 @@ type JWTConfig struct {
 func Load() (*Config, error) {
 	viper.SetDefault("APP_ENV", "production")
 	viper.SetDefault("SERVER_PORT", "8080")
-	viper.SetDefault("SERVER_MODE", "debug")
+	viper.SetDefault("SERVER_MODE", "release")
 	viper.SetDefault("DB_HOST", "localhost")
 	viper.SetDefault("DB_PORT", "5432")
 	viper.SetDefault("DB_USER", "rummikub")
@@ -113,7 +112,6 @@ func Load() (*Config, error) {
 	if cfg.JWT.Secret == "" {
 		if cfg.AppEnv == "production" {
 			log.Fatal("[FATAL] JWT_SECRET must be set in production environment — refusing to start")
-			os.Exit(1) // log.Fatal already calls os.Exit(1); kept for explicit intent
 		}
 		log.Println("[WARN] JWT_SECRET is not set — set via environment variable for production")
 	}

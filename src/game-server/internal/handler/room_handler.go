@@ -29,8 +29,8 @@ func NewRoomHandler(roomSvc service.RoomService) *RoomHandler {
 
 // createRoomRequest POST /api/rooms 요청 바디
 type createRoomRequest struct {
-	Name           string `json:"name"`
-	PlayerCount    int    `json:"playerCount" binding:"required,min=2,max=4"`
+	Name           string `json:"name"           binding:"max=50"`
+	PlayerCount    int    `json:"playerCount"    binding:"required,min=2,max=4"`
 	TurnTimeoutSec int    `json:"turnTimeoutSec" binding:"required,min=30,max=120"`
 }
 

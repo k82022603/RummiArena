@@ -953,6 +953,195 @@ sequenceDiagram
     GS->>C1: TURN_START<br/>{seat: 1}
 ```
 
+### 6.7 게임 시작 전체 흐름 (REST + WS 통합)
+
+> **핵심 설계**: REST `POST /api/rooms/:id/start`는 WS를 브로드캐스트하지 않는다.
+> 클라이언트는 StartGame 후 반드시 **WS를 재연결**해야 GAME_STATE를 받을 수 있다.
+
+#### conn.gameID 타이밍 문제
+
+`conn.gameID`는 WS 인증(AUTH) 시점에 Redis에서 읽은 `room.GameID`로 결정된다.
+
+```go
+// ws_handler.go:228-230
+if room.GameID != nil {
+    conn.gameID = *room.GameID  // 연결 당시 방 상태에서만 결정
+}
+```
+
+| 연결 시점 | room.Status | conn.gameID | 결과 |
+|-----------|-------------|-------------|------|
+| 게임 시작 전 | WAITING | `""` (빈 문자열) | GAME_STATE 미전송, 게임 메시지 전부 차단 |
+| 게임 시작 후 | PLAYING | `"uuid-xxx"` | GAME_STATE 즉시 전송 |
+
+```go
+// ws_handler.go:113-116
+if conn.gameID != "" {
+    h.sendGameState(conn)  // 재연결 시 즉시 GAME_STATE 전송
+}
+```
+
+#### 올바른 연결 순서 (클라이언트 구현 필수)
+
+```mermaid
+sequenceDiagram
+    participant C0 as Player 0<br/>(Host)
+    participant C1 as Player 1<br/>(Guest)
+    participant REST as Game Server<br/>(REST API)
+    participant WS as Game Server<br/>(WebSocket)
+    participant Redis as Redis
+
+    Note over C0,C1: Phase 1 — 방 준비
+
+    C0->>REST: POST /api/rooms<br/>{name, playerCount}
+    REST-->>C0: {roomId}
+
+    C0->>WS: ws://.../ws?roomId={roomId}
+    C0->>WS: AUTH {token}
+    WS-->>C0: AUTH_OK {seat: 0}
+    Note over WS: room.Status=WAITING<br/>conn.gameID="" → GAME_STATE 미전송
+
+    C1->>REST: POST /api/rooms/{roomId}/join
+    REST-->>C1: {seat: 1}
+
+    C1->>WS: ws://.../ws?roomId={roomId}
+    C1->>WS: AUTH {token}
+    WS-->>C1: AUTH_OK {seat: 1}
+    WS->>C0: PLAYER_JOIN {seat: 1}
+
+    Note over C0,C1: Phase 2 — 게임 시작 (REST)
+
+    C0->>REST: POST /api/rooms/{roomId}/start
+    REST->>Redis: room.Status = PLAYING<br/>room.GameID = new UUID
+    REST-->>C0: 200 OK
+    Note over WS: WS 브로드캐스트 없음!
+
+    Note over C0,C1: Phase 3 — WS 재연결 (필수)
+
+    C0->>WS: 연결 해제 후 재연결
+    C0->>WS: AUTH {token}
+    WS->>Redis: room.GameID 조회 → "uuid-xxx"
+    WS-->>C0: AUTH_OK {seat: 0}
+    WS-->>C0: GAME_STATE {currentSeat, myRack, ...}
+
+    C1->>WS: 연결 해제 후 재연결
+    C1->>WS: AUTH {token}
+    WS->>Redis: room.GameID 조회 → "uuid-xxx"
+    WS-->>C1: AUTH_OK {seat: 1}
+    WS-->>C1: GAME_STATE {currentSeat, myRack, ...}
+
+    Note over C0,C1: Phase 4 — 게임 진행
+
+    WS->>C0: TURN_START {seat: 0}
+    WS->>C1: TURN_START {seat: 0}
+```
+
+> **클라이언트 구현 가이드**: `POST /api/rooms/:id/start` 응답 수신 → WS disconnect → WS reconnect.
+> Sprint 3 #30 `useGameSocket` Hook에서 이 흐름을 자동화해야 한다.
+
+#### 왜 REST StartGame에서 WS 브로드캐스트를 하지 않는가?
+
+REST 핸들러는 `hub`에 직접 접근하지 않는 설계를 유지한다 (Handler → Service 계층 분리).
+WS 브로드캐스트를 추가할 수도 있으나, 현재는 재연결 방식을 표준으로 채택하였다.
+이 설계는 다음을 보장한다:
+- REST/WS 계층의 명확한 책임 분리
+- Pod 재시작 후 재연결 흐름과 동일한 코드 경로 재사용
+- GAME_STATE는 항상 최신 Redis 상태에서 읽혀 일관성 보장
+
+---
+
+### 6.8 Human vs Human E2E 완주 검증 (2026-03-22)
+
+실제 E2E 테스트를 통해 검증된 완전한 게임 흐름이다.
+
+**테스트 환경**: Python 스크립트, K8s 내 game-server, 2인 Human 플레이어
+
+**결과**: PlayerA 40턴, PlayerB 39턴, **ALL PASS ✓**
+
+#### E2E 메시지 흐름 요약
+
+```mermaid
+sequenceDiagram
+    participant A as PlayerA<br/>(seat 0, Host)
+    participant B as PlayerB<br/>(seat 1, Guest)
+    participant REST as Game Server<br/>(REST API)
+    participant WS as Game Server<br/>(WebSocket)
+
+    Note over A,B: Phase 1 — 로그인 & 방 준비
+
+    A->>REST: POST /api/auth/dev-login
+    REST-->>A: {token, userId}
+    B->>REST: POST /api/auth/dev-login
+    REST-->>B: {token, userId}
+
+    A->>REST: POST /api/rooms {name, playerCount: 2}
+    REST-->>A: {id: "room-uuid"}
+    B->>REST: POST /api/rooms/{id}/join
+    REST-->>B: {seat: 1}
+
+    Note over A,B: Phase 2 — WS 1차 연결 (room: WAITING)
+
+    A->>WS: ws://.../ws?roomId={id}
+    A->>WS: AUTH {token}
+    WS-->>A: AUTH_OK {seat: 0}
+    Note over WS: conn.gameID="" → GAME_STATE 미전송
+
+    B->>WS: ws://.../ws?roomId={id}
+    B->>WS: AUTH {token}
+    WS-->>B: AUTH_OK {seat: 1}
+    WS->>A: PLAYER_JOIN {seat: 1}
+
+    Note over A,B: Phase 3 — 게임 시작 (REST, WS 브로드캐스트 없음)
+
+    A->>REST: POST /api/rooms/{id}/start
+    REST-->>A: 200 OK
+
+    Note over A,B: Phase 4 — WS 재연결 (room: PLAYING)
+
+    A->>WS: 재연결 + AUTH {token}
+    WS-->>A: AUTH_OK {seat: 0}
+    WS-->>A: GAME_STATE {currentSeat: 0, myRack: [14장], ...}
+
+    B->>WS: 재연결 + AUTH {token}
+    WS-->>B: AUTH_OK {seat: 1}
+    WS-->>B: GAME_STATE {currentSeat: 0, myRack: [14장], ...}
+
+    Note over A,B: Phase 5 — 게임 루프 (39~40턴 반복)
+
+    WS->>A: TURN_START {seat: 0}
+    WS->>B: TURN_START {seat: 0}
+
+    A->>WS: DRAW_TILE {}
+    WS-->>A: TILE_DRAWN {drawnTile: "R7a", drawPileCount: N}
+    WS->>B: TILE_DRAWN {drawnTile: null, drawPileCount: N}
+
+    WS->>A: TURN_END {seat: 0, action: "DRAW_TILE", nextSeat: 1}
+    WS->>B: TURN_END {seat: 0, action: "DRAW_TILE", nextSeat: 1}
+
+    WS->>A: TURN_START {seat: 1}
+    WS->>B: TURN_START {seat: 1}
+
+    B->>WS: DRAW_TILE {}
+    WS-->>B: TILE_DRAWN {drawnTile: "B3b", drawPileCount: N-1}
+    WS->>A: TILE_DRAWN {drawnTile: null, drawPileCount: N-1}
+
+    Note over A,B: ... (턴 반복) ...
+
+    Note over A,B: Phase 6 — 게임 종료 (드로우 파일 소진)
+
+    WS->>A: GAME_OVER {endType: "STALEMATE", totalTurns: 40}
+    WS->>B: GAME_OVER {endType: "STALEMATE", totalTurns: 39}
+```
+
+#### E2E에서 발견된 트랩 (신규 개발자 주의사항)
+
+| 트랩 | 증상 | 원인 | 해결 |
+|------|------|------|------|
+| WS에 roomId 없이 연결 | HTTP 400 Bad Request | `/ws` 엔드포인트에 `?roomId=` 쿼리 필수 | `/ws?roomId={roomId}` |
+| REST join 없이 WS 연결 | UNAUTHORIZED | Hub에 플레이어 seat 정보 없음 | REST join → WS 연결 순서 준수 |
+| StartGame 후 재연결 없음 | 모든 게임 메시지 차단 "게임이 아직 시작되지 않았습니다." | `conn.gameID = ""` | StartGame 후 WS 재연결 |
+| 방 생성 잘못된 필드 | INVALID_REQUEST | `roomName`, `maxPlayers`는 없는 필드 | `name`, `playerCount`, `turnTimeoutSec` 사용 |
+
 ---
 
 ## 7. Redis 게임 상태 직렬화 포맷

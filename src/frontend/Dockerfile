@@ -28,7 +28,7 @@ COPY . .
 
 # Next.js 빌드 시 필요한 런타임 환경변수만 ARG로 주입
 # (빌드 타임에 하드코딩되지 않도록 NEXT_PUBLIC_ 변수는 빌드 ARG로 전달)
-ARG NEXT_PUBLIC_API_URL=http://game-server:8080
+ARG NEXT_PUBLIC_API_URL=http://game-server:8080/api
 ARG NEXT_PUBLIC_WS_URL=ws://game-server:8080
 
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
