@@ -46,6 +46,7 @@ type GameStateRedis struct {
 	TurnCount            int           `json:"turnCount"`
 	ConsecutivePassCount int           `json:"consecutivePassCount"` // 연속 드로우 횟수 (교착 판정용)
 	TurnTimeoutSec       int           `json:"turnTimeoutSec"`        // 타이머 에이전트가 사용할 필드
+	IsStalemate          bool          `json:"isStalemate,omitempty"` // 교착 종료 여부 (GAME_OVER endType 결정용)
 }
 
 // PlayerState holds per-player in-memory state cached in Redis.

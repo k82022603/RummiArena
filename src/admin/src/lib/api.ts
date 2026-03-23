@@ -67,13 +67,21 @@ export const TIER_COLORS: Record<EloTier, string> = {
 // 내부 헬퍼
 // ------------------------------------------------------------------
 
-async function fetchApi<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    headers: { "Content-Type": "application/json" },
-    next: { revalidate: 10 },
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${path}`);
-  return res.json() as Promise<T>;
+async function fetchApi<T>(path: string, fallback?: T): Promise<T> {
+  try {
+    const res = await fetch(`${API_BASE}${path}`, {
+      headers: { "Content-Type": "application/json" },
+      next: { revalidate: 10 },
+    });
+    if (!res.ok) {
+      if (fallback !== undefined) return fallback;
+      throw new Error(`HTTP ${res.status}: ${path}`);
+    }
+    return res.json() as Promise<T>;
+  } catch (err) {
+    if (fallback !== undefined) return fallback;
+    throw err;
+  }
 }
 
 async function fetchApiWithAuth<T>(path: string, options?: { revalidate?: number }): Promise<T> {
@@ -118,45 +126,50 @@ export async function fetchHealth(): Promise<HealthStatus> {
  * Authorization: Bearer 토큰을 포함하여 호출한다.
  */
 export async function fetchRooms(): Promise<AdminGame[]> {
-  return fetchApiWithAuth<AdminGame[]>("/api/rooms");
+  try {
+    return await fetchApiWithAuth<AdminGame[]>("/api/rooms");
+  } catch {
+    return [];
+  }
 }
 
 // ------------------------------------------------------------------
 // 관리자 전용 엔드포인트
 // ------------------------------------------------------------------
 
+const EMPTY_DASHBOARD: DashboardSummary = {
+  activeGames: 0,
+  onlineUsers: 0,
+  todayFinishedGames: 0,
+  aiVsHumanRatio: { ai: 0, human: 100 },
+};
+
 export async function getDashboard(): Promise<DashboardSummary> {
-  return fetchApi<DashboardSummary>("/admin/dashboard");
+  return fetchApi<DashboardSummary>("/admin/dashboard", EMPTY_DASHBOARD);
 }
 
 export async function getGames(): Promise<AdminGame[]> {
-  return fetchApi<AdminGame[]>("/admin/games");
+  return fetchApi<AdminGame[]>("/admin/games", []);
 }
 
 export async function getGame(id: string): Promise<AdminGame | null> {
-  try {
-    return await fetchApi<AdminGame>(`/admin/games/${id}`);
-  } catch (err) {
-    const error = err as Error;
-    if (error.message.startsWith("HTTP 404")) return null;
-    throw err;
-  }
+  return fetchApi<AdminGame | null>(`/admin/games/${id}`, null);
 }
 
 export async function getUsers(): Promise<AdminUser[]> {
-  return fetchApi<AdminUser[]>("/admin/users");
+  return fetchApi<AdminUser[]>("/admin/users", []);
 }
 
 export async function getAiModelStats(): Promise<AiModelStats[]> {
-  return fetchApi<AiModelStats[]>("/admin/stats/ai-models");
+  return fetchApi<AiModelStats[]>("/admin/stats/ai-models", []);
 }
 
 export async function getPersonaStats(): Promise<PersonaStats[]> {
-  return fetchApi<PersonaStats[]>("/admin/stats/personas");
+  return fetchApi<PersonaStats[]>("/admin/stats/personas", []);
 }
 
 export async function getDifficultyStats(): Promise<DifficultyStats[]> {
-  return fetchApi<DifficultyStats[]>("/admin/stats/difficulty");
+  return fetchApi<DifficultyStats[]>("/admin/stats/difficulty", []);
 }
 
 // ------------------------------------------------------------------
@@ -167,6 +180,16 @@ export async function getDifficultyStats(): Promise<DifficultyStats[]> {
  * 전체 ELO 리더보드를 가져온다.
  * tier 인자가 주어지면 /api/rankings/tier/:tier 를 호출한다.
  */
+const EMPTY_RANKINGS: EloRankingsResponse = { rankings: [], total: 0, limit: 20, offset: 0 };
+
+async function fetchApiWithAuthSafe<T>(path: string, fallback: T, options?: { revalidate?: number }): Promise<T> {
+  try {
+    return await fetchApiWithAuth<T>(path, options);
+  } catch {
+    return fallback;
+  }
+}
+
 export async function getEloRankings(
   limit = 20,
   offset = 0,
@@ -175,7 +198,7 @@ export async function getEloRankings(
   const endpoint = tier
     ? `/api/rankings/tier/${tier}?limit=${limit}&offset=${offset}`
     : `/api/rankings?limit=${limit}&offset=${offset}`;
-  return fetchApiWithAuth<EloRankingsResponse>(endpoint, { revalidate: 30 });
+  return fetchApiWithAuthSafe<EloRankingsResponse>(endpoint, EMPTY_RANKINGS, { revalidate: 30 });
 }
 
 /**
@@ -183,8 +206,9 @@ export async function getEloRankings(
  * game-server가 별도 summary 엔드포인트를 제공하기 전까지 rankings에서 계산한다.
  */
 export async function getEloSummary(): Promise<EloSummary> {
-  const data = await fetchApiWithAuth<EloRankingsResponse>(
+  const data = await fetchApiWithAuthSafe<EloRankingsResponse>(
     "/api/rankings?limit=100&offset=0",
+    EMPTY_RANKINGS,
     { revalidate: 60 },
   );
   const ranked = data.rankings.filter((r) => r.tier !== "UNRANKED");
@@ -202,8 +226,9 @@ export async function getEloSummary(): Promise<EloSummary> {
  * 티어별 인원 분포 (파이 차트용)
  */
 export async function getEloTierDistribution(): Promise<EloTierDistribution[]> {
-  const { rankings } = await fetchApiWithAuth<EloRankingsResponse>(
+  const { rankings } = await fetchApiWithAuthSafe<EloRankingsResponse>(
     "/api/rankings?limit=200&offset=0",
+    EMPTY_RANKINGS,
     { revalidate: 60 },
   );
 

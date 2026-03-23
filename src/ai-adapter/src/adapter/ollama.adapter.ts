@@ -12,9 +12,9 @@ import { ResponseParserService } from '../common/parser/response-parser.service'
  * Ollama 로컬 LLM 어댑터.
  * 로컬에서 실행되므로 API 비용이 없다.
  * 응답 속도와 품질은 하드웨어에 따라 변동된다.
- * 기본 모델: gemma3:4b (변경 가능)
+ * 기본 모델: gemma3:1b (변경 가능)
  *
- * 4B 소형 모델의 JSON 오류율이 높으므로 최소 재시도 횟수를 5회로 보장한다.
+ * 소형 모델의 JSON 오류율이 높으므로 최소 재시도 횟수를 5회로 보장한다.
  */
 @Injectable()
 export class OllamaAdapter extends BaseAdapter {

@@ -97,8 +97,18 @@ func (s *roomService) CreateRoom(req *CreateRoomRequest) (*model.RoomState, erro
 		aiIdx := i - 1
 		if aiIdx < len(req.AIPlayers) {
 			ai := req.AIPlayers[aiIdx]
+			aiUserID := "ai-" + uuid.New().String()
+			aiName := ai.Type
+			if ai.Persona != "" {
+				aiName = ai.Type + "-" + ai.Persona
+			}
+			if aiName == "" {
+				aiName = fmt.Sprintf("AI-Player-%d", i)
+			}
 			players[i] = model.RoomPlayer{
 				Seat:              i,
+				UserID:            aiUserID,
+				DisplayName:       aiName,
 				Type:              ai.Type,
 				Persona:           ai.Persona,
 				Difficulty:        ai.Difficulty,

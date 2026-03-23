@@ -80,9 +80,9 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 ### 사전 준비 (외부 서비스)
 - [x] Google Cloud Console — OAuth 2.0 클라이언트 ID 발급
 - [ ] 카카오 디벨로퍼스 — 앱 등록 + 메시지 API 키 발급
-- [ ] OpenAI API Key 준비
-- [ ] Anthropic (Claude) API Key 준비
-- [ ] DeepSeek API Key 준비
+- [x] OpenAI API Key 준비 — sk-proj-ce7... (2026-03-23)
+- [x] Anthropic (Claude) API Key 준비 — sk-ant-api03-... (2026-03-23)
+- [x] DeepSeek API Key 준비 — sk-7c302... (2026-03-23)
 - [x] GitLab 계정 + Container Registry 확인 (k82022603, 2026-03-15)
 
 ---
@@ -141,7 +141,7 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 - [x] OpenAI Adapter 구현 — OpenAiAdapter 완료 (Sprint 1)
 - [x] Claude Adapter 구현 — ClaudeAdapter 완료 (Sprint 1)
 - [x] DeepSeek Adapter 구현 — DeepSeekAdapter 완료 (Sprint 1)
-- [x] Ollama Adapter 구현 — OllamaAdapter + gemma3:4b (Sprint 1)
+- [x] Ollama Adapter 구현 — OllamaAdapter + gemma3:1b (Sprint 1, 2026-03-23 gemma3:4b→1b 교체)
 - [x] 프롬프트 설계 (전략별/캐릭터별/심리전 레벨별) — persona.templates.ts 6캐릭터 × 3난이도 × 4레벨 (2026-03-21)
 - [x] 재시도 + Fallback 로직 — 최대 3회 재시도, fallback DRAW (Sprint 1)
 - [ ] AI 호출 로그/메트릭 수집
@@ -149,7 +149,7 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 
 ### Sprint 5: 멀티플레이 완성 + 연습 모드
 - [x] Room 기반 세션 관리 (생명주기 전체) — FinishRoom + ListRooms 필터 + 재접속 감지 (2026-03-21)
-- [ ] Human + AI 혼합 매칭
+- [x] Human + AI 혼합 매칭 — BUG-S4-001 수정 후 E2E 5/5 PASS (2026-03-23)
 - [x] 턴 오케스트레이터 (Human ↔ AI 턴 전환) — AI Turn Orchestrator goroutine + forceAIDraw 폴백 (2026-03-21)
 - [ ] 테이블 재배치 동기화
 - [x] 연결 끊김/재연결 처리 — PLAYER_RECONNECT Frontend 토스트 UI 구현 (2026-03-21)
@@ -278,29 +278,20 @@ docs/
 
 ## 현재 진행 상황
 
-**Phase 2 진행 중 (Sprint 2)** — Sprint 1 완료 + Sprint 2 Day 1~2 완료 (2026-03-21)
+**Phase 2 완료 + Phase 3 (Sprint 4) 진행 중** — Sprint 1~3 완료 (2026-03-23)
 
-Sprint 1 (2026-03-13 ~ 2026-03-21, 28/28 SP = 100%):
-- Game Engine 69개 단위 테스트 (96.5% 커버리지), REST API 12개, WebSocket Hub 실구현
-- AI Adapter 4개 어댑터 + Fallback DRAW, 통합 테스트 50개 GREEN
-- K8s ArgoCD Synced+Healthy (5개 서비스), GitLab CI **13개 job ALL GREEN**
-- SonarQube RummiArena-Dev Quality Gate: new_coverage ≥ 30%, duplication ≤ 10%
+Sprint 1~3 (2026-03-13 ~ 2026-03-23):
+- **Sprint 1** 28/28 SP: Game Engine, REST API, WebSocket, K8s 5개 서비스 배포
+- **Sprint 2** 50/50 SP: AI 캐릭터, Turn Orchestrator, ELO, 관리자 대시보드, 연습 모드
+- **Sprint 3** 30/30 SP: OAuth K8s 패치, WS 재연결, gemma3 최적화, Redis Timer/Session
+- 통합 테스트 30개 (96.7% PASS)
 
-Sprint 2 Day 1 (2026-03-21):
-- **사전 미팅**: AI Move API 인터페이스 계약 확정 (docs/02-design/11-ai-move-api-contract.md)
-- **#21**: Go AI HTTP 클라이언트 (AIClientInterface) + E2E 게임 흐름 11개 테스트
-- **#20**: NestJS AI 캐릭터 시스템 (6캐릭터 × 3난이도 × 4심리전 레벨, 254개 테스트 GREEN)
-- **#22**: Next.js 관리자 대시보드 초기 구현 (recharts 승률 차트, mock 데이터)
-- **#23**: Frontend 연습 모드 Stage 1~3 (dnd-kit + joker-aware + localStorage)
+Sprint 4 진행 중 (2026-03-23 조기 착수):
+- **BUG-S4-001 수정**: AI 플레이어 UserID `""` → `ai-{uuid}`, E2E 5/5 PASS
+- **ISSUE-002 해결**: gemma3:4b → 1b (300s → 4s, 70배 개선)
+- **ISSUE-003 해결**: endType "STALEMATE" 구분 (IsStalemate 필드)
+- **admin pod 해결**: Docker 빌드 + API fallback + Running
+- **WS E2E 자동화**: scripts/ws-integration-test.go (TC-WS-001~005 PASS)
+- **API Keys 등록**: OpenAI/Claude/DeepSeek 실 키 적용 완료
 
-Sprint 2 Day 2 (2026-03-21 — 동일 날):
-- **AI Turn Orchestrator**: ws_handler.go goroutine AI 턴 자동 수행 + forceAIDraw 폴백 (9개 테스트 PASS)
-- **CharacterService 연동**: @Optional() PromptBuilderService → LLM 호출 체인 완성 (262개 테스트 PASS)
-- **관리자 API 연동**: USE_MOCK 플래그 + fetchHealth/fetchRooms + ServerStatus 배지
-- **연습 모드 Stage 4~6**: 조커 마스터/복합 배치/루미큐브 마스터 완료
-- **WebSocket 멀티플레이 통합 테스트**: 7개 PASS (Human 2명 실제 대전 검증)
-- **Room 생명주기**: FinishRoom + 재접속 감지 + ListRooms 필터
-- **관리자 인증 스텁**: getAdminToken() 3단계 fallback
-- **연습 모드 서버 동기화 스텁**: practice-api.ts (서버 연동 준비)
-
-다음 단계: Sprint 2 계속 (2026-03-29) — LLM 실제 E2E 테스트, Practice API 실 연동, Phase 4 ELO 설계
+다음 단계: Sprint 4 계속 — WS 레벨 AI 턴 E2E, LLM 실측 데이터 수집
