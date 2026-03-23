@@ -1,0 +1,40 @@
+replicaCount: 1
+
+image:
+  repository: ollama/ollama
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 11434
+
+# 모델 데이터 영속 저장 (재시작 후에도 pull 불필요)
+persistence:
+  enabled: true
+  storageClass: "hostpath"
+  size: 2Gi
+  mountPath: /root/.ollama
+
+# 기본 로드 모델 (pod 시작 후 자동 pull)
+defaultModel: "gemma3:1b"
+
+resources:
+  requests:
+    memory: "512Mi"
+    cpu: "200m"
+  limits:
+    memory: "2Gi"
+    cpu: "2000m"
+
+livenessProbe:
+  initialDelaySeconds: 30
+  periodSeconds: 15
+  timeoutSeconds: 5
+  failureThreshold: 6
+
+readinessProbe:
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3

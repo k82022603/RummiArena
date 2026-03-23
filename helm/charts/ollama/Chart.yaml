@@ -1,0 +1,6 @@
+apiVersion: v2
+name: ollama
+description: Ollama LLM 로컬 추론 서버 (gemma3:1b)
+type: application
+version: 0.1.0
+appVersion: "0.18.2"
