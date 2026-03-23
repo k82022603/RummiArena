@@ -752,8 +752,8 @@ func (h *WSHandler) handleAITurn(roomID, gameID string, player *model.PlayerStat
 		GameID:          gameID,
 		PlayerID:        player.UserID,
 		Model:           aiModel,
-		Persona:         player.AIPersona,
-		Difficulty:      player.AIDifficulty,
+		Persona:         strings.ToLower(player.AIPersona),
+		Difficulty:      normalizeDifficulty(player.AIDifficulty),
 		PsychologyLevel: player.AIPsychLevel,
 		MaxRetries:      3,
 		TimeoutMs:       30000,
@@ -1410,6 +1410,21 @@ func getWSKFactor(rating, gamesPlayed int) float64 {
 		return 24
 	}
 	return 32
+}
+
+// normalizeDifficulty 난이도 문자열을 ai-adapter 허용 값으로 정규화한다.
+// 허용 값: "beginner" | "intermediate" | "expert"
+func normalizeDifficulty(d string) string {
+	switch strings.ToLower(d) {
+	case "beginner", "easy", "하수":
+		return "beginner"
+	case "intermediate", "medium", "mid", "중수":
+		return "intermediate"
+	case "expert", "hard", "고수":
+		return "expert"
+	default:
+		return "beginner"
+	}
 }
 
 // playerTypeToModel PlayerType 문자열을 ai-adapter model 식별자로 변환한다.

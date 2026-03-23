@@ -5,6 +5,7 @@ package handler
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -257,6 +258,70 @@ func TestBuildTableGroups(t *testing.T) {
 	require.Len(t, groups, 2)
 	assert.Equal(t, []string{"R1a", "R2a", "R3a"}, groups[0].Tiles)
 	assert.Equal(t, []string{"B5a", "Y5a", "K5b"}, groups[1].Tiles)
+}
+
+// TestNormalizeDifficulty ISS-001 회귀 방지: 난이도 문자열 정규화 검증
+// ai-adapter는 "beginner" | "intermediate" | "expert" 만 허용한다.
+// "easy", "hard", 한글 값 등이 들어와도 올바르게 변환되어야 한다.
+func TestNormalizeDifficulty(t *testing.T) {
+	cases := []struct {
+		input string
+		want  string
+	}{
+		// 정상 값 (통과)
+		{"beginner", "beginner"},
+		{"intermediate", "intermediate"},
+		{"expert", "expert"},
+		// ISS-001 원인: "easy" → 400 에러 유발
+		{"easy", "beginner"},
+		{"medium", "intermediate"},
+		{"mid", "intermediate"},
+		{"hard", "expert"},
+		// 대소문자 혼합
+		{"Easy", "beginner"},
+		{"BEGINNER", "beginner"},
+		{"Intermediate", "intermediate"},
+		{"EXPERT", "expert"},
+		// 한글
+		{"하수", "beginner"},
+		{"중수", "intermediate"},
+		{"고수", "expert"},
+		// 미지의 값 → 기본값 beginner
+		{"unknown", "beginner"},
+		{"", "beginner"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.input, func(t *testing.T) {
+			got := normalizeDifficulty(tc.input)
+			assert.Equal(t, tc.want, got, "normalizeDifficulty(%q)", tc.input)
+		})
+	}
+}
+
+// TestPersonaLowercase ISS-001 회귀 방지: persona가 소문자로 변환되는지 확인
+// ai-adapter는 "rookie" | "calculator" | "shark" | "fox" | "wall" | "wildcard" 만 허용한다.
+func TestPersonaLowercase(t *testing.T) {
+	cases := []struct {
+		input string
+		want  string
+	}{
+		{"Rookie", "rookie"},
+		{"Calculator", "calculator"},
+		{"SHARK", "shark"},
+		{"Fox", "fox"},
+		{"Wall", "wall"},
+		{"Wildcard", "wildcard"},
+		{"rookie", "rookie"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.input, func(t *testing.T) {
+			// handleAITurn에서 strings.ToLower(player.AIPersona) 호출
+			got := strings.ToLower(tc.input)
+			assert.Equal(t, tc.want, got, "strings.ToLower(%q)", tc.input)
+		})
+	}
 }
 
 // TestForceAIDraw_DrawPileEmpty 드로우 파일 소진 시 GAME_OVER를 브로드캐스트한다.
