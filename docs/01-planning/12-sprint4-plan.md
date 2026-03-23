@@ -35,7 +35,7 @@ Sprint 1에서 4개 어댑터 파일과 테스트가 스캐폴딩되어 있다. 
 | OpenAI | `openai.adapter.ts` | 구현체 존재, mock 테스트 14개 | API 키 연동, JSON mode 실검증, 비용 추적 |
 | Claude | `claude.adapter.ts` | 구현체 존재, mock 테스트 존재 | Messages API 실검증, tool_use 응답 파싱 고도화 |
 | DeepSeek | `deepseek.adapter.ts` | 구현체 존재, mock 테스트 존재 | API 실검증, response_format 호환성 확인 |
-| Ollama | `ollama.adapter.ts` | 실동작 완료 (gemma3:4b) | Sprint 3 완료, Sprint 4 기준선 |
+| Ollama | `ollama.adapter.ts` | 실동작 완료 (gemma3:1b, K8s Pod) | Sprint 3 완료 + ISS-003 FIXED (2026-03-23) |
 
 ### 공통 인터페이스 (이미 확정)
 
@@ -347,7 +347,7 @@ Fields:
 | gpt-4o-mini | $0.15 | $0.60 | beginner/intermediate용 |
 | claude-sonnet-4-20250514 | $3.00 | $15.00 | Messages API |
 | deepseek-chat | $0.14 | $0.28 | OpenAI 호환 |
-| gemma3:4b (Ollama) | $0.00 | $0.00 | 로컬 실행 |
+| gemma3:1b (Ollama) | $0.00 | $0.00 | K8s Pod 로컬 실행 (4b→1b 교체 2026-03-23) |
 
 ---
 

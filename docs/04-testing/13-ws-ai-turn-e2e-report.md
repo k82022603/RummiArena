@@ -175,13 +175,15 @@ ws: elo updated userID=ee403547... oldRating=1000 newRating=1039 delta=19
 
 ## 8. 별도 발견 이슈
 
-### ISS-003: Ollama 네트워크 접근 불가 (K8s pod -> WSL2 host)
+### ISS-003: Ollama 네트워크 접근 불가 → **FIXED (2026-03-23)**
 
-- **심각도**: Medium (AI 기능 전체 영향)
-- **증상**: ai-adapter에서 Ollama(172.21.32.1:11434) 호출 시 30초 타임아웃 x5 = 150초
-- **영향**: AI 턴 처리 지연 -> 턴 타이머(60s) 만료 -> 게임 조기 종료
-- **원인**: Ollama 프로세스 미실행 또는 Windows 방화벽으로 WSL2 vEthernet 차단
-- **후속 조치**: Ollama 실행 상태 확인 + Windows 방화벽 인바운드 규칙 점검
+- **심각도**: Medium → **해소**
+- **원인**: Windows Ollama 삭제로 `172.21.32.1:11434` 접근 불가
+- **해결**: Ollama를 K8s Pod로 배포 (`helm/charts/ollama`)
+  - `ollama/ollama:latest` 이미지, ClusterIP 서비스 `ollama:11434`
+  - initContainer로 gemma3:1b 자동 pull, PVC 영속 저장
+  - ai-adapter `OLLAMA_BASE_URL: http://ollama:11434` 으로 변경
+- **검증**: `POST /move` → `isFallbackDraw: false`, latency 25s, 한국어 reasoning 포함
 
 ### ISS-002: ELO user_id UUID 타입 불일치 (기존)
 
@@ -195,16 +197,16 @@ ws: elo updated userID=ee403547... oldRating=1000 newRating=1039 delta=19
 | 항목 | 판정 |
 |------|------|
 | ISS-001 persona/difficulty 정규화 | **FIXED** |
+| ISS-003 Ollama K8s Pod 배포 | **FIXED** |
 | WS 연결 + AUTH 인증 | PASS |
 | GAME_STATE(PLAYING) 수신 | PASS |
 | Human DRAW_TILE 처리 | PASS |
 | AI Turn 자동 처리 (handleAITurn goroutine) | PASS |
 | ai-adapter POST /move 200 응답 | PASS |
-| LLM 호출 시도 (Ollama) | PASS (타임아웃이지만 호출 자체는 성공) |
-| forceAIDraw 폴백 동작 | PASS |
+| LLM 실 응답 (isFallbackDraw: false) | **PASS** (25s, 한국어 reasoning) |
 | normalizeDifficulty 단위 테스트 | 16/16 PASS |
 | PersonaLowercase 단위 테스트 | 7/7 PASS |
 
-**ISS-001 재테스트: FIXED**
+**ISS-001 FIXED, ISS-003 FIXED**
 
-Ollama 네트워크 접근 문제(ISS-003) 해결 후 AI 실제 place 응답 E2E 추가 검증 예정.
+잔여 이슈: ISS-002 (AI userID `ai-{uuid}` PostgreSQL UUID 타입 불일치 — 게임 진행 무관)
