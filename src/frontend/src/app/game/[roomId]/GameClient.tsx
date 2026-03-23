@@ -302,12 +302,21 @@ export default function GameClient({ roomId }: GameClientProps) {
         // 새로 생성된 그룹을 프리뷰 ID 세트에 등록
         addPendingGroupId(newGroupId);
       } else if (over.id === "player-rack") {
-        // 테이블 → 랙: 그룹에서 타일 제거
+        // 보드 → 랙: pending 그룹에 실제로 있는 타일만 회수
+        // (랙→랙 오드롭 시 서버 그룹 타일을 삭제하는 버그 방지)
         if (pendingTableGroups) {
+          const tileInPending = pendingTableGroups
+            .filter((g) => pendingGroupIds.has(g.id))
+            .some((g) => g.tiles.includes(tileCode));
+          if (!tileInPending) return;
+
           const updated = pendingTableGroups
             .map((g) => ({ ...g, tiles: g.tiles.filter((t) => t !== tileCode) }))
             .filter((g) => g.tiles.length > 0);
-          setPendingTableGroups(updated);
+
+          const stillHasPending = updated.some((g) => pendingGroupIds.has(g.id));
+          setPendingTableGroups(stillHasPending ? updated : null);
+          if (!stillHasPending) clearPendingGroupIds();
           setPendingMyTiles([...(pendingMyTiles ?? myTiles), tileCode]);
         }
       }
@@ -319,8 +328,10 @@ export default function GameClient({ roomId }: GameClientProps) {
       setPendingTableGroups,
       setPendingMyTiles,
       addPendingGroupId,
+      clearPendingGroupIds,
       pendingTableGroups,
       pendingMyTiles,
+      pendingGroupIds,
       myTiles,
     ]
   );

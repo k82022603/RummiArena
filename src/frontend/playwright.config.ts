@@ -11,6 +11,7 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   workers: 1,
+  globalSetup: "./e2e/global-setup.ts",
   reporter: [["list"], ["html", { outputFolder: "playwright-report", open: "never" }]],
 
   use: {
@@ -18,8 +19,9 @@ export default defineConfig({
     trace: "on-first-retry",
     screenshot: "only-on-failure",
     video: "off",
-    // 드래그 동작을 위한 slowMo
     actionTimeout: 10_000,
+    // 인증 세션 재사용 (global-setup에서 생성)
+    storageState: "e2e/auth.json",
   },
 
   projects: [

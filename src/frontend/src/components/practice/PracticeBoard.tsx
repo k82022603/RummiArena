@@ -180,7 +180,8 @@ const PracticeBoard = memo(function PracticeBoard({
           const newGroup: TableGroup = {
             id: newGroupId,
             tiles: [tileCode],
-            type: goal === "run" ? "run" : "group",
+            // group 목표면 group 기본값, 그 외(run/joker/multi/master)는 run 기본값
+            type: goal === "group" ? "group" : "run",
           };
           setTableGroups((prev) => [...prev, newGroup]);
           setForceNewGroup(false);
