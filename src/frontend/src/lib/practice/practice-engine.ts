@@ -134,40 +134,39 @@ export function validateRun(tiles: TileCode[]): ValidationResult {
     return { valid: false, reason: "런 내에 같은 숫자 타일이 중복됩니다." };
   }
 
-  // 필요한 연속 범위: [min, min + tiles.length - 1]
   const min = nums[0];
   const max = nums[nums.length - 1];
-  const span = max - min + 1; // 실제 숫자 간격 범위
+  const span = max - min + 1; // 일반 타일 숫자 범위
 
-  // 일반 타일이 span개의 슬롯 중 일부를 차지하고, 나머지를 조커가 채움
-  // 조건: span <= tiles.length (조커 포함) and span >= tiles.length
-  // 즉 span === tiles.length 이어야 빈 슬롯 = jokerCount
-  if (span !== tiles.length) {
-    // 범위가 tiles.length보다 크면 조커가 부족하고, 작으면 조커가 남음
-    if (span > tiles.length) {
-      return {
-        valid: false,
-        reason: `숫자 순서가 맞지 않습니다. 조커가 ${span - tiles.length}개 더 필요합니다.`,
-      };
-    }
-    // span < tiles.length: 숫자 간격보다 타일 수가 많음 = 중복이나 범위 초과
+  // 일반 타일 범위가 전체 타일 수보다 크면 조커 부족
+  if (span > tiles.length) {
     return {
       valid: false,
-      reason: "숫자 순서가 연속되어야 합니다.",
+      reason: `숫자 순서가 맞지 않습니다. 조커가 ${span - tiles.length}개 더 필요합니다.`,
     };
   }
 
-  // 빈 슬롯 수 = span - regular.length = jokerCount (이미 span === tiles.length)
+  // 범위 내 빈 자리: 조커로 채울 수 있어야 함
+  // span < tiles.length 는 허용 (나머지 조커가 양 끝에 위치)
   const gaps = span - regular.length;
-  if (gaps !== jokerCount) {
+  if (gaps > jokerCount) {
     return {
       valid: false,
       reason: "조커 수와 빠진 숫자 자리가 일치하지 않습니다.",
     };
   }
 
-  // 범위 경계 확인 (1~13)
+  // 범위 경계 확인: 런 전체가 1~13 안에 위치해야 함
+  // 남은 조커(양 끝 배치용) = jokerCount - gaps
   if (min < 1 || max > 13) {
+    return {
+      valid: false,
+      reason: "타일 숫자는 1~13 범위 안에 있어야 합니다.",
+    };
+  }
+  const jokerAtEnds = jokerCount - gaps;
+  const possibleStart = Math.max(1, min - jokerAtEnds);
+  if (possibleStart + tiles.length - 1 > 13) {
     return {
       valid: false,
       reason: "타일 숫자는 1~13 범위 안에 있어야 합니다.",
@@ -195,14 +194,22 @@ export function validateBoard(groups: TableGroup[]): {
   const reasons: Record<string, string> = {};
 
   for (const group of groups) {
-    const result =
+    // 선언된 타입으로 먼저 검사, 실패하면 반대 타입으로도 시도
+    // (연습 모드에서 사용자가 타입을 잘못 설정한 경우 자동 보정)
+    const primary =
       group.type === "group"
         ? validateGroup(group.tiles)
         : validateRun(group.tiles);
+    const result = primary.valid
+      ? primary
+      : group.type === "group"
+      ? validateRun(group.tiles)
+      : validateGroup(group.tiles);
 
     if (!result.valid) {
       invalidGroupIds.push(group.id);
-      reasons[group.id] = result.reason;
+      // 선언 타입 기준 에러 메시지 우선 표시 (primary가 실패한 경우)
+      reasons[group.id] = primary.valid ? result.reason : primary.reason;
     }
   }
 

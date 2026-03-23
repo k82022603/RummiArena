@@ -62,15 +62,15 @@ export const STAGE_CONFIGS: Record<1 | 2 | 3 | 4 | 5 | 6, StageConfig> = {
     name: "조커 마스터",
     description: "조커를 활용하여 두 개의 유효한 세트를 만드세요",
     tutorialMessage:
-      "조커(JK1)는 어떤 타일로도 대체될 수 있습니다. 이번에는 조커를 포함한 세트를 만들면서 추가로 그룹도 구성해 보세요.",
+      "조커(JK1)는 어떤 타일로도 대체될 수 있습니다. Y런의 빈 자리를 조커로 채우고, 7 그룹도 함께 만들어 보세요.",
     hand: [
-      "R5a", "R5b", "B5a", "JK1",
-      "Y8a", "Y9a", "Y10a", "Y11a",
-      "B3a", "B3b", "K3a",
+      "JK1", "Y8a", "Y10a", "Y11a",
+      "R7a", "B7a", "K7a",
+      "R5a", "B5a",
     ],
-    goal: "joker",
-    clearCondition: "조커 포함 유효한 세트 1개 이상 + 추가 그룹 또는 런 1개 이상",
-    defaultHint: "JK1을 R5 자리에 넣으면 5 그룹이 완성됩니다. Y8~Y11로 런도 가능해요.",
+    goal: "multi",
+    clearCondition: "유효한 런 1개 + 유효한 그룹 1개 이상 동시 배치",
+    defaultHint: "JK1을 Y9 자리에 놓아 Y8-Y9-Y10-Y11 런을 완성하고, R7-B7-K7 그룹도 만들어 보세요.",
   },
   5: {
     stage: 5,
