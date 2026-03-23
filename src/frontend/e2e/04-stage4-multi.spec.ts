@@ -49,7 +49,7 @@ test.describe("Stage 4 — 조커 마스터 (multi goal)", () => {
     await dragTilesToBoard(page, ["R7a", "B7a", "K7a"]);
 
     // multi 조건: validRuns=[런] ≥1, validGroups=[그룹] ≥1 → 클리어
-    await expect(page.getByRole("status")).toHaveText("클리어 가능!");
+    await expect(page.locator('span[role="status"]:has-text("클리어 가능!")')).toBeVisible();
     await expect(page.getByLabel("스테이지 클리어 확정")).not.toBeDisabled();
   });
 
@@ -73,6 +73,6 @@ test.describe("Stage 4 — 조커 마스터 (multi goal)", () => {
     await clickNewGroup(page);
     await dragTilesToBoard(page, ["R7a", "B7a", "K7a"]);
 
-    await expect(page.getByRole("status")).toHaveText("클리어 가능!");
+    await expect(page.locator('span[role="status"]:has-text("클리어 가능!")')).toBeVisible();
   });
 });
