@@ -13,8 +13,9 @@ service:
 env:
   NODE_ENV: "production"
   PORT: "8081"
-  OLLAMA_BASE_URL: "http://172.21.32.1:11434"
+  OLLAMA_BASE_URL: "http://ollama:11434"
   OLLAMA_DEFAULT_MODEL: "gemma3:1b"
+  OPENAI_DEFAULT_MODEL: "gpt-4o-mini"
 
 resources:
   requests:

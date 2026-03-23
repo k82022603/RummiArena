@@ -9,7 +9,7 @@ import { ResponseParserService } from '../common/parser/response-parser.service'
 /**
  * OpenAI GPT 어댑터.
  * JSON mode를 활용하여 구조화된 응답을 강제한다.
- * 기본 모델: gpt-4o (expert) / gpt-4o-mini (beginner, intermediate)
+ * 기본 모델: gpt-4o-mini (비용 절약). OPENAI_DEFAULT_MODEL 환경변수로 변경 가능.
  */
 @Injectable()
 export class OpenAiAdapter extends BaseAdapter {
@@ -26,7 +26,7 @@ export class OpenAiAdapter extends BaseAdapter {
     this.apiKey = this.configService.get<string>('OPENAI_API_KEY', '');
     this.defaultModel = this.configService.get<string>(
       'OPENAI_DEFAULT_MODEL',
-      'gpt-4o',
+      'gpt-4o-mini',
     );
   }
 

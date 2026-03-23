@@ -28,6 +28,8 @@ spec:
           envFrom:
             - configMapRef:
                 name: ai-adapter-config
+            - secretRef:
+                name: ai-adapter-secret
           resources:
             requests:
               memory: {{ .Values.resources.requests.memory }}

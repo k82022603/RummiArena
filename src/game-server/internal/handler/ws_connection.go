@@ -52,17 +52,28 @@ func NewConnection(ws *websocket.Conn, roomID string, hub *Hub, logger *zap.Logg
 }
 
 // Send queues a message for the write pump.
+// 내부에서 WSMessage를 값 복사한 뒤 Seq/Timestamp를 설정하므로,
+// BroadcastToRoom처럼 동일한 *WSMessage를 여러 커넥션에 전달해도 안전하다.
 func (c *Connection) Send(msg *WSMessage) {
 	c.seqMu.Lock()
 	c.seqNum++
-	msg.Seq = c.seqNum
+	seq := c.seqNum
 	c.seqMu.Unlock()
 
-	if msg.Timestamp == "" {
-		msg.Timestamp = time.Now().UTC().Format(time.RFC3339Nano)
+	ts := msg.Timestamp
+	if ts == "" {
+		ts = time.Now().UTC().Format(time.RFC3339Nano)
 	}
 
-	data, err := json.Marshal(msg)
+	// 원본 포인터를 수정하지 않고 값 복사본을 만든다.
+	out := WSMessage{
+		Type:      msg.Type,
+		Payload:   msg.Payload,
+		Seq:       seq,
+		Timestamp: ts,
+	}
+
+	data, err := json.Marshal(out)
 	if err != nil {
 		c.logger.Error("ws: marshal error", zap.Error(err))
 		return

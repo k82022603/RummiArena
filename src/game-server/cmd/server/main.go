@@ -46,10 +46,15 @@ func main() {
 	router := buildRouter(cfg, logger, db, redisClient, gameStateRepo, roomRepo)
 
 	srv := &http.Server{
-		Addr:         ":" + cfg.Server.Port,
-		Handler:      router,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
+		Addr:        ":" + cfg.Server.Port,
+		Handler:     router,
+		ReadTimeout: 15 * time.Second,
+		// WriteTimeout은 의도적으로 설정하지 않는다 (0 = 무제한).
+		// WebSocket 연결은 gorilla/websocket이 hijack 후 자체 SetWriteDeadline
+		// (writeWait=10s)으로 관리한다. WriteTimeout을 설정하면 게임 진행 중
+		// 15초 경과 시 TCP 소켓 deadline이 만료되어 GAME_OVER 등 대형 메시지가
+		// 절단될 수 있다. REST API의 쓰기 지연은 gin Recovery 미들웨어로 대응한다.
+		WriteTimeout: 0,
 		IdleTimeout:  60 * time.Second,
 	}
 
@@ -114,9 +119,10 @@ func buildRouter(
 	authHandler := handler.NewAuthHandler(cfg.JWT.Secret).
 		WithGoogleOAuth(cfg.GoogleOAuth.ClientID, cfg.GoogleOAuth.ClientSecret)
 
-	// DB가 nil이면 practiceHandler, rankingHandler를 nil로 두어 라우트 등록을 건너뛴다.
+	// DB가 nil이면 practiceHandler, rankingHandler, adminHandler를 nil로 두어 라우트 등록을 건너뛴다.
 	var practiceHandler *handler.PracticeHandler
 	var rankingHandler *handler.RankingHandler
+	var adminHandler *handler.AdminHandler
 	if db != nil {
 		practiceRepo := repository.NewPostgresPracticeRepo(db)
 		practiceHandler = handler.NewPracticeHandler(practiceRepo, logger)
@@ -127,9 +133,14 @@ func buildRouter(
 
 		userRepo := repository.NewPostgresUserRepo(db)
 		authHandler.WithUserRepo(userRepo)
+
+		adminRepo := repository.NewPostgresAdminRepo(db)
+		adminSvc := service.NewAdminService(adminRepo, logger)
+		adminHandler = handler.NewAdminHandler(adminSvc, logger)
 	} else {
 		logger.Warn("postgres unavailable — practice API disabled")
 		logger.Warn("postgres unavailable — ranking API disabled")
+		logger.Warn("postgres unavailable — admin API disabled")
 	}
 
 	// Redis가 가용하면 ELO Sorted Set 업데이트 활성화
@@ -166,6 +177,7 @@ func buildRouter(
 	registerSystemRoutes(router, redisClient)
 	registerWSRoutes(router, wsHandler)
 	registerAPIRoutes(router, cfg, roomHandler, gameHandler, authHandler, practiceHandler, rankingHandler)
+	registerAdminRoutes(router, adminHandler)
 
 	return router
 }
@@ -263,6 +275,25 @@ func registerAPIRoutes(
 				usersAuth.GET("/:id/rating/history", rankingHandler.GetUserRatingHistory)
 			}
 		}
+	}
+}
+
+// registerAdminRoutes 관리자 대시보드 라우트 그룹을 등록한다.
+// adminHandler가 nil이면 (DB 없음) 등록을 건너뛴다.
+// 인증 미들웨어 없음: admin 패널이 토큰 없이 직접 호출한다.
+func registerAdminRoutes(router *gin.Engine, adminHandler *handler.AdminHandler) {
+	if adminHandler == nil {
+		return
+	}
+	admin := router.Group("/admin")
+	{
+		admin.GET("/dashboard", adminHandler.GetDashboard)
+		admin.GET("/games", adminHandler.ListGames)
+		admin.GET("/games/:id", adminHandler.GetGameDetail)
+		admin.GET("/users", adminHandler.ListUsers)
+		admin.GET("/stats/ai", adminHandler.GetAIStats)
+		admin.GET("/stats/elo", adminHandler.GetEloStats)
+		admin.GET("/stats/performance", adminHandler.GetPerformanceStats)
 	}
 }
 
