@@ -37,7 +37,7 @@ test.describe("Stage 5 — 복합 배치 (multi)", () => {
     await clickNewGroup(page);
     await dragTilesToBoard(page, ["R8a", "R9a", "R10a"]);
 
-    await expect(page.getByRole("status")).toHaveText("클리어 가능!");
+    await expect(page.locator('span[role="status"]:has-text("클리어 가능!")')).toBeVisible();
     await expect(page.getByLabel("스테이지 클리어 확정")).not.toBeDisabled();
   });
 
@@ -79,6 +79,6 @@ test.describe("Stage 5 — 복합 배치 (multi)", () => {
     await clickNewGroup(page);
     await dragTilesToBoard(page, ["R8a", "R9a", "R10a"]);
 
-    await expect(page.getByRole("status")).toHaveText("클리어 가능!");
+    await expect(page.locator('span[role="status"]:has-text("클리어 가능!")')).toBeVisible();
   });
 });

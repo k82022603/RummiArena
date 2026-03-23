@@ -45,7 +45,7 @@ test.describe("Stage 6 — 루미큐브 마스터 (12장 이상)", () => {
     await dragTilesToBoard(page, ["B7a", "B8a", "B9a"]);
 
     // 총 12장 → master 클리어 (tileCount ≥ 12)
-    await expect(page.getByRole("status")).toHaveText("클리어 가능!");
+    await expect(page.locator('span[role="status"]:has-text("클리어 가능!")')).toBeVisible();
     await expect(page.getByLabel("스테이지 클리어 확정")).not.toBeDisabled();
   });
 
@@ -83,7 +83,7 @@ test.describe("Stage 6 — 루미큐브 마스터 (12장 이상)", () => {
 
     // 추가: JK1 포함 세트 (선택)
     // 이미 12장으로 클리어 조건 충족
-    await expect(page.getByRole("status")).toHaveText("클리어 가능!");
+    await expect(page.locator('span[role="status"]:has-text("클리어 가능!")')).toBeVisible();
 
     // 클리어 확정 클릭
     await page.getByLabel("스테이지 클리어 확정").click();
@@ -109,6 +109,6 @@ test.describe("Stage 6 — 루미큐브 마스터 (12장 이상)", () => {
     await clickNewGroup(page);
     await dragTilesToBoard(page, ["B7a", "B8a", "B9a"]);
 
-    await expect(page.getByRole("status")).toHaveText("클리어 가능!");
+    await expect(page.locator('span[role="status"]:has-text("클리어 가능!")')).toBeVisible();
   });
 });

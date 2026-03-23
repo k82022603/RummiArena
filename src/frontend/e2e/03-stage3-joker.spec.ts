@@ -31,7 +31,7 @@ test.describe("Stage 3 — 조커 활용 (BUG-P-001 수정 검증)", () => {
     // [JK1, R5a, R6a] → validateRun: JK1=R4 or R7, span=2 ≤ tiles.length=3 → 유효
     await dragTilesToBoard(page, ["JK1", "R5a", "R6a"]);
 
-    await expect(page.getByRole("status")).toHaveText("클리어 가능!");
+    await expect(page.locator('span[role="status"]:has-text("클리어 가능!")')).toBeVisible();
     await expect(page.getByLabel("스테이지 클리어 확정")).not.toBeDisabled();
   });
 
@@ -42,7 +42,7 @@ test.describe("Stage 3 — 조커 활용 (BUG-P-001 수정 검증)", () => {
     // [JK1, B7a, Y7a, K7a] → validateGroup: JK1=R7, 4색 그룹 → 유효
     await dragTilesToBoard(page, ["JK1", "B7a", "Y7a", "K7a"]);
 
-    await expect(page.getByRole("status")).toHaveText("클리어 가능!");
+    await expect(page.locator('span[role="status"]:has-text("클리어 가능!")')).toBeVisible();
     await expect(page.getByLabel("스테이지 클리어 확정")).not.toBeDisabled();
   });
 
@@ -85,7 +85,7 @@ test.describe("Stage 3 — 조커 활용 (BUG-P-001 수정 검증)", () => {
     await dragTilesToBoard(page, ["R5a", "JK1", "R6a"]);
 
     // [R5a, JK1, R6a] → validateRun: nums=[5,6], span=2, tiles=3, gaps=0 ≤ 1 → 유효
-    await expect(page.getByRole("status")).toHaveText("클리어 가능!");
+    await expect(page.locator('span[role="status"]:has-text("클리어 가능!")')).toBeVisible();
   });
 
   // 초기화 → 다른 유효한 조합 시도
@@ -97,6 +97,6 @@ test.describe("Stage 3 — 조커 활용 (BUG-P-001 수정 검증)", () => {
 
     // JK1 + B7 + Y7 → 그룹 (JK=R7, K7 등)
     await dragTilesToBoard(page, ["JK1", "B7a", "Y7a"]);
-    await expect(page.getByRole("status")).toHaveText("클리어 가능!");
+    await expect(page.locator('span[role="status"]:has-text("클리어 가능!")')).toBeVisible();
   });
 });

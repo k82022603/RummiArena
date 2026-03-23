@@ -22,7 +22,7 @@ test.describe("Stage 2 — 런 만들기", () => {
   test("TC-P-201: R4+R5+R6 (연속 3개) → 클리어 가능", async ({ page }) => {
     await dragTilesToBoard(page, ["R4a", "R5a", "R6a"]);
 
-    await expect(page.getByRole("status")).toHaveText("클리어 가능!");
+    await expect(page.locator('span[role="status"]:has-text("클리어 가능!")')).toBeVisible();
     await expect(page.getByLabel("스테이지 클리어 확정")).not.toBeDisabled();
   });
 
@@ -30,7 +30,7 @@ test.describe("Stage 2 — 런 만들기", () => {
   test("TC-P-202: R4+R5+R6+R7 (연속 4개) → 클리어 가능", async ({ page }) => {
     await dragTilesToBoard(page, ["R4a", "R5a", "R6a", "R7a"]);
 
-    await expect(page.getByRole("status")).toHaveText("클리어 가능!");
+    await expect(page.locator('span[role="status"]:has-text("클리어 가능!")')).toBeVisible();
     await expect(page.getByLabel("스테이지 클리어 확정")).not.toBeDisabled();
   });
 

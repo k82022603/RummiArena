@@ -26,7 +26,7 @@ test.describe("Stage 1 — 그룹 만들기", () => {
   test("TC-P-101: R7+B7+Y7 (3색) → 클리어 가능", async ({ page }) => {
     await dragTilesToBoard(page, ["R7a", "B7a", "Y7a"]);
 
-    await expect(page.getByRole("status")).toHaveText("클리어 가능!");
+    await expect(page.locator('span[role="status"]:has-text("클리어 가능!")')).toBeVisible();
     await expect(page.getByLabel("스테이지 클리어 확정")).not.toBeDisabled();
     await expect(page.getByText("클리어 확정!")).toBeVisible();
   });
@@ -52,7 +52,7 @@ test.describe("Stage 1 — 그룹 만들기", () => {
   test("TC-P-104: R7+B7+Y7+K7 (4색) → 클리어 가능", async ({ page }) => {
     await dragTilesToBoard(page, ["R7a", "B7a", "Y7a", "K7a"]);
 
-    await expect(page.getByRole("status")).toHaveText("클리어 가능!");
+    await expect(page.locator('span[role="status"]:has-text("클리어 가능!")')).toBeVisible();
     await expect(page.getByLabel("스테이지 클리어 확정")).not.toBeDisabled();
   });
 
