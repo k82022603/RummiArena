@@ -293,7 +293,10 @@ Sprint 4 진행 중 (2026-03-23 조기 착수):
 - **admin pod 해결**: Docker 빌드 + API fallback + Running
 - **WS E2E 자동화**: scripts/ws-integration-test.go (TC-WS-001~005 PASS)
 - **API Keys 등록**: OpenAI/Claude/DeepSeek 실 키 적용 완료
-- **ISS-001 FIXED**: ai-adapter 400 에러 — persona 소문자 변환 + normalizeDifficulty (23/23 단위 테스트 PASS)
-- **WS AI Turn E2E**: 2차 재테스트 PASS, docs/04-testing/13-ws-ai-turn-e2e-report.md
+- **ISS-001 FIXED**: ai-adapter 400 에러 — persona 소문자 변환 + normalizeDifficulty (23/23 PASS)
+- **ISS-003 FIXED**: Ollama K8s Pod 배포 (helm/charts/ollama, gemma3:1b PVC 영속)
+  - ai-adapter → `http://ollama:11434` ClusterIP 연결
+  - `/move` 실 응답 검증: `isFallbackDraw=false`, latency 25s, 한국어 reasoning
+- **WS AI Turn E2E**: 전체 PASS (ISS-001 + ISS-003 해소로 완전 검증)
 
-다음 단계: Sprint 4 계속 — Ollama 재설치 후 AI 실 응답 E2E, #32 OpenAI GPT-4o Adapter
+다음 단계: Sprint 4 계속 — ISS-002 AI UUID 수정, #32 OpenAI GPT-4o Adapter
