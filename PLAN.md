@@ -293,5 +293,7 @@ Sprint 4 진행 중 (2026-03-23 조기 착수):
 - **admin pod 해결**: Docker 빌드 + API fallback + Running
 - **WS E2E 자동화**: scripts/ws-integration-test.go (TC-WS-001~005 PASS)
 - **API Keys 등록**: OpenAI/Claude/DeepSeek 실 키 적용 완료
+- **ISS-001 FIXED**: ai-adapter 400 에러 — persona 소문자 변환 + normalizeDifficulty (23/23 단위 테스트 PASS)
+- **WS AI Turn E2E**: 2차 재테스트 PASS, docs/04-testing/13-ws-ai-turn-e2e-report.md
 
-다음 단계: Sprint 4 계속 — WS 레벨 AI 턴 E2E, LLM 실측 데이터 수집
+다음 단계: Sprint 4 계속 — Ollama 재설치 후 AI 실 응답 E2E, #32 OpenAI GPT-4o Adapter
