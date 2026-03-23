@@ -24,7 +24,12 @@ import (
 	"github.com/k82022603/RummiArena/game-server/internal/service"
 )
 
+// wsWriteBufferSize는 gorilla/websocket 쓰기 버퍼 크기다.
+// GAME_OVER 메시지는 4인 게임 최악의 경우 약 1.5 KB이므로
+// 기본값(4096) 대신 8192로 설정해 여유를 확보한다.
 var upgrader = websocket.Upgrader{
+	ReadBufferSize:  4096,
+	WriteBufferSize: 8192,
 	CheckOrigin: func(r *http.Request) bool {
 		origin := r.Header.Get("Origin")
 		if origin == "" {

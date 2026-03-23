@@ -138,14 +138,18 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 ### Sprint 4: AI Adapter
 - [ ] LangChain/LangGraph PoC 비교 → 방식 결정
 - [x] AI Adapter 공통 인터페이스 — AIClientInterface (game-server), AI Move API 계약서 (2026-03-21)
-- [x] OpenAI Adapter 구현 — OpenAiAdapter 완료 (Sprint 1)
+- [x] OpenAI Adapter 구현 — OpenAiAdapter, gpt-4o-mini 기본값, 17/17 PASS (2026-03-23)
 - [x] Claude Adapter 구현 — ClaudeAdapter 완료 (Sprint 1)
 - [x] DeepSeek Adapter 구현 — DeepSeekAdapter 완료 (Sprint 1)
-- [x] Ollama Adapter 구현 — OllamaAdapter + gemma3:1b (Sprint 1, 2026-03-23 gemma3:4b→1b 교체)
+- [x] Ollama Adapter 구현 — OllamaAdapter + gemma3:1b K8s Pod 영속 (2026-03-23 K8s 이전)
 - [x] 프롬프트 설계 (전략별/캐릭터별/심리전 레벨별) — persona.templates.ts 6캐릭터 × 3난이도 × 4레벨 (2026-03-21)
 - [x] 재시도 + Fallback 로직 — 최대 3회 재시도, fallback DRAW (Sprint 1)
 - [ ] AI 호출 로그/메트릭 수집
-- [x] Dockerfile + Helm Chart — ai-adapter 완료 (Sprint 1)
+- [x] Dockerfile + Helm Chart — ai-adapter, secretRef 추가 (2026-03-23)
+- [x] ISS-002 FIXED: AI userID `ai-` 접두사 제거 → PostgreSQL UUID 타입 정상 (2026-03-23)
+- [x] admin API 실 구현 — 7개 엔드포인트, admin_handler/service/repository (2026-03-23)
+- [x] ISSUE-004 FIXED: WS GAME_OVER 절단 — WriteTimeout=0, WriteBuffer=8K, data race (2026-03-23)
+- [x] Playwright E2E 테스트 추가 — practice.spec.ts 12개 시나리오 (2026-03-23)
 
 ### Sprint 5: 멀티플레이 완성 + 연습 모드
 - [x] Room 기반 세션 관리 (생명주기 전체) — FinishRoom + ListRooms 필터 + 재접속 감지 (2026-03-21)
@@ -254,7 +258,7 @@ flowchart TB
 | D-01 | 백엔드 언어 | ~~NestJS vs Go~~ → **Go (game-server) + NestJS (ai-adapter)** | Sprint 0 (2026-03-11) | **확정** |
 | D-02 | AI 호출 방식 | 직접 API vs LangChain/LangGraph | Sprint 4 PoC | 미결정 |
 | D-03 | SonarQube 배포 위치 | ~~K8s Pod vs Docker Compose vs Oracle VM~~ → **Docker Compose (포트 9001)** | 2026-03-15 | **확정** |
-| D-04 | Ollama 배포 위치 | K8s Pod vs Docker Compose vs Oracle VM | Sprint 4 | 미결정 |
+| D-04 | Ollama 배포 위치 | ~~K8s Pod vs Docker Compose vs Oracle VM~~ → **K8s Pod (helm/charts/ollama, gemma3:1b PVC 영속)** | 2026-03-23 | **확정** |
 | D-05 | GitLab Runner Executor | ~~Docker~~ → **Kubernetes Executor** | 2026-03-15 | **확정** |
 | D-06 | 카카오톡 API 방식 | 나에게 보내기 vs 카카오워크 봇 | Sprint 6 | 미결정 |
 
@@ -286,17 +290,19 @@ Sprint 1~3 (2026-03-13 ~ 2026-03-23):
 - **Sprint 3** 30/30 SP: OAuth K8s 패치, WS 재연결, gemma3 최적화, Redis Timer/Session
 - 통합 테스트 30개 (96.7% PASS)
 
-Sprint 4 진행 중 (2026-03-23 조기 착수):
+Sprint 4 진행 중 (2026-03-23 조기 착수 — 당일 대부분 완료):
 - **BUG-S4-001 수정**: AI 플레이어 UserID `""` → `ai-{uuid}`, E2E 5/5 PASS
 - **ISSUE-002 해결**: gemma3:4b → 1b (300s → 4s, 70배 개선)
 - **ISSUE-003 해결**: endType "STALEMATE" 구분 (IsStalemate 필드)
-- **admin pod 해결**: Docker 빌드 + API fallback + Running
-- **WS E2E 자동화**: scripts/ws-integration-test.go (TC-WS-001~005 PASS)
-- **API Keys 등록**: OpenAI/Claude/DeepSeek 실 키 적용 완료
 - **ISS-001 FIXED**: ai-adapter 400 에러 — persona 소문자 변환 + normalizeDifficulty (23/23 PASS)
+- **ISS-002 FIXED**: AI userID `ai-` 접두사 제거 → PostgreSQL UUID 타입 정상 INSERT
 - **ISS-003 FIXED**: Ollama K8s Pod 배포 (helm/charts/ollama, gemma3:1b PVC 영속)
-  - ai-adapter → `http://ollama:11434` ClusterIP 연결
-  - `/move` 실 응답 검증: `isFallbackDraw=false`, latency 25s, 한국어 reasoning
-- **WS AI Turn E2E**: 전체 PASS (ISS-001 + ISS-003 해소로 완전 검증)
+- **ISSUE-004 FIXED**: WS GAME_OVER 절단 — WriteTimeout=0, WriteBuffer=8K, data race 제거
+- **WS 연결 수정**: NEXT_PUBLIC_WS_URL 번들 베이킹 + NextAuth 리라이트 충돌 해소
+- **연습 모드 수정**: Stage 1/2 클리어 타입 버그 + 드롭 UX 개선
+- **admin API 실 구현**: 7개 엔드포인트 (admin_handler/service/repository)
+- **OpenAI GPT-4o 검증**: gpt-4o-mini 기본값, Helm secretRef, 17/17 PASS
+- **Playwright E2E**: practice.spec.ts 12개 시나리오 추가
+- **모든 이슈 해소**: ISS-001 ~ ISS-004 전부 FIXED
 
-다음 단계: Sprint 4 계속 — ISS-002 AI UUID 수정, #32 OpenAI GPT-4o Adapter
+다음 단계: LLM 실측 데이터 수집 + Human 1 + AI 3 E2E 완전 테스트

@@ -2,6 +2,7 @@
 
 > Phase 1 (Sprint 0) — Traefik + ArgoCD + GitLab Runner 설치 준비
 > 작성일: 2026-03-12 | 작성자: DevOps Agent
+> **현행화: 2026-03-23 (Sprint 4 기준) — §1.2~1.6 실제 상태 반영**
 
 ---
 
@@ -9,56 +10,69 @@
 
 ### 1.1 점검 기준일
 
-2026-03-12 기준 상태. Bash 실행 권한이 제한된 환경이므로 기존 문서, 메모리, 결정 로그를 바탕으로 상태를 추론한다.
+~~2026-03-12 기준 상태 (초안 추정)~~ → **2026-03-23 Sprint 4 기준 실측 상태로 갱신**
 
 ### 1.2 Docker Desktop / Kubernetes
 
-| 항목 | 상태 | 근거 |
+| 항목 | 상태 | 비고 |
 |------|------|------|
-| Docker Desktop | 실행 중 (추정) | rummikub-postgres 컨테이너가 실행 중으로 기록됨 (memory: 2026-03-08_141732.png) |
-| K8s 활성화 | 미확인 — 아직 kubectl 명령 결과 없음 | K8s 활성화는 WBS에 TODO로 남아 있음 |
-| kubectl context | `docker-desktop` (예상) | Docker Desktop K8s 사용 확정 (docs/00-tools/01-docker-desktop.md §3.1) |
-| 노드 수 | 1 (단일 노드) | Docker Desktop K8s는 항상 단일 노드 |
-| WSL 프로파일 | RummiArena: 10GB / swap 4GB / 6코어 | docs/00-tools/23-wslconfig.md §3 |
+| Docker Desktop | ✅ Running | WSL2 Backend |
+| K8s 활성화 | ✅ Active | `docker-desktop` context |
+| kubectl context | `docker-desktop` | 확인됨 |
+| 노드 수 | 1 (단일 노드) | Docker Desktop K8s 기본 |
+| WSL 프로파일 | RummiArena: 10GB / swap 4GB / 6코어 | switch-wslconfig.sh 사용 |
 
-### 1.3 Docker 컨테이너 상태 (문서 기반 추정)
+### 1.3 K8s Pod 상태 (rummikub namespace, Sprint 4 기준)
 
-| 컨테이너 | 이미지 | 상태 | 포트 |
-|----------|--------|------|------|
-| `rummikub-postgres` | postgres:16-alpine | Running | 5432:5432 |
-| `kp-*` (hybrid-rag) | 다수 | 중지 또는 실행 중 | — |
+| Pod | 상태 | NodePort |
+|-----|------|----------|
+| frontend | ✅ Running | 30000 |
+| game-server | ✅ Running | 30080 |
+| admin | ✅ Running | 30001 |
+| ai-adapter | ✅ Running | ClusterIP |
+| ollama | ✅ Running | ClusterIP |
+| postgres | ✅ Running | ClusterIP |
+| redis | ✅ Running | ClusterIP |
 
 > **보존 규칙**: `kp-*` 접두사 컨테이너는 hybrid-rag-knowledge-ops 프로젝트 소속. 절대 삭제/중지하지 않는다.
 
 ### 1.4 Helm / ArgoCD / Traefik
 
-| 항목 | 상태 |
-|------|------|
-| Helm 설치 | 미확인 — 아직 `helm version` 결과 없음 |
-| Traefik 릴리스 | 미설치 — helm/ 디렉토리 자체가 존재하지 않음 |
-| ArgoCD 릴리스 | 미설치 |
-| GitLab Runner | 미등록 |
-| `rummikub` namespace | 미생성 (추정) |
-| `argocd` namespace | 미생성 (추정) |
-| `traefik` namespace | 미생성 (추정) |
+| 항목 | 상태 | 비고 |
+|------|------|------|
+| Helm 설치 | ✅ 설치됨 | Helm 3 |
+| `helm/` 디렉토리 | ✅ 존재 | charts/ 7개 + traefik/ |
+| Traefik 릴리스 | ✅ **Running** (`traefik` namespace) | Sprint 5+ North-South 활성화 예정 |
+| ArgoCD 릴리스 | ✅ Running (`argocd` namespace) | repo-server 가끔 Error — 재시작으로 복구 |
+| GitLab Runner | ✅ 등록됨 | Docker Executor |
+| `rummikub` namespace | ✅ Active | 앱 서비스 7개 |
+| `argocd` namespace | ✅ Active | GitOps CD |
+| `traefik` namespace | ✅ Active | Traefik v3 Pod Running |
+
+> **Traefik 현황**: Pod는 Running이나 현재 rummikub 서비스는 NodePort 직접 접근 중. IngressRoute 연동은 Sprint 5+ 예정.
+> 상세: [02-gateway-architecture.md](./02-gateway-architecture.md)
 
 ### 1.5 소스 코드 / GitOps 구조
 
 | 항목 | 상태 |
 |------|------|
-| `helm/` 디렉토리 | **없음** — 생성 필요 |
-| `argocd/` 디렉토리 | **없음** — 생성 필요 |
-| `.gitlab-ci.yml` | **없음** — 생성 필요 |
-| `src/` 서비스 코드 | **없음** — Sprint 1부터 작성 예정 |
+| `helm/` 디렉토리 | ✅ **존재** — charts/ 7개 (admin, ai-adapter, frontend, game-server, ollama, postgres, redis) + traefik/ |
+| `argocd/` 디렉토리 | ✅ **존재** — application.yaml, ingress-route.yaml |
+| `.gitlab-ci.yml` | ✅ **존재** — 13개 job ALL GREEN |
+| `src/` 서비스 코드 | ✅ **존재** — frontend, game-server, ai-adapter, admin |
 
-### 1.6 설치 전 사전 요건 요약
+### 1.6 설치 완료 체크리스트 (Sprint 4 기준)
 
 ```
-[ ] Docker Desktop이 실행 중인지 확인
-[ ] K8s 활성화 여부 확인 (kubectl cluster-info)
-[ ] Helm 3 설치 여부 확인 (helm version)
-[ ] WSL 프로파일이 RummiArena 프로파일(10GB)로 설정되어 있는지 확인
-[ ] hybrid-rag 서비스가 과도하게 메모리를 점유하지 않는지 확인 (free -h)
+[x] Docker Desktop이 실행 중인지 확인
+[x] K8s 활성화 여부 확인 (kubectl cluster-info)
+[x] Helm 3 설치 여부 확인 (helm version)
+[x] WSL 프로파일이 RummiArena 프로파일(10GB)로 설정되어 있는지 확인
+[x] hybrid-rag 서비스가 과도하게 메모리를 점유하지 않는지 확인 (free -h)
+[x] Traefik 설치 (traefik namespace, Pod Running)
+[x] ArgoCD 설치 및 GitOps 연동
+[x] GitLab Runner 등록
+[x] rummikub namespace 생성 및 서비스 7개 배포
 ```
 
 ---

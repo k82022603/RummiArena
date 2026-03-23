@@ -62,7 +62,7 @@ const makeOpenAiResponse = (
       completion_tokens: completionTokens,
       total_tokens: promptTokens + completionTokens,
     },
-    model: 'gpt-4o',
+    model: 'gpt-4o-mini',
   },
   status: 200,
 });
@@ -81,7 +81,7 @@ describe('OpenAiAdapter', () => {
       get: jest.fn((key: string, defaultValue?: string) => {
         const config: Record<string, string> = {
           OPENAI_API_KEY: 'test-api-key',
-          OPENAI_DEFAULT_MODEL: 'gpt-4o',
+          OPENAI_DEFAULT_MODEL: 'gpt-4o-mini',
         };
         return config[key] ?? defaultValue;
       }),
@@ -95,15 +95,15 @@ describe('OpenAiAdapter', () => {
   // getModelInfo()
   // -----------------------------------------------------------------------
   describe('getModelInfo()', () => {
-    it('modelType=openai, modelName=gpt-4o를 반환한다', () => {
+    it('modelType=openai, modelName=gpt-4o-mini를 반환한다', () => {
       const info = adapter.getModelInfo();
 
       expect(info.modelType).toBe('openai');
-      expect(info.modelName).toBe('gpt-4o');
+      expect(info.modelName).toBe('gpt-4o-mini');
       expect(info.baseUrl).toContain('openai.com');
     });
 
-    it('환경변수 미설정 시 기본값(gpt-4o)을 반환한다', () => {
+    it('환경변수 미설정 시 기본값(gpt-4o-mini)을 반환한다', () => {
       const configWithDefaults = {
         get: jest.fn((key: string, defaultValue?: string) => defaultValue),
       } as unknown as ConfigService;
@@ -114,7 +114,7 @@ describe('OpenAiAdapter', () => {
       );
 
       const info = adapterWithDefaults.getModelInfo();
-      expect(info.modelName).toBe('gpt-4o');
+      expect(info.modelName).toBe('gpt-4o-mini');
     });
   });
 
