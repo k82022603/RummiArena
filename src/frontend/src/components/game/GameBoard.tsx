@@ -16,7 +16,28 @@ interface GameBoardProps {
    * 여기에 포함된 그룹은 반투명 + 노란 점선 테두리(프리뷰)로 표시된다.
    */
   pendingGroupIds?: Set<string>;
+  /** true이면 각 그룹도 droppable zone으로 등록 (연습 모드에서 그룹 합치기 지원) */
+  groupsDroppable?: boolean;
   className?: string;
+}
+
+/** 그룹 하나를 droppable zone으로 래핑하는 서브 컴포넌트 */
+function DroppableGroupWrapper({
+  groupId,
+  children,
+}: {
+  groupId: string;
+  children: React.ReactNode;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: groupId });
+  return (
+    <div
+      ref={setNodeRef}
+      className={isOver ? "ring-2 ring-green-400/60 rounded-lg" : undefined}
+    >
+      {children}
+    </div>
+  );
 }
 
 const BOARD_DROP_ID = "game-board";
@@ -33,6 +54,7 @@ const GameBoard = memo(function GameBoard({
   isMyTurn,
   isDragging = false,
   pendingGroupIds = new Set<string>(),
+  groupsDroppable = false,
   className = "",
 }: GameBoardProps) {
   const { setNodeRef, isOver } = useDroppable({ id: BOARD_DROP_ID });
@@ -105,7 +127,7 @@ const GameBoard = memo(function GameBoard({
             {tableGroups.map((group) => {
               const isPending = pendingGroupIds.has(group.id);
               const tileCount = group.tiles.length;
-              return (
+              const groupContent = (
                 <motion.div
                   key={group.id}
                   layout
@@ -170,6 +192,13 @@ const GameBoard = memo(function GameBoard({
                     ))}
                   </div>
                 </motion.div>
+              );
+              return groupsDroppable ? (
+                <DroppableGroupWrapper key={group.id} groupId={group.id}>
+                  {groupContent}
+                </DroppableGroupWrapper>
+              ) : (
+                groupContent
               );
             })}
           </AnimatePresence>

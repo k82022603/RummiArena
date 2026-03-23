@@ -1,5 +1,23 @@
 # API 게이트웨이 구축계획서
 
+## 현재 상태 (Sprint 4 기준)
+
+> **Traefik은 아직 배포되지 않았다.** 현재는 K8s NodePort로 직접 접근 중.
+
+| 서비스 | 현재 접근 방식 | URL |
+|--------|--------------|-----|
+| Frontend | NodePort 30000 | http://localhost:30000 |
+| game-server REST | NodePort 30080 | http://localhost:30080 |
+| game-server WS | NodePort 30080 | ws://localhost:30080/ws |
+| admin | NodePort 30001 | http://localhost:30001 |
+
+**Traefik 도입 시점**: Sprint 5+ (현재 NodePort로 테스트 충분)
+- 로컬 개발 환경에서는 NodePort 직접 접근이 더 단순하고 빠름
+- 단일 도메인(`rummikub.localhost`)으로 통합 접근이 필요해지는 시점에 도입
+- TLS 인증서 자동화가 필요한 시점(클라우드 배포)에 필수화
+
+---
+
 ## 1. 개요
 
 ### 1.1 배경
@@ -406,10 +424,10 @@ gantt
 
 | Phase | 기간 | 게이트웨이 | 서비스 메시 | 비고 |
 |-------|------|-----------|-----------|------|
-| Phase 1 (Sprint 0) | ~03/28 | **Traefik 설치** | 없음 | 본 문서 범위 |
-| Phase 2~4 (Sprint 1~6) | ~06/20 | Traefik 운영 | 없음 | 안정 운영 |
-| Phase 5 (Sprint 7~9) | ~08/01 | Traefik (외부) | **Istio (내부)** | 역할 분리 공존 |
-| Phase 6+ | 08/01~ | Traefik 또는 **SCG** | Istio | 전환은 선택 사항 |
+| Phase 0~4 (Sprint 0~4) | 현재 | **NodePort 직접 접근** | 없음 | 로컬 개발 단순화 |
+| Phase 5 (Sprint 5~6) | 미정 | **Traefik 도입** | 없음 | 단일 도메인 통합 필요 시 |
+| Phase 6~7 (Sprint 7~9) | 미정 | Traefik (외부) | **Istio (내부)** | 역할 분리 공존 |
+| Phase 8+ | 미정 | Traefik 또는 **SCG** | Istio | 전환은 선택 사항 |
 
 ---
 
@@ -526,3 +544,4 @@ kubectl top nodes
 > | 버전 | 날짜 | 작성자 | 내용 |
 > |------|------|--------|------|
 > | 1.0 | 2026-03-12 | Claude | 초안 작성 (Traefik 선정, 배포 계획, Phase별 로드맵) |
+> | 1.1 | 2026-03-23 | Claude | Sprint 4 현행화 — Traefik 미배포 현황 반영, NodePort 직접 접근 상태 명시, Phase 로드맵 일정 갱신 |

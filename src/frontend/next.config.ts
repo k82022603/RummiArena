@@ -16,8 +16,9 @@ const nextConfig: NextConfig = {
       process.env.GAME_SERVER_INTERNAL_URL ?? "http://localhost:8080";
     return [
       {
-        source: "/api/:path*",
-        destination: `${gameServer}/api/:path*`,
+        // NextAuth 내부 경로(/api/auth/*)는 Next.js가 직접 처리 — 제외
+        source: "/api/((?!auth).*)",
+        destination: `${gameServer}/api/$1`,
       },
     ];
   },

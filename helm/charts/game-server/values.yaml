@@ -27,6 +27,7 @@ env:
   DB_NAME: "rummikub"
   REDIS_HOST: "redis.rummikub.svc.cluster.local"
   REDIS_PORT: "6379"
+  CORS_ALLOWED_ORIGINS: "http://localhost:30000,http://localhost:3000"
 
 secrets:
   # 실제 값은 kubectl patch 또는 외부 Secret으로 주입 (Git에 커밋하지 말 것)
