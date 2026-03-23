@@ -618,8 +618,11 @@ func TestWSMultiplayer_FullTurnCycle(t *testing.T) {
 	gameOver := turnClient.readMsgOfType(handler.S2CGameOver)
 	gameOverPayload := decodePayload(gameOver.Payload)
 	assert.NotNil(t, gameOverPayload, "교착 판정: GAME_OVER 페이로드가 있어야 한다")
+	assert.Equal(t, "STALEMATE", gameOverPayload["endType"], "교착 종료: endType이 STALEMATE여야 한다")
 
 	// 상대도 GAME_OVER 수신
 	otherGameOver := otherClient.readMsgOfType(handler.S2CGameOver)
-	assert.NotNil(t, decodePayload(otherGameOver.Payload))
+	otherGameOverPayload := decodePayload(otherGameOver.Payload)
+	assert.NotNil(t, otherGameOverPayload)
+	assert.Equal(t, "STALEMATE", otherGameOverPayload["endType"], "상대방도 STALEMATE endType을 수신해야 한다")
 }

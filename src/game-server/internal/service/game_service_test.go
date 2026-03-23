@@ -592,6 +592,7 @@ func TestDrawTile_EmptyPile_Stalemate(t *testing.T) {
 
 	saved, _ := repo.GetGameState("game-41")
 	assert.Equal(t, model.GameStatusFinished, saved.Status)
+	assert.True(t, saved.IsStalemate, "교착 종료 시 GameStateRedis.IsStalemate가 true여야 한다")
 }
 
 func TestDrawTile_AdvancesSnapshotCleanup(t *testing.T) {
@@ -932,6 +933,7 @@ func TestStalemate_TwoPlayers_ConsecutiveDraw(t *testing.T) {
 
 	saved, _ := repo.GetGameState("stale-01")
 	assert.Equal(t, model.GameStatusFinished, saved.Status)
+	assert.True(t, saved.IsStalemate, "교착 종료 시 GameStateRedis.IsStalemate가 true여야 한다")
 }
 
 func TestStalemate_ConfirmTurn_ResetsCounter(t *testing.T) {

@@ -380,6 +380,7 @@ func (s *gameService) finishGame(state *model.GameStateRedis, playerIdx int) (*G
 // 동점 시: 타일 수 적은 쪽 승리. 모두 동점이면 WinnerID = "" (무승부).
 func (s *gameService) finishGameStalemate(state *model.GameStateRedis) (*GameActionResult, error) {
 	state.Status = model.GameStatusFinished
+	state.IsStalemate = true
 
 	type scored struct {
 		idx   int

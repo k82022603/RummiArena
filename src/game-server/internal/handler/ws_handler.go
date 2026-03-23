@@ -704,10 +704,15 @@ func (h *WSHandler) broadcastGameOver(conn *Connection, state *model.GameStateRe
 		}
 	}
 
+	endType := "NORMAL"
+	if state.IsStalemate {
+		endType = "STALEMATE"
+	}
+
 	h.hub.BroadcastToRoom(conn.roomID, &WSMessage{
 		Type: S2CGameOver,
 		Payload: GameOverPayload{
-			EndType:    "NORMAL",
+			EndType:    endType,
 			WinnerID:   winnerID,
 			WinnerSeat: winnerSeat,
 			Results:    results,
@@ -1177,10 +1182,15 @@ func (h *WSHandler) broadcastGameOverFromState(roomID string, state *model.GameS
 		}
 	}
 
+	endType := "NORMAL"
+	if state.IsStalemate {
+		endType = "STALEMATE"
+	}
+
 	h.hub.BroadcastToRoom(roomID, &WSMessage{
 		Type: S2CGameOver,
 		Payload: GameOverPayload{
-			EndType:    "NORMAL",
+			EndType:    endType,
 			WinnerID:   winnerID,
 			WinnerSeat: winnerSeat,
 			Results:    results,
