@@ -78,6 +78,8 @@ const PracticeBoard = memo(function PracticeBoard({
   const [tableGroups, setTableGroups] = useState<TableGroup[]>([]);
   // 드래그 중 타일
   const [activeDragCode, setActiveDragCode] = useState<TileCode | null>(null);
+  // 다음 보드 드롭 시 새 그룹 강제 생성 여부
+  const [forceNewGroup, setForceNewGroup] = useState(false);
 
   const isDragging = activeDragCode !== null;
 
@@ -143,15 +145,46 @@ const PracticeBoard = memo(function PracticeBoard({
       const tileCode = active.data.current?.tileCode as TileCode | undefined;
       if (!tileCode) return;
 
-      if (over.id === "game-board") {
-        // 랙 → 보드: 새 그룹 생성 (기본 타입 런, 토글 버튼으로 변경 가능)
-        const newGroupId = `practice-${Date.now()}`;
-        const newGroup: TableGroup = {
-          id: newGroupId,
-          tiles: [tileCode],
-          type: "run",
-        };
-        setTableGroups((prev) => [...prev, newGroup]);
+      const existingGroup = tableGroups.find((g) => g.id === over.id);
+      if (existingGroup) {
+        // 랙 → 기존 그룹: 그룹에 타일 추가
+        setTableGroups((prev) =>
+          prev.map((g) =>
+            g.id === existingGroup.id
+              ? { ...g, tiles: [...g.tiles, tileCode] }
+              : g
+          )
+        );
+        setHand((prev) => {
+          const idx = prev.indexOf(tileCode);
+          if (idx === -1) return prev;
+          const next = [...prev];
+          next.splice(idx, 1);
+          return next;
+        });
+      } else if (over.id === "game-board") {
+        // 랙 → 보드 빈 공간
+        // 기존 그룹이 있고 새 그룹 강제 생성 플래그가 없으면 마지막 그룹에 추가
+        if (tableGroups.length > 0 && !forceNewGroup) {
+          const lastGroup = tableGroups[tableGroups.length - 1];
+          setTableGroups((prev) =>
+            prev.map((g) =>
+              g.id === lastGroup.id
+                ? { ...g, tiles: [...g.tiles, tileCode] }
+                : g
+            )
+          );
+        } else {
+          // 새 그룹 생성 (기본 타입은 goal에 따라 결정)
+          const newGroupId = `practice-${Date.now()}`;
+          const newGroup: TableGroup = {
+            id: newGroupId,
+            tiles: [tileCode],
+            type: goal === "run" ? "run" : "group",
+          };
+          setTableGroups((prev) => [...prev, newGroup]);
+          setForceNewGroup(false);
+        }
         setHand((prev) => {
           const idx = prev.indexOf(tileCode);
           if (idx === -1) return prev;
@@ -173,7 +206,7 @@ const PracticeBoard = memo(function PracticeBoard({
         setHand((prev) => [...prev, tileCode]);
       }
     },
-    []
+    [tableGroups]
   );
 
   // ------------------------------------------------------------------
@@ -209,6 +242,7 @@ const PracticeBoard = memo(function PracticeBoard({
   const handleReset = useCallback(() => {
     setHand([...initialHand]);
     setTableGroups([]);
+    setForceNewGroup(false);
     onReset();
   }, [initialHand, onReset]);
 
@@ -266,8 +300,29 @@ const PracticeBoard = memo(function PracticeBoard({
           tableGroups={tableGroups}
           isMyTurn
           isDragging={isDragging}
+          groupsDroppable
           className="flex-1 min-h-[180px]"
         />
+
+        {/* 새 그룹 만들기 버튼 (그룹이 이미 있을 때만 표시) */}
+        {tableGroups.length > 0 && (
+          <div className="flex justify-end flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => setForceNewGroup(true)}
+              className={[
+                "px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors",
+                forceNewGroup
+                  ? "border-[var(--color-warning)] text-[var(--color-warning)] bg-[var(--color-warning)]/10"
+                  : "border-border text-text-secondary hover:border-[var(--border-active)] hover:text-[var(--border-active)]",
+              ].join(" ")}
+              aria-label="다음 드롭 시 새 그룹 생성"
+              title="다음 타일 드롭 시 새 그룹을 만듭니다"
+            >
+              {forceNewGroup ? "▶ 새 그룹 (활성)" : "+ 새 그룹"}
+            </button>
+          </div>
+        )}
 
         {/* 그룹 타입 토글 버튼 목록 (보드 아래) */}
         {tableGroups.length > 0 && (

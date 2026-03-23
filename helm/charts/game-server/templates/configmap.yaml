@@ -16,3 +16,4 @@ data:
   DB_NAME: {{ .Values.env.DB_NAME | quote }}
   REDIS_HOST: {{ .Values.env.REDIS_HOST | quote }}
   REDIS_PORT: {{ .Values.env.REDIS_PORT | quote }}
+  CORS_ALLOWED_ORIGINS: {{ .Values.env.CORS_ALLOWED_ORIGINS | quote }}
