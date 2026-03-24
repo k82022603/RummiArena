@@ -1,0 +1,139 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - button "스테이지 목록으로 돌아가기" [ref=e5] [cursor=pointer]: ←
+        - 'heading "Stage 6: 루미큐브 마스터" [level=1] [ref=e6]'
+        - navigation "스테이지 진행도" [ref=e8]:
+          - generic "Stage 1" [ref=e9]:
+            - generic [ref=e10]: "1"
+          - generic "Stage 2" [ref=e11]:
+            - generic [ref=e12]: "2"
+          - generic "Stage 3" [ref=e13]:
+            - generic [ref=e14]: "3"
+          - generic "Stage 4" [ref=e15]:
+            - generic [ref=e16]: "4"
+          - generic "Stage 5" [ref=e17]:
+            - generic [ref=e18]: "5"
+          - generic "Stage 6 (현재)" [ref=e19]:
+            - generic [ref=e20]: "6"
+        - button "튜토리얼 다시 보기" [ref=e21] [cursor=pointer]: 도움말
+    - paragraph [ref=e23]: 12장 이상의 타일을 보드에 배치하세요
+    - generic [ref=e24]:
+      - main [ref=e25]:
+        - generic [ref=e26]:
+          - generic [ref=e27]:
+            - generic [ref=e29]:
+              - generic [ref=e30]: STAGE 6
+              - generic [ref=e31]: 63점
+            - region "게임 테이블" [ref=e32]:
+              - heading "게임 테이블 (3개 그룹)" [level=2] [ref=e33]
+              - generic [ref=e34]:
+                - generic [ref=e36]:
+                  - generic [ref=e37]:
+                    - generic [ref=e38]: 런
+                    - generic "7개 타일" [ref=e39]: 7개
+                  - generic [ref=e40]:
+                    - img "run 그룹의 R1a 타일" [ref=e41] [cursor=pointer]:
+                      - generic [ref=e42]: "1"
+                      - generic [ref=e43]: ◆
+                    - img "run 그룹의 R2a 타일" [ref=e44] [cursor=pointer]:
+                      - generic [ref=e45]: "2"
+                      - generic [ref=e46]: ◆
+                    - img "run 그룹의 R3a 타일" [ref=e47] [cursor=pointer]:
+                      - generic [ref=e48]: "3"
+                      - generic [ref=e49]: ◆
+                    - img "run 그룹의 R4a 타일" [ref=e50] [cursor=pointer]:
+                      - generic [ref=e51]: "4"
+                      - generic [ref=e52]: ◆
+                    - img "run 그룹의 R5a 타일" [ref=e53] [cursor=pointer]:
+                      - generic [ref=e54]: "5"
+                      - generic [ref=e55]: ◆
+                    - img "run 그룹의 R6a 타일" [ref=e56] [cursor=pointer]:
+                      - generic [ref=e57]: "6"
+                      - generic [ref=e58]: ◆
+                    - img "run 그룹의 B6a 타일" [ref=e59] [cursor=pointer]:
+                      - generic [ref=e60]: "6"
+                      - generic [ref=e61]: ●
+                - generic [ref=e63]:
+                  - generic [ref=e64]:
+                    - generic [ref=e65]: 런
+                    - generic "3개 타일" [ref=e66]: 3개
+                  - generic [ref=e67]:
+                    - img "run 그룹의 Y6a 타일" [ref=e68] [cursor=pointer]:
+                      - generic [ref=e69]: "6"
+                      - generic [ref=e70]: ▲
+                    - img "run 그룹의 K6a 타일" [ref=e71] [cursor=pointer]:
+                      - generic [ref=e72]: "6"
+                      - generic [ref=e73]: ■
+                    - img "run 그룹의 B7a 타일" [ref=e74] [cursor=pointer]:
+                      - generic [ref=e75]: "7"
+                      - generic [ref=e76]: ●
+                - generic [ref=e78]:
+                  - generic [ref=e79]:
+                    - generic [ref=e80]: 런
+                    - generic "2개 타일" [ref=e81]: 2개
+                  - generic [ref=e82]:
+                    - img "run 그룹의 B8a 타일" [ref=e83] [cursor=pointer]:
+                      - generic [ref=e84]: "8"
+                      - generic [ref=e85]: ●
+                    - img "run 그룹의 B9a 타일" [ref=e86] [cursor=pointer]:
+                      - generic [ref=e87]: "9"
+                      - generic [ref=e88]: ●
+            - button "다음 드롭 시 새 그룹 생성" [ref=e90] [cursor=pointer]: + 새 그룹
+            - generic "배치된 그룹 타입 변경" [ref=e91]:
+              - generic [ref=e92]:
+                - generic [ref=e93]: 7개
+                - button "그룹 타입 런 → 그룹으로 변경" [ref=e94] [cursor=pointer]: 런
+                - alert "런의 모든 타일은 같은 색상이어야 합니다." [ref=e95]
+              - generic [ref=e96]:
+                - generic [ref=e97]: 3개
+                - button "그룹 타입 런 → 그룹으로 변경" [ref=e98] [cursor=pointer]: 런
+                - alert "런의 모든 타일은 같은 색상이어야 합니다." [ref=e99]
+              - generic [ref=e100]:
+                - generic [ref=e101]: 2개
+                - button "그룹 타입 런 → 그룹으로 변경" [ref=e102] [cursor=pointer]: 런
+                - alert "런은 타일이 3개 이상이어야 합니다." [ref=e103]
+            - generic [ref=e104]:
+              - generic [ref=e105]:
+                - generic [ref=e106]:
+                  - text: 내 패
+                  - generic [ref=e107]: (2개)
+                - generic [ref=e108]: 유효한 세트에서 총 12장 이상 배치
+              - region "내 타일 랙" [ref=e109]:
+                - heading "내 타일 (2개)" [level=2] [ref=e110]
+                - generic [ref=e111]:
+                  - generic [ref=e112]:
+                    - text: 내 타일
+                    - generic [ref=e113]: (2개)
+                  - button "타일 숫자 오름차순 정렬" [ref=e114] [cursor=pointer]:
+                    - generic [ref=e115]: ↑↓
+                    - text: 정렬
+                - generic [ref=e116]:
+                  - button "JK1 타일 (드래그 가능)" [ref=e117] [cursor=pointer]:
+                    - img "JK1 타일 (드래그 가능)" [ref=e118]:
+                      - generic [ref=e119]: ★
+                      - generic [ref=e120]: JK
+                      - generic [ref=e121]: ★
+                  - button "K3a 타일 (드래그 가능)" [ref=e122] [cursor=pointer]:
+                    - img "K3a 타일 (드래그 가능)" [ref=e123]:
+                      - generic [ref=e124]: "3"
+                      - generic [ref=e125]: ■
+              - generic [ref=e126]:
+                - button "타일 배치 초기화" [ref=e127] [cursor=pointer]: 초기화
+                - button "스테이지 클리어 확정" [disabled] [ref=e128]: 확정
+          - status [ref=e129]: Draggable item rack-B9a-0 was dropped over droppable area game-board
+      - complementary [ref=e130]:
+        - complementary "힌트 패널" [ref=e131]:
+          - generic [ref=e132]:
+            - heading "클리어 조건" [level=3] [ref=e133]
+            - paragraph [ref=e134]: 유효한 세트에서 총 12장 이상 배치
+          - separator [ref=e135]
+          - generic [ref=e136]:
+            - heading "힌트" [level=3] [ref=e137]
+            - status [ref=e138]: 런의 모든 타일은 같은 색상이어야 합니다.
+  - alert [ref=e139]
+```

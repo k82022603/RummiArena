@@ -106,6 +106,16 @@ AI 플레이어는 난이도(하수/중수/고수)와 캐릭터(Rookie, Calculat
 }
 ```
 
+## Git Commit Policy
+
+### 커밋 포함 대상
+- `src/frontend/test-results/` — Playwright E2E 실패 스크린샷·컨텍스트. 사이즈가 작고 테스트 이력 추적에 유용하므로 **커밋에 포함**한다.
+- `src/frontend/e2e/auth.json` — 갱신된 세션 토큰. 추적 대상에 포함.
+
+### 커밋 제외 대상
+- `.env`, `*.pem`, `*-key.pem` 등 시크릿 파일
+- `node_modules/`, `dist/`, `__pycache__/` 등 빌드 산출물
+
 ## Diagram Convention
 
 - 문서 내 도식은 **Mermaid를 우선** 사용한다. ASCII art, 텍스트 박스 다이어그램은 지양한다.
