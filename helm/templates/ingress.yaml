@@ -1,0 +1,70 @@
+---
+# RummiArena Traefik Ingress
+#
+# [사전 조건 — 활성화 전 반드시 확인]
+# 1. TLS Secret 생성:
+#      mkcert -install && mkcert rummikub.localhost
+#      kubectl create secret tls rummikub-tls \
+#        --cert=rummikub.localhost.pem \
+#        --key=rummikub.localhost-key.pem \
+#        -n rummikub
+#
+# 2. /etc/hosts 추가:
+#      127.0.0.1  rummikub.localhost
+#
+# 3. Traefik websecure entrypoint 활성화 (helm/traefik/values.yaml):
+#      ports.websecure.expose: true
+#
+# 4. frontend NEXT_PUBLIC_WS_URL 변경:
+#      ws://localhost:30080  →  wss://rummikub.localhost/ws
+#
+# [현재 운영 방식]
+# NodePort 직접 노출 (localhost:30080, localhost:30001) 로 운영 중.
+# 이 Ingress는 Phase 5 이후 도메인 기반 라우팅 전환 시 사용한다.
+#
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: rummikub-ingress
+  namespace: rummikub
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - rummikub.localhost
+      secretName: rummikub-tls
+  rules:
+    - host: rummikub.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 3000
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: game-server
+                port:
+                  number: 8080
+          - path: /ws
+            pathType: Prefix
+            backend:
+              service:
+                name: game-server
+                port:
+                  number: 8080
+          - path: /admin
+            pathType: Prefix
+            backend:
+              service:
+                name: admin
+                port:
+                  number: 3001

@@ -29,7 +29,7 @@ COPY . .
 # GAME_SERVER_INTERNAL_URL: next.config.ts rewrite 대상 (빌드 타임에 컴파일됨)
 # NEXT_PUBLIC_WS_URL: 브라우저 WebSocket 주소 (클라이언트 번들에 포함)
 ARG GAME_SERVER_INTERNAL_URL=http://game-server:8080
-ARG NEXT_PUBLIC_WS_URL=ws://game-server:8080
+ARG NEXT_PUBLIC_WS_URL=ws://localhost:30080
 
 ENV GAME_SERVER_INTERNAL_URL=${GAME_SERVER_INTERNAL_URL}
 ENV NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL}
