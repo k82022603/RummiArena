@@ -21,7 +21,7 @@ ports:
     port: 8000
     expose:
       default: true
-    exposedPort: 8000
+    exposedPort: 80
     protocol: TCP
   websecure:
     port: 8443
