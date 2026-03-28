@@ -24,6 +24,22 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: rummikub
+  # 민감 정보 필드는 Git에 저장하지 않고 kubectl로 직접 주입
+  # ignoreDifferences: ArgoCD Drift 감지에서 제외 → selfHeal 덮어쓰기 방지
+  ignoreDifferences:
+    - kind: Secret
+      name: game-server-secret
+      namespace: rummikub
+      jsonPointers:
+        - /data/JWT_SECRET
+        - /data/DB_PASSWORD
+        - /data/GOOGLE_CLIENT_ID
+        - /data/GOOGLE_CLIENT_SECRET
+    - kind: Secret
+      name: postgres-secret
+      namespace: rummikub
+      jsonPointers:
+        - /data/POSTGRES_PASSWORD
   syncPolicy:
     automated:
       prune: true       # Git에서 삭제된 리소스는 K8s에서도 삭제
@@ -32,3 +48,4 @@ spec:
       - CreateNamespace=true
       - PrunePropagationPolicy=foreground
       - ServerSideApply=true
+      - RespectIgnoreDifferences=true
