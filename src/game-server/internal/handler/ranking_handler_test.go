@@ -2,7 +2,6 @@ package handler
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -224,7 +223,7 @@ func TestGetUserRatingHistory_InvalidLimit(t *testing.T) {
 	router := newTestRankingRouter(repo)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/users/test-user1/rating/history?limit=-1"), nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/users/test-user1/rating/history?limit=-1", nil)
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)

@@ -1038,7 +1038,7 @@ func (h *WSHandler) restoreTimerIfNeeded(roomID, gameID string) {
 		return
 	}
 
-	remaining := time.Unix(expiryUnix, 0).Sub(time.Now())
+	remaining := time.Until(time.Unix(expiryUnix, 0))
 	if remaining <= 0 {
 		// 재시작 중 타이머 만료 → 즉시 HandleTimeout 실행
 		go func() {

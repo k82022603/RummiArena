@@ -243,7 +243,7 @@ func (r *postgresAdminRepo) GetEloDistribution(ctx context.Context) ([]EloTierCo
 
 	out := make([]EloTierCount, 0, len(results))
 	for _, res := range results {
-		out = append(out, EloTierCount{Tier: res.Tier, Count: res.Count})
+		out = append(out, EloTierCount(res))
 	}
 	return out, nil
 }
