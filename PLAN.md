@@ -151,6 +151,10 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 - [x] ISSUE-004 FIXED: WS GAME_OVER 절단 — WriteTimeout=0, WriteBuffer=8K, data race (2026-03-23)
 - [x] Playwright E2E 테스트 추가 — practice.spec.ts 12개 시나리오 (2026-03-23)
 - [x] Playwright E2E 44/44 PASS 달성 — BUG-P-004 수정 + practice.spec.ts helpers.ts 통일 (2026-03-29)
+- [x] Google OAuth K8s 구조적 복구 — inject-secrets.sh .env.local 자동 참조 + ArgoCD ignoreDifferences (2026-03-29)
+- [x] BUG-G-001 FIXED — GameClient 그룹 병합 3단계 분기 (forceNewGroup + useMemo) (2026-03-29)
+- [x] 빌드 경고 0개 — Tile.tsx aria 수정, StageSelector data-disabled (2026-03-29)
+- [x] WS 멀티플레이 기본 룰 통합 테스트 16/16 PASS — ws-multiplayer-game-test.go (2026-03-29)
 
 ### Sprint 5: 멀티플레이 완성 + 연습 모드
 - [x] Room 기반 세션 관리 (생명주기 전체) — FinishRoom + ListRooms 필터 + 재접속 감지 (2026-03-21)
@@ -308,5 +312,10 @@ Sprint 4 진행 중 (2026-03-23 조기 착수 — 당일 대부분 완료):
 - **BUG-P-004 FIXED**: PracticeBoard stale closure 수정 + K8s 재빌드 (2026-03-29)
 - **Playwright E2E 44/44 PASS**: practice.spec.ts helpers.ts 통일 + 전체 완료 (2026-03-29)
 - **UAT 가이드 보완**: 15-user-acceptance-test-guide.md Stage 조건 수정 + 소요시간 추가 (2026-03-29)
+- **Google OAuth 구조적 복구**: inject-secrets.sh 자동화 + ArgoCD ignoreDifferences (2026-03-29)
+- **BUG-G-001 FIXED**: GameClient handleDragEnd 그룹 병합 3단계 분기 + forceNewGroup (2026-03-29)
+- **빌드 경고 0개**: Tile.tsx aria 수정 + StageSelector aria-disabled → data-disabled (2026-03-29)
+- **WS 통합 테스트 신규**: ws-multiplayer-game-test.go 16/16 PASS (TC-GM-001~050) (2026-03-29)
+- **테스트 문서 신규**: 16-multiplayer-game-test-scenarios.md (2026-03-29)
 
 다음 단계: LLM 실측 데이터 수집 + Human 1 + AI 3 E2E 완전 테스트
