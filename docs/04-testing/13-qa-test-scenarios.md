@@ -1,6 +1,6 @@
 # 13. QA 테스트 시나리오 — 루미큐브 게임 룰 검증
 
-> 작성일: 2026-03-23 / 최종 업데이트: 2026-03-28
+> 작성일: 2026-03-23 / 최종 업데이트: 2026-03-29
 > 대상: RummiArena UI (localhost:30000) 및 연습 모드 (localhost:30000/practice)
 > 목적: 루미큐브 공식 룰 기준 전체 기능 검증
 
@@ -145,7 +145,7 @@
 | TC-P-402 | 런(JK1+Y8+Y10+Y11) + 그룹(R7+B7+K7) | **클리어** | 클리어 뱃지 표시 | **PASS** |
 | TC-P-403 | 그룹만 배치 (런 없음) | 클리어 불가 | 확정 불가 | **PASS** |
 
-> **BUG-P-004 발견 (2026-03-28)**: `PracticeBoard.tsx` `handleDragEnd` useCallback 의존성 배열에 `forceNewGroup` 누락 → stale closure. `clickNewGroup()` 클릭 후 다음 드래그에서 새 그룹이 생성되지 않고 기존 그룹에 타일 추가됨. **수정 완료** (의존성 배열에 `forceNewGroup, goal` 추가), K8s 재빌드 필요.
+> **BUG-P-004 (2026-03-28 발견 / 2026-03-29 K8s 반영 완료)**: `PracticeBoard.tsx` `handleDragEnd` useCallback 의존성 배열에 `forceNewGroup` 누락 → stale closure. `clickNewGroup()` 클릭 후 다음 드래그에서 새 그룹이 생성되지 않고 기존 그룹에 타일 추가됨. 의존성 배열 `[tableGroups, forceNewGroup, goal]` 로 수정, K8s 이미지 재빌드 완료.
 
 ### Stage 5: 복합 배치 (multi goal)
 | ID | 타일 배치 | 예상 결과 | 실제 결과 | 판정 |
@@ -191,10 +191,11 @@
 
 | ID | 위치 | 버그 | 상태 |
 |----|------|------|------|
-| BUG-P-004 | `PracticeBoard.tsx` handleDragEnd useCallback | 의존성 배열에 `forceNewGroup` 누락 → stale closure. `clickNewGroup()` 후 새 그룹 미생성. Stage 4/5/6 클리어 불가. | **FIXED** (의존성 배열 수정, K8s 재빌드 필요) |
+| BUG-P-004 | `PracticeBoard.tsx` handleDragEnd useCallback | 의존성 배열에 `forceNewGroup` 누락 → stale closure. `clickNewGroup()` 후 새 그룹 미생성. Stage 4/5/6 클리어 불가. | **FIXED** (2026-03-29 K8s 재빌드 완료) |
 | BUG-E2E-001 | `e2e/practice.spec.ts` beforeEach | 튜토리얼 모달 미닫힘 (`isVisible()` 타이밍 오류) → 클릭 차단. `waitFor()` 로 수정. | **FIXED** |
 | BUG-E2E-002 | `e2e/practice.spec.ts` selector | `[aria-label="내 타일 (6개)"]` → 실제 DOM은 `aria-label="내 타일 랙"` | **FIXED** |
 | BUG-E2E-003 | `e2e/helpers.ts` goToStage | dnd-kit hydration 전 드래그 시도 → `waitForLoadState` + `waitFor` 추가 | **FIXED** |
+| BUG-E2E-004 | `e2e/practice.spec.ts` 로컬 dndKitDrag | 부분 selector(`[aria-label*="타일"]`) 사용으로 보드 타일과 충돌, 타임아웃 3000ms 부족. `helpers.ts` `dragTileToBoard`/`goToStage` 로 교체 | **FIXED** (2026-03-29) |
 | BUG-S-004 | Stage 4 설계 | R5b, B3a/B3b 처리 불가 타일, clearCondition/goal 불일치 | **미수정** |
 
 ---
@@ -211,7 +212,7 @@ P3 (내일): TC-M, TC-T, TC-E
 
 ---
 
-## 11. Playwright E2E 자동화 테스트 결과 (2026-03-28)
+## 11. Playwright E2E 자동화 테스트 결과
 
 > 실행 환경: Docker Desktop K8s, frontend NodePort 30000, Chromium
 
@@ -223,30 +224,29 @@ P3 (내일): TC-M, TC-T, TC-E
 | 2차 | 2026-03-28 | 29 | 15 | 44 | helpers.ts waitFor 추가, selector 수정 |
 | 3차 | 2026-03-28 | 41 | 3 | 44 | BUG-P-004(stale closure) 수정, K8s 재빌드 |
 | 4차 | 2026-03-28 | 40 | 4 | 44 | practice.spec.ts dndKitDrag activation +9px |
-| **5차** | **2026-03-28** | **44** | **0** | **44** | beforeEach waitForTimeout(200) 추가 |
+| 5차 | 2026-03-28 | 44 | 0 | 44 | beforeEach waitForTimeout(200) 추가 |
+| 6차 | 2026-03-29 | 33 | 11 | 44 | 회귀 감지: BUG-P-004 K8s 미반영, practice.spec dndKitDrag 신뢰성 문제 |
+| **7차** | **2026-03-29** | **44** | **0** | **44** | **BUG-P-004 K8s 재빌드 + practice.spec helpers.ts 통일** ✅ |
 
-### 2차 실행 결과 (29/44 PASS)
+### 최종 실행 결과 (7차 — 44/44 PASS, 2026-03-29)
 
-**PASS (29개)**
+| 파일 | TC ID / 테스트명 | 결과 |
+|------|----------------|------|
+| 01-stage1-group.spec.ts | TC-P-101~104, TC-G-007 (5개) | **5/5 PASS** |
+| 02-stage2-run.spec.ts | TC-P-201~204, TC-R-002, 초기화→재배치 (6개) | **6/6 PASS** |
+| 03-stage3-joker.spec.ts | TC-P-301~304, TC-J-004, TC-R-009변형, 초기화 (7개) | **7/7 PASS** |
+| 04-stage4-multi.spec.ts | TC-P-401~403, 초기화→재배치 (4개) | **4/4 PASS** |
+| 05-stage5-complex.spec.ts | TC-P-501~503, 초기화→재배치 (4개) | **4/4 PASS** |
+| 06-stage6-master.spec.ts | TC-P-601~603, 초기화→재배치 (4개) | **4/4 PASS** |
+| practice.spec.ts | 랙 로드, 버튼 상태, 드래그, 클리어 뱃지, 네비게이션 (14개) | **14/14 PASS** |
+| **합계** | **44개** | **44/44 PASS** |
 
-| 파일 | TC ID / 테스트명 |
-|------|----------------|
-| 01-stage1-group | TC-P-101~104, TC-G-007 (5/5) |
-| 02-stage2-run | TC-P-201~204, TC-R-002, 초기화→재배치 (6/6) |
-| 03-stage3-joker | TC-P-301~304, TC-J-004, TC-R-009변형, 초기화 (7/7) |
-| 04-stage4-multi | TC-P-401, TC-P-403 (2/4) |
-| 05-stage5-complex | TC-P-502, TC-P-503 (2/4) |
-| 06-stage6-master | TC-P-602 (1/4) |
-| practice.spec.ts | 랙 로드, 확정버튼비활성, Stage 1/2 랙 로드, 네비게이션 3개 (6/14) |
+### 6차 FAIL 분석 (33/44 — 2026-03-29 리그레션)
 
-**FAIL (15개)**
-
-| 루트 커즈 | 영향 테스트 수 | 상태 |
+| 루트 커즈 | 영향 테스트 수 | 조치 |
 |-----------|--------------|------|
-| BUG-P-004: stale closure (forceNewGroup 의존성 누락) | 7건 (Stage 4/5/6 클리어) | 코드 수정 완료, K8s 재빌드 필요 |
-| BUG-E2E-001: 튜토리얼 미닫힘 (isVisible 타이밍) | 4건 (practice.spec 클릭 차단) | 코드 수정 완료 |
-| BUG-E2E-004: practice.spec 내부 dndKitDrag waitFor 누락 | 3건 (클리어 뱃지 미감지) | 코드 수정 완료 |
-| RC-5: /practice/99 리디렉트 (K8s 미반영) | 1건 | 코드 수정 완료, 재빌드 필요 |
+| BUG-P-004: K8s 이미지 미반영 (stale closure) | 7건 (Stage 4/5/6 `clickNewGroup` 후 새 그룹 미생성) | K8s `rummiarena/frontend:dev` 재빌드 |
+| BUG-E2E-004: practice.spec.ts `dndKitDrag` 신뢰성 | 4건 (부분 selector + 3000ms 타임아웃) | `helpers.ts` `dragTileToBoard`/`goToStage` 로 교체 |
 
 ---
 
