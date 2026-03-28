@@ -40,6 +40,12 @@ spec:
       namespace: rummikub
       jsonPointers:
         - /data/POSTGRES_PASSWORD
+    - kind: Secret
+      name: frontend-secret
+      namespace: rummikub
+      jsonPointers:
+        - /data/NEXTAUTH_SECRET
+        - /data/GOOGLE_CLIENT_SECRET
   syncPolicy:
     automated:
       prune: true       # Git에서 삭제된 리소스는 K8s에서도 삭제
