@@ -57,7 +57,7 @@ const StageSelector = memo(function StageSelector({
             }}
             tabIndex={unlocked ? 0 : -1}
             aria-label={`Stage ${num}: ${config.name}${!unlocked ? " (잠김)" : ""}`}
-            aria-disabled={!unlocked}
+            data-disabled={!unlocked || undefined}
             className={[
               "relative p-5 rounded-2xl border select-none",
               "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--border-active)]",

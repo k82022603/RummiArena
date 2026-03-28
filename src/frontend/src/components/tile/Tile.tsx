@@ -75,12 +75,10 @@ const Tile = memo(function Tile({
     : undefined;
 
   return (
-    <motion.button
-      type="button"
+    <motion.div
       role="img"
       aria-label={label}
-      aria-pressed={selected}
-      aria-disabled={!draggable && !onClick}
+      aria-roledescription={selected ? "selected tile" : "tile"}
       onClick={onClick}
       whileHover={draggable || onClick ? { scale: 1.08, y: -2 } : undefined}
       whileTap={draggable || onClick ? { scale: 0.95 } : undefined}
@@ -144,7 +142,7 @@ const Tile = memo(function Tile({
           {symbol}
         </span>
       )}
-    </motion.button>
+    </motion.div>
   );
 });
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   DndContext,
   DragEndEvent,
@@ -253,14 +253,22 @@ export default function GameClient({ roomId }: GameClientProps) {
   const [activeDragCode, setActiveDragCode] = useState<TileCode | null>(null);
   const isDragging = activeDragCode !== null;
 
+  // 다음 보드 드롭 시 새 그룹 강제 생성 여부
+  const [forceNewGroup, setForceNewGroup] = useState(false);
+
 
   // 실제 내 seat: roomStore의 mySeat 우선, gameStore의 mySeat 차선
   const effectiveMySeat = roomMySeat ?? mySeat;
   const isMyTurn = gameState?.currentSeat === effectiveMySeat;
 
-  const currentTableGroups =
-    pendingTableGroups ?? gameState?.tableGroups ?? [];
-  const currentMyTiles = pendingMyTiles ?? myTiles;
+  const currentTableGroups = useMemo(
+    () => pendingTableGroups ?? gameState?.tableGroups ?? [],
+    [pendingTableGroups, gameState?.tableGroups]
+  );
+  const currentMyTiles = useMemo(
+    () => pendingMyTiles ?? myTiles,
+    [pendingMyTiles, myTiles]
+  );
 
   // 상대 플레이어 목록 (내 seat 제외)
   const opponents = players.filter((p) => p.seat !== effectiveMySeat);
@@ -287,20 +295,54 @@ export default function GameClient({ roomId }: GameClientProps) {
       const tileCode = active.data.current?.tileCode as TileCode | undefined;
       if (!tileCode) return;
 
-      if (over.id === "game-board") {
-        // 랙 → 테이블: 새 그룹 생성 (서버 미전송, 프리뷰 상태)
-        const newGroupId = `pending-${Date.now()}`;
-        const newGroup: TableGroup = {
-          id: newGroupId,
-          tiles: [tileCode],
-          type: "run",
-        };
-        const nextTableGroups = [...currentTableGroups, newGroup];
+      // 기존 pending 그룹에 드롭한 경우
+      const existingPendingGroup = pendingTableGroups?.find(
+        (g) => g.id === over.id && pendingGroupIds.has(g.id)
+      );
+
+      if (existingPendingGroup) {
+        // 랙 → pending 그룹: 해당 그룹에 타일 추가
+        const nextTableGroups = currentTableGroups.map((g) =>
+          g.id === existingPendingGroup.id
+            ? { ...g, tiles: [...g.tiles, tileCode] }
+            : g
+        );
         const nextMyTiles = currentMyTiles.filter((c) => c !== tileCode);
         setPendingTableGroups(nextTableGroups);
         setPendingMyTiles(nextMyTiles);
-        // 새로 생성된 그룹을 프리뷰 ID 세트에 등록
-        addPendingGroupId(newGroupId);
+      } else if (over.id === "game-board") {
+        // 보드 빈 공간에 드롭
+        const pendingOnlyGroups = pendingTableGroups?.filter((g) =>
+          pendingGroupIds.has(g.id)
+        );
+        const lastPendingGroup = pendingOnlyGroups?.at(-1);
+
+        if (lastPendingGroup && !forceNewGroup) {
+          // 마지막 pending 그룹에 타일 추가
+          const nextTableGroups = currentTableGroups.map((g) =>
+            g.id === lastPendingGroup.id
+              ? { ...g, tiles: [...g.tiles, tileCode] }
+              : g
+          );
+          const nextMyTiles = currentMyTiles.filter((c) => c !== tileCode);
+          setPendingTableGroups(nextTableGroups);
+          setPendingMyTiles(nextMyTiles);
+        } else {
+          // 새 그룹 생성 (서버 미전송, 프리뷰 상태)
+          const newGroupId = `pending-${Date.now()}`;
+          const newGroup: TableGroup = {
+            id: newGroupId,
+            tiles: [tileCode],
+            type: "run",
+          };
+          const nextTableGroups = [...currentTableGroups, newGroup];
+          const nextMyTiles = currentMyTiles.filter((c) => c !== tileCode);
+          setPendingTableGroups(nextTableGroups);
+          setPendingMyTiles(nextMyTiles);
+          // 새로 생성된 그룹을 프리뷰 ID 세트에 등록
+          addPendingGroupId(newGroupId);
+          setForceNewGroup(false);
+        }
       } else if (over.id === "player-rack") {
         // 보드 → 랙: pending 그룹에 실제로 있는 타일만 회수
         // (랙→랙 오드롭 시 서버 그룹 타일을 삭제하는 버그 방지)
@@ -333,6 +375,7 @@ export default function GameClient({ roomId }: GameClientProps) {
       pendingMyTiles,
       pendingGroupIds,
       myTiles,
+      forceNewGroup,
     ]
   );
 
@@ -385,6 +428,7 @@ export default function GameClient({ roomId }: GameClientProps) {
     setPendingTableGroups(null);
     setPendingMyTiles(null);
     clearPendingGroupIds();
+    setForceNewGroup(false);
   }, [send, setPendingTableGroups, setPendingMyTiles, clearPendingGroupIds]);
 
   // 드로우
@@ -526,8 +570,29 @@ export default function GameClient({ roomId }: GameClientProps) {
               isMyTurn={isMyTurn}
               isDragging={isDragging}
               pendingGroupIds={pendingGroupIds}
+              groupsDroppable={!!pendingTableGroups}
               className="flex-1"
             />
+
+            {/* 새 그룹 버튼: pending 그룹이 있을 때만 표시 */}
+            {pendingTableGroups && (
+              <div className="flex justify-end flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setForceNewGroup(true)}
+                  className={[
+                    "px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors",
+                    forceNewGroup
+                      ? "border-warning text-warning bg-warning/10"
+                      : "border-border text-text-secondary hover:border-board-border hover:text-text-primary",
+                  ].join(" ")}
+                  aria-label="다음 드롭 시 새 그룹 생성"
+                  title="다음 타일 드롭 시 새 그룹을 만듭니다"
+                >
+                  {forceNewGroup ? "▶ 새 그룹 (활성)" : "+ 새 그룹"}
+                </button>
+              </div>
+            )}
 
             {/* 내 타일 랙 영역 */}
             <div className="flex-shrink-0">

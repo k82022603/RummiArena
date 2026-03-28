@@ -243,6 +243,17 @@ kubectl patch secret frontend-secret -n rummikub \
 kubectl rollout restart deployment/frontend -n rummikub
 ```
 
+### Google OAuth 자격증명 복구
+
+K8s 복구 후 Google 로그인이 안 될 때:
+
+```bash
+bash scripts/inject-secrets.sh
+```
+
+- `src/frontend/.env.local`에서 자동으로 GOOGLE_CLIENT_ID/SECRET 읽어서 주입
+- frontend-config ConfigMap + frontend-secret + game-server-secret 동시 패치
+
 ---
 
 ## 3. docker-compose 버전 복구
@@ -463,38 +474,13 @@ kubectl rollout restart deployment argocd-server -n argocd
 
 ### K8s에 일괄 주입하는 스크립트
 
-```bash
-#!/bin/bash
-# inject-secrets.sh — K8s 개발 환경 Secret 일괄 주입
-
-NS=rummikub
-
-echo "=== postgres-secret ==="
-kubectl create secret generic postgres-secret -n $NS \
-  --from-literal=POSTGRES_USER=rummikub \
-  --from-literal=POSTGRES_PASSWORD=REDACTED_DB_PASSWORD \
-  --from-literal=POSTGRES_DB=rummikub \
-  --dry-run=client -o yaml | kubectl apply -f -
-
-echo "=== game-server-secret ==="
-kubectl patch secret game-server-secret -n $NS \
-  --type='json' \
-  -p='[
-    {"op":"replace","path":"/data/JWT_SECRET","value":"'"$(echo -n 'REDACTED_JWT_SECRET' | base64)"'"},
-    {"op":"replace","path":"/data/DB_PASSWORD","value":"'"$(echo -n 'REDACTED_DB_PASSWORD' | base64)"'"}
-  ]'
-
-echo "=== frontend-secret ==="
-kubectl patch secret frontend-secret -n $NS \
-  --type='json' \
-  -p='[{"op":"replace","path":"/data/NEXTAUTH_SECRET","value":"'"$(echo -n 'REDACTED_NEXTAUTH_SECRET' | base64)"'"}]'
-
-echo "=== 완료 ==="
-kubectl get secret -n $NS
-```
-
 저장 위치: `scripts/inject-secrets.sh`
 실행 방법: `bash scripts/inject-secrets.sh`
+
+- `src/frontend/.env.local` 에서 GOOGLE_CLIENT_ID/SECRET 자동 로드
+- frontend-secret + game-server-secret 동시 주입
+- ArgoCD ignoreDifferences 설정으로 sync 시에도 값 유지
+- **주의**: 전체 클러스터 재생성 시 1회 실행 필요 (이후 ArgoCD sync에는 불필요)
 
 ---
 

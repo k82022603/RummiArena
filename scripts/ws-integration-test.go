@@ -38,8 +38,7 @@ import (
 // ============================================================
 
 var (
-	baseURL   = envOr("BASE_URL", "http://localhost:30080")
-	jwtSecret = envOr("JWT_SECRET", "rummiarena-jwt-secret-2026")
+	baseURL = envOr("BASE_URL", "http://localhost:30080")
 )
 
 func envOr(key, fallback string) string {
@@ -50,9 +49,36 @@ func envOr(key, fallback string) string {
 }
 
 // ============================================================
-// JWT 생성
+// dev-login API를 통한 토큰 발급
 // ============================================================
 
+func devLogin(userID, displayName string) (string, error) {
+	status, body, err := httpJSON("POST", "/api/auth/dev-login", "", map[string]interface{}{
+		"userId":      userID,
+		"displayName": displayName,
+	})
+	if err != nil {
+		return "", fmt.Errorf("dev-login 요청 실패: %w", err)
+	}
+	if status != 200 {
+		return "", fmt.Errorf("dev-login 실패 (HTTP %d): %v", status, body)
+	}
+	token, ok := body["token"].(string)
+	if !ok || token == "" {
+		return "", fmt.Errorf("dev-login 응답에 token 없음: %v", body)
+	}
+	return token, nil
+}
+
+func mustDevLogin(userID, displayName string) string {
+	t, err := devLogin(userID, displayName)
+	if err != nil {
+		panic(fmt.Sprintf("dev-login 실패: %v", err))
+	}
+	return t
+}
+
+// issueToken JWT 자체 생성 (TC-WS-002 무효 토큰 테스트용)
 func issueToken(userID string, expiry time.Duration) (string, error) {
 	now := time.Now()
 	claims := jwt.MapClaims{
@@ -63,15 +89,7 @@ func issueToken(userID string, expiry time.Duration) (string, error) {
 		"exp":   now.Add(expiry).Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(jwtSecret))
-}
-
-func mustIssueToken(userID string) string {
-	t, err := issueToken(userID, 2*time.Hour)
-	if err != nil {
-		panic(fmt.Sprintf("JWT 생성 실패: %v", err))
-	}
-	return t
+	return token.SignedString([]byte("wrong-secret-for-testing"))
 }
 
 // ============================================================
@@ -823,8 +841,8 @@ func main() {
 	for i, tc := range tests {
 		hostID := fmt.Sprintf("ws-test-host-%03d", i+1)
 		guestID := fmt.Sprintf("ws-test-guest-%03d", i+1)
-		hostToken := mustIssueToken(hostID)
-		guestToken := mustIssueToken(guestID)
+		hostToken := mustDevLogin(hostID, fmt.Sprintf("Host%d", i+1))
+		guestToken := mustDevLogin(guestID, fmt.Sprintf("Guest%d", i+1))
 		tc.fn(hostToken, guestToken)
 	}
 

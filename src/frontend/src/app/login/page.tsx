@@ -11,5 +11,10 @@ export default async function LoginPage() {
   const session = await getServerSession(authOptions);
   if (session) redirect("/lobby");
 
-  return <LoginClient />;
+  // authOptions.providers 를 직접 검사 — HTTP 자기 호출 없이 서버에서 결정
+  const hasGoogleProvider = authOptions.providers.some(
+    (p) => p.id === "google",
+  );
+
+  return <LoginClient hasGoogleProvider={hasGoogleProvider} />;
 }
