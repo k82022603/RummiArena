@@ -150,6 +150,7 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 - [x] admin API 실 구현 — 7개 엔드포인트, admin_handler/service/repository (2026-03-23)
 - [x] ISSUE-004 FIXED: WS GAME_OVER 절단 — WriteTimeout=0, WriteBuffer=8K, data race (2026-03-23)
 - [x] Playwright E2E 테스트 추가 — practice.spec.ts 12개 시나리오 (2026-03-23)
+- [x] Playwright E2E 44/44 PASS 달성 — BUG-P-004 수정 + practice.spec.ts helpers.ts 통일 (2026-03-29)
 
 ### Sprint 5: 멀티플레이 완성 + 연습 모드
 - [x] Room 기반 세션 관리 (생명주기 전체) — FinishRoom + ListRooms 필터 + 재접속 감지 (2026-03-21)
@@ -304,5 +305,8 @@ Sprint 4 진행 중 (2026-03-23 조기 착수 — 당일 대부분 완료):
 - **OpenAI GPT-4o 검증**: gpt-4o-mini 기본값, Helm secretRef, 17/17 PASS
 - **Playwright E2E**: practice.spec.ts 12개 시나리오 추가
 - **모든 이슈 해소**: ISS-001 ~ ISS-004 전부 FIXED
+- **BUG-P-004 FIXED**: PracticeBoard stale closure 수정 + K8s 재빌드 (2026-03-29)
+- **Playwright E2E 44/44 PASS**: practice.spec.ts helpers.ts 통일 + 전체 완료 (2026-03-29)
+- **UAT 가이드 보완**: 15-user-acceptance-test-guide.md Stage 조건 수정 + 소요시간 추가 (2026-03-29)
 
 다음 단계: LLM 실측 데이터 수집 + Human 1 + AI 3 E2E 완전 테스트
