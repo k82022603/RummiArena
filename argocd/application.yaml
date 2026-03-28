@@ -46,6 +46,11 @@ spec:
       jsonPointers:
         - /data/NEXTAUTH_SECRET
         - /data/GOOGLE_CLIENT_SECRET
+    - kind: ConfigMap
+      name: frontend-config
+      namespace: rummikub
+      jsonPointers:
+        - /data/GOOGLE_CLIENT_ID
   syncPolicy:
     automated:
       prune: true       # Git에서 삭제된 리소스는 K8s에서도 삭제
