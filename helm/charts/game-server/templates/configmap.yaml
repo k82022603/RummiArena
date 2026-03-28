@@ -10,6 +10,7 @@ metadata:
 data:
   SERVER_PORT: {{ .Values.env.SERVER_PORT | quote }}
   SERVER_MODE: {{ .Values.env.SERVER_MODE | quote }}
+  APP_ENV: {{ .Values.env.APP_ENV | quote }}
   DB_HOST: {{ .Values.env.DB_HOST | quote }}
   DB_PORT: {{ .Values.env.DB_PORT | quote }}
   DB_USER: {{ .Values.env.DB_USER | quote }}
