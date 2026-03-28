@@ -207,7 +207,7 @@ const PracticeBoard = memo(function PracticeBoard({
         setHand((prev) => [...prev, tileCode]);
       }
     },
-    [tableGroups]
+    [tableGroups, forceNewGroup, goal]
   );
 
   // ------------------------------------------------------------------

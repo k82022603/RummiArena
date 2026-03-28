@@ -52,10 +52,14 @@ export async function dismissTutorial(page: Page): Promise<void> {
   await page.waitForTimeout(300);
 }
 
-/** 연습 스테이지 페이지로 이동 + 튜토리얼 dismiss */
+/** 연습 스테이지 페이지로 이동 + 튜토리얼 dismiss + DnD 준비 대기 */
 export async function goToStage(page: Page, stageNum: number): Promise<void> {
   await page.goto(`/practice/${stageNum}`);
+  await page.waitForLoadState("domcontentloaded");
   await dismissTutorial(page);
+  // dnd-kit 센서가 마운트될 때까지 타일 랙 렌더링 대기
+  await page.locator('[aria-label="내 타일 랙"]').waitFor({ state: "visible", timeout: 5000 });
+  await page.waitForTimeout(200);
 }
 
 /**
@@ -69,7 +73,10 @@ export async function dragTileToBoard(
   const tile = page
     .locator(`[aria-label="${tileCode} 타일 (드래그 가능)"]`)
     .first();
+  // 타일이 실제로 DOM에 렌더링될 때까지 대기
+  await tile.waitFor({ state: "visible", timeout: 5000 });
   const board = page.locator('section[aria-label="게임 테이블"]');
+  await board.waitFor({ state: "visible", timeout: 5000 });
   await dndDrag(page, tile, board);
 }
 

@@ -1,5 +1,5 @@
 import { getServerSession } from "next-auth";
-import { redirect, notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import StagePlayClient from "./StagePlayClient";
 import { STAGE_CONFIGS, STAGE_NUMBERS } from "@/lib/practice/stage-configs";
@@ -13,7 +13,7 @@ interface PageProps {
  * 연습 모드 스테이지 플레이 페이지 (Server Component)
  *
  * - 인증 확인 → 미로그인 시 /login 리디렉션
- * - stage 파라미터 유효성 검사 → STAGE_CONFIGS에 없으면 404
+ * - stage 파라미터 유효성 검사 → STAGE_CONFIGS에 없으면 /practice 리디렉션
  */
 export default async function StagePlayPage({ params }: PageProps) {
   const session = await getServerSession(authOptions);
@@ -23,7 +23,7 @@ export default async function StagePlayPage({ params }: PageProps) {
   const stageNum = parseInt(stageParam, 10) as StageNumber;
 
   if (!STAGE_CONFIGS[stageNum]) {
-    notFound();
+    redirect("/practice");
   }
 
   return <StagePlayClient stageNum={stageNum} />;
