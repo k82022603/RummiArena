@@ -45,30 +45,39 @@ kubectl patch secret frontend-secret -n $NS \
 #   GOOGLE_CLIENT_SECRET="your-client-secret" \
 #   bash scripts/inject-secrets.sh
 if [ -n "${GOOGLE_CLIENT_ID}" ] && [ -n "${GOOGLE_CLIENT_SECRET}" ]; then
-  echo "[4/4] Google OAuth 자격증명 주입..."
+  echo "[4/4] Google OAuth 자격증명 주입 (frontend + game-server)..."
 
-  # ConfigMap에 GOOGLE_CLIENT_ID 패치
+  GID_B64=$(printf '%s' "${GOOGLE_CLIENT_ID}" | base64 -w 0)
+  GSECRET_B64=$(printf '%s' "${GOOGLE_CLIENT_SECRET}" | base64 -w 0)
+
+  # frontend: ConfigMap에 GOOGLE_CLIENT_ID 패치
   kubectl patch configmap frontend-config -n $NS \
     --type='json' \
-    -p='[{"op":"replace","path":"/data/GOOGLE_CLIENT_ID","value":"'"${GOOGLE_CLIENT_ID}"'"}]'
+    -p="[{\"op\":\"replace\",\"path\":\"/data/GOOGLE_CLIENT_ID\",\"value\":\"${GOOGLE_CLIENT_ID}\"}]"
 
-  # Secret에 GOOGLE_CLIENT_SECRET 패치
+  # frontend: Secret에 GOOGLE_CLIENT_SECRET 패치
   kubectl patch secret frontend-secret -n $NS \
     --type='json' \
-    -p='[{"op":"replace","path":"/data/GOOGLE_CLIENT_SECRET","value":"'"$(echo -n "${GOOGLE_CLIENT_SECRET}" | base64)"'"}]'
+    -p="[{\"op\":\"replace\",\"path\":\"/data/GOOGLE_CLIENT_SECRET\",\"value\":\"${GSECRET_B64}\"}]"
 
-  echo "    Google OAuth 자격증명 주입 완료"
-  echo "    frontend 파드 재시작..."
-  kubectl rollout restart deployment/frontend -n $NS
+  # game-server: Secret에 GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET 패치
+  # (game-server도 id_token → game JWT 교환 시 GOOGLE_CLIENT_ID 필요)
+  kubectl patch secret game-server-secret -n $NS \
+    --type='json' \
+    -p="[
+      {\"op\":\"replace\",\"path\":\"/data/GOOGLE_CLIENT_ID\",\"value\":\"${GID_B64}\"},
+      {\"op\":\"replace\",\"path\":\"/data/GOOGLE_CLIENT_SECRET\",\"value\":\"${GSECRET_B64}\"}
+    ]"
+
+  echo "    Google OAuth 자격증명 주입 완료 (frontend + game-server)"
+  echo "    frontend + game-server 파드 재시작..."
+  kubectl rollout restart deployment/frontend deployment/game-server -n $NS
   kubectl rollout status deployment/frontend -n $NS --timeout=60s
+  kubectl rollout status deployment/game-server -n $NS --timeout=60s
 else
   echo ""
-  echo "[Google OAuth 미설정] Google 로그인이 필요하면 아래 명령으로 주입하세요:"
-  echo "  GOOGLE_CLIENT_ID=\"your-client-id.apps.googleusercontent.com\" \\"
-  echo "  GOOGLE_CLIENT_SECRET=\"your-client-secret\" \\"
-  echo "  bash scripts/inject-secrets.sh"
-  echo ""
-  echo "  현재 상태: Google 버튼 비활성화(미설정 표시), 게스트 로그인 정상 동작"
+  echo "[Google OAuth 미설정] src/frontend/.env.local에 값이 없거나 환경변수가 전달되지 않았습니다."
+  echo "  현재 상태: Google 버튼 비활성화, 게스트 로그인은 정상 동작"
 fi
 
 echo ""
