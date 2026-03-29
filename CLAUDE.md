@@ -2,6 +2,15 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Screenshot Directory
+
+사용자 스크린샷은 `d:\Users\KTDS\Pictures\FastStone` (WSL: `/mnt/d/Users/KTDS/Pictures/FastStone`) 에 저장된다.
+파일명 형식: `YYYY-MM-DD_HHMMSS.png`
+
+- MCP filesystem 서버에 해당 경로가 허용 디렉터리로 등록되어 있다.
+- 사용자가 파일명(타임스탬프)만 언급하면 즉시 이 경로에서 Read 도구로 열어볼 것.
+- 경로를 다시 물어보지 말 것.
+
 ## Project Overview
 
 RummiArena는 루미큐브(Rummikub) 보드게임 기반 멀티 LLM 전략 실험 플랫폼이다.

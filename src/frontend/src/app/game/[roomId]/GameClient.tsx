@@ -89,10 +89,31 @@ function DrawPileVisual({ count }: { count: number }) {
 // 플레이어 표시 이름 헬퍼 (HumanPlayer에만 displayName 있음)
 // ------------------------------------------------------------------
 
+const AI_TYPE_DISPLAY: Record<string, string> = {
+  AI_OPENAI: "GPT",
+  AI_CLAUDE: "Claude",
+  AI_DEEPSEEK: "DeepSeek",
+  AI_LLAMA: "LLaMA",
+};
+
+const AI_PERSONA_DISPLAY: Record<string, string> = {
+  rookie: "루키",
+  calculator: "계산기",
+  shark: "샤크",
+  fox: "폭스",
+  wall: "벽",
+  wildcard: "와일드카드",
+};
+
 function getPlayerDisplayName(player: Player | null | undefined, fallback: string): string {
   if (!player) return fallback;
-  if (player.type === "HUMAN") return player.displayName;
-  return fallback;
+  if (player.type === "HUMAN") return player.displayName || fallback;
+  // AI player: "GPT (샤크)" 형식
+  const aiLabel = AI_TYPE_DISPLAY[player.type] ?? player.type;
+  const persona = "persona" in player
+    ? AI_PERSONA_DISPLAY[(player as { persona: string }).persona] ?? ""
+    : "";
+  return persona ? `${aiLabel} (${persona})` : aiLabel;
 }
 
 // ------------------------------------------------------------------
@@ -134,7 +155,7 @@ function GameEndedOverlay({
         {/* 상단: 트로피 + 제목 */}
         <div className="text-center mb-6">
           <div className="text-4xl mb-3" aria-hidden="true">
-            [trophy]
+            🏆
           </div>
           <h2 className="text-tile-2xl font-bold text-text-primary mb-1">
             게임 종료

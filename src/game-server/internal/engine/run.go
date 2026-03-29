@@ -103,21 +103,51 @@ func countJokers(tiles []*Tile) int {
 }
 
 // runScore returns the sum of effective tile values in a run.
-// Jokers take the value of the position they fill; we compute based on
-// sequential position assuming sorted non-joker tiles define the window.
+// Jokers take the value of the position they fill.
+// Remaining jokers (after filling internal gaps) are placed after max first,
+// then before min if max+remaining would exceed 13.
 func runScore(tiles []*Tile) int {
 	nonJokerNums := make([]int, 0, len(tiles))
+	jokerCount := 0
 	for _, t := range tiles {
-		if !t.IsJoker {
+		if t.IsJoker {
+			jokerCount++
+		} else {
 			nonJokerNums = append(nonJokerNums, t.Number)
 		}
 	}
 	sort.Ints(nonJokerNums)
 
-	min := nonJokerNums[0]
+	minNum := nonJokerNums[0]
+	maxNum := nonJokerNums[len(nonJokerNums)-1]
+
+	// Gaps between non-joker tiles that jokers must fill
+	gapsInside := (maxNum - minNum + 1) - len(nonJokerNums)
+	// Remaining jokers after filling internal gaps
+	remaining := jokerCount - gapsInside
+	if remaining < 0 {
+		remaining = 0
+	}
+
+	// Place remaining jokers after max first (up to 13 ceiling)
+	jokersAfter := remaining
+	if maxNum+jokersAfter > 13 {
+		jokersAfter = 13 - maxNum
+	}
+	// Any leftover go before min
+	jokersBefore := remaining - jokersAfter
+	if jokersBefore < 0 {
+		jokersBefore = 0
+	}
+
+	start := minNum - jokersBefore
+	if start < 1 {
+		start = 1
+	}
+
 	sum := 0
 	for i := 0; i < len(tiles); i++ {
-		sum += min + i
+		sum += start + i
 	}
 	return sum
 }

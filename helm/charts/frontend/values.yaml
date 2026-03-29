@@ -24,7 +24,9 @@ env:
   NEXT_PUBLIC_WS_URL: "ws://localhost:30080/ws"
   NEXTAUTH_URL: "http://localhost:30000"
   GAME_SERVER_INTERNAL_URL: "http://game-server.rummikub.svc.cluster.local:8080"
-  GOOGLE_CLIENT_ID: ""
+  # GOOGLE_CLIENT_ID 는 Helm 관리 대상에서 제외한다.
+  # ArgoCD ServerSideApply 가 빈 값으로 managed field 를 덮어쓰는 것을 방지하기 위해
+  # 이 필드는 inject-secrets.sh 가 kubectl patch 로 직접 주입한다.
 
 secrets:
   # 실제 값은 kubectl patch 또는 외부 Secret으로 주입 (Git에 커밋하지 말 것)

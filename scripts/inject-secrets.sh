@@ -51,9 +51,20 @@ if [ -n "${GOOGLE_CLIENT_ID}" ] && [ -n "${GOOGLE_CLIENT_SECRET}" ]; then
   GSECRET_B64=$(printf '%s' "${GOOGLE_CLIENT_SECRET}" | base64 -w 0)
 
   # frontend: ConfigMap에 GOOGLE_CLIENT_ID 패치
-  kubectl patch configmap frontend-config -n $NS \
-    --type='json' \
-    -p="[{\"op\":\"replace\",\"path\":\"/data/GOOGLE_CLIENT_ID\",\"value\":\"${GOOGLE_CLIENT_ID}\"}]"
+  # 키가 없을 수도 있으므로 replace 실패 시 add 로 폴백한다.
+  # (values.yaml에서 GOOGLE_CLIENT_ID 키를 제거했기 때문에 ArgoCD sync 후 키 자체가 없을 수 있음)
+  if kubectl get configmap frontend-config -n $NS -o jsonpath='{.data.GOOGLE_CLIENT_ID}' &>/dev/null 2>&1; then
+    kubectl patch configmap frontend-config -n $NS \
+      --type='json' \
+      -p="[{\"op\":\"replace\",\"path\":\"/data/GOOGLE_CLIENT_ID\",\"value\":\"${GOOGLE_CLIENT_ID}\"}]" 2>/dev/null || \
+    kubectl patch configmap frontend-config -n $NS \
+      --type='json' \
+      -p="[{\"op\":\"add\",\"path\":\"/data/GOOGLE_CLIENT_ID\",\"value\":\"${GOOGLE_CLIENT_ID}\"}]"
+  else
+    kubectl patch configmap frontend-config -n $NS \
+      --type='json' \
+      -p="[{\"op\":\"add\",\"path\":\"/data/GOOGLE_CLIENT_ID\",\"value\":\"${GOOGLE_CLIENT_ID}\"}]"
+  fi
 
   # frontend: Secret에 GOOGLE_CLIENT_SECRET 패치
   kubectl patch secret frontend-secret -n $NS \
