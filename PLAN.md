@@ -317,5 +317,13 @@ Sprint 4 진행 중 (2026-03-23 조기 착수 — 당일 대부분 완료):
 - **빌드 경고 0개**: Tile.tsx aria 수정 + StageSelector aria-disabled → data-disabled (2026-03-29)
 - **WS 통합 테스트 신규**: ws-multiplayer-game-test.go 16/16 PASS (TC-GM-001~050) (2026-03-29)
 - **테스트 문서 신규**: 16-multiplayer-game-test-scenarios.md (2026-03-29)
+- **Google OAuth 4차 구조적 해결**: values.yaml GOOGLE_CLIENT_ID 키 완전 제거 (ArgoCD managed field 충돌 근본 차단) (2026-03-29)
+- **BUG-GR-001 FIXED**: run.go runScore() 조커 위치 계산 오류 수정 (2026-03-29)
+- **BUG-UI-001 FIXED**: Human 다중 그룹 동시 배치 불가 (GameClient.tsx + PracticeBoard.tsx 런 4개 제한 제거) (2026-03-29)
+- **BUG-UI-002 FIXED**: trophy 이모지 [trophy] 텍스트 표시 수정 (2026-03-29)
+- **BUG-UI-003 FIXED**: 게임 종료 플레이어 이름 빈칸 (DisplayName 필드 추가) (2026-03-29)
+- **Go 유닛 338/338 PASS**: game_rules_comprehensive_test.go 271개 신규 + 기존 67개 (커버리지 95.3%) (2026-03-29)
+- **Playwright E2E 131/131 PASS**: 87개 신규 (game-rules, game-ui-multiplayer, game-ui-practice-rules, game-ui-state, game-ui-bug-fixes) (2026-03-29)
+- **테스트 보고서 신규**: 17-game-rules-test-report.md + 18-e2e-test-full-report.md (2026-03-29)
 
 다음 단계: LLM 실측 데이터 수집 + Human 1 + AI 3 E2E 완전 테스트
