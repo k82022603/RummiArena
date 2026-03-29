@@ -2,27 +2,53 @@
 # inject-secrets.sh — K8s 개발 환경 Secret 일괄 주입
 # 사용법: bash scripts/inject-secrets.sh
 #
+# 시크릿 우선순위:
+#   1) 환경변수로 직접 전달  (JWT_SECRET=xxx bash scripts/inject-secrets.sh)
+#   2) src/frontend/.env.local 파일 (Google OAuth 전용)
+#   3) 미설정 시 openssl rand -base64 32 로 랜덤 생성 (경고 출력)
+#
 # ArgoCD selfHeal이 Helm의 빈 값으로 덮어쓰는 것을 방지하기 위해
 # argocd/application.yaml의 ignoreDifferences 설정이 필요하다.
 # (이미 설정 완료 — argocd/application.yaml 참조)
-#
-# 주의: 아래 값은 개발 환경 전용. 운영 환경에서는 반드시 교체할 것.
 
 set -e
 
 NS=rummikub
 
-# src/frontend/.env.local 에서 Google OAuth 값 자동 로드
+# ── 환경변수 체크 헬퍼 ──────────────────────────────────────────────────────
+# $1: 변수명, $2: 현재 값
+# 값이 없으면 경고를 출력하고 랜덤 값을 반환한다.
+require_secret() {
+  local var_name="$1"
+  local var_value="$2"
+  if [ -z "$var_value" ]; then
+    local generated
+    generated="$(openssl rand -base64 32)"
+    echo "[WARNING] ${var_name} 환경변수가 설정되지 않았습니다. 랜덤 값으로 생성합니다." >&2
+    echo "[WARNING]   → 이 값은 Pod 재시작 시 유지되지만, 스크립트 재실행 시 변경됩니다." >&2
+    echo "[WARNING]   → 영구 사용을 원하면 환경변수로 전달하세요: export ${var_name}=<value>" >&2
+    printf '%s' "$generated"
+  else
+    printf '%s' "$var_value"
+  fi
+}
+
+# ── src/frontend/.env.local 에서 Google OAuth 값 자동 로드 ─────────────────
 ENVLOCAL="$(dirname "$0")/../src/frontend/.env.local"
 if [ -f "$ENVLOCAL" ]; then
   GOOGLE_CLIENT_ID="${GOOGLE_CLIENT_ID:-$(grep '^GOOGLE_CLIENT_ID=' "$ENVLOCAL" | cut -d= -f2-)}"
   GOOGLE_CLIENT_SECRET="${GOOGLE_CLIENT_SECRET:-$(grep '^GOOGLE_CLIENT_SECRET=' "$ENVLOCAL" | cut -d= -f2-)}"
 fi
 
+# ── 시크릿 값 결정 (환경변수 우선, 없으면 랜덤 생성) ─────────────────────
+DB_PASSWORD_VAL="$(require_secret DB_PASSWORD "${DB_PASSWORD:-}")"
+JWT_SECRET_VAL="$(require_secret JWT_SECRET "${JWT_SECRET:-}")"
+NEXTAUTH_SECRET_VAL="$(require_secret NEXTAUTH_SECRET "${NEXTAUTH_SECRET:-}")"
+
 echo "[1/3] postgres-secret 주입..."
 kubectl create secret generic postgres-secret -n $NS \
   --from-literal=POSTGRES_USER=rummikub \
-  --from-literal=POSTGRES_PASSWORD=REDACTED_DB_PASSWORD \
+  --from-literal=POSTGRES_PASSWORD="${DB_PASSWORD_VAL}" \
   --from-literal=POSTGRES_DB=rummikub \
   --dry-run=client -o yaml | kubectl apply -f -
 
@@ -30,14 +56,14 @@ echo "[2/3] game-server-secret 주입 (JWT_SECRET, DB_PASSWORD)..."
 kubectl patch secret game-server-secret -n $NS \
   --type='json' \
   -p='[
-    {"op":"replace","path":"/data/JWT_SECRET","value":"'"$(echo -n 'REDACTED_JWT_SECRET' | base64)"'"},
-    {"op":"replace","path":"/data/DB_PASSWORD","value":"'"$(echo -n 'REDACTED_DB_PASSWORD' | base64)"'"}
+    {"op":"replace","path":"/data/JWT_SECRET","value":"'"$(printf '%s' "${JWT_SECRET_VAL}" | base64 -w 0)"'"},
+    {"op":"replace","path":"/data/DB_PASSWORD","value":"'"$(printf '%s' "${DB_PASSWORD_VAL}" | base64 -w 0)"'"}
   ]'
 
 echo "[3/3] frontend-secret 주입 (NEXTAUTH_SECRET)..."
 kubectl patch secret frontend-secret -n $NS \
   --type='json' \
-  -p='[{"op":"replace","path":"/data/NEXTAUTH_SECRET","value":"'"$(echo -n 'REDACTED_NEXTAUTH_SECRET' | base64)"'"}]'
+  -p='[{"op":"replace","path":"/data/NEXTAUTH_SECRET","value":"'"$(printf '%s' "${NEXTAUTH_SECRET_VAL}" | base64 -w 0)"'"}]'
 
 # Google OAuth 자격증명 주입 (선택 — Google Cloud Console에서 발급 후 사용)
 # 사용법:

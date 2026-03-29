@@ -203,6 +203,7 @@ export default function LobbyClient() {
 
   const [joinCode, setJoinCode] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [joinError, setJoinError] = useState<string | null>(null);
 
   // Room 목록 로드
   const loadRooms = useCallback(async () => {
@@ -235,12 +236,14 @@ export default function LobbyClient() {
 
   const handleJoinRoom = async (roomId: string) => {
     const token = session?.accessToken;
+    setJoinError(null);
     try {
       await joinRoom(roomId, token, session?.user?.name ?? undefined);
-    } catch {
-      // joinRoom 실패 시에도 대기실로 이동 (서버에서 이미 참가 처리된 경우 대비)
+      router.push(`/room/${roomId}`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "방 참가에 실패했습니다.";
+      setJoinError(msg);
     }
-    router.push(`/room/${roomId}`);
   };
 
   const filteredRooms = rooms.filter(
@@ -408,6 +411,29 @@ export default function LobbyClient() {
               + 만들기
             </button>
           </div>
+
+          {/* 참가 에러 메시지 */}
+          <AnimatePresence>
+            {joinError && (
+              <motion.div
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                className="mb-3 p-3 rounded-lg bg-danger/10 border border-danger/30 text-danger text-tile-sm"
+                role="alert"
+              >
+                {joinError}
+                <button
+                  type="button"
+                  onClick={() => setJoinError(null)}
+                  className="ml-3 underline text-tile-xs hover:no-underline"
+                  aria-label="에러 메시지 닫기"
+                >
+                  닫기
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* 검색 바 */}
           <div className="flex items-center gap-3 mb-4">

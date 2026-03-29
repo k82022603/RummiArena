@@ -125,6 +125,7 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
         }
         case "TURN_START": {
           const payload = msg.payload as TurnStartPayload;
+          resetPending();
           setRemainingMs(payload.timeoutSec * 1000);
           if (payload.turnNumber != null) setTurnNumber(payload.turnNumber);
           setAIThinkingSeat(null);
@@ -146,6 +147,11 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
                   drawPileCount: payload.drawPileCount,
                 }
               : state.gameState,
+            players: state.players.map((p) =>
+              p.seat === payload.seat
+                ? { ...p, tileCount: payload.playerTileCount, hasInitialMeld: payload.hasInitialMeld }
+                : p
+            ),
           }));
           if (payload.nextTurnNumber != null) setTurnNumber(payload.nextTurnNumber);
           setAIThinkingSeat(null);

@@ -674,6 +674,7 @@ func (h *WSHandler) broadcastTurnStart(roomID string, state *model.GameStateRedi
 		Type: S2CTurnStart,
 		Payload: TurnStartPayload{
 			Seat:          state.CurrentSeat,
+			TurnNumber:    state.TurnCount,
 			PlayerType:    playerType,
 			TimeoutSec:    state.TurnTimeoutSec,
 			TurnStartedAt: time.Unix(state.TurnStartAt, 0).UTC().Format(time.RFC3339),

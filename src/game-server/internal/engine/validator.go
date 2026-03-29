@@ -1,7 +1,5 @@
 package engine
 
-import "fmt"
-
 // SetType identifies whether a set is a group or a run.
 type SetType int
 
@@ -123,15 +121,30 @@ func validateInitialMeld(req TurnConfirmRequest) error {
 		}
 	}
 
-	// V-04: the newly added tiles must sum to >= 30 points.
-	addedTiles := newlyAddedTiles(req.RackBefore, req.RackAfter)
+	// V-04: the newly placed sets must sum to >= 30 points.
+	// Jokers count as the value of the tile they replace, not a flat 30.
+	// We score only the sets that contain tiles newly moved from the rack.
+	addedCodes := newlyAddedTiles(req.RackBefore, req.RackAfter)
+	if len(addedCodes) == 0 {
+		return newValidationError(ErrInitialMeldScore, ErrorMessages[ErrInitialMeldScore])
+	}
+	addedSet := make(map[string]int, len(addedCodes))
+	for _, c := range addedCodes {
+		addedSet[c]++
+	}
 	score := 0
-	for _, code := range addedTiles {
-		t, err := Parse(code)
-		if err != nil {
-			return fmt.Errorf("V-04: cannot parse tile %q: %w", code, err)
+	for _, ts := range req.TableAfter {
+		// Only score sets that consist entirely of newly added rack tiles.
+		if !setIsSubsetOf(ts, addedSet) {
+			continue
 		}
-		score += t.Score()
+		setType, _ := ValidateTileSet(ts)
+		switch setType {
+		case SetTypeGroup:
+			score += groupScore(ts.Tiles)
+		case SetTypeRun:
+			score += runScore(ts.Tiles)
+		}
 	}
 	if score < 30 {
 		return newValidationError(ErrInitialMeldScore, ErrorMessages[ErrInitialMeldScore])
@@ -188,4 +201,21 @@ func newlyAddedTiles(rackBefore, rackAfter []string) []string {
 		}
 	}
 	return added
+}
+
+// setIsSubsetOf reports whether every tile in ts appears in the provided
+// frequency map (consumed without replacement). The map is not mutated.
+func setIsSubsetOf(ts *TileSet, available map[string]int) bool {
+	// Work on a local copy so the caller's map is not modified.
+	local := make(map[string]int, len(available))
+	for k, v := range available {
+		local[k] = v
+	}
+	for _, t := range ts.Tiles {
+		if local[t.Code] == 0 {
+			return false
+		}
+		local[t.Code]--
+	}
+	return true
 }

@@ -271,8 +271,8 @@ export default function GameClient({ roomId }: GameClientProps) {
     clearPendingGroupIds,
     setMyTiles,
     gameEnded,
-    setGameEnded,
     gameOverResult,
+    reset: resetGameStore,
   } = useGameStore();
 
   const { mySeat: roomMySeat } = useRoomStore();
@@ -284,8 +284,9 @@ export default function GameClient({ roomId }: GameClientProps) {
   const [forceNewGroup, setForceNewGroup] = useState(false);
 
 
-  // 실제 내 seat: roomStore의 mySeat 우선, gameStore의 mySeat 차선
-  const effectiveMySeat = roomMySeat ?? mySeat;
+  // 실제 내 seat: gameStore.mySeat(AUTH_OK에서 설정, 초기값 -1) 우선,
+  // AUTH_OK 수신 전(URL 직접 접근 등)에는 roomStore.mySeat 차선 사용
+  const effectiveMySeat = mySeat !== -1 ? mySeat : roomMySeat;
   const isMyTurn = gameState?.currentSeat === effectiveMySeat;
 
   const currentTableGroups = useMemo(
@@ -510,7 +511,7 @@ export default function GameClient({ roomId }: GameClientProps) {
     return (
       <GameEndedOverlay
         onLobby={() => {
-          setGameEnded(false);
+          resetGameStore();
           router.push("/lobby");
         }}
         result={gameOverResult}
@@ -701,6 +702,7 @@ export default function GameClient({ roomId }: GameClientProps) {
               <ActionBar
                 isMyTurn={isMyTurn}
                 hasPending={!!pendingTableGroups}
+                drawPileCount={gameState?.drawPileCount}
                 onDraw={handleDraw}
                 onUndo={handleUndo}
                 onConfirm={handleConfirm}

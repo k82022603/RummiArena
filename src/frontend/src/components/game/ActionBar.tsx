@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 export interface ActionBarProps {
   isMyTurn: boolean;
   hasPending: boolean;
+  drawPileCount?: number;
   onDraw: () => void;
   onUndo: () => void;
   onConfirm: () => void;
@@ -22,6 +23,7 @@ export interface ActionBarProps {
 const ActionBar = memo(function ActionBar({
   isMyTurn,
   hasPending,
+  drawPileCount,
   onDraw,
   onUndo,
   onConfirm,
@@ -42,7 +44,7 @@ const ActionBar = memo(function ActionBar({
           <button
             type="button"
             onClick={onDraw}
-            disabled={hasPending}
+            disabled={hasPending || drawPileCount === 0}
             className={[
               "flex-1 py-2.5 rounded-xl font-medium text-tile-sm",
               "bg-card-bg border border-border hover:border-border-active",

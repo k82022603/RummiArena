@@ -73,7 +73,7 @@ interface GameStore {
 
 const initialState = {
   room: null,
-  mySeat: 0,
+  mySeat: -1,
   myTiles: [],
   gameState: null,
   players: [],

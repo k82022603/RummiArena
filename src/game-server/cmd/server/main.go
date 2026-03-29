@@ -177,7 +177,7 @@ func buildRouter(
 	registerSystemRoutes(router, redisClient)
 	registerWSRoutes(router, wsHandler)
 	registerAPIRoutes(router, cfg, roomHandler, gameHandler, authHandler, practiceHandler, rankingHandler)
-	registerAdminRoutes(router, adminHandler)
+	registerAdminRoutes(router, cfg, adminHandler)
 
 	return router
 }
@@ -280,12 +280,15 @@ func registerAPIRoutes(
 
 // registerAdminRoutes 관리자 대시보드 라우트 그룹을 등록한다.
 // adminHandler가 nil이면 (DB 없음) 등록을 건너뛴다.
-// 인증 미들웨어 없음: admin 패널이 토큰 없이 직접 호출한다.
-func registerAdminRoutes(router *gin.Engine, adminHandler *handler.AdminHandler) {
+// JWTAuth → RequireRole("admin") 순서로 미들웨어를 적용하여
+// 유효한 JWT를 가진 admin role 사용자만 접근할 수 있다.
+func registerAdminRoutes(router *gin.Engine, cfg *config.Config, adminHandler *handler.AdminHandler) {
 	if adminHandler == nil {
 		return
 	}
 	admin := router.Group("/admin")
+	admin.Use(middleware.JWTAuth(cfg.JWT.Secret))
+	admin.Use(middleware.RequireRole("admin"))
 	{
 		admin.GET("/dashboard", adminHandler.GetDashboard)
 		admin.GET("/games", adminHandler.ListGames)

@@ -473,10 +473,10 @@ func TestInitialMeld_MultipleGroups(t *testing.T) {
 	assert.NoError(t, err, "여러 세트로 30점 달성 가능")
 }
 
-// TestInitialMeld_JokerScoring 조커가 포함된 최초 등록의 점수 계산
+// TestInitialMeld_JokerScoring 조커가 포함된 최초 등록의 점수 계산.
+// 조커는 대체하는 타일의 숫자 값으로 계산된다.
+// R1a + JK1 + B1a 그룹 → 조커가 1을 대체 → 1+1+1 = 3점 < 30점 → 실패.
 func TestInitialMeld_JokerScoring(t *testing.T) {
-	// 현재 구현: 조커 Score()=30점
-	// R1a + JK1 + B1a → 1+30+1 = 32점 → 통과
 	codes := []string{"R1a", "JK1", "B1a"}
 	req := TurnConfirmRequest{
 		TableBefore:    []*TileSet{},
@@ -486,7 +486,22 @@ func TestInitialMeld_JokerScoring(t *testing.T) {
 		HasInitialMeld: false,
 	}
 	err := ValidateTurnConfirm(req)
-	assert.NoError(t, err, "조커는 30점으로 계산되어 통과")
+	assert.Error(t, err, "조커가 1을 대체하면 3점으로 30점 미달 — 실패해야 한다")
+}
+
+// TestInitialMeld_JokerScoring_MeetsThirty 조커가 포함된 최초 등록 — 충분한 점수.
+// R10a + JK1 + B10a 그룹 → 조커가 10을 대체 → 10+10+10 = 30점 → 성공.
+func TestInitialMeld_JokerScoring_MeetsThirty(t *testing.T) {
+	codes := []string{"R10a", "JK1", "B10a"}
+	req := TurnConfirmRequest{
+		TableBefore:    []*TileSet{},
+		TableAfter:     []*TileSet{makeTileSet(t, "g1", codes)},
+		RackBefore:     codes,
+		RackAfter:      []string{},
+		HasInitialMeld: false,
+	}
+	err := ValidateTurnConfirm(req)
+	assert.NoError(t, err, "조커가 10을 대체하면 30점으로 최초 등록 충족 — 성공해야 한다")
 }
 
 // TestInitialMeld_RunScoring 런으로 최초 등록

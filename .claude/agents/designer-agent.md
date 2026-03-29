@@ -2,7 +2,7 @@
 name: designer
 description: "UI/UX 디자이너. 와이어프레임, 디자인 시스템, 사용자 흐름 설계. UI 레이아웃, 색상, 타일 디자인이 필요할 때 사용."
 tools: Read, Grep, Glob, Bash, Write, Edit
-model: sonnet
+model: opus  # 2026-03-30 sonnet → opus 변경
 skills:
   - web-design-system
 ---

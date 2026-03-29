@@ -312,11 +312,9 @@ func TestValidateTurnConfirm_MultipleValidSets(t *testing.T) {
 	assert.NoError(t, err, "여러 세트 동시 배치는 성공해야 한다")
 }
 
-// TestValidateTurnConfirm_JokerInFirstMeld 조커 포함 최초 등록 시나리오.
-// JK1은 Score() = 30점이므로 단독으로 30점 기준 충족.
-func TestValidateTurnConfirm_JokerInFirstMeld(t *testing.T) {
-	// R7a + JK1 + B7a = 조커를 7로 계산 → 7+7+7 = 21점 (30점 미달, 실패 예상)
-	// 그러나 조커 Score()=30 이므로 7+30+7 = 44점으로 계산됨 (validator 구현 기준)
+// TestValidateTurnConfirm_JokerInFirstMeld_BelowThirty 조커 포함 최초 등록 시나리오 — 30점 미달.
+// R7a + JK1 + B7a 그룹에서 조커는 7을 대체하므로 7+7+7 = 21점 < 30점 → 실패.
+func TestValidateTurnConfirm_JokerInFirstMeld_BelowThirty(t *testing.T) {
 	req := makeTurnReq(
 		[]*TileSet{},
 		[]*TileSet{makeSet(t, "g1", []string{"R7a", "JK1", "B7a"})},
@@ -324,10 +322,50 @@ func TestValidateTurnConfirm_JokerInFirstMeld(t *testing.T) {
 		[]string{},
 		false,
 	)
-	// 현재 validator.go의 validateInitialMeld는 Parse(code).Score()로 계산
-	// 조커 Score()=30이므로 7+30+7=44 ≥ 30, 통과
 	err := ValidateTurnConfirm(req)
-	assert.NoError(t, err, "조커 포함 최초 등록 (조커 30점 계산)은 성공해야 한다")
+	assert.Error(t, err, "조커가 7을 대체하면 21점으로 30점 미달 — 실패해야 한다")
+}
+
+// TestValidateTurnConfirm_JokerInFirstMeld_MeetsThirty 조커 포함 최초 등록 — 30점 충족.
+// R10a + JK1 + B10a 그룹에서 조커는 10을 대체하므로 10+10+10 = 30점 → 성공.
+func TestValidateTurnConfirm_JokerInFirstMeld_MeetsThirty(t *testing.T) {
+	req := makeTurnReq(
+		[]*TileSet{},
+		[]*TileSet{makeSet(t, "g1", []string{"R10a", "JK1", "B10a"})},
+		[]string{"R10a", "JK1", "B10a"},
+		[]string{},
+		false,
+	)
+	err := ValidateTurnConfirm(req)
+	assert.NoError(t, err, "조커가 10을 대체하면 30점으로 최초 등록 충족 — 성공해야 한다")
+}
+
+// TestValidateTurnConfirm_JokerRunInFirstMeld 조커 포함 런 최초 등록 — 조커 위치 값으로 계산.
+// R8a + JK1 + R10a 런에서 조커는 9를 대체하므로 8+9+10 = 27점 < 30점 → 실패.
+func TestValidateTurnConfirm_JokerRunInFirstMeld_BelowThirty(t *testing.T) {
+	req := makeTurnReq(
+		[]*TileSet{},
+		[]*TileSet{makeSet(t, "r1", []string{"R8a", "JK1", "R10a"})},
+		[]string{"R8a", "JK1", "R10a"},
+		[]string{},
+		false,
+	)
+	err := ValidateTurnConfirm(req)
+	assert.Error(t, err, "조커가 9를 대체하는 런은 27점으로 30점 미달 — 실패해야 한다")
+}
+
+// TestValidateTurnConfirm_JokerRunInFirstMeld_MeetsThirty 조커 포함 런 최초 등록 — 30점 충족.
+// R11a + JK1 + R13a 런에서 조커는 12를 대체하므로 11+12+13 = 36점 ≥ 30점 → 성공.
+func TestValidateTurnConfirm_JokerRunInFirstMeld_MeetsThirty(t *testing.T) {
+	req := makeTurnReq(
+		[]*TileSet{},
+		[]*TileSet{makeSet(t, "r1", []string{"R11a", "JK1", "R13a"})},
+		[]string{"R11a", "JK1", "R13a"},
+		[]string{},
+		false,
+	)
+	err := ValidateTurnConfirm(req)
+	assert.NoError(t, err, "조커가 12를 대체하는 런은 36점으로 최초 등록 충족 — 성공해야 한다")
 }
 
 // TestValidateTurnConfirm_TableTileCountPreserved 턴 전후 테이블 타일 총 수가 증가해야 한다 (V-07 타일 보존).

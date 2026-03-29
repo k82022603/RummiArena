@@ -16,9 +16,9 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 | Phase | 이름 | Sprint | 핵심 산출물 | 상태 |
 |-------|------|--------|-------------|------|
 | 1 | 기획 & 환경 구축 | Sprint 0 | 기획/설계 문서, K8s/ArgoCD/Traefik 환경 | **완료** |
-| 2 | 핵심 게임 개발 (MVP) | Sprint 1~3 | Game Engine (Go), Backend API, Frontend 기본 | **진행 중** |
-| 3 | AI 연동 & 멀티플레이 | Sprint 4~5 | AI Adapter (NestJS), 실시간 대전, 1인 연습 모드 | 미착수 |
-| 4 | 플랫폼 기능 확장 | Sprint 6 | 관리자 대시보드, 카카오톡 알림, ELO, 게임 복기 | 미착수 |
+| 2 | 핵심 게임 개발 (MVP) | Sprint 1~3 | Game Engine (Go), Backend API, Frontend 기본 | **완료** (2026-03-23) |
+| 3 | AI 연동 & 멀티플레이 | Sprint 4~5 | AI Adapter (NestJS), 실시간 대전, 1인 연습 모드 | **진행 중** (Sprint 4) |
+| 4 | 플랫폼 기능 확장 | Sprint 6 | 관리자 대시보드, 카카오톡 알림, ELO, 게임 복기 | 일부 선행 완료 (ELO, 관리자) |
 | 5 | DevSecOps 고도화 | Sprint 7~9 | Observability, 보안 고도화, Istio Service Mesh | 미착수 |
 | 6 | 운영 & 실험 | (Phase 6) | AI 토너먼트, 모델 비교 분석, OpenShift 검토 | 미착수 |
 
@@ -289,41 +289,39 @@ docs/
 
 **Phase 2 완료 + Phase 3 (Sprint 4) 진행 중** — Sprint 1~3 완료 (2026-03-23)
 
-Sprint 1~3 (2026-03-13 ~ 2026-03-23):
+### 완료된 스프린트
+
 - **Sprint 1** 28/28 SP: Game Engine, REST API, WebSocket, K8s 5개 서비스 배포
 - **Sprint 2** 50/50 SP: AI 캐릭터, Turn Orchestrator, ELO, 관리자 대시보드, 연습 모드
 - **Sprint 3** 30/30 SP: OAuth K8s 패치, WS 재연결, gemma3 최적화, Redis Timer/Session
-- 통합 테스트 30개 (96.7% PASS)
 
-Sprint 4 진행 중 (2026-03-23 조기 착수 — 당일 대부분 완료):
-- **BUG-S4-001 수정**: AI 플레이어 UserID `""` → `ai-{uuid}`, E2E 5/5 PASS
-- **ISSUE-002 해결**: gemma3:4b → 1b (300s → 4s, 70배 개선)
-- **ISSUE-003 해결**: endType "STALEMATE" 구분 (IsStalemate 필드)
-- **ISS-001 FIXED**: ai-adapter 400 에러 — persona 소문자 변환 + normalizeDifficulty (23/23 PASS)
-- **ISS-002 FIXED**: AI userID `ai-` 접두사 제거 → PostgreSQL UUID 타입 정상 INSERT
-- **ISS-003 FIXED**: Ollama K8s Pod 배포 (helm/charts/ollama, gemma3:1b PVC 영속)
-- **ISSUE-004 FIXED**: WS GAME_OVER 절단 — WriteTimeout=0, WriteBuffer=8K, data race 제거
-- **WS 연결 수정**: NEXT_PUBLIC_WS_URL 번들 베이킹 + NextAuth 리라이트 충돌 해소
-- **연습 모드 수정**: Stage 1/2 클리어 타입 버그 + 드롭 UX 개선
-- **admin API 실 구현**: 7개 엔드포인트 (admin_handler/service/repository)
-- **OpenAI GPT-4o 검증**: gpt-4o-mini 기본값, Helm secretRef, 17/17 PASS
-- **Playwright E2E**: practice.spec.ts 12개 시나리오 추가
-- **모든 이슈 해소**: ISS-001 ~ ISS-004 전부 FIXED
-- **BUG-P-004 FIXED**: PracticeBoard stale closure 수정 + K8s 재빌드 (2026-03-29)
-- **Playwright E2E 44/44 PASS**: practice.spec.ts helpers.ts 통일 + 전체 완료 (2026-03-29)
-- **UAT 가이드 보완**: 15-user-acceptance-test-guide.md Stage 조건 수정 + 소요시간 추가 (2026-03-29)
-- **Google OAuth 구조적 복구**: inject-secrets.sh 자동화 + ArgoCD ignoreDifferences (2026-03-29)
-- **BUG-G-001 FIXED**: GameClient handleDragEnd 그룹 병합 3단계 분기 + forceNewGroup (2026-03-29)
-- **빌드 경고 0개**: Tile.tsx aria 수정 + StageSelector aria-disabled → data-disabled (2026-03-29)
-- **WS 통합 테스트 신규**: ws-multiplayer-game-test.go 16/16 PASS (TC-GM-001~050) (2026-03-29)
-- **테스트 문서 신규**: 16-multiplayer-game-test-scenarios.md (2026-03-29)
-- **Google OAuth 4차 구조적 해결**: values.yaml GOOGLE_CLIENT_ID 키 완전 제거 (ArgoCD managed field 충돌 근본 차단) (2026-03-29)
-- **BUG-GR-001 FIXED**: run.go runScore() 조커 위치 계산 오류 수정 (2026-03-29)
-- **BUG-UI-001 FIXED**: Human 다중 그룹 동시 배치 불가 (GameClient.tsx + PracticeBoard.tsx 런 4개 제한 제거) (2026-03-29)
-- **BUG-UI-002 FIXED**: trophy 이모지 [trophy] 텍스트 표시 수정 (2026-03-29)
-- **BUG-UI-003 FIXED**: 게임 종료 플레이어 이름 빈칸 (DisplayName 필드 추가) (2026-03-29)
-- **Go 유닛 338/338 PASS**: game_rules_comprehensive_test.go 271개 신규 + 기존 67개 (커버리지 95.3%) (2026-03-29)
-- **Playwright E2E 131/131 PASS**: 87개 신규 (game-rules, game-ui-multiplayer, game-ui-practice-rules, game-ui-state, game-ui-bug-fixes) (2026-03-29)
-- **테스트 보고서 신규**: 17-game-rules-test-report.md + 18-e2e-test-full-report.md (2026-03-29)
+### Sprint 4 진행 중 (2026-03-23 조기 착수)
 
-다음 단계: LLM 실측 데이터 수집 + Human 1 + AI 3 E2E 완전 테스트
+**완료된 작업**:
+- ISS-001~004 전부 FIXED (ai-adapter 400, AI userID, Ollama K8s, WS GAME_OVER)
+- BUG-S4-001, BUG-P-004, BUG-G-001, BUG-GR-001, BUG-UI-001~003 전부 FIXED
+- Go 유닛 338/338 PASS (95.3% 커버리지) + Playwright E2E 131/131 PASS
+- WS 통합 테스트 16/16 PASS + admin API 7개 엔드포인트 실 구현
+- Google OAuth K8s 구조적 해결 + 빌드 경고 0개
+
+**미완료 (Sprint 4 잔여)**:
+- [ ] LLM 3종 실 API 검증 (OpenAI, Claude, DeepSeek)
+- [ ] Human 1 + AI 3 혼합 게임 GAME_OVER 완주 E2E
+- [ ] 비용 추적 Redis 연동
+- [ ] AI 호출 로그/메트릭 수집
+
+### All-Hands 종합 리뷰 결과 (2026-03-30)
+
+10개 전문 에이전트 병렬 리뷰 수행. 전체 등급 **B+**.
+
+| 카테고리 | 건수 | 핵심 |
+|----------|------|------|
+| CRITICAL | 8건 | Admin 무인증, 시크릿 Git 노출, Pod securityContext, id_token 미검증, Redis 무영속 |
+| WARN | 55건 | 보안 11, 아키텍처 7, 코드 20, 인프라 8, QA 6, PM 7, UX 7 |
+| OK | 53건 | Engine 95.3% 커버리지, LLM 3중 검증, GitOps, 계층 분리, 타일 디자인 |
+
+- WBS 대비 **약 7주 선행** (안전 마진 충분)
+- 상세: `docs/04-testing/19-all-hands-project-review-2026-03-30.md`
+- 백로그: `docs/01-planning/13-backlog-2026-03-30.md` (78건, 231 SP)
+
+다음 단계: P0 보안 긴급 조치 + LLM 실측 데이터 수집 + Human 1 + AI 3 E2E

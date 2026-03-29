@@ -251,10 +251,8 @@ export default function WaitingRoomClient({
     router.push("/lobby");
   };
 
-  // 내가 호스트인지 확인
-  const isHost =
-    room?.hostUserId === session?.user?.id ||
-    mySeat === 0;
+  // 내가 호스트인지 확인 (hostUserId 비교만 사용. mySeat 초기값 0에 의한 오판 방지)
+  const isHost = room?.hostUserId === session?.user?.id;
 
   // 최소 2명 충족 여부
   const canStart = (room?.playerCount ?? 0) >= 2;

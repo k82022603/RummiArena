@@ -36,7 +36,9 @@ export class PromptBuilderService {
         request.difficulty as DifficultyLevel,
         request.psychologyLevel as PsychWarfareLevel,
       );
-      systemPrompt = result.systemPrompt;
+      systemPrompt = result.psychWarfarePrompt
+        ? `${result.systemPrompt}\n\n${result.psychWarfarePrompt}`
+        : result.systemPrompt;
     } else {
       // CharacterService 없으면 구 템플릿 사용 (fallback)
       systemPrompt = legacyBuildSystemPrompt(
