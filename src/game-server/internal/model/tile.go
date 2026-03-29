@@ -53,6 +53,7 @@ type GameStateRedis struct {
 type PlayerState struct {
 	SeatOrder      int      `json:"seatOrder"`
 	UserID         string   `json:"userId,omitempty"`
+	DisplayName    string   `json:"displayName,omitempty"`
 	PlayerType     string   `json:"playerType"`
 	HasInitialMeld bool     `json:"hasInitialMeld"`
 	Rack           []string `json:"rack"`

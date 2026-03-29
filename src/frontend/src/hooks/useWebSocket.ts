@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import { useWSStore } from "@/store/wsStore";
 import { useGameStore } from "@/store/gameStore";
 import { getGameToken } from "@/lib/authToken";
+import type { Player } from "@/types/game";
 import type {
   WSEnvelope,
   C2SMessageType,
@@ -95,15 +96,30 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
           });
           setMyTiles(payload.myRack);
           setPlayers(
-            payload.players.map((p) => ({
-              seat: p.seat,
-              type: p.playerType as "HUMAN",
-              userId: p.userId ?? "",
-              displayName: p.displayName,
-              status: p.isConnected ? ("CONNECTED" as const) : ("DISCONNECTED" as const),
-              tileCount: p.tileCount,
-              hasInitialMeld: p.hasInitialMeld,
-            }))
+            payload.players.map((p): Player => {
+              const base = {
+                seat: p.seat,
+                tileCount: p.tileCount,
+                hasInitialMeld: p.hasInitialMeld,
+              };
+              if (p.playerType === "HUMAN") {
+                return {
+                  ...base,
+                  type: "HUMAN" as const,
+                  userId: p.userId ?? "",
+                  displayName: p.displayName ?? "",
+                  status: p.isConnected ? ("CONNECTED" as const) : ("DISCONNECTED" as const),
+                };
+              }
+              // AI 플레이어: displayName을 사용하되 타입에 맞는 기본값 설정
+              return {
+                ...base,
+                type: p.playerType as Player["type"],
+                userId: p.userId ?? "",
+                displayName: p.displayName ?? "",
+                status: p.isConnected ? ("CONNECTED" as const) : ("DISCONNECTED" as const),
+              } as Player;
+            })
           );
           break;
         }

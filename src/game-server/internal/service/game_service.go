@@ -73,6 +73,7 @@ type GameStateView struct {
 type PlayerView struct {
 	Seat           int    `json:"seat"`
 	UserID         string `json:"userId,omitempty"`
+	DisplayName    string `json:"displayName,omitempty"`
 	PlayerType     string `json:"playerType"`
 	TileCount      int    `json:"tileCount"`
 	HasInitialMeld bool   `json:"hasInitialMeld"`
@@ -127,6 +128,7 @@ func (s *gameService) newGame(
 		playerStates[i] = model.PlayerState{
 			SeatOrder:      p.Seat,
 			UserID:         p.UserID,
+			DisplayName:    p.DisplayName,
 			PlayerType:     p.Type,
 			HasInitialMeld: false,
 			Rack:           rack,
@@ -187,6 +189,7 @@ func (s *gameService) GetGameState(gameID string, requestingSeat int) (*GameStat
 		playerViews[i] = PlayerView{
 			Seat:           p.SeatOrder,
 			UserID:         p.UserID,
+			DisplayName:    p.DisplayName,
 			PlayerType:     p.PlayerType,
 			TileCount:      len(p.Rack),
 			HasInitialMeld: p.HasInitialMeld,

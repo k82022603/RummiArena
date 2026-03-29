@@ -599,6 +599,7 @@ func (h *WSHandler) sendGameState(conn *Connection) {
 		players[i] = WSPlayerInfo{
 			Seat:           p.Seat,
 			UserID:         p.UserID,
+			DisplayName:    p.DisplayName,
 			PlayerType:     p.PlayerType,
 			TileCount:      p.TileCount,
 			HasInitialMeld: p.HasInitialMeld,

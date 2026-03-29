@@ -13,6 +13,7 @@ import {
 } from "@dnd-kit/core";
 import { motion, AnimatePresence } from "framer-motion";
 import type { TileCode, TableGroup } from "@/types/tile";
+import { parseTileCode } from "@/types/tile";
 import GameBoard from "@/components/game/GameBoard";
 import PlayerRack from "@/components/game/PlayerRack";
 import Tile from "@/components/tile/Tile";
@@ -164,9 +165,47 @@ const PracticeBoard = memo(function PracticeBoard({
         });
       } else if (over.id === "game-board") {
         // 랙 → 보드 빈 공간
-        // 기존 그룹이 있고 새 그룹 강제 생성 플래그가 없으면 마지막 그룹에 추가
-        if (tableGroups.length > 0 && !forceNewGroup) {
-          const lastGroup = tableGroups[tableGroups.length - 1];
+        const lastGroup = tableGroups.length > 0 ? tableGroups[tableGroups.length - 1] : null;
+
+        // BUG-UI-001 수정: 자동 새 그룹 생성 조건 판단
+        const shouldCreateNewGroup = (() => {
+          if (forceNewGroup) return true;
+          if (!lastGroup) return false;
+
+          // 새 타일의 정보를 파싱
+          const newTile = parseTileCode(tileCode);
+          const existingTiles = lastGroup.tiles
+            .filter((t) => t !== "JK1" && t !== "JK2")
+            .map((t) => parseTileCode(t));
+
+          if (existingTiles.length === 0 || newTile.isJoker) return false;
+
+          // 기존 타일들이 같은 숫자(그룹 후보)인지 확인
+          const existingNumbers = new Set(existingTiles.map((t) => t.number));
+          const isGroupCandidate = existingNumbers.size === 1;
+
+          // 기존 타일들이 같은 색상(런 후보)인지 확인
+          const existingColors = new Set(existingTiles.map((t) => t.color));
+          const isRunCandidate = existingColors.size === 1;
+
+          if (isGroupCandidate && !isRunCandidate) {
+            // 그룹 후보: 새 타일 숫자가 다르면 새 그룹 생성
+            const groupNumber = existingTiles[0].number;
+            if (newTile.number !== groupNumber) return true;
+            // 그룹은 최대 4개 (4색): 이미 4개면 새 그룹
+            if (lastGroup.tiles.length >= 4) return true;
+          }
+
+          if (isRunCandidate && !isGroupCandidate) {
+            // 런 후보: 새 타일 색상이 다르면 새 그룹 생성 (런은 13개까지 허용)
+            const runColor = existingTiles[0].color;
+            if (newTile.color !== runColor) return true;
+          }
+
+          return false;
+        })();
+
+        if (lastGroup && !shouldCreateNewGroup) {
           setTableGroups((prev) =>
             prev.map((g) =>
               g.id === lastGroup.id
@@ -184,7 +223,7 @@ const PracticeBoard = memo(function PracticeBoard({
             type: goal === "group" ? "group" : "run",
           };
           setTableGroups((prev) => [...prev, newGroup]);
-          setForceNewGroup(false);
+          if (forceNewGroup) setForceNewGroup(false);
         }
         setHand((prev) => {
           const idx = prev.indexOf(tileCode);
@@ -307,10 +346,13 @@ const PracticeBoard = memo(function PracticeBoard({
 
         {/* 새 그룹 만들기 버튼 (그룹이 이미 있을 때만 표시) */}
         {tableGroups.length > 0 && (
-          <div className="flex justify-end flex-shrink-0">
+          <div className="flex items-center justify-between flex-shrink-0">
+            <span className="text-[10px] text-text-secondary/60">
+              숫자/색상이 다른 타일은 자동으로 새 그룹이 됩니다
+            </span>
             <button
               type="button"
-              onClick={() => setForceNewGroup(true)}
+              onClick={() => setForceNewGroup(!forceNewGroup)}
               className={[
                 "px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors",
                 forceNewGroup
@@ -320,7 +362,7 @@ const PracticeBoard = memo(function PracticeBoard({
               aria-label="다음 드롭 시 새 그룹 생성"
               title="다음 타일 드롭 시 새 그룹을 만듭니다"
             >
-              {forceNewGroup ? "▶ 새 그룹 (활성)" : "+ 새 그룹"}
+              {forceNewGroup ? "[ 새 그룹 모드 ON ]" : "+ 새 그룹"}
             </button>
           </div>
         )}

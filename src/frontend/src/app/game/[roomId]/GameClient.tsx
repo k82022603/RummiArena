@@ -27,6 +27,7 @@ import ReconnectToast from "@/components/game/ReconnectToast";
 import Tile from "@/components/tile/Tile";
 
 import type { TileCode, TableGroup } from "@/types/tile";
+import { parseTileCode } from "@/types/tile";
 import type { GameOverPayload } from "@/types/websocket";
 import type { Player } from "@/types/game";
 
@@ -107,8 +108,13 @@ const AI_PERSONA_DISPLAY: Record<string, string> = {
 
 function getPlayerDisplayName(player: Player | null | undefined, fallback: string): string {
   if (!player) return fallback;
-  if (player.type === "HUMAN") return player.displayName || fallback;
-  // AI player: "GPT (샤크)" 형식
+  // HUMAN 플레이어: displayName 사용 (BUG-UI-003 수정: 서버에서 displayName 전달)
+  if (player.type === "HUMAN") {
+    return ("displayName" in player && player.displayName) || fallback;
+  }
+  // AI player: displayName이 있으면 우선 사용, 없으면 "GPT (샤크)" 형식 생성
+  const serverDisplayName = "displayName" in player ? (player as { displayName?: string }).displayName : "";
+  if (serverDisplayName) return serverDisplayName;
   const aiLabel = AI_TYPE_DISPLAY[player.type] ?? player.type;
   const persona = "persona" in player
     ? AI_PERSONA_DISPLAY[(player as { persona: string }).persona] ?? ""
@@ -338,7 +344,48 @@ export default function GameClient({ roomId }: GameClientProps) {
         );
         const lastPendingGroup = pendingOnlyGroups?.at(-1);
 
-        if (lastPendingGroup && !forceNewGroup) {
+        // BUG-UI-001 수정: 자동 새 그룹 생성 조건 판단
+        // 1) forceNewGroup이 활성화된 경우
+        // 2) 마지막 pending 그룹이 4개 이상인 경우 (5개 이상은 그룹으로 불가능)
+        // 3) 마지막 pending 그룹에 추가 시 숫자/색상 불일치로 무효해지는 경우
+        const shouldCreateNewGroup = (() => {
+          if (forceNewGroup) return true;
+          if (!lastPendingGroup) return false;
+
+          // 새 타일의 정보를 파싱
+          const newTile = parseTileCode(tileCode);
+          const existingTiles = lastPendingGroup.tiles
+            .filter((t) => t !== "JK1" && t !== "JK2")
+            .map((t) => parseTileCode(t));
+
+          if (existingTiles.length === 0 || newTile.isJoker) return false;
+
+          // 기존 타일들이 같은 숫자(그룹 후보)인지 확인
+          const existingNumbers = new Set(existingTiles.map((t) => t.number));
+          const isGroupCandidate = existingNumbers.size === 1;
+
+          // 기존 타일들이 같은 색상(런 후보)인지 확인
+          const existingColors = new Set(existingTiles.map((t) => t.color));
+          const isRunCandidate = existingColors.size === 1;
+
+          if (isGroupCandidate && !isRunCandidate) {
+            // 그룹 후보: 새 타일 숫자가 다르면 새 그룹 생성
+            const groupNumber = existingTiles[0].number;
+            if (newTile.number !== groupNumber) return true;
+            // 그룹은 최대 4개 (4색): 이미 4개면 새 그룹
+            if (lastPendingGroup.tiles.length >= 4) return true;
+          }
+
+          if (isRunCandidate && !isGroupCandidate) {
+            // 런 후보: 새 타일 색상이 다르면 새 그룹 생성 (런은 13개까지 허용)
+            const runColor = existingTiles[0].color;
+            if (newTile.color !== runColor) return true;
+          }
+
+          return false;
+        })();
+
+        if (lastPendingGroup && !shouldCreateNewGroup) {
           // 마지막 pending 그룹에 타일 추가
           const nextTableGroups = currentTableGroups.map((g) =>
             g.id === lastPendingGroup.id
@@ -362,7 +409,8 @@ export default function GameClient({ roomId }: GameClientProps) {
           setPendingMyTiles(nextMyTiles);
           // 새로 생성된 그룹을 프리뷰 ID 세트에 등록
           addPendingGroupId(newGroupId);
-          setForceNewGroup(false);
+          // forceNewGroup은 false로 리셋하지 않음 - 사용자가 수동 토글하도록 유지
+          if (forceNewGroup) setForceNewGroup(false);
         }
       } else if (over.id === "player-rack") {
         // 보드 → 랙: pending 그룹에 실제로 있는 타일만 회수
@@ -596,21 +644,24 @@ export default function GameClient({ roomId }: GameClientProps) {
             />
 
             {/* 새 그룹 버튼: pending 그룹이 있을 때만 표시 */}
-            {pendingTableGroups && (
-              <div className="flex justify-end flex-shrink-0">
+            {pendingTableGroups && isMyTurn && (
+              <div className="flex items-center justify-between flex-shrink-0">
+                <span className="text-tile-xs text-text-secondary/60">
+                  숫자/색상이 다른 타일은 자동으로 새 그룹이 됩니다
+                </span>
                 <button
                   type="button"
-                  onClick={() => setForceNewGroup(true)}
+                  onClick={() => setForceNewGroup(!forceNewGroup)}
                   className={[
-                    "px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors",
+                    "px-4 py-2 rounded-lg text-sm font-semibold border-2 transition-all",
                     forceNewGroup
-                      ? "border-warning text-warning bg-warning/10"
-                      : "border-border text-text-secondary hover:border-board-border hover:text-text-primary",
+                      ? "border-warning text-warning bg-warning/15 shadow-[0_0_8px_rgba(234,179,8,0.3)]"
+                      : "border-green-500/50 text-green-400 bg-green-500/10 hover:border-green-400 hover:bg-green-500/20",
                   ].join(" ")}
                   aria-label="다음 드롭 시 새 그룹 생성"
                   title="다음 타일 드롭 시 새 그룹을 만듭니다"
                 >
-                  {forceNewGroup ? "▶ 새 그룹 (활성)" : "+ 새 그룹"}
+                  {forceNewGroup ? "[ 새 그룹 모드 ON ]" : "+ 새 그룹"}
                 </button>
               </div>
             )}
