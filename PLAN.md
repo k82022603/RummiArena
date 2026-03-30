@@ -300,15 +300,20 @@ docs/
 **완료된 작업**:
 - ISS-001~004 전부 FIXED (ai-adapter 400, AI userID, Ollama K8s, WS GAME_OVER)
 - BUG-S4-001, BUG-P-004, BUG-G-001, BUG-GR-001, BUG-UI-001~003 전부 FIXED
-- Go 유닛 338/338 PASS (95.3% 커버리지) + Playwright E2E 131/131 PASS
+- Go 유닛 346개 (329 PASS + 17 SKIP, 95.6%) + Playwright E2E 153개 + AI Adapter 318개
 - WS 통합 테스트 16/16 PASS + admin API 7개 엔드포인트 실 구현
 - Google OAuth K8s 구조적 해결 + 빌드 경고 0개
+- 설계 4건 구현 완료 (퇴장/기권 7SP, 중복방 3SP, 교착 5SP, beforeunload 2SP = 17SP)
+- LLM 비용/메트릭 추적 구현 (CostTrackingService + MetricsService + API 5개 = 12SP)
+- 보안 P0 5건 중 4건 완료 (git-filter-repo, securityContext, inject-secrets.sh)
+- [x] 비용 추적 Redis 연동 (BL-S4-005 완료)
+- [x] AI 호출 로그/메트릭 수집 (BL-S4-006 완료)
+- 사용자 플레이테스트 10건 버그 전량 수정+배포 (BUG-AI-001 CRITICAL 포함)
 
 **미완료 (Sprint 4 잔여)**:
 - [ ] LLM 3종 실 API 검증 (OpenAI, Claude, DeepSeek)
 - [ ] Human 1 + AI 3 혼합 게임 GAME_OVER 완주 E2E
-- [ ] 비용 추적 Redis 연동
-- [ ] AI 호출 로그/메트릭 수집
+- [ ] AI 대전 재테스트 (BUG-AI-001 수정 효과 검증)
 
 ### All-Hands 종합 리뷰 결과 (2026-03-30)
 
@@ -318,10 +323,13 @@ docs/
 |----------|------|------|
 | CRITICAL | 8건 | Admin 무인증, 시크릿 Git 노출, Pod securityContext, id_token 미검증, Redis 무영속 |
 | WARN | 55건 | 보안 11, 아키텍처 7, 코드 20, 인프라 8, QA 6, PM 7, UX 7 |
-| OK | 53건 | Engine 95.3% 커버리지, LLM 3중 검증, GitOps, 계층 분리, 타일 디자인 |
+| OK | 53건 | Engine 95.6% 커버리지, LLM 3중 검증, GitOps, 계층 분리, 타일 디자인 |
 
-- WBS 대비 **약 7주 선행** (안전 마진 충분)
-- 상세: `docs/04-testing/19-all-hands-project-review-2026-03-30.md`
-- 백로그: `docs/01-planning/13-backlog-2026-03-30.md` (78건, 231 SP)
+### 사용자 플레이테스트 (2026-03-30 오후)
 
-다음 단계: P0 보안 긴급 조치 + LLM 실측 데이터 수집 + Human 1 + AI 3 E2E
+최초 수동 테스트 — 25장 스크린샷, 10건 버그 발견 및 전량 수정.
+- **BUG-AI-001 (CRITICAL)**: AI Adapter `@ArrayMaxSize(14)` → AI 15장 이상 시 무한 드로우
+- **BUG-WS-001 (CRITICAL)**: WS ping/pong heartbeat 미구현 → 끊김 반복
+- 상세: `docs/04-testing/23-user-playtest-bug-report-2026-03-30.md`
+
+다음 단계: AI 대전 재테스트 + LLM 3종 실 API 검증 + Human 1 + AI 3 E2E
