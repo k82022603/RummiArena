@@ -144,7 +144,7 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 - [x] Ollama Adapter 구현 — OllamaAdapter + gemma3:1b K8s Pod 영속 (2026-03-23 K8s 이전)
 - [x] 프롬프트 설계 (전략별/캐릭터별/심리전 레벨별) — persona.templates.ts 6캐릭터 × 3난이도 × 4레벨 (2026-03-21)
 - [x] 재시도 + Fallback 로직 — 최대 3회 재시도, fallback DRAW (Sprint 1)
-- [ ] AI 호출 로그/메트릭 수집
+- [x] AI 호출 로그/메트릭 수집 — CostTrackingService + MetricsService + API 5개 (2026-03-30)
 - [x] Dockerfile + Helm Chart — ai-adapter, secretRef 추가 (2026-03-23)
 - [x] ISS-002 FIXED: AI userID `ai-` 접두사 제거 → PostgreSQL UUID 타입 정상 (2026-03-23)
 - [x] admin API 실 구현 — 7개 엔드포인트, admin_handler/service/repository (2026-03-23)
