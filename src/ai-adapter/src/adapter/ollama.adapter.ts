@@ -102,8 +102,8 @@ export class OllamaAdapter extends BaseAdapter {
         stream: false,
         options: {
           temperature: Math.min(temperature, 0.7),
-          num_predict: 256,
-          stop: ['\n\n', '```'],
+          num_predict: 512,
+          stop: ['```'],
         },
       },
       {

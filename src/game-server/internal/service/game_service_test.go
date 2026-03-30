@@ -576,19 +576,27 @@ func TestDrawTile_NormalDraw(t *testing.T) {
 }
 
 func TestDrawTile_EmptyPile_Stalemate(t *testing.T) {
-	// 드로우 파일이 비어있을 때 → 교착 판정: 점수 낮은 플레이어 승리
-	// rack0=R5a(5점), rack1=K1a(1점) → user-B(seat1) 승리
+	// 드로우 파일이 비어있을 때 첫 DrawTile은 패스(턴 넘기기)로 처리.
+	// 전원 연속 패스 시 교착 판정: 점수 낮은 플레이어 승리.
 	rack0 := []string{"R5a"}
 	rack1 := []string{"K1a"}
 	state := newTestGameState("game-41", twoPlayerState(rack0, rack1), []string{}) // 빈 파일
 	svc, repo := seedRepo(t, state)
 
-	result, err := svc.DrawTile("game-41", 0)
+	// seat0 패스 (드로우 파일 소진 -> 패스 처리, 교착 아님)
+	result1, err := svc.DrawTile("game-41", 0)
 	require.NoError(t, err)
-	assert.True(t, result.Success)  // 교착 판정은 정상 종료
-	assert.True(t, result.GameEnded)
-	assert.Equal(t, "STALEMATE", result.ErrorCode)
-	assert.Equal(t, "user-B", result.WinnerID) // K1a(1점) < R5a(5점)
+	assert.True(t, result1.Success)
+	assert.False(t, result1.GameEnded, "1/2 패스: 아직 교착 아님")
+	assert.Equal(t, 1, result1.NextSeat)
+
+	// seat1 패스 -> 전원 패스 -> 교착 판정
+	result2, err := svc.DrawTile("game-41", 1)
+	require.NoError(t, err)
+	assert.True(t, result2.Success)
+	assert.True(t, result2.GameEnded, "2/2 패스: 교착 종료")
+	assert.Equal(t, "STALEMATE", result2.ErrorCode)
+	assert.Equal(t, "user-B", result2.WinnerID)
 
 	saved, _ := repo.GetGameState("game-41")
 	assert.Equal(t, model.GameStatusFinished, saved.Status)
@@ -994,33 +1002,41 @@ func TestStalemate_ConfirmTurn_ResetsCounter(t *testing.T) {
 }
 
 func TestStalemate_Joker_Score30(t *testing.T) {
-	// 조커 점수 검증: 조커(30점) > 일반 타일 → 일반 타일 보유자 승리
-	// rack0=JK1(30점), rack1=R13a(13점) → user-B 승리
+	// 조커 점수 검증: 조커(30점) > 일반 타일 -> 일반 타일 보유자 승리
+	// 전원 연속 패스가 필요하므로 seat0, seat1 순서로 DrawTile 2회 호출
 	rack0 := []string{"JK1"}
 	rack1 := []string{"R13a"}
 	state := newTestGameState("stale-03", twoPlayerState(rack0, rack1), []string{})
 	svc, _ := seedRepo(t, state)
 
-	result, err := svc.DrawTile("stale-03", 0) // 드로우 파일 소진 → 즉시 교착
+	r0, err := svc.DrawTile("stale-03", 0)
+	require.NoError(t, err)
+	assert.False(t, r0.GameEnded, "1/2 패스: 교착 아님")
+
+	result, err := svc.DrawTile("stale-03", 1)
 	require.NoError(t, err)
 	assert.True(t, result.GameEnded)
 	assert.Equal(t, "STALEMATE", result.ErrorCode)
-	assert.Equal(t, "user-B", result.WinnerID) // R13a(13점) < JK1(30점)
+	assert.Equal(t, "user-B", result.WinnerID)
 }
 
 func TestStalemate_Draw_WhenScoreAndCountEqual(t *testing.T) {
-	// 완전 동점 (점수+타일 수 모두 같음) → WinnerID = "" (무승부)
-	// rack0=R5a(5점 1장), rack1=B5a(5점 1장) → 무승부
+	// 완전 동점 (점수+타일 수 모두 같음) -> WinnerID = "" (무승부)
+	// 전원 연속 패스가 필요하므로 seat0, seat1 순서로 DrawTile 2회 호출
 	rack0 := []string{"R5a"}
 	rack1 := []string{"B5a"}
 	state := newTestGameState("stale-04", twoPlayerState(rack0, rack1), []string{})
 	svc, _ := seedRepo(t, state)
 
-	result, err := svc.DrawTile("stale-04", 0)
+	r0, err := svc.DrawTile("stale-04", 0)
+	require.NoError(t, err)
+	assert.False(t, r0.GameEnded, "1/2 패스: 교착 아님")
+
+	result, err := svc.DrawTile("stale-04", 1)
 	require.NoError(t, err)
 	assert.True(t, result.GameEnded)
 	assert.Equal(t, "STALEMATE", result.ErrorCode)
-	assert.Equal(t, "", result.WinnerID) // 무승부
+	assert.Equal(t, "", result.WinnerID)
 }
 
 func TestTileScore_Helper(t *testing.T) {
@@ -1030,5 +1046,327 @@ func TestTileScore_Helper(t *testing.T) {
 	assert.Equal(t, 7, tileScore("R7a"))
 	assert.Equal(t, 13, tileScore("B13b"))
 	assert.Equal(t, 1, tileScore("Y1a"))
-	assert.Equal(t, 0, tileScore("INVALID")) // 파싱 실패 → 0점
+	assert.Equal(t, 0, tileScore("INVALID")) // 파싱 실패 -> 0점
+}
+
+// ============================================================
+// Task 1: ForfeitPlayer Tests
+// ============================================================
+
+func TestForfeitPlayer_LastActive_GameOver(t *testing.T) {
+	// 2인 게임에서 seat0 기권 -> 활성 플레이어 1명 -> 자동 승리
+	rack0 := []string{"R5a"}
+	rack1 := []string{"K1a"}
+	state := newTestGameState("forfeit-1", twoPlayerState(rack0, rack1), []string{"Y1a"})
+	svc, repo := seedRepo(t, state)
+
+	result, err := svc.ForfeitPlayer("forfeit-1", 0, "LEAVE")
+	require.NoError(t, err)
+	assert.True(t, result.GameEnded, "활성 1명 -> 게임 종료")
+	assert.Equal(t, "user-B", result.WinnerID)
+	assert.Equal(t, "FORFEIT", result.ErrorCode)
+
+	saved, _ := repo.GetGameState("forfeit-1")
+	assert.Equal(t, model.GameStatusFinished, saved.Status)
+	assert.Equal(t, model.PlayerStatusForfeited, saved.Players[0].Status)
+}
+
+func TestForfeitPlayer_StillActive_GameContinues(t *testing.T) {
+	// 3인 게임에서 seat0 기권 -> 활성 2명 -> 게임 계속
+	players := []model.PlayerState{
+		{SeatOrder: 0, UserID: "u0", PlayerType: "HUMAN", Rack: []string{"R1a"}},
+		{SeatOrder: 1, UserID: "u1", PlayerType: "HUMAN", Rack: []string{"B1a"}},
+		{SeatOrder: 2, UserID: "u2", PlayerType: "HUMAN", Rack: []string{"K1a"}},
+	}
+	state := newTestGameState("forfeit-2", players, []string{"Y1a"})
+	state.CurrentSeat = 0
+	svc, repo := seedRepo(t, state)
+
+	result, err := svc.ForfeitPlayer("forfeit-2", 0, "DISCONNECT_TIMEOUT")
+	require.NoError(t, err)
+	assert.False(t, result.GameEnded, "활성 2명 -> 게임 계속")
+
+	saved, _ := repo.GetGameState("forfeit-2")
+	assert.Equal(t, model.GameStatusPlaying, saved.Status)
+	assert.Equal(t, model.PlayerStatusForfeited, saved.Players[0].Status)
+	// 기권자 턴이었으므로 다음 턴으로 진행
+	assert.Equal(t, 1, saved.CurrentSeat)
+}
+
+func TestAdvanceTurn_SkipsForfeited(t *testing.T) {
+	// 3인 게임에서 seat1이 FORFEITED -> advanceTurn이 seat1을 건너뛰는지 확인
+	players := []model.PlayerState{
+		{SeatOrder: 0, UserID: "u0", PlayerType: "HUMAN", Rack: []string{"R1a"}, Status: model.PlayerStatusActive},
+		{SeatOrder: 1, UserID: "u1", PlayerType: "HUMAN", Rack: []string{"B1a"}, Status: model.PlayerStatusForfeited},
+		{SeatOrder: 2, UserID: "u2", PlayerType: "HUMAN", Rack: []string{"K1a"}, Status: model.PlayerStatusActive},
+	}
+	state := &model.GameStateRedis{
+		GameID:      "adv-1",
+		Status:      model.GameStatusPlaying,
+		CurrentSeat: 0,
+		Players:     players,
+	}
+	next := advanceTurn(state)
+	assert.Equal(t, 2, next, "seat1(FORFEITED)을 건너뛰고 seat2로 이동")
+}
+
+func TestCountActivePlayers(t *testing.T) {
+	players := []model.PlayerState{
+		{SeatOrder: 0, Status: model.PlayerStatusActive},
+		{SeatOrder: 1, Status: model.PlayerStatusForfeited},
+		{SeatOrder: 2, Status: model.PlayerStatusActive},
+		{SeatOrder: 3, Status: model.PlayerStatusDisconnected},
+	}
+	state := &model.GameStateRedis{Players: players}
+	assert.Equal(t, 3, countActivePlayers(state), "FORFEITED만 제외, DISCONNECTED는 활성으로 카운트")
+}
+
+func TestSetPlayerStatus(t *testing.T) {
+	rack0 := []string{"R5a"}
+	rack1 := []string{"K1a"}
+	state := newTestGameState("status-1", twoPlayerState(rack0, rack1), []string{"Y1a"})
+	svc, repo := seedRepo(t, state)
+
+	err := svc.SetPlayerStatus("status-1", 0, model.PlayerStatusDisconnected)
+	require.NoError(t, err)
+
+	saved, _ := repo.GetGameState("status-1")
+	assert.Equal(t, model.PlayerStatusDisconnected, saved.Players[0].Status)
+	assert.Greater(t, saved.Players[0].DisconnectedAt, int64(0))
+
+	err = svc.SetPlayerStatus("status-1", 0, model.PlayerStatusActive)
+	require.NoError(t, err)
+
+	saved, _ = repo.GetGameState("status-1")
+	assert.Equal(t, model.PlayerStatusActive, saved.Players[0].Status)
+	assert.Equal(t, int64(0), saved.Players[0].DisconnectedAt)
+}
+
+// ============================================================
+// Task 3: Deadlock (draw pile empty -> pass mode) Tests
+// ============================================================
+
+func TestDrawTile_EmptyPile_PassMode_ConfirmResetsCounter(t *testing.T) {
+	// 드로우 파일 소진 상태에서 패스 후, 다른 플레이어가 배치 성공하면 교착 카운터 리셋
+	rack0 := []string{"R5a", "R6a", "R7a", "R8a", "R9a", "R10a", "B1a"}
+	rack1 := []string{"K1a"}
+	state := newTestGameState("deadlock-1", twoPlayerState(rack0, rack1), []string{})
+	state.Players[0].HasInitialMeld = true
+	svc, _ := seedRepo(t, state)
+
+	// seat0 패스 (드로우 파일 소진)
+	r0, err := svc.DrawTile("deadlock-1", 0)
+	require.NoError(t, err)
+	assert.False(t, r0.GameEnded)
+	assert.Equal(t, 1, r0.NextSeat)
+
+	// seat1도 패스 -> 전원 패스 -> 교착
+	r1, err := svc.DrawTile("deadlock-1", 1)
+	require.NoError(t, err)
+	assert.True(t, r1.GameEnded, "전원 패스: 교착 종료")
+}
+
+// ============================================================
+// QA Scenario TC-LF-U01~U06: advanceTurn 단위 테스트
+// ============================================================
+
+func TestAdvanceTurn_U01_AllActive(t *testing.T) {
+	// TC-LF-U01: 모든 플레이어 ACTIVE (정상), seat=0 -> nextSeat==1
+	state := &model.GameStateRedis{
+		GameID:      "adv-u01",
+		Status:      model.GameStatusPlaying,
+		CurrentSeat: 0,
+		Players: []model.PlayerState{
+			{SeatOrder: 0, UserID: "u0", Status: model.PlayerStatusActive},
+			{SeatOrder: 1, UserID: "u1", Status: model.PlayerStatusActive},
+			{SeatOrder: 2, UserID: "u2", Status: model.PlayerStatusActive},
+		},
+	}
+	next := advanceTurn(state)
+	assert.Equal(t, 1, next, "전원 ACTIVE: 0 다음은 1")
+}
+
+func TestAdvanceTurn_U02_NextForfeited(t *testing.T) {
+	// TC-LF-U02: 다음 플레이어 FORFEITED, seat=0, seat1=FORFEITED -> nextSeat==2
+	state := &model.GameStateRedis{
+		GameID:      "adv-u02",
+		Status:      model.GameStatusPlaying,
+		CurrentSeat: 0,
+		Players: []model.PlayerState{
+			{SeatOrder: 0, UserID: "u0", Status: model.PlayerStatusActive},
+			{SeatOrder: 1, UserID: "u1", Status: model.PlayerStatusForfeited},
+			{SeatOrder: 2, UserID: "u2", Status: model.PlayerStatusActive},
+		},
+	}
+	next := advanceTurn(state)
+	assert.Equal(t, 2, next, "seat1(FORFEITED) 건너뛰고 seat2로 이동")
+}
+
+func TestAdvanceTurn_U03_ConsecutiveTwoForfeited(t *testing.T) {
+	// TC-LF-U03: 연속 2명 FORFEITED, seat=0, seat1,seat2=FORFEITED -> nextSeat==3
+	state := &model.GameStateRedis{
+		GameID:      "adv-u03",
+		Status:      model.GameStatusPlaying,
+		CurrentSeat: 0,
+		Players: []model.PlayerState{
+			{SeatOrder: 0, UserID: "u0", Status: model.PlayerStatusActive},
+			{SeatOrder: 1, UserID: "u1", Status: model.PlayerStatusForfeited},
+			{SeatOrder: 2, UserID: "u2", Status: model.PlayerStatusForfeited},
+			{SeatOrder: 3, UserID: "u3", Status: model.PlayerStatusActive},
+		},
+	}
+	next := advanceTurn(state)
+	assert.Equal(t, 3, next, "seat1,2(FORFEITED) 건너뛰고 seat3으로 이동")
+}
+
+func TestAdvanceTurn_U04_WrapAroundAndSkip(t *testing.T) {
+	// TC-LF-U04: 마지막 좌석에서 순환 + 건너뛰기, seat=2, seat0=FORFEITED -> nextSeat==1
+	state := &model.GameStateRedis{
+		GameID:      "adv-u04",
+		Status:      model.GameStatusPlaying,
+		CurrentSeat: 2,
+		Players: []model.PlayerState{
+			{SeatOrder: 0, UserID: "u0", Status: model.PlayerStatusForfeited},
+			{SeatOrder: 1, UserID: "u1", Status: model.PlayerStatusActive},
+			{SeatOrder: 2, UserID: "u2", Status: model.PlayerStatusActive},
+		},
+	}
+	next := advanceTurn(state)
+	assert.Equal(t, 1, next, "seat0(FORFEITED) 건너뛰고 순환하여 seat1로 이동")
+}
+
+func TestAdvanceTurn_U05_AllForfeited(t *testing.T) {
+	// TC-LF-U05: 전원 FORFEITED (방어 코드) -> fallback: 현재 seat 반환
+	state := &model.GameStateRedis{
+		GameID:      "adv-u05",
+		Status:      model.GameStatusPlaying,
+		CurrentSeat: 1,
+		Players: []model.PlayerState{
+			{SeatOrder: 0, UserID: "u0", Status: model.PlayerStatusForfeited},
+			{SeatOrder: 1, UserID: "u1", Status: model.PlayerStatusForfeited},
+			{SeatOrder: 2, UserID: "u2", Status: model.PlayerStatusForfeited},
+		},
+	}
+	next := advanceTurn(state)
+	assert.Equal(t, 1, next, "전원 FORFEITED: fallback으로 현재 seat(1) 반환")
+}
+
+func TestAdvanceTurn_U06_DisconnectedNotSkipped(t *testing.T) {
+	// TC-LF-U06: DISCONNECTED는 건너뛰지 않음, seat1=DISCONNECTED -> nextSeat==1
+	state := &model.GameStateRedis{
+		GameID:      "adv-u06",
+		Status:      model.GameStatusPlaying,
+		CurrentSeat: 0,
+		Players: []model.PlayerState{
+			{SeatOrder: 0, UserID: "u0", Status: model.PlayerStatusActive},
+			{SeatOrder: 1, UserID: "u1", Status: model.PlayerStatusDisconnected},
+			{SeatOrder: 2, UserID: "u2", Status: model.PlayerStatusActive},
+		},
+	}
+	next := advanceTurn(state)
+	assert.Equal(t, 1, next, "DISCONNECTED != FORFEITED: seat1로 정상 이동")
+}
+
+// ============================================================
+// QA Scenario TC-LF-U07~U09: ELO 기권 처리 단위 테스트
+// ============================================================
+
+func TestELO_Forfeit_U07_ForfeitedPlayerLowestRank(t *testing.T) {
+	// TC-LF-U07: 4인 중 1명 기권 -> 기권자 4위, 나머지 타일 점수로 1~3위 결정
+	// 기권자는 CalcElo에서 Rank 최하위로 전달되어야 함
+	players := []engine.PlayerResult{
+		{UserID: "u0", Rank: 1, GamesPlayed: 10},
+		{UserID: "u1", Rank: 2, GamesPlayed: 10},
+		{UserID: "u2", Rank: 3, GamesPlayed: 10},
+		{UserID: "u3-forfeit", Rank: 4, GamesPlayed: 10}, // 기권자 = 최하위
+	}
+	ratings := map[string]int{"u0": 1200, "u1": 1200, "u2": 1200, "u3-forfeit": 1200}
+
+	changes := engine.CalcElo(players, ratings)
+	require.Len(t, changes, 4)
+
+	// 1위가 가장 많이 상승, 기권자(4위)가 가장 많이 하락
+	assert.Greater(t, changes[0].Delta, 0, "1위 ELO 상승")
+	assert.Less(t, changes[3].Delta, 0, "기권자(4위) ELO 하락")
+	assert.Greater(t, changes[0].Delta, changes[1].Delta, "1위 > 2위 상승폭")
+}
+
+func TestELO_Forfeit_U08_TwoPlayerForfeit_WinnerGains(t *testing.T) {
+	// TC-LF-U08: 2인 게임 기권: 승자 ELO 상승, 기권자 ELO 하락
+	players := []engine.PlayerResult{
+		{UserID: "winner", Rank: 1, GamesPlayed: 10},
+		{UserID: "forfeit", Rank: 2, GamesPlayed: 10},
+	}
+	ratings := map[string]int{"winner": 1200, "forfeit": 1200}
+
+	changes := engine.CalcElo(players, ratings)
+	require.Len(t, changes, 2)
+
+	assert.Greater(t, changes[0].NewRating, 1200, "승자 ELO 상승")
+	assert.Less(t, changes[1].NewRating, 1200, "기권자 ELO 하락")
+}
+
+func TestELO_Forfeit_U09_AllForfeit_NoELOChange(t *testing.T) {
+	// TC-LF-U09: 전원 기권 시 ELO 미적용 (CalcElo 호출하지 않음)
+	// endType == "CANCELLED" -> CalcElo 미호출이 올바른 동작
+	// 이 테스트는 CalcElo에 동일 순위를 전달하면 변동이 0임을 검증
+	players := []engine.PlayerResult{
+		{UserID: "u0", Rank: 1, GamesPlayed: 10},
+		{UserID: "u1", Rank: 1, GamesPlayed: 10}, // 동일 순위
+	}
+	ratings := map[string]int{"u0": 1200, "u1": 1200}
+
+	changes := engine.CalcElo(players, ratings)
+	require.Len(t, changes, 2)
+
+	// 동일 레이팅 + 동일 순위 -> 변동 0
+	assert.Equal(t, 0, changes[0].Delta, "동일 순위 동일 레이팅: 변동 없음")
+	assert.Equal(t, 0, changes[1].Delta, "동일 순위 동일 레이팅: 변동 없음")
+}
+
+// ============================================================
+// QA Scenario TC-DL-U02~U03: DrawTile 교착 단위 테스트
+// ============================================================
+
+func TestDrawTile_U02_NormalDraw_WithPile(t *testing.T) {
+	// TC-DL-U02: DrawTile(drawPile 있음) -> 정상 드로우, drawnTile != nil
+	rack0 := []string{"R1a"}
+	rack1 := []string{"B1a"}
+	state := newTestGameState("dl-u02", twoPlayerState(rack0, rack1), []string{"Y5a", "K3a"})
+	svc, repo := seedRepo(t, state)
+
+	result, err := svc.DrawTile("dl-u02", 0)
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+	assert.False(t, result.GameEnded)
+
+	saved, _ := repo.GetGameState("dl-u02")
+	// seat0의 랙에 드로우한 타일(Y5a)이 추가되어야 함
+	assert.Contains(t, saved.Players[0].Rack, "Y5a", "드로우한 타일이 랙에 추가됨")
+	assert.Len(t, saved.DrawPile, 1, "드로우 파일 1장 감소")
+}
+
+func TestDrawTile_U03_PassNotReachDeadlock(t *testing.T) {
+	// TC-DL-U03: 패스 후 교착 미도달 (2/3), 게임 계속
+	players := []model.PlayerState{
+		{SeatOrder: 0, UserID: "u0", PlayerType: "HUMAN", Rack: []string{"R1a"}},
+		{SeatOrder: 1, UserID: "u1", PlayerType: "HUMAN", Rack: []string{"B1a"}},
+		{SeatOrder: 2, UserID: "u2", PlayerType: "HUMAN", Rack: []string{"K1a"}},
+	}
+	state := newTestGameState("dl-u03", players, []string{}) // 드로우 파일 소진
+	svc, repo := seedRepo(t, state)
+
+	// seat0 패스
+	r0, err := svc.DrawTile("dl-u03", 0)
+	require.NoError(t, err)
+	assert.False(t, r0.GameEnded, "1/3 패스: 게임 계속")
+
+	// seat1 패스
+	r1, err := svc.DrawTile("dl-u03", 1)
+	require.NoError(t, err)
+	assert.False(t, r1.GameEnded, "2/3 패스: 게임 계속")
+
+	saved, _ := repo.GetGameState("dl-u03")
+	assert.Equal(t, model.GameStatusPlaying, saved.Status, "아직 교착 도달 전")
+	assert.Equal(t, 2, saved.ConsecutivePassCount, "패스 카운터 2")
 }

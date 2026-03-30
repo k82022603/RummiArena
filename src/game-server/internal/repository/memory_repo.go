@@ -16,19 +16,24 @@ type MemoryRoomRepository interface {
 	GetRoomByCode(code string) (*model.RoomState, error)
 	ListRooms() ([]*model.RoomState, error)
 	DeleteRoom(id string) error
+	GetActiveRoomForUser(userID string) (string, error)
+	SetActiveRoomForUser(userID, roomID string) error
+	ClearActiveRoomForUser(userID string) error
 }
 
 type memoryRoomRepo struct {
-	mu    sync.RWMutex
-	rooms map[string]*model.RoomState // key: room ID
-	codes map[string]string           // key: roomCode → room ID
+	mu        sync.RWMutex
+	rooms     map[string]*model.RoomState // key: room ID
+	codes     map[string]string           // key: roomCode -> room ID
+	userRooms map[string]string           // userId -> roomId (활성 방만)
 }
 
 // NewMemoryRoomRepo MemoryRoomRepository 구현체를 생성한다.
 func NewMemoryRoomRepo() MemoryRoomRepository {
 	return &memoryRoomRepo{
-		rooms: make(map[string]*model.RoomState),
-		codes: make(map[string]string),
+		rooms:     make(map[string]*model.RoomState),
+		codes:     make(map[string]string),
+		userRooms: make(map[string]string),
 	}
 }
 
@@ -86,7 +91,7 @@ func (r *memoryRoomRepo) ListRooms() ([]*model.RoomState, error) {
 
 	result := make([]*model.RoomState, 0, len(r.rooms))
 	for _, room := range r.rooms {
-		// WAITING 또는 PLAYING 상태만 반환 (설계 §1.2: 활성 방만 목록 제공)
+		// WAITING 또는 PLAYING 상태만 반환 (설계 S1.2: 활성 방만 목록 제공)
 		if room.Status == model.RoomStatusWaiting || room.Status == model.RoomStatusPlaying {
 			copied := *room
 			players := make([]model.RoomPlayer, len(room.Players))
@@ -108,6 +113,42 @@ func (r *memoryRoomRepo) DeleteRoom(id string) error {
 	}
 	delete(r.codes, room.RoomCode)
 	delete(r.rooms, id)
+	return nil
+}
+
+// GetActiveRoomForUser 사용자가 현재 참가 중인 활성 방 ID를 반환한다.
+// 참가 중인 방이 없으면 빈 문자열과 nil을 반환한다.
+func (r *memoryRoomRepo) GetActiveRoomForUser(userID string) (string, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	roomID, ok := r.userRooms[userID]
+	if !ok {
+		return "", nil
+	}
+
+	// 방이 아직 활성 상태인지 확인 (WAITING 또는 PLAYING)
+	room, exists := r.rooms[roomID]
+	if !exists || (room.Status != model.RoomStatusWaiting && room.Status != model.RoomStatusPlaying) {
+		return "", nil
+	}
+
+	return roomID, nil
+}
+
+// SetActiveRoomForUser 사용자-방 매핑을 설정한다.
+func (r *memoryRoomRepo) SetActiveRoomForUser(userID, roomID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.userRooms[userID] = roomID
+	return nil
+}
+
+// ClearActiveRoomForUser 사용자-방 매핑을 제거한다.
+func (r *memoryRoomRepo) ClearActiveRoomForUser(userID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.userRooms, userID)
 	return nil
 }
 

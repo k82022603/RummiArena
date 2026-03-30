@@ -407,7 +407,7 @@ describe('OllamaAdapter', () => {
       expect(body.messages[1].role).toBe('user');
     });
 
-    it('options에 num_predict=256과 stop 토큰이 포함된다 (#31 응답 속도 개선)', async () => {
+    it('options에 num_predict=512과 stop 토큰이 포함된다 (BL-P2-007 잘림 방지 상향)', async () => {
       mockedAxios.post = jest
         .fn()
         .mockResolvedValueOnce(
@@ -417,8 +417,9 @@ describe('OllamaAdapter', () => {
       await adapter.generateMove(makeMoveRequest());
 
       const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
-      expect(body.options.num_predict).toBe(256);
-      expect(body.options.stop).toEqual(['\n\n', '```']);
+      expect(body.options.num_predict).toBe(512);
+      // BL-P2-007: '\n\n' stop 토큰 제거 (place 응답 잘림 방지), '```' 코드블록만 유지
+      expect(body.options.stop).toEqual(['```']);
     });
 
     it('timeoutMs를 axios 타임아웃에 전달한다', async () => {

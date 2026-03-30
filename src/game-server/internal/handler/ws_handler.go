@@ -50,9 +50,21 @@ var upgrader = websocket.Upgrader{
 
 const wsSessionTTL = 2 * time.Hour
 
+// gracePeriodDuration 플레이어 연결 끊김 시 기권 전 대기 시간.
+const gracePeriodDuration = 60 * time.Second
+
 // turnTimer 진행 중인 단일 턴 타이머를 표현한다.
 type turnTimer struct {
 	cancel context.CancelFunc
+	gameID string
+	seat   int
+}
+
+// graceTimer 연결 끊김 후 기권 대기 타이머
+type graceTimer struct {
+	cancel context.CancelFunc
+	userID string
+	roomID string
 	gameID string
 	seat   int
 }
@@ -68,17 +80,19 @@ type wsSessionData struct {
 
 // WSHandler WebSocket 핸들러
 type WSHandler struct {
-	hub         *Hub
-	roomSvc     service.RoomService
-	gameSvc     service.GameService
-	turnSvc     service.TurnService
-	aiClient    client.AIClientInterface // nil이면 AI 기능 비활성화
-	eloRepo     repository.EloRepository // nil이면 ELO 업데이트 건너뜀
-	redisClient *redis.Client            // nil이면 Redis Sorted Set 업데이트 건너뜀
-	jwtSecret   string
-	logger      *zap.Logger
-	timers      map[string]*turnTimer // key: gameID
-	timersMu    sync.Mutex
+	hub           *Hub
+	roomSvc       service.RoomService
+	gameSvc       service.GameService
+	turnSvc       service.TurnService
+	aiClient      client.AIClientInterface // nil이면 AI 기능 비활성화
+	eloRepo       repository.EloRepository // nil이면 ELO 업데이트 건너뜀
+	redisClient   *redis.Client            // nil이면 Redis Sorted Set 업데이트 건너뜀
+	jwtSecret     string
+	logger        *zap.Logger
+	timers        map[string]*turnTimer  // key: gameID
+	timersMu      sync.Mutex
+	graceTimers   map[string]*graceTimer // key: "roomID:userID"
+	graceTimersMu sync.Mutex
 }
 
 // NewWSHandler WSHandler 생성자.
@@ -94,14 +108,15 @@ func NewWSHandler(
 	logger *zap.Logger,
 ) *WSHandler {
 	return &WSHandler{
-		hub:       hub,
-		roomSvc:   roomSvc,
-		gameSvc:   gameSvc,
-		turnSvc:   turnSvc,
-		aiClient:  aiClient,
-		jwtSecret: jwtSecret,
-		logger:    logger,
-		timers:    make(map[string]*turnTimer),
+		hub:         hub,
+		roomSvc:     roomSvc,
+		gameSvc:     gameSvc,
+		turnSvc:     turnSvc,
+		aiClient:    aiClient,
+		jwtSecret:   jwtSecret,
+		logger:      logger,
+		timers:      make(map[string]*turnTimer),
+		graceTimers: make(map[string]*graceTimer),
 	}
 }
 
@@ -160,6 +175,20 @@ func (h *WSHandler) HandleWS(c *gin.Context) {
 
 	// Hub 등록
 	wasReconnect := h.hub.Register(conn)
+
+	// Grace timer 취소 (재연결 시)
+	graceKey := conn.roomID + ":" + conn.userID
+	h.graceTimersMu.Lock()
+	if gt, ok := h.graceTimers[graceKey]; ok {
+		gt.cancel()
+		delete(h.graceTimers, graceKey)
+	}
+	h.graceTimersMu.Unlock()
+
+	// 게임 진행 중이면 플레이어 상태를 ACTIVE로 복원
+	if conn.gameID != "" {
+		_ = h.gameSvc.SetPlayerStatus(conn.gameID, conn.seat, model.PlayerStatusActive)
+	}
 
 	// Redis 세션 저장 (multi-Pod 지원)
 	h.saveSessionToRedis(conn)
@@ -512,6 +541,16 @@ func (h *WSHandler) handleDrawTile(conn *Connection) {
 		},
 	})
 
+	// 드로우 파일 소진 알림
+	if len(state.DrawPile) == 0 {
+		h.hub.BroadcastToRoom(conn.roomID, &WSMessage{
+			Type: S2CDrawPileEmpty,
+			Payload: DrawPileEmptyPayload{
+				Message: "드로우 파일이 소진되었습니다. 배치하거나 패스하세요.",
+			},
+		})
+	}
+
 	// TURN_END + TURN_START + 타이머 시작
 	h.broadcastTurnEnd(conn, state, "DRAW_TILE", 0)
 	h.broadcastTurnStart(conn.roomID, state)
@@ -566,15 +605,21 @@ func (h *WSHandler) handleChat(conn *Connection, env *WSEnvelope) {
 }
 
 func (h *WSHandler) handleLeaveGame(conn *Connection) {
-	h.hub.BroadcastToRoomExcept(conn.roomID, conn.userID, &WSMessage{
-		Type: S2CPlayerLeave,
-		Payload: PlayerLeavePayload{
-			Seat:         conn.seat,
-			DisplayName:  conn.displayName,
-			Reason:       "LEAVE",
-			TotalPlayers: h.hub.RoomConnectionCount(conn.roomID) - 1,
-		},
-	})
+	// 게임 진행 중이면 즉시 기권 처리
+	if conn.gameID != "" {
+		h.forfeitAndBroadcast(conn.roomID, conn.gameID, conn.seat, conn.userID, conn.displayName, "LEAVE")
+	} else {
+		// 게임 시작 전 LEAVE
+		h.hub.BroadcastToRoomExcept(conn.roomID, conn.userID, &WSMessage{
+			Type: S2CPlayerLeave,
+			Payload: PlayerLeavePayload{
+				Seat:         conn.seat,
+				DisplayName:  conn.displayName,
+				Reason:       "LEAVE",
+				TotalPlayers: h.hub.RoomConnectionCount(conn.roomID) - 1,
+			},
+		})
+	}
 	conn.CloseWithReason(CloseNormal, "퇴장")
 }
 
@@ -596,14 +641,17 @@ func (h *WSHandler) sendGameState(conn *Connection) {
 
 	players := make([]WSPlayerInfo, len(view.Players))
 	for i, p := range view.Players {
+		isConnected := p.ConnectionStatus != string(model.PlayerStatusDisconnected) &&
+			p.ConnectionStatus != string(model.PlayerStatusForfeited)
 		players[i] = WSPlayerInfo{
-			Seat:           p.Seat,
-			UserID:         p.UserID,
-			DisplayName:    p.DisplayName,
-			PlayerType:     p.PlayerType,
-			TileCount:      p.TileCount,
-			HasInitialMeld: p.HasInitialMeld,
-			IsConnected:    true, // TODO: Hub에서 실제 연결 상태 조회
+			Seat:             p.Seat,
+			UserID:           p.UserID,
+			DisplayName:      p.DisplayName,
+			PlayerType:       p.PlayerType,
+			TileCount:        p.TileCount,
+			HasInitialMeld:   p.HasInitialMeld,
+			IsConnected:      isConnected,
+			ConnectionStatus: p.ConnectionStatus,
 		}
 	}
 
@@ -1486,15 +1534,165 @@ func (h *WSHandler) handleDisconnect(conn *Connection) {
 		zap.String("room", conn.roomID),
 	)
 
+	// 게임 진행 중이 아니면 기존 PLAYER_LEAVE만 브로드캐스트
+	if conn.gameID == "" {
+		h.hub.BroadcastToRoom(conn.roomID, &WSMessage{
+			Type: S2CPlayerLeave,
+			Payload: PlayerLeavePayload{
+				Seat:         conn.seat,
+				DisplayName:  conn.displayName,
+				Reason:       "DISCONNECT",
+				TotalPlayers: h.hub.RoomConnectionCount(conn.roomID),
+			},
+		})
+		return
+	}
+
+	// 게임 진행 중: DISCONNECTED 상태로 전환 + Grace Period 시작
+	_ = h.gameSvc.SetPlayerStatus(conn.gameID, conn.seat, model.PlayerStatusDisconnected)
+
+	// PLAYER_DISCONNECTED 브로드캐스트
 	h.hub.BroadcastToRoom(conn.roomID, &WSMessage{
-		Type: S2CPlayerLeave,
-		Payload: PlayerLeavePayload{
-			Seat:         conn.seat,
-			DisplayName:  conn.displayName,
-			Reason:       "DISCONNECT",
-			TotalPlayers: h.hub.RoomConnectionCount(conn.roomID),
+		Type: S2CPlayerDisconnected,
+		Payload: PlayerDisconnectedPayload{
+			Seat:        conn.seat,
+			DisplayName: conn.displayName,
+			GraceSec:    int(gracePeriodDuration.Seconds()),
 		},
 	})
+
+	// Grace Timer 시작
+	h.startGraceTimer(conn.roomID, conn.gameID, conn.userID, conn.displayName, conn.seat)
+}
+
+// ============================================================
+// Grace Period
+// ============================================================
+
+// startGraceTimer 연결 끊김 후 Grace Period 타이머를 시작한다.
+// 60초 내 재연결하면 HandleWS에서 타이머가 취소된다.
+func (h *WSHandler) startGraceTimer(roomID, gameID, userID, displayName string, seat int) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	key := roomID + ":" + userID
+	h.graceTimersMu.Lock()
+	if existing, ok := h.graceTimers[key]; ok {
+		existing.cancel()
+	}
+	h.graceTimers[key] = &graceTimer{
+		cancel: cancel,
+		userID: userID,
+		roomID: roomID,
+		gameID: gameID,
+		seat:   seat,
+	}
+	h.graceTimersMu.Unlock()
+
+	go func() {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(gracePeriodDuration):
+		}
+
+		h.graceTimersMu.Lock()
+		delete(h.graceTimers, key)
+		h.graceTimersMu.Unlock()
+
+		h.logger.Info("ws: grace period expired, forfeiting player",
+			zap.String("gameId", gameID),
+			zap.String("userId", userID),
+			zap.Int("seat", seat),
+		)
+
+		h.forfeitAndBroadcast(roomID, gameID, seat, userID, displayName, "DISCONNECT_TIMEOUT")
+	}()
+}
+
+// forfeitAndBroadcast 플레이어를 기권 처리하고 결과를 브로드캐스트한다.
+func (h *WSHandler) forfeitAndBroadcast(roomID, gameID string, seat int, userID, displayName, reason string) {
+	result, err := h.gameSvc.ForfeitPlayer(gameID, seat, reason)
+	if err != nil {
+		h.logger.Error("ws: forfeit player failed",
+			zap.String("gameId", gameID),
+			zap.Int("seat", seat),
+			zap.Error(err),
+		)
+		return
+	}
+
+	// 사용자-방 매핑 정리
+	h.roomSvc.ClearActiveRoomForUser(userID)
+
+	state := result.GameState
+	activeCount := 0
+	for _, p := range state.Players {
+		if p.Status != model.PlayerStatusForfeited {
+			activeCount++
+		}
+	}
+
+	isGameOver := result.GameEnded
+
+	// PLAYER_FORFEITED 브로드캐스트
+	h.hub.BroadcastToRoom(roomID, &WSMessage{
+		Type: S2CPlayerForfeited,
+		Payload: PlayerForfeitedPayload{
+			Seat:          seat,
+			DisplayName:   displayName,
+			Reason:        reason,
+			ActivePlayers: activeCount,
+			IsGameOver:    isGameOver,
+		},
+	})
+
+	if isGameOver {
+		h.cancelTurnTimer(gameID)
+
+		endType := "FORFEIT"
+		winnerSeat := -1
+		winnerID := result.WinnerID
+		for _, p := range state.Players {
+			if p.UserID == winnerID {
+				winnerSeat = p.SeatOrder
+				break
+			}
+		}
+
+		results := make([]WSPlayerResult, len(state.Players))
+		for i, p := range state.Players {
+			results[i] = WSPlayerResult{
+				Seat:           p.SeatOrder,
+				PlayerType:     p.PlayerType,
+				RemainingTiles: p.Rack,
+				IsWinner:       p.UserID == winnerID,
+			}
+		}
+
+		h.hub.BroadcastToRoom(roomID, &WSMessage{
+			Type: S2CGameOver,
+			Payload: GameOverPayload{
+				EndType:    endType,
+				WinnerID:   winnerID,
+				WinnerSeat: winnerSeat,
+				Results:    results,
+			},
+		})
+
+		go h.updateElo(state)
+
+		if err := h.roomSvc.FinishRoom(roomID); err != nil {
+			h.logger.Warn("ws: FinishRoom failed after forfeit",
+				zap.String("roomID", roomID),
+				zap.Error(err),
+			)
+		}
+		return
+	}
+
+	// 게임 계속: 기권자 턴이었으면 다음 턴 시작
+	h.broadcastTurnStart(roomID, state)
+	h.startTurnTimer(roomID, gameID, state.CurrentSeat, state.TurnTimeoutSec)
 }
 
 // ============================================================

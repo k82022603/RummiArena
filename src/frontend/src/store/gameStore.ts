@@ -6,6 +6,13 @@ import type { TileCode, TableGroup } from "@/types/tile";
 import type { Player, GameState, Room } from "@/types/game";
 import type { GameOverPayload } from "@/types/websocket";
 
+/** 연결 끊김 플레이어 정보 (Grace Period 카운트다운 표시용) */
+export interface DisconnectedPlayerInfo {
+  seat: number;
+  displayName: string;
+  graceDeadlineMs: number; // Unix timestamp (ms)
+}
+
 interface GameStore {
   // 방 정보
   room: Room | null;
@@ -64,6 +71,19 @@ interface GameStore {
   gameOverResult: GameOverPayload | null;
   setGameOverResult: (result: GameOverPayload | null) => void;
 
+  // 연결 끊김 플레이어 목록 (Grace Period 카운트다운 표시용)
+  disconnectedPlayers: DisconnectedPlayerInfo[];
+  addDisconnectedPlayer: (info: DisconnectedPlayerInfo) => void;
+  removeDisconnectedPlayer: (seat: number) => void;
+
+  // 드로우 파일 소진 여부 (교착 처리 UI)
+  isDrawPileEmpty: boolean;
+  setIsDrawPileEmpty: (v: boolean) => void;
+
+  // 교착 종료 사유 (null이면 교착 아님)
+  deadlockReason: string | null;
+  setDeadlockReason: (reason: string | null) => void;
+
   // pending 상태만 초기화 (INVALID_MOVE 롤백 시 사용)
   resetPending: () => void;
 
@@ -72,20 +92,23 @@ interface GameStore {
 }
 
 const initialState = {
-  room: null,
+  room: null as Room | null,
   mySeat: -1,
-  myTiles: [],
-  gameState: null,
-  players: [],
+  myTiles: [] as TileCode[],
+  gameState: null as GameState | null,
+  players: [] as Player[],
   hasInitialMeld: false,
   remainingMs: 0,
-  pendingTableGroups: null,
-  pendingMyTiles: null,
+  pendingTableGroups: null as TableGroup[] | null,
+  pendingMyTiles: null as TileCode[] | null,
   pendingGroupIds: new Set<string>(),
-  aiThinkingSeat: null,
+  aiThinkingSeat: null as number | null,
   turnNumber: 1,
   gameEnded: false,
-  gameOverResult: null,
+  gameOverResult: null as GameOverPayload | null,
+  disconnectedPlayers: [] as DisconnectedPlayerInfo[],
+  isDrawPileEmpty: false,
+  deadlockReason: null as string | null,
 };
 
 export const useGameStore = create<GameStore>()(
@@ -111,6 +134,23 @@ export const useGameStore = create<GameStore>()(
     setGameEnded: (gameEnded) => set({ gameEnded }),
     setGameOverResult: (gameOverResult) => set({ gameOverResult }),
 
+    addDisconnectedPlayer: (info) =>
+      set((state) => ({
+        disconnectedPlayers: [
+          ...state.disconnectedPlayers.filter((d) => d.seat !== info.seat),
+          info,
+        ],
+      })),
+    removeDisconnectedPlayer: (seat) =>
+      set((state) => ({
+        disconnectedPlayers: state.disconnectedPlayers.filter(
+          (d) => d.seat !== seat
+        ),
+      })),
+
+    setIsDrawPileEmpty: (isDrawPileEmpty) => set({ isDrawPileEmpty }),
+    setDeadlockReason: (deadlockReason) => set({ deadlockReason }),
+
     resetPending: () =>
       set({
         pendingTableGroups: null,
@@ -121,3 +161,9 @@ export const useGameStore = create<GameStore>()(
     reset: () => set(initialState),
   }))
 );
+
+// E2E 테스트 브릿지: 비프로덕션 환경에서 Zustand 스토어를 window에 노출
+// Playwright page.evaluate에서 window.__gameStore.getState() / setState() 사용 가능
+if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
+  (window as unknown as Record<string, unknown>).__gameStore = useGameStore;
+}

@@ -6,6 +6,8 @@ import { DeepSeekAdapter } from '../adapter/deepseek.adapter';
 import { OllamaAdapter } from '../adapter/ollama.adapter';
 import { MoveRequestDto, GameStateDto } from '../common/dto/move-request.dto';
 import { MoveResponseDto } from '../common/dto/move-response.dto';
+import { CostTrackingService } from '../cost/cost-tracking.service';
+import { MetricsService } from '../metrics/metrics.service';
 
 // -----------------------------------------------------------------------
 // MoveService 단위 테스트
@@ -14,6 +16,7 @@ import { MoveResponseDto } from '../common/dto/move-response.dto';
 //   - model 파라미터에 따라 올바른 어댑터를 선택하는지 확인
 //   - 알 수 없는 model 타입에서 BadRequestException을 던지는지 확인
 //   - 어댑터 응답이 그대로 반환되는지 확인
+//   - 비용 추적과 메트릭 기록이 호출되는지 확인
 // -----------------------------------------------------------------------
 
 const makeGameState = (): GameStateDto => ({
@@ -57,6 +60,8 @@ describe('MoveService', () => {
   let claudeAdapter: jest.Mocked<ClaudeAdapter>;
   let deepSeekAdapter: jest.Mocked<DeepSeekAdapter>;
   let ollamaAdapter: jest.Mocked<OllamaAdapter>;
+  let costTrackingService: jest.Mocked<CostTrackingService>;
+  let metricsService: jest.Mocked<MetricsService>;
 
   beforeEach(() => {
     openAiAdapter = {
@@ -83,11 +88,23 @@ describe('MoveService', () => {
       getModelInfo: jest.fn(),
     } as unknown as jest.Mocked<OllamaAdapter>;
 
+    costTrackingService = {
+      recordCost: jest.fn().mockResolvedValue(undefined),
+      isDailyLimitExceeded: jest.fn().mockResolvedValue(false),
+      getDailySummary: jest.fn(),
+    } as unknown as jest.Mocked<CostTrackingService>;
+
+    metricsService = {
+      recordMetric: jest.fn().mockResolvedValue(undefined),
+    } as unknown as jest.Mocked<MetricsService>;
+
     service = new MoveService(
       openAiAdapter,
       claudeAdapter,
       deepSeekAdapter,
       ollamaAdapter,
+      costTrackingService,
+      metricsService,
     );
   });
 
@@ -217,6 +234,102 @@ describe('MoveService', () => {
       await service.generateMove('ollama', request);
 
       expect(ollamaAdapter.generateMove).toHaveBeenCalledWith(request);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // 비용 추적 + 메트릭 기록 검증
+  // -----------------------------------------------------------------------
+  describe('generateMove() - 비용 추적 및 메트릭', () => {
+    it('LLM 호출 후 비용 추적이 호출된다', async () => {
+      const response = makeDrawResponse('openai');
+      openAiAdapter.generateMove.mockResolvedValueOnce(response);
+
+      await service.generateMove('openai', makeMoveRequest());
+
+      // fire-and-forget이므로 약간의 딜레이 필요
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      expect(costTrackingService.recordCost).toHaveBeenCalledWith({
+        modelType: 'openai',
+        promptTokens: 50,
+        completionTokens: 20,
+      });
+    });
+
+    it('LLM 호출 후 메트릭 기록이 호출된다', async () => {
+      const response = makeDrawResponse('claude');
+      claudeAdapter.generateMove.mockResolvedValueOnce(response);
+
+      await service.generateMove('claude', makeMoveRequest());
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      expect(metricsService.recordMetric).toHaveBeenCalledWith(
+        expect.objectContaining({
+          modelType: 'claude',
+          modelName: 'test-model',
+          gameId: 'svc-test-001',
+          latencyMs: 100,
+          promptTokens: 50,
+          completionTokens: 20,
+          parseSuccess: true,
+          isFallbackDraw: false,
+          retryCount: 0,
+        }),
+      );
+    });
+
+    it('비용 추적 실패 시에도 응답은 정상 반환된다', async () => {
+      costTrackingService.recordCost.mockRejectedValueOnce(
+        new Error('Redis down'),
+      );
+      const response = makeDrawResponse('openai');
+      openAiAdapter.generateMove.mockResolvedValueOnce(response);
+
+      const result = await service.generateMove('openai', makeMoveRequest());
+
+      expect(result).toEqual(response);
+    });
+
+    it('메트릭 기록 실패 시에도 응답은 정상 반환된다', async () => {
+      metricsService.recordMetric.mockRejectedValueOnce(
+        new Error('Redis down'),
+      );
+      const response = makeDrawResponse('openai');
+      openAiAdapter.generateMove.mockResolvedValueOnce(response);
+
+      const result = await service.generateMove('openai', makeMoveRequest());
+
+      expect(result).toEqual(response);
+    });
+
+    it('fallback draw 응답도 비용/메트릭이 기록된다', async () => {
+      const response: MoveResponseDto = {
+        action: 'draw',
+        metadata: {
+          modelType: 'openai',
+          modelName: 'gpt-4o',
+          latencyMs: 5000,
+          promptTokens: 0,
+          completionTokens: 0,
+          retryCount: 3,
+          isFallbackDraw: true,
+        },
+      };
+      openAiAdapter.generateMove.mockResolvedValueOnce(response);
+
+      await service.generateMove('openai', makeMoveRequest());
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      expect(costTrackingService.recordCost).toHaveBeenCalled();
+      expect(metricsService.recordMetric).toHaveBeenCalledWith(
+        expect.objectContaining({
+          isFallbackDraw: true,
+          parseSuccess: false,
+        }),
+      );
     });
   });
 });

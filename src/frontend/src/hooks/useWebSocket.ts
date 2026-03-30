@@ -22,6 +22,11 @@ import type {
   AIThinkingPayload,
   WSErrorPayload,
   ChatBroadcastPayload,
+  PlayerDisconnectedPayload,
+  PlayerReconnectedPayload,
+  PlayerForfeitedPayload,
+  DrawPileEmptyPayload,
+  GameDeadlockEndPayload,
 } from "@/types/websocket";
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8080";
@@ -29,7 +34,7 @@ const MAX_RECONNECT_ATTEMPTS = 5;
 const INITIAL_RECONNECT_DELAY_MS = 3000; // 3s, 6s, 12s, 24s, 48s (2x backoff)
 
 /**
- * 서버 에러 코드 → 한글 메시지 매핑 (websocket-protocol.md 기반)
+ * 서버 에러 코드 -> 한글 메시지 매핑 (websocket-protocol.md 기반)
  */
 const INVALID_MOVE_MESSAGES: Record<string, string> = {
   ERR_INITIAL_MELD_SCORE: "초기 제출 점수가 30점 미만입니다 (최소 30점 필요)",
@@ -66,6 +71,10 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
     setMySeat,
     setTurnNumber,
     resetPending,
+    addDisconnectedPlayer,
+    removeDisconnectedPlayer,
+    setIsDrawPileEmpty,
+    setDeadlockReason,
   } = useGameStore();
 
   const handleMessage = useCallback(
@@ -121,6 +130,10 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
               } as Player;
             })
           );
+          // drawPileCount가 0이면 소진 상태 설정
+          if (payload.drawPileCount === 0) {
+            setIsDrawPileEmpty(true);
+          }
           break;
         }
         case "TURN_START": {
@@ -155,6 +168,10 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
           }));
           if (payload.nextTurnNumber != null) setTurnNumber(payload.nextTurnNumber);
           setAIThinkingSeat(null);
+          // drawPileCount가 0이면 소진 상태 설정
+          if (payload.drawPileCount === 0) {
+            setIsDrawPileEmpty(true);
+          }
           break;
         }
         case "TILE_PLACED": {
@@ -214,6 +231,85 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
           console.info("[WS] PLAYER_RECONNECT seat=%d %s", payload.seat, payload.displayName);
           break;
         }
+        // ---- 퇴장/기권 메시지 (12-player-lifecycle-design.md) ----
+        case "PLAYER_DISCONNECTED": {
+          const payload = msg.payload as PlayerDisconnectedPayload;
+          addDisconnectedPlayer({
+            seat: payload.seat,
+            displayName: payload.displayName,
+            graceDeadlineMs: payload.graceDeadlineMs,
+          });
+          // 플레이어 상태를 DISCONNECTED로 업데이트
+          useGameStore.setState((state) => ({
+            players: state.players.map((p) =>
+              p.seat === payload.seat
+                ? { ...p, status: "DISCONNECTED" as const }
+                : p
+            ),
+          }));
+          console.info(
+            "[WS] PLAYER_DISCONNECTED seat=%d %s (grace deadline: %d)",
+            payload.seat, payload.displayName, payload.graceDeadlineMs
+          );
+          break;
+        }
+        case "PLAYER_RECONNECTED": {
+          const payload = msg.payload as PlayerReconnectedPayload;
+          removeDisconnectedPlayer(payload.seat);
+          // 플레이어 상태를 CONNECTED로 복원
+          useGameStore.setState((state) => ({
+            players: state.players.map((p) =>
+              p.seat === payload.seat
+                ? { ...p, status: "CONNECTED" as const }
+                : p
+            ),
+          }));
+          setReconnectNotice({ displayName: payload.displayName, seat: payload.seat });
+          console.info("[WS] PLAYER_RECONNECTED seat=%d %s", payload.seat, payload.displayName);
+          break;
+        }
+        case "PLAYER_FORFEITED": {
+          const payload = msg.payload as PlayerForfeitedPayload;
+          removeDisconnectedPlayer(payload.seat);
+          // 플레이어 상태를 FORFEITED로 업데이트
+          useGameStore.setState((state) => ({
+            players: state.players.map((p) =>
+              p.seat === payload.seat
+                ? { ...p, status: "FORFEITED" as const }
+                : p
+            ),
+          }));
+          console.info(
+            "[WS] PLAYER_FORFEITED seat=%d %s reason=%s activePlayers=%d",
+            payload.seat, payload.displayName, payload.reason, payload.activePlayers
+          );
+          // isGameOver이면 GAME_OVER 메시지가 별도로 오므로 여기서는 처리하지 않음
+          break;
+        }
+        // ---- 교착 처리 메시지 ----
+        case "DRAW_PILE_EMPTY": {
+          const payload = msg.payload as DrawPileEmptyPayload;
+          setIsDrawPileEmpty(true);
+          useGameStore.setState((state) => ({
+            gameState: state.gameState
+              ? { ...state.gameState, drawPileCount: 0 }
+              : state.gameState,
+          }));
+          console.info(
+            "[WS] DRAW_PILE_EMPTY consecutivePass=%d activePlayers=%d",
+            payload.consecutivePassCount, payload.activePlayerCount
+          );
+          break;
+        }
+        case "GAME_DEADLOCK_END": {
+          const payload = msg.payload as GameDeadlockEndPayload;
+          setDeadlockReason(payload.reason);
+          console.info(
+            "[WS] GAME_DEADLOCK_END reason=%s consecutivePass=%d",
+            payload.reason, payload.consecutivePassCount
+          );
+          break;
+        }
         case "AI_THINKING": {
           const payload = msg.payload as AIThinkingPayload;
           setAIThinkingSeat(payload.seat);
@@ -254,6 +350,10 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
       setTurnNumber,
       resetPending,
       setReconnectNotice,
+      addDisconnectedPlayer,
+      removeDisconnectedPlayer,
+      setIsDrawPileEmpty,
+      setDeadlockReason,
     ]
   );
 

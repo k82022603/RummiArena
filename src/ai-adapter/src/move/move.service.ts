@@ -6,6 +6,8 @@ import { OllamaAdapter } from '../adapter/ollama.adapter';
 import { AiAdapterInterface } from '../common/interfaces/ai-adapter.interface';
 import { MoveRequestDto } from '../common/dto/move-request.dto';
 import { MoveResponseDto } from '../common/dto/move-response.dto';
+import { CostTrackingService } from '../cost/cost-tracking.service';
+import { MetricsService } from '../metrics/metrics.service';
 
 export type ModelType = 'openai' | 'claude' | 'deepseek' | 'ollama';
 
@@ -15,6 +17,10 @@ export type ModelType = 'openai' | 'claude' | 'deepseek' | 'ollama';
  * model 파라미터를 보고 적절한 어댑터를 선택한 뒤 generateMove()를 위임한다.
  * 재시도 로직과 fallback 드로우는 BaseAdapter에 이미 내장되어 있으므로
  * 이 서비스는 어댑터 선택과 오류 변환에만 집중한다.
+ *
+ * LLM 호출 완료 후 비용 추적(CostTrackingService)과
+ * 성능 메트릭(MetricsService)을 비동기로 기록한다.
+ * 기록 실패는 서비스 응답에 영향을 주지 않는다.
  */
 @Injectable()
 export class MoveService {
@@ -25,10 +31,14 @@ export class MoveService {
     private readonly claudeAdapter: ClaudeAdapter,
     private readonly deepSeekAdapter: DeepSeekAdapter,
     private readonly ollamaAdapter: OllamaAdapter,
+    private readonly costTrackingService: CostTrackingService,
+    private readonly metricsService: MetricsService,
   ) {}
 
   /**
    * 요청된 모델에 해당하는 어댑터를 선택하여 AI 수를 생성한다.
+   * LLM 호출 완료 후 비용 추적과 성능 메트릭을 비동기로 기록한다.
+   *
    * @param model LLM 공급자 타입
    * @param request 게임 상태 + AI 설정이 담긴 DTO
    */
@@ -48,7 +58,48 @@ export class MoveService {
       `[MoveService] 완료 gameId=${request.gameId} action=${response.action} retryCount=${response.metadata.retryCount} latencyMs=${response.metadata.latencyMs}`,
     );
 
+    // 비용 추적 + 메트릭 기록 (비동기, fire-and-forget)
+    this.recordCostAndMetrics(model, request.gameId, response).catch(
+      (err) => {
+        this.logger.warn(
+          `[MoveService] 비용/메트릭 기록 실패: ${(err as Error).message}`,
+        );
+      },
+    );
+
     return response;
+  }
+
+  /**
+   * 비용 추적과 성능 메트릭을 병렬로 기록한다.
+   * 실패해도 서비스 응답에는 영향 없음.
+   */
+  private async recordCostAndMetrics(
+    model: ModelType,
+    gameId: string,
+    response: MoveResponseDto,
+  ): Promise<void> {
+    const { metadata } = response;
+
+    await Promise.allSettled([
+      this.costTrackingService.recordCost({
+        modelType: metadata.modelType,
+        promptTokens: metadata.promptTokens,
+        completionTokens: metadata.completionTokens,
+      }),
+      this.metricsService.recordMetric({
+        modelType: metadata.modelType,
+        modelName: metadata.modelName,
+        gameId,
+        latencyMs: metadata.latencyMs,
+        promptTokens: metadata.promptTokens,
+        completionTokens: metadata.completionTokens,
+        parseSuccess: !metadata.isFallbackDraw,
+        isFallbackDraw: metadata.isFallbackDraw,
+        retryCount: metadata.retryCount,
+        timestamp: new Date().toISOString(),
+      }),
+    ]);
   }
 
   /**

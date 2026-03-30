@@ -16,6 +16,15 @@ env:
   OLLAMA_BASE_URL: "http://ollama:11434"
   OLLAMA_DEFAULT_MODEL: "gemma3:1b"
   OPENAI_DEFAULT_MODEL: "gpt-4o-mini"
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
+  DAILY_COST_LIMIT_USD: "5"
+
+secrets:
+  # 실제 값은 kubectl patch 또는 inject-secrets.sh로 주입 (Git에 커밋하지 말 것)
+  OPENAI_API_KEY: ""
+  CLAUDE_API_KEY: ""
+  DEEPSEEK_API_KEY: ""
 
 resources:
   requests:

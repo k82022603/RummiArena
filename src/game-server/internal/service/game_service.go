@@ -54,6 +54,8 @@ type GameService interface {
 	ConfirmTurn(gameID string, req *ConfirmRequest) (*GameActionResult, error)
 	DrawTile(gameID string, seat int) (*GameActionResult, error)
 	ResetTurn(gameID string, seat int) (*GameActionResult, error)
+	ForfeitPlayer(gameID string, seat int, reason string) (*GameActionResult, error)
+	SetPlayerStatus(gameID string, seat int, status model.PlayerConnectionStatus) error
 }
 
 // GameStateView 1인칭 뷰 게임 상태.
@@ -72,20 +74,21 @@ type GameStateView struct {
 
 // PlayerView 상대방 뷰 (타일 수만 공개)
 type PlayerView struct {
-	Seat           int    `json:"seat"`
-	UserID         string `json:"userId,omitempty"`
-	DisplayName    string `json:"displayName,omitempty"`
-	PlayerType     string `json:"playerType"`
-	TileCount      int    `json:"tileCount"`
-	HasInitialMeld bool   `json:"hasInitialMeld"`
+	Seat             int    `json:"seat"`
+	UserID           string `json:"userId,omitempty"`
+	DisplayName      string `json:"displayName,omitempty"`
+	PlayerType       string `json:"playerType"`
+	TileCount        int    `json:"tileCount"`
+	HasInitialMeld   bool   `json:"hasInitialMeld"`
+	ConnectionStatus string `json:"connectionStatus,omitempty"` // ACTIVE, DISCONNECTED, FORFEITED
 }
 
 // turnSnapshot 턴 시작 시점의 랙 스냅샷 (ResetTurn용)
-// gameID + seat → 스냅샷 저장
+// gameID + seat -> 스냅샷 저장
 type turnSnapshot struct {
-	rack        []string
-	table       []*model.SetOnTable
-	capturedAt  time.Time
+	rack       []string
+	table      []*model.SetOnTable
+	capturedAt time.Time
 }
 
 type gameService struct {
@@ -111,7 +114,6 @@ func (s *gameService) newGame(
 	// 드로우 파일: 남은 타일 코드 수집
 	remaining := pool.Remaining()
 	drawPile := make([]string, 0, remaining)
-	// pool 자체에는 Remaining()만 있으므로 직접 드로우
 	for i := 0; i < remaining; i++ {
 		t, err := pool.DrawOne()
 		if err != nil {
@@ -134,6 +136,7 @@ func (s *gameService) newGame(
 			PlayerType:     p.Type,
 			HasInitialMeld: false,
 			Rack:           rack,
+			Status:         model.PlayerStatusActive,
 			AIModel:        p.AIModel,
 			AIPersona:      p.Persona,
 			AIDifficulty:   p.Difficulty,
@@ -174,7 +177,7 @@ func (s *gameService) GetGameState(gameID string, requestingSeat int) (*GameStat
 		return nil, &ServiceError{Code: "NOT_FOUND", Message: errMsgGameNotFound, Status: 404}
 	}
 
-	// Table → TilePlacement 변환
+	// Table -> TilePlacement 변환
 	table := make([]TilePlacement, len(state.Table))
 	for i, set := range state.Table {
 		tiles := make([]string, len(set.Tiles))
@@ -188,13 +191,18 @@ func (s *gameService) GetGameState(gameID string, requestingSeat int) (*GameStat
 	var myRack []string
 	playerViews := make([]PlayerView, len(state.Players))
 	for i, p := range state.Players {
+		connStatus := string(p.Status)
+		if connStatus == "" {
+			connStatus = string(model.PlayerStatusActive)
+		}
 		playerViews[i] = PlayerView{
-			Seat:           p.SeatOrder,
-			UserID:         p.UserID,
-			DisplayName:    p.DisplayName,
-			PlayerType:     p.PlayerType,
-			TileCount:      len(p.Rack),
-			HasInitialMeld: p.HasInitialMeld,
+			Seat:             p.SeatOrder,
+			UserID:           p.UserID,
+			DisplayName:      p.DisplayName,
+			PlayerType:       p.PlayerType,
+			TileCount:        len(p.Rack),
+			HasInitialMeld:   p.HasInitialMeld,
+			ConnectionStatus: connStatus,
 		}
 		if p.SeatOrder == requestingSeat {
 			rack := make([]string, len(p.Rack))
@@ -228,7 +236,6 @@ func (s *gameService) PlaceTiles(gameID string, req *PlaceRequest) (*GameActionR
 		return nil, &ServiceError{Code: "NOT_YOUR_TURN", Message: errMsgNotYourTurn, Status: 422}
 	}
 
-	// seat의 플레이어 인덱스 탐색
 	playerIdx := findPlayerBySeat(state.Players, req.Seat)
 	if playerIdx < 0 {
 		return nil, &ServiceError{Code: "NOT_FOUND", Message: errMsgPlayerNotFound, Status: 404}
@@ -466,6 +473,7 @@ func (s *gameService) advanceToNextTurn(state *model.GameStateRedis) (*GameActio
 }
 
 // DrawTile 드로우 파일에서 1장을 뽑아 플레이어 랙에 추가하고 다음 턴으로 넘긴다.
+// 드로우 파일이 소진된 경우: 패스 처리(턴 넘기기). 전원 연속 패스 시 교착 종료.
 func (s *gameService) DrawTile(gameID string, seat int) (*GameActionResult, error) {
 	state, err := s.gameRepo.GetGameState(gameID)
 	if err != nil {
@@ -482,8 +490,22 @@ func (s *gameService) DrawTile(gameID string, seat int) (*GameActionResult, erro
 	}
 
 	if len(state.DrawPile) == 0 {
-		// 드로우 파일 소진: 점수 기반 승자 판정 후 교착 종료
-		return s.finishGameStalemate(state)
+		// 드로우 파일 소진: 패스 처리 (턴 넘기기)
+		state.ConsecutivePassCount++
+
+		// 스냅샷 제거 (패스하면 턴 종료, 되돌리기 불가)
+		s.snapshotMu.Lock()
+		delete(s.snapshots, snapshotKey(gameID, seat))
+		s.snapshotMu.Unlock()
+
+		// 교착 판정: 전원(활성 플레이어)이 연속으로 패스
+		activePlayerCount := countActivePlayers(state)
+		if activePlayerCount > 0 && state.ConsecutivePassCount >= activePlayerCount {
+			return s.finishGameStalemate(state)
+		}
+
+		// 다음 턴으로 진행
+		return s.advanceToNextTurn(state)
 	}
 
 	// 1장 드로우
@@ -498,7 +520,8 @@ func (s *gameService) DrawTile(gameID string, seat int) (*GameActionResult, erro
 	s.snapshotMu.Unlock()
 
 	// 교착 판정: 전원이 연속으로 1회 이상 드로우했으면 교착
-	if state.ConsecutivePassCount >= len(state.Players) {
+	activePlayerCount := countActivePlayers(state)
+	if activePlayerCount > 0 && state.ConsecutivePassCount >= activePlayerCount {
 		return s.finishGameStalemate(state)
 	}
 
@@ -555,6 +578,97 @@ func (s *gameService) ResetTurn(gameID string, seat int) (*GameActionResult, err
 	return &GameActionResult{Success: true, NextSeat: seat, GameState: state}, nil
 }
 
+// ForfeitPlayer 플레이어를 기권 처리한다.
+// 해당 seat의 Status를 FORFEITED로 변경하고, 활성 플레이어가 1명이면 자동 승리를 반환한다.
+func (s *gameService) ForfeitPlayer(gameID string, seat int, reason string) (*GameActionResult, error) {
+	state, err := s.gameRepo.GetGameState(gameID)
+	if err != nil {
+		return nil, &ServiceError{Code: "NOT_FOUND", Message: errMsgGameNotFound, Status: 404}
+	}
+
+	if state.Status != model.GameStatusPlaying {
+		return nil, &ServiceError{Code: "GAME_NOT_PLAYING", Message: "진행 중인 게임이 아닙니다.", Status: 400}
+	}
+
+	playerIdx := findPlayerBySeat(state.Players, seat)
+	if playerIdx < 0 {
+		return nil, &ServiceError{Code: "NOT_FOUND", Message: errMsgPlayerNotFound, Status: 404}
+	}
+
+	state.Players[playerIdx].Status = model.PlayerStatusForfeited
+
+	// 활성 플레이어 수 확인
+	activeCount := countActivePlayers(state)
+
+	if activeCount <= 1 {
+		// 활성 플레이어 1명 이하: 남은 플레이어 자동 승리
+		state.Status = model.GameStatusFinished
+		winnerID := ""
+		for _, p := range state.Players {
+			if p.Status != model.PlayerStatusForfeited {
+				winnerID = p.UserID
+				break
+			}
+		}
+		if err := s.gameRepo.SaveGameState(state); err != nil {
+			return nil, fmt.Errorf("game_service: save after forfeit game over: %w", err)
+		}
+		return &GameActionResult{
+			Success:   true,
+			NextSeat:  state.CurrentSeat,
+			GameEnded: true,
+			WinnerID:  winnerID,
+			GameState: state,
+			ErrorCode: "FORFEIT",
+		}, nil
+	}
+
+	// 현재 턴이 기권자의 턴이면 다음 턴으로 진행
+	if state.CurrentSeat == seat {
+		s.snapshotMu.Lock()
+		delete(s.snapshots, snapshotKey(gameID, seat))
+		s.snapshotMu.Unlock()
+
+		nextSeat := advanceTurn(state)
+		state.CurrentSeat = nextSeat
+		state.TurnStartAt = time.Now().Unix()
+		state.TurnCount++
+	}
+
+	if err := s.gameRepo.SaveGameState(state); err != nil {
+		return nil, fmt.Errorf("game_service: save after forfeit: %w", err)
+	}
+
+	return &GameActionResult{
+		Success:   true,
+		NextSeat:  state.CurrentSeat,
+		GameEnded: false,
+		GameState: state,
+	}, nil
+}
+
+// SetPlayerStatus 플레이어의 연결 상태를 변경한다.
+func (s *gameService) SetPlayerStatus(gameID string, seat int, status model.PlayerConnectionStatus) error {
+	state, err := s.gameRepo.GetGameState(gameID)
+	if err != nil {
+		return &ServiceError{Code: "NOT_FOUND", Message: errMsgGameNotFound, Status: 404}
+	}
+
+	playerIdx := findPlayerBySeat(state.Players, seat)
+	if playerIdx < 0 {
+		return &ServiceError{Code: "NOT_FOUND", Message: errMsgPlayerNotFound, Status: 404}
+	}
+
+	state.Players[playerIdx].Status = status
+	if status == model.PlayerStatusDisconnected {
+		state.Players[playerIdx].DisconnectedAt = time.Now().UnixMilli()
+	} else if status == model.PlayerStatusActive {
+		state.Players[playerIdx].DisconnectedAt = 0
+	}
+
+	return s.gameRepo.SaveGameState(state)
+}
+
 // --- 내부 헬퍼 함수 ---
 
 // findPlayerBySeat PlayerState 슬라이스에서 seat 번호로 인덱스를 찾는다.
@@ -567,14 +681,13 @@ func findPlayerBySeat(players []model.PlayerState, seat int) int {
 	return -1
 }
 
-// advanceTurn 현재 턴에서 다음 활성 플레이어 seat 번호를 반환한다.
-// PLAYING 상태의 플레이어를 순환하며 다음 seat를 결정한다.
+// advanceTurn 다음 활성(ACTIVE) 플레이어 seat을 반환한다.
+// FORFEITED 상태의 플레이어는 건너뛴다.
 func advanceTurn(state *model.GameStateRedis) int {
 	n := len(state.Players)
 	if n == 0 {
 		return 0
 	}
-	// 현재 seat의 인덱스 찾기
 	currentIdx := -1
 	for i, p := range state.Players {
 		if p.SeatOrder == state.CurrentSeat {
@@ -585,8 +698,25 @@ func advanceTurn(state *model.GameStateRedis) int {
 	if currentIdx < 0 {
 		return state.Players[0].SeatOrder
 	}
-	nextIdx := (currentIdx + 1) % n
-	return state.Players[nextIdx].SeatOrder
+	// 최대 n번 탐색 (전원 FORFEITED 방지)
+	for i := 1; i <= n; i++ {
+		nextIdx := (currentIdx + i) % n
+		if state.Players[nextIdx].Status != model.PlayerStatusForfeited {
+			return state.Players[nextIdx].SeatOrder
+		}
+	}
+	return state.Players[currentIdx].SeatOrder // fallback
+}
+
+// countActivePlayers FORFEITED가 아닌 플레이어 수를 반환한다.
+func countActivePlayers(state *model.GameStateRedis) int {
+	count := 0
+	for _, p := range state.Players {
+		if p.Status != model.PlayerStatusForfeited {
+			count++
+		}
+	}
+	return count
 }
 
 // removeTilesFromRack 랙에서 지정 타일들을 제거한다.
@@ -636,7 +766,6 @@ func modelSetsToEngineSets(sets []*model.SetOnTable) []*engine.TileSet {
 		for _, t := range s.Tiles {
 			parsed, err := engine.Parse(t.Code)
 			if err != nil {
-				// 파싱 실패한 타일은 빈 타일로 처리 (validator가 에러 반환)
 				tiles = append(tiles, &engine.Tile{Code: t.Code})
 				continue
 			}

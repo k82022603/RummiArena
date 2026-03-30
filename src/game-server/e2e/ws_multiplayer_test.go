@@ -470,7 +470,8 @@ func TestWSMultiplayer_Chat_Broadcast(t *testing.T) {
 // TestWSMultiplayer_Disconnect_Broadcast
 // ============================================================
 
-// TestWSMultiplayer_Disconnect_Broadcast guest 연결 끊기 시 host가 PLAYER_LEAVE를 수신하는지 검증.
+// TestWSMultiplayer_Disconnect_Broadcast guest 연결 끊기 시 host가 PLAYER_DISCONNECTED를 수신하는지 검증.
+// 게임 진행 중 연결 끊김은 PLAYER_DISCONNECTED로 브로드캐스트되며 Grace Period가 시작된다.
 func TestWSMultiplayer_Disconnect_Broadcast(t *testing.T) {
 	router := buildTestRouter(t, "dev")
 	srv := httptest.NewServer(router)
@@ -491,16 +492,13 @@ func TestWSMultiplayer_Disconnect_Broadcast(t *testing.T) {
 	// guest 연결을 끊는다.
 	guestClient.close()
 
-	// host는 PLAYER_LEAVE를 수신해야 한다.
-	playerLeave := hostClient.readMsgOfType(handler.S2CPlayerLeave)
-	leavePayload := decodePayload(playerLeave.Payload)
+	// host는 PLAYER_DISCONNECTED를 수신해야 한다 (게임 진행 중 연결 끊김).
+	playerDC := hostClient.readMsgOfType(handler.S2CPlayerDisconnected)
+	dcPayload := decodePayload(playerDC.Payload)
 
 	// --- 검증 ---
-	assert.Equal(t, float64(guestSeat), leavePayload["seat"], "PLAYER_LEAVE.seat이 guest seat과 일치해야 한다")
-
-	// reason은 "DISCONNECT" 또는 연결 종료를 나타내는 값이어야 한다.
-	reason, _ := leavePayload["reason"].(string)
-	assert.NotEmpty(t, reason, "PLAYER_LEAVE.reason이 비어있지 않아야 한다")
+	assert.Equal(t, float64(guestSeat), dcPayload["seat"], "PLAYER_DISCONNECTED.seat이 guest seat과 일치해야 한다")
+	assert.Equal(t, float64(60), dcPayload["graceSec"], "graceSec은 60이어야 한다")
 }
 
 // ============================================================

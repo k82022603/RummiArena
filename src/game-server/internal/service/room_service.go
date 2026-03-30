@@ -24,6 +24,7 @@ type RoomService interface {
 	StartGame(roomID, hostUserID string) (*model.GameStateRedis, error)
 	DeleteRoom(roomID, hostUserID string) error
 	FinishRoom(roomID string) error
+	ClearActiveRoomForUser(userID string)
 }
 
 // AIPlayerRequest AI 플레이어 설정 DTO
@@ -55,7 +56,7 @@ func NewRoomService(
 	roomRepo repository.MemoryRoomRepository,
 	gameRepo repository.MemoryGameStateRepository,
 ) RoomService {
-	gs := &gameService{gameRepo: gameRepo}
+	gs := &gameService{gameRepo: gameRepo, snapshots: make(map[string]*turnSnapshot)}
 	return &roomService{
 		roomRepo:  roomRepo,
 		gameRepo:  gameRepo,
@@ -74,6 +75,11 @@ func (s *roomService) CreateRoom(req *CreateRoomRequest) (*model.RoomState, erro
 	}
 	if req.HostUserID == "" {
 		return nil, &ServiceError{Code: "UNAUTHORIZED", Message: "인증된 사용자만 방을 생성할 수 있습니다.", Status: 401}
+	}
+
+	// 중복 방 참가 검증: 이미 WAITING/PLAYING 방에 참가 중인지 확인
+	if err := s.checkDuplicateRoom(req.HostUserID); err != nil {
+		return nil, err
 	}
 
 	name := req.Name
@@ -141,6 +147,10 @@ func (s *roomService) CreateRoom(req *CreateRoomRequest) (*model.RoomState, erro
 	if err := s.roomRepo.SaveRoom(room); err != nil {
 		return nil, fmt.Errorf("room_service: save room: %w", err)
 	}
+
+	// 사용자-방 매핑 설정
+	_ = s.roomRepo.SetActiveRoomForUser(req.HostUserID, roomID)
+
 	return room, nil
 }
 
@@ -181,6 +191,11 @@ func (s *roomService) JoinRoom(roomID, userID, displayName string) error {
 		}
 	}
 
+	// 중복 방 참가 검증: 다른 방에 이미 참가 중인지 확인
+	if err := s.checkDuplicateRoom(userID); err != nil {
+		return err
+	}
+
 	// 빈 seat 탐색
 	emptySeat := -1
 	for i, p := range room.Players {
@@ -205,6 +220,10 @@ func (s *roomService) JoinRoom(roomID, userID, displayName string) error {
 	if err := s.roomRepo.SaveRoom(room); err != nil {
 		return fmt.Errorf("room_service: save room after join: %w", err)
 	}
+
+	// 사용자-방 매핑 설정
+	_ = s.roomRepo.SetActiveRoomForUser(userID, roomID)
+
 	return nil
 }
 
@@ -226,8 +245,13 @@ func (s *roomService) LeaveRoom(roomID, userID string) (*model.RoomState, error)
 		if p.UserID == userID {
 			found = true
 			if userID == room.HostID {
-				// 호스트 퇴장: 방 전체 취소
+				// 호스트 퇴장: 방 전체 취소 -> 모든 플레이어 매핑 정리
 				room.Status = model.RoomStatusCancelled
+				for _, pp := range room.Players {
+					if pp.UserID != "" {
+						_ = s.roomRepo.ClearActiveRoomForUser(pp.UserID)
+					}
+				}
 			} else {
 				// 일반 플레이어 퇴장: seat 초기화
 				room.Players[i] = model.RoomPlayer{
@@ -235,6 +259,7 @@ func (s *roomService) LeaveRoom(roomID, userID string) (*model.RoomState, error)
 					Type:   "HUMAN",
 					Status: model.SeatStatusEmpty,
 				}
+				_ = s.roomRepo.ClearActiveRoomForUser(userID)
 			}
 			break
 		}
@@ -324,7 +349,45 @@ func (s *roomService) FinishRoom(roomID string) error {
 	}
 	room.Status = model.RoomStatusFinished
 	room.UpdatedAt = time.Now().UTC()
+
+	// 모든 참가자 사용자-방 매핑 정리
+	for _, p := range room.Players {
+		if p.UserID != "" {
+			_ = s.roomRepo.ClearActiveRoomForUser(p.UserID)
+		}
+	}
+
 	return s.roomRepo.SaveRoom(room)
+}
+
+// ClearActiveRoomForUser 특정 사용자의 활성 방 매핑을 제거한다.
+// 기권(FORFEITED) 처리 시 외부에서 호출할 수 있도록 공개한다.
+func (s *roomService) ClearActiveRoomForUser(userID string) {
+	_ = s.roomRepo.ClearActiveRoomForUser(userID)
+}
+
+// checkDuplicateRoom 사용자가 이미 활성 방(WAITING/PLAYING)에 참가 중인지 확인한다.
+// 참가 중이면 409 ALREADY_IN_ROOM 에러를 반환한다.
+func (s *roomService) checkDuplicateRoom(userID string) error {
+	existingRoomID, err := s.roomRepo.GetActiveRoomForUser(userID)
+	if err != nil {
+		return nil // 조회 실패는 무시 (conservative)
+	}
+	if existingRoomID == "" {
+		return nil // 참가 중인 방 없음
+	}
+	// 방이 아직 활성 상태인지 더블 체크
+	room, err := s.roomRepo.GetRoom(existingRoomID)
+	if err != nil {
+		// 방이 삭제되었으면 매핑 정리
+		_ = s.roomRepo.ClearActiveRoomForUser(userID)
+		return nil
+	}
+	if room.Status == model.RoomStatusFinished || room.Status == model.RoomStatusCancelled {
+		_ = s.roomRepo.ClearActiveRoomForUser(userID)
+		return nil
+	}
+	return &ServiceError{Code: "ALREADY_IN_ROOM", Message: "이미 다른 방에 참가 중입니다.", Status: 409}
 }
 
 // generateRoomCode 4자리 대문자 알파벳 방 코드를 생성한다.

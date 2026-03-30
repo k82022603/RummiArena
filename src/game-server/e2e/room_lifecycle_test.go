@@ -156,45 +156,8 @@ func TestRoomLifecycle_FinishRoom_NotFound(t *testing.T) {
 // TestRoomLifecycle_ListRooms_ExcludesFinished
 // FinishRoom 호출 후 ListRooms에 FINISHED 방이 포함되지 않는지 확인
 func TestRoomLifecycle_ListRooms_ExcludesFinished(t *testing.T) {
-	router := buildTestRouter(t, "dev")
-	srv := httptest.NewServer(router)
-	defer srv.Close()
-
-	hostToken := issueDevToken(t, hostUserID)
-	guestToken := issueDevToken(t, guestUserID)
-
-	// 방 A (WAITING 상태 유지)
-	createRespA := doRequest(t, srv, http.MethodPost, "/api/rooms", hostToken, map[string]interface{}{
-		"name":           "방 A (WAITING)",
-		"playerCount":    2,
-		"turnTimeoutSec": 60,
-	})
-	require.Equal(t, http.StatusCreated, createRespA.StatusCode)
-	decodeJSON(t, createRespA) // body 소비
-
-	// 방 B 생성 후 게임 시작
-	createRespB := doRequest(t, srv, http.MethodPost, "/api/rooms", hostToken, map[string]interface{}{
-		"name":           "방 B (게임 종료 예정)",
-		"playerCount":    2,
-		"turnTimeoutSec": 60,
-	})
-	require.Equal(t, http.StatusCreated, createRespB.StatusCode)
-	roomBBody := decodeJSON(t, createRespB)
-	roomBID := roomBBody["id"].(string)
-
-	joinResp := doRequest(t, srv, http.MethodPost, "/api/rooms/"+roomBID+"/join", guestToken, nil)
-	require.Equal(t, http.StatusOK, joinResp.StatusCode)
-	joinResp.Body.Close() //nolint:errcheck
-
-	startResp := doRequest(t, srv, http.MethodPost, "/api/rooms/"+roomBID+"/start", hostToken, nil)
-	require.Equal(t, http.StatusOK, startResp.StatusCode)
-	startResp.Body.Close() //nolint:errcheck
-
-	// 방 B를 FinishRoom으로 종료
-	// (HTTP 엔드포인트가 없으므로 서비스를 직접 사용해 종료 후 목록 확인)
-	// 목록 API가 memory_repo 기반이므로, 같은 인스턴스를 사용해야 반영됨
-	// buildTestRouter 내부 인스턴스에 접근할 수 없으므로,
-	// 별도 repo 인스턴스로 ListRooms 필터링 로직만 단위 검증한다
+	// 별도 repo 인스턴스로 ListRooms 필터링 로직(WAITING+PLAYING만 반환)을 단위 검증한다.
+	// (중복 방 참가 제한으로 동일 사용자가 여러 방을 만들 수 없으므로 HTTP 부분은 생략)
 	roomRepo := repository.NewMemoryRoomRepo()
 	gameStateRepo := repository.NewMemoryGameStateRepoAdapter()
 	roomSvc := service.NewRoomService(roomRepo, gameStateRepo)

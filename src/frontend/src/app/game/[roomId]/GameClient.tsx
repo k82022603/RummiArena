@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   DragEndEvent,
@@ -14,6 +14,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useWebSocket } from "@/hooks/useWebSocket";
+import { useGameLeaveGuard } from "@/hooks/useGameLeaveGuard";
 import { useGameStore } from "@/store/gameStore";
 import { useRoomStore } from "@/store/roomStore";
 import GameBoard from "@/components/game/GameBoard";
@@ -126,14 +127,24 @@ function getPlayerDisplayName(player: Player | null | undefined, fallback: strin
 // 게임 종료 오버레이
 // ------------------------------------------------------------------
 
+/** 종료 사유별 UI 메타 */
+const END_TYPE_META: Record<string, { icon: string; label: string; description: string }> = {
+  NORMAL: { icon: "\uD83C\uDFC6", label: "게임 종료", description: "" },
+  STALEMATE: { icon: "\uD83E\uDD1D", label: "교착 종료", description: "모든 플레이어가 연속으로 패스하여 교착 상태로 종료되었습니다." },
+  FORFEIT: { icon: "\uD83C\uDFF3\uFE0F", label: "기권 종료", description: "상대 플레이어의 기권으로 게임이 종료되었습니다." },
+  CANCELLED: { icon: "\u274C", label: "게임 취소", description: "게임이 취소되었습니다." },
+};
+
 function GameEndedOverlay({
   onLobby,
   result,
   players,
+  deadlockReason,
 }: {
   onLobby: () => void;
   result?: GameOverPayload | null;
   players: Player[];
+  deadlockReason?: string | null;
 }) {
   const winner = result?.results.find((r) => r.isWinner);
   const winnerPlayer = winner
@@ -142,6 +153,9 @@ function GameEndedOverlay({
   const winnerName = winner
     ? getPlayerDisplayName(winnerPlayer, `Seat ${winner.seat}`)
     : null;
+
+  const endType = result?.endType ?? "NORMAL";
+  const meta = END_TYPE_META[endType] ?? END_TYPE_META.NORMAL;
 
   return (
     <motion.div
@@ -158,17 +172,27 @@ function GameEndedOverlay({
         transition={{ type: "spring", stiffness: 300, damping: 25 }}
         className="bg-card-bg border border-border rounded-2xl p-8 max-w-md w-full mx-4"
       >
-        {/* 상단: 트로피 + 제목 */}
+        {/* 상단: 아이콘 + 제목 */}
         <div className="text-center mb-6">
           <div className="text-4xl mb-3" aria-hidden="true">
-            🏆
+            {meta.icon}
           </div>
           <h2 className="text-tile-2xl font-bold text-text-primary mb-1">
-            게임 종료
+            {meta.label}
           </h2>
           {winnerName && (
             <p className="text-tile-base text-warning font-semibold">
               {winnerName} 승리!
+            </p>
+          )}
+          {meta.description && (
+            <p className="text-text-secondary text-tile-xs mt-1">
+              {meta.description}
+            </p>
+          )}
+          {deadlockReason === "ALL_PASS" && endType === "STALEMATE" && (
+            <p className="text-text-secondary text-tile-xs mt-1">
+              잔여 타일 점수 기준으로 승자가 결정되었습니다.
             </p>
           )}
           {!result && (
@@ -193,15 +217,23 @@ function GameEndedOverlay({
                 {result.results.map((r) => {
                   const player = players.find((p) => p.seat === r.seat);
                   const name = getPlayerDisplayName(player, `Seat ${r.seat}`);
+                  const pStatus = player
+                    ? (player as { status?: string }).status
+                    : undefined;
+                  const isForf = pStatus === "FORFEITED";
+
                   return (
                     <tr
                       key={r.seat}
                       className={`border-b border-border/50 ${
                         r.isWinner ? "bg-warning/5" : ""
-                      }`}
+                      } ${isForf ? "opacity-50" : ""}`}
                     >
                       <td className="py-2 text-text-primary font-medium">
                         {name}
+                        {isForf && (
+                          <span className="ml-1 text-[10px] text-danger font-bold">(기권)</span>
+                        )}
                       </td>
                       <td className="py-2 text-center font-mono text-text-secondary">
                         {r.remainingTiles.length}장
@@ -209,6 +241,8 @@ function GameEndedOverlay({
                       <td className="py-2 text-center">
                         {r.isWinner ? (
                           <span className="text-warning font-bold">승</span>
+                        ) : isForf ? (
+                          <span className="text-danger font-bold">기권</span>
                         ) : (
                           <span className="text-text-secondary">패</span>
                         )}
@@ -272,6 +306,9 @@ export default function GameClient({ roomId }: GameClientProps) {
     setMyTiles,
     gameEnded,
     gameOverResult,
+    disconnectedPlayers,
+    isDrawPileEmpty,
+    deadlockReason,
     reset: resetGameStore,
   } = useGameStore();
 
@@ -282,6 +319,57 @@ export default function GameClient({ roomId }: GameClientProps) {
 
   // 다음 보드 드롭 시 새 그룹 강제 생성 여부
   const [forceNewGroup, setForceNewGroup] = useState(false);
+
+  // ------------------------------------------------------------------
+  // Task 1: beforeunload + 라우터 가드
+  // PLAYING 상태 판정: gameState가 존재하고 게임이 아직 끝나지 않은 경우
+  // ------------------------------------------------------------------
+  const isPlaying = gameState !== null && !gameEnded;
+
+  const handleLeaveConfirmed = useCallback(() => {
+    send("LEAVE_GAME", {});
+  }, [send]);
+
+  useGameLeaveGuard({
+    isPlaying,
+    onLeaveConfirmed: handleLeaveConfirmed,
+  });
+
+  // ------------------------------------------------------------------
+  // Task 2: 연결 끊김 플레이어 카운트다운 (1초 갱신)
+  // ------------------------------------------------------------------
+  const [disconnectCountdowns, setDisconnectCountdowns] = useState<Record<number, number>>({});
+  const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (disconnectedPlayers.length === 0) {
+      setDisconnectCountdowns({});
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+        countdownIntervalRef.current = null;
+      }
+      return;
+    }
+
+    const compute = () => {
+      const now = Date.now();
+      const counts: Record<number, number> = {};
+      for (const dp of disconnectedPlayers) {
+        const remaining = Math.max(0, Math.ceil((dp.graceDeadlineMs - now) / 1000));
+        counts[dp.seat] = remaining;
+      }
+      setDisconnectCountdowns(counts);
+    };
+    compute();
+
+    countdownIntervalRef.current = setInterval(compute, 1000);
+    return () => {
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+        countdownIntervalRef.current = null;
+      }
+    };
+  }, [disconnectedPlayers]);
 
 
   // 실제 내 seat: gameStore.mySeat(AUTH_OK에서 설정, 초기값 -1) 우선,
@@ -329,7 +417,7 @@ export default function GameClient({ roomId }: GameClientProps) {
       );
 
       if (existingPendingGroup) {
-        // 랙 → pending 그룹: 해당 그룹에 타일 추가
+        // 랙 -> pending 그룹: 해당 그룹에 타일 추가
         const nextTableGroups = currentTableGroups.map((g) =>
           g.id === existingPendingGroup.id
             ? { ...g, tiles: [...g.tiles, tileCode] }
@@ -414,8 +502,8 @@ export default function GameClient({ roomId }: GameClientProps) {
           if (forceNewGroup) setForceNewGroup(false);
         }
       } else if (over.id === "player-rack") {
-        // 보드 → 랙: pending 그룹에 실제로 있는 타일만 회수
-        // (랙→랙 오드롭 시 서버 그룹 타일을 삭제하는 버그 방지)
+        // 보드 -> 랙: pending 그룹에 실제로 있는 타일만 회수
+        // (랙->랙 오드롭 시 서버 그룹 타일을 삭제하는 버그 방지)
         if (pendingTableGroups) {
           const tileInPending = pendingTableGroups
             .filter((g) => pendingGroupIds.has(g.id))
@@ -506,6 +594,11 @@ export default function GameClient({ roomId }: GameClientProps) {
     send("DRAW_TILE", {});
   }, [send]);
 
+  // 패스 (드로우 파일 소진 시 -- 서버에 DRAW_TILE을 전송하면 서버가 패스로 처리)
+  const handlePass = useCallback(() => {
+    send("DRAW_TILE", {});
+  }, [send]);
+
   // 게임 종료 화면
   if (gameEnded) {
     return (
@@ -516,6 +609,7 @@ export default function GameClient({ roomId }: GameClientProps) {
         }}
         result={gameOverResult}
         players={players}
+        deadlockReason={deadlockReason}
       />
     );
   }
@@ -568,6 +662,7 @@ export default function GameClient({ roomId }: GameClientProps) {
                     gameState?.currentSeat === player.seat
                   }
                   isAIThinking={aiThinkingSeat === player.seat}
+                  disconnectCountdown={disconnectCountdowns[player.seat]}
                 />
               </div>
             ))
@@ -599,9 +694,26 @@ export default function GameClient({ roomId }: GameClientProps) {
 
             {/* 드로우 파일 */}
             {gameState && (
-              <div className="p-3 bg-card-bg rounded-xl border border-border flex flex-col items-center gap-2">
-                <p className="text-tile-xs text-text-secondary">드로우 파일</p>
+              <div
+                className={[
+                  "p-3 rounded-xl border flex flex-col items-center gap-2",
+                  isDrawPileEmpty
+                    ? "bg-danger/5 border-danger/30"
+                    : "bg-card-bg border-border",
+                ].join(" ")}
+              >
+                <p className={[
+                  "text-tile-xs",
+                  isDrawPileEmpty ? "text-danger font-semibold" : "text-text-secondary",
+                ].join(" ")}>
+                  {isDrawPileEmpty ? "타일 소진" : "드로우 파일"}
+                </p>
                 <DrawPileVisual count={gameState.drawPileCount} />
+                {isDrawPileEmpty && (
+                  <p className="text-[9px] text-danger/80 text-center leading-tight">
+                    배치 또는 패스만 가능
+                  </p>
+                )}
               </div>
             )}
 
@@ -677,8 +789,8 @@ export default function GameClient({ roomId }: GameClientProps) {
                     ({currentMyTiles.length}장)
                   </span>
                   {hasInitialMeld
-                    ? " · 최초 등록 완료"
-                    : " · 최초 등록 30점 이상 필요"}
+                    ? " \u00B7 최초 등록 완료"
+                    : " \u00B7 최초 등록 30점 이상 필요"}
                 </span>
                 {isMyTurn && (
                   <motion.span
@@ -706,6 +818,7 @@ export default function GameClient({ roomId }: GameClientProps) {
                 onDraw={handleDraw}
                 onUndo={handleUndo}
                 onConfirm={handleConfirm}
+                onPass={handlePass}
               />
             </div>
           </main>

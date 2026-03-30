@@ -13,3 +13,6 @@ data:
   OLLAMA_BASE_URL: {{ .Values.env.OLLAMA_BASE_URL | quote }}
   OLLAMA_DEFAULT_MODEL: {{ .Values.env.OLLAMA_DEFAULT_MODEL | quote }}
   OPENAI_DEFAULT_MODEL: {{ .Values.env.OPENAI_DEFAULT_MODEL | quote }}
+  REDIS_HOST: {{ .Values.env.REDIS_HOST | quote }}
+  REDIS_PORT: {{ .Values.env.REDIS_PORT | quote }}
+  DAILY_COST_LIMIT_USD: {{ .Values.env.DAILY_COST_LIMIT_USD | quote }}

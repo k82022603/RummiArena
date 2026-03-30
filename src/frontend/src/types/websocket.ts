@@ -40,6 +40,11 @@ export type S2CMessageType =
   | "PLAYER_JOIN"
   | "PLAYER_LEAVE"
   | "PLAYER_RECONNECT"
+  | "PLAYER_DISCONNECTED"
+  | "PLAYER_RECONNECTED"
+  | "PLAYER_FORFEITED"
+  | "DRAW_PILE_EMPTY"
+  | "GAME_DEADLOCK_END"
   | "AI_THINKING"
   | "TIMER_UPDATE"
   | "CHAT_BROADCAST"
@@ -193,6 +198,40 @@ export interface ChatBroadcastPayload {
   displayName: string;
   message: string;
   sentAt: string;
+}
+
+/** S2C: PLAYER_DISCONNECTED - 플레이어 연결 끊김, Grace Period 카운트다운 시작 */
+export interface PlayerDisconnectedPayload {
+  seat: number;
+  displayName: string;
+  graceDeadlineMs: number;
+}
+
+/** S2C: PLAYER_RECONNECTED - 플레이어 Grace Period 내 재연결 */
+export interface PlayerReconnectedPayload {
+  seat: number;
+  displayName: string;
+}
+
+/** S2C: PLAYER_FORFEITED - 플레이어 기권 (Grace 초과 또는 명시적 LEAVE_GAME) */
+export interface PlayerForfeitedPayload {
+  seat: number;
+  displayName: string;
+  reason: "DISCONNECT_TIMEOUT" | "LEAVE";
+  activePlayers: number;
+  isGameOver: boolean;
+}
+
+/** S2C: DRAW_PILE_EMPTY - 드로우 파일 소진 */
+export interface DrawPileEmptyPayload {
+  consecutivePassCount: number;
+  activePlayerCount: number;
+}
+
+/** S2C: GAME_DEADLOCK_END - 교착 상태(전원 연속 패스)로 게임 종료 */
+export interface GameDeadlockEndPayload {
+  reason: "ALL_PASS";
+  consecutivePassCount: number;
 }
 
 /**

@@ -28,7 +28,7 @@ export type AIDifficulty = "beginner" | "intermediate" | "expert";
 /**
  * 플레이어 연결 상태
  */
-export type PlayerStatus = "CONNECTED" | "DISCONNECTED" | "READY";
+export type PlayerStatus = "CONNECTED" | "DISCONNECTED" | "READY" | "FORFEITED";
 
 /**
  * 플레이어 (Human)
@@ -53,7 +53,7 @@ export interface AIPlayer {
   persona: AIPersona;
   difficulty: AIDifficulty;
   psychologyLevel: 0 | 1 | 2 | 3;
-  status: "READY" | "THINKING";
+  status: "READY" | "THINKING" | "CONNECTED" | "DISCONNECTED" | "FORFEITED";
   tileCount?: number;
   hasInitialMeld?: boolean;
 }

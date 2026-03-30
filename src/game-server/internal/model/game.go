@@ -16,6 +16,16 @@ const (
 	GameStatusCancelled GameStatus = "CANCELLED"
 )
 
+// GameEndType 게임 종료 사유
+type GameEndType string
+
+const (
+	GameEndNormal    GameEndType = "NORMAL"
+	GameEndStalemate GameEndType = "STALEMATE"
+	GameEndForfeit   GameEndType = "FORFEIT"
+	GameEndCancelled GameEndType = "CANCELLED"
+)
+
 // GameMode 게임 모드
 type GameMode string
 

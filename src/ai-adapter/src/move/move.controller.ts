@@ -8,6 +8,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { InternalTokenGuard } from '../common/guards/internal-token.guard';
+import { CostLimitGuard } from '../cost/cost-limit.guard';
 import {
   IsEnum,
   IsNotEmpty,
@@ -35,7 +36,7 @@ import {
 
 // -----------------------------------------------------------------------
 // POST /move 전용 요청 DTO
-// game-server → ai-adapter 엔드포인트 계약.
+// game-server -> ai-adapter 엔드포인트 계약.
 // model 필드를 포함하며, 내부 MoveRequestDto로 변환 후 어댑터에 전달한다.
 // -----------------------------------------------------------------------
 
@@ -147,6 +148,10 @@ export class PostMoveBodyDto {
  *
  * game-server는 이 엔드포인트를 호출하여 AI 플레이어의 다음 수를 요청한다.
  * 컨트롤러는 요청 검증과 서비스 위임만 담당한다.
+ *
+ * Guards:
+ * - InternalTokenGuard: 내부 서비스 인증
+ * - CostLimitGuard: 일일 비용 한도 초과 시 외부 LLM 요청 거부
  */
 @Controller('move')
 export class MoveController {
@@ -163,7 +168,7 @@ export class MoveController {
    * POST /move
    */
   @Post()
-  @UseGuards(InternalTokenGuard)
+  @UseGuards(InternalTokenGuard, CostLimitGuard)
   @HttpCode(HttpStatus.OK)
   async generateMove(@Body() body: PostMoveBodyDto): Promise<MoveResponseDto> {
     this.logger.log(

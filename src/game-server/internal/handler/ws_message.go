@@ -16,20 +16,23 @@ const (
 
 // --- S2C (Server-to-Client) Message Types ---
 const (
-	S2CAuthOK          = "AUTH_OK"
-	S2CGameState       = "GAME_STATE"
-	S2CTurnStart       = "TURN_START"
-	S2CTurnEnd         = "TURN_END"
-	S2CTilePlaced      = "TILE_PLACED"
-	S2CTileDrawn       = "TILE_DRAWN"
-	S2CInvalidMove     = "INVALID_MOVE"
-	S2CGameOver        = "GAME_OVER"
-	S2CPlayerJoin      = "PLAYER_JOIN"
-	S2CPlayerLeave     = "PLAYER_LEAVE"
-	S2CPlayerReconnect = "PLAYER_RECONNECT"
-	S2CError           = "ERROR"
-	S2CPong            = "PONG"
-	S2CChatBroadcast   = "CHAT_BROADCAST"
+	S2CAuthOK             = "AUTH_OK"
+	S2CGameState          = "GAME_STATE"
+	S2CTurnStart          = "TURN_START"
+	S2CTurnEnd            = "TURN_END"
+	S2CTilePlaced         = "TILE_PLACED"
+	S2CTileDrawn          = "TILE_DRAWN"
+	S2CInvalidMove        = "INVALID_MOVE"
+	S2CGameOver           = "GAME_OVER"
+	S2CPlayerJoin         = "PLAYER_JOIN"
+	S2CPlayerLeave        = "PLAYER_LEAVE"
+	S2CPlayerReconnect    = "PLAYER_RECONNECT"
+	S2CPlayerDisconnected = "PLAYER_DISCONNECTED"
+	S2CPlayerForfeited    = "PLAYER_FORFEITED"
+	S2CDrawPileEmpty      = "DRAW_PILE_EMPTY"
+	S2CError              = "ERROR"
+	S2CPong               = "PONG"
+	S2CChatBroadcast      = "CHAT_BROADCAST"
 )
 
 // --- WebSocket Close Codes ---
@@ -68,13 +71,14 @@ type WSTableGroup struct {
 
 // WSPlayerInfo WebSocket 메시지용 플레이어 정보
 type WSPlayerInfo struct {
-	Seat           int    `json:"seat"`
-	UserID         string `json:"userId,omitempty"`
-	DisplayName    string `json:"displayName"`
-	PlayerType     string `json:"playerType"`
-	TileCount      int    `json:"tileCount"`
-	HasInitialMeld bool   `json:"hasInitialMeld"`
-	IsConnected    bool   `json:"isConnected"`
+	Seat             int    `json:"seat"`
+	UserID           string `json:"userId,omitempty"`
+	DisplayName      string `json:"displayName"`
+	PlayerType       string `json:"playerType"`
+	TileCount        int    `json:"tileCount"`
+	HasInitialMeld   bool   `json:"hasInitialMeld"`
+	IsConnected      bool   `json:"isConnected"`
+	ConnectionStatus string `json:"connectionStatus,omitempty"` // ACTIVE, DISCONNECTED, FORFEITED
 }
 
 // --- C2S Payload Structs ---
@@ -175,9 +179,9 @@ type WSValidationError struct {
 
 // GameOverPayload GAME_OVER 페이로드
 type GameOverPayload struct {
-	EndType    string          `json:"endType"`
-	WinnerID   string          `json:"winnerId,omitempty"`
-	WinnerSeat int             `json:"winnerSeat"`
+	EndType    string           `json:"endType"`
+	WinnerID   string           `json:"winnerId,omitempty"`
+	WinnerSeat int              `json:"winnerSeat"`
 	Results    []WSPlayerResult `json:"results"`
 }
 
@@ -225,4 +229,25 @@ type ChatBroadcastPayload struct {
 	DisplayName string `json:"displayName"`
 	Message     string `json:"message"`
 	SentAt      string `json:"sentAt"`
+}
+
+// PlayerDisconnectedPayload PLAYER_DISCONNECTED 페이로드
+type PlayerDisconnectedPayload struct {
+	Seat        int    `json:"seat"`
+	DisplayName string `json:"displayName"`
+	GraceSec    int    `json:"graceSec"`
+}
+
+// PlayerForfeitedPayload PLAYER_FORFEITED 페이로드
+type PlayerForfeitedPayload struct {
+	Seat          int    `json:"seat"`
+	DisplayName   string `json:"displayName"`
+	Reason        string `json:"reason"`        // "DISCONNECT_TIMEOUT" or "LEAVE"
+	ActivePlayers int    `json:"activePlayers"`
+	IsGameOver    bool   `json:"isGameOver"`
+}
+
+// DrawPileEmptyPayload DRAW_PILE_EMPTY 페이로드
+type DrawPileEmptyPayload struct {
+	Message string `json:"message"`
 }
