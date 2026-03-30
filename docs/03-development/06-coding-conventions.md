@@ -552,6 +552,38 @@ Authorization: Bearer <JWT_TOKEN>
 - 헬스체크(`/health`, `/ready`)와 WebSocket 핸드셰이크는 인증 불필요
 - API 그룹(`/api/*`)은 JWT 미들웨어를 적용한다
 
+### 5.5 인증/인가와 사용자 프로필의 분리 (필수)
+
+> **이 규칙은 반복적으로 위반되었으므로 특별히 강조한다.**
+
+**OAuth(인증/인가) 영역에 사용자 프로필 정보를 절대 포함시키지 않는다.**
+
+| 영역 | 포함 대상 | 포함 금지 |
+|------|-----------|-----------|
+| **인증 (Auth)** | google_id, email, JWT claims (sub, role, exp) | DisplayName, AvatarURL, EloRating, 기타 프로필 |
+| **사용자 프로필 (User Profile)** | display_name, avatar_url, elo_rating, 게임 통계 | OAuth token, google_id |
+
+**구체적 금지 사항:**
+
+1. **OAuth 로그인 시 DisplayName 덮어쓰기 금지** — Google 프로필 이름(`gc.Name`)으로 기존 사용자의 `DisplayName`을 갱신하면 안 된다. 사용자가 설정한 닉네임이 로그인할 때마다 초기화된다.
+2. **신규 가입 시에만** Google Name을 `DisplayName` 기본값으로 사용 가능 (최초 1회).
+3. **JWT 토큰에 프로필 정보 포함 금지** — JWT에는 `sub`(userID), `role`, `exp`만 포함한다. DisplayName은 별도 API로 조회한다.
+4. **인증 핸들러에서 프로필 업데이트 금지** — `auth_handler.go`에서는 인증 관련 필드(`email` 변경 감지)만 동기화한다. 프로필 변경은 별도 프로필 API에서 처리한다.
+
+**배경**: `DisplayName`의 "Name"이 Google OAuth의 `name` 필드와 혼동을 일으킨다. 그러나 `DisplayName`은 **게임 내 닉네임**이지 **실명**이 아니다. OAuth는 "이 사람이 누구인지 확인"하는 것이고, 닉네임은 "게임에서 어떤 이름으로 표시할지"를 결정하는 것이다. 두 관심사를 절대 섞지 않는다.
+
+```go
+// BAD — OAuth 로그인에서 프로필 덮어쓰기
+if gc.Name != "" && existing.DisplayName != gc.Name {
+    existing.DisplayName = gc.Name  // 절대 금지
+}
+
+// GOOD — 인증 관련 필드만 동기화
+if gc.Email != "" && existing.Email != gc.Email {
+    existing.Email = gc.Email  // email은 인증 영역이므로 동기화 가능
+}
+```
+
 ---
 
 ## 6. 데이터베이스

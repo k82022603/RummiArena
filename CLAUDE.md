@@ -75,6 +75,7 @@ work_logs/         # 세션/데일리/스크럼/바이브/회고/결정 로그
 3. **Stateless 서버**: 모든 게임 상태는 Redis에 저장. Pod 재시작 대응
 4. **GitOps**: 소스 repo와 GitOps repo 분리. ArgoCD가 Helm chart 기반 배포 담당
 5. **DevSecOps**: CI 파이프라인에 SonarQube + Trivy 보안 게이트
+6. **인증/인가 ↔ 사용자 프로필 완전 분리**: OAuth 핸들러에서 DisplayName, AvatarURL 등 프로필 정보를 절대 덮어쓰지 않는다. OAuth는 identity 확인만, 프로필은 별도 API에서 관리. 상세: `docs/03-development/06-coding-conventions.md` 섹션 5.5
 
 ## Tile Encoding
 

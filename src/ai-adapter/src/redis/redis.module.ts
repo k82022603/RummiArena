@@ -52,7 +52,7 @@ export const REDIS_CLIENT = 'REDIS_CLIENT';
           logger.log(`Redis 연결 성공 (${host}:${port})`);
         });
 
-        client.on('error', (err) => {
+        client.on('error', (err: Error) => {
           logger.error(`Redis 연결 오류: ${err.message}`);
         });
 
@@ -61,7 +61,7 @@ export const REDIS_CLIENT = 'REDIS_CLIENT';
         });
 
         // lazy connect이므로 명시적 연결 시도
-        client.connect().catch((err) => {
+        client.connect().catch((err: Error) => {
           logger.warn(
             `Redis 초기 연결 실패 (비용 추적 비활성화): ${err.message}`,
           );

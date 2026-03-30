@@ -328,10 +328,8 @@ func (h *AuthHandler) upsertUser(ctx context.Context, gc *googleIDTokenClaims) (
 
 	existing, err := h.userRepo.GetUserByGoogleID(ctx, gc.Sub)
 	if err == nil {
-		// 기존 사용자: 프로필 변경분 반영 (에러 무시 — 로그인 자체를 막지 않는다)
-		if gc.Name != "" && existing.DisplayName != gc.Name {
-			existing.DisplayName = gc.Name
-		}
+		// 기존 사용자: 인증 관련 필드(email)만 동기화.
+		// DisplayName은 사용자 프로필 영역이므로 OAuth에서 절대 덮어쓰지 않는다.
 		if gc.Email != "" && existing.Email != gc.Email {
 			existing.Email = gc.Email
 		}
