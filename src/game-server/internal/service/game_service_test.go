@@ -698,10 +698,7 @@ func TestTurnAdvancement_AfterConfirm_TwoPlayers(t *testing.T) {
 
 func TestTurnAdvancement_AfterDraw_ThreePlayers(t *testing.T) {
 	// 3인 게임에서 DrawTile 순서 확인: seat 0 → 1 → 2 → 0
-	// 교착 판정(ConsecutivePassCount >= 3)을 피하기 위해 드로우 사이에
-	// ConfirmTurn으로 카운터를 리셋하지 않고, 드로우를 2번만 검증한 뒤
-	// 나머지는 턴 순환 구조로 확인한다.
-	// 전원 드로우 라운드 완성 시 교착 종료되므로 2번까지만 연속 드로우 검증.
+	// 드로우 파일이 있을 때 드로우는 정상 게임 진행이므로 교착이 아니다.
 	players := []model.PlayerState{
 		{SeatOrder: 0, UserID: "u0", PlayerType: "HUMAN", Rack: []string{"R1a"}},
 		{SeatOrder: 1, UserID: "u1", PlayerType: "HUMAN", Rack: []string{"R2a"}},
@@ -722,17 +719,18 @@ func TestTurnAdvancement_AfterDraw_ThreePlayers(t *testing.T) {
 	r0, err := svc.DrawTile("game-51", 0)
 	require.NoError(t, err)
 	assert.Equal(t, 1, r0.NextSeat) // seat 0 → seat 1
+	assert.False(t, r0.GameEnded, "드로우 파일이 있으면 교착이 아니다")
 
 	r1, err := svc.DrawTile("game-51", 1)
 	require.NoError(t, err)
 	assert.Equal(t, 2, r1.NextSeat) // seat 1 → seat 2
+	assert.False(t, r1.GameEnded)
 
-	// 3번째 드로우는 교착 판정 발동 (ConsecutivePassCount=3 == len(players))
-	// finishGameStalemate 반환: GameEnded=true
+	// 3번째 드로우 — 드로우 파일 남아있으므로 교착 아님, 게임 계속
 	r2, err := svc.DrawTile("game-51", 2)
 	require.NoError(t, err)
-	assert.True(t, r2.GameEnded)
-	assert.Equal(t, "STALEMATE", r2.ErrorCode)
+	assert.False(t, r2.GameEnded, "드로우 파일이 있으면 전원 드로우해도 교착이 아니다")
+	assert.Equal(t, 0, r2.NextSeat) // seat 2 → seat 0 (순환)
 }
 
 // --- TestWinCondition ---
@@ -917,31 +915,28 @@ func TestConfirmTurn_HasInitialMeld_SkipsThirtyPointCheck(t *testing.T) {
 
 // --- TestStalemate ---
 
-func TestStalemate_TwoPlayers_ConsecutiveDraw(t *testing.T) {
-	// 2인 게임: 각자 1회씩 드로우 → ConsecutivePassCount=2 == len(players) → 교착
-	// rack0=R5a+R6a(11점), rack1=K1a(1점) → user-B 승리
+func TestStalemate_TwoPlayers_DrawWithPile_NoStalemate(t *testing.T) {
+	// 2인 게임: 드로우 파일 남아있으면 전원 드로우해도 교착 아님
+	// 드로우 = 타일 획득 = 게임 진행
 	rack0 := []string{"R5a", "R6a"}
 	rack1 := []string{"K1a"}
 	drawPile := []string{"Y1a", "Y2a", "Y3a"}
 	state := newTestGameState("stale-01", twoPlayerState(rack0, rack1), drawPile)
 	svc, repo := seedRepo(t, state)
 
-	// seat 0 드로우 → ConsecutivePassCount=1, 아직 교착 아님
+	// seat 0 드로우 → 타일 획득, 교착 아님
 	r0, err := svc.DrawTile("stale-01", 0)
 	require.NoError(t, err)
-	assert.False(t, r0.GameEnded)
+	assert.False(t, r0.GameEnded, "드로우 파일 있으면 교착 아님")
 	assert.Equal(t, 1, r0.NextSeat)
 
-	// seat 1 드로우 → ConsecutivePassCount=2 == 2명 → 교착 판정
+	// seat 1 드로우 → 타일 획득, 교착 아님
 	r1, err := svc.DrawTile("stale-01", 1)
 	require.NoError(t, err)
-	assert.True(t, r1.GameEnded)
-	assert.Equal(t, "STALEMATE", r1.ErrorCode)
-	assert.Equal(t, "user-B", r1.WinnerID) // K1a(1점) < R5a+R6a+Y1a(drawn)
+	assert.False(t, r1.GameEnded, "드로우 파일 있으면 전원 드로우해도 교착 아님")
 
 	saved, _ := repo.GetGameState("stale-01")
-	assert.Equal(t, model.GameStatusFinished, saved.Status)
-	assert.True(t, saved.IsStalemate, "교착 종료 시 GameStateRedis.IsStalemate가 true여야 한다")
+	assert.Equal(t, model.GameStatusPlaying, saved.Status, "게임 계속 진행")
 }
 
 func TestStalemate_ConfirmTurn_ResetsCounter(t *testing.T) {

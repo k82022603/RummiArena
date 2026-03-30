@@ -20,10 +20,10 @@ func newRoomService(t *testing.T) RoomService {
 // Task 2: Duplicate Room Participation Tests
 // ============================================================
 
-func TestCreateRoom_DuplicateBlocked(t *testing.T) {
+func TestCreateRoom_DuplicateBlocked_WhenPlaying(t *testing.T) {
 	svc := newRoomService(t)
 
-	// 첫 번째 방 생성 성공
+	// WAITING 방에서는 자동 퇴장 → 새 방 생성 허용
 	_, err := svc.CreateRoom(&CreateRoomRequest{
 		Name:           "방 1",
 		PlayerCount:    2,
@@ -32,12 +32,38 @@ func TestCreateRoom_DuplicateBlocked(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// 같은 사용자가 두 번째 방 생성 시도 -> 거부
+	// WAITING 상태이므로 자동 퇴장 후 새 방 생성 성공
 	_, err = svc.CreateRoom(&CreateRoomRequest{
 		Name:           "방 2",
 		PlayerCount:    2,
 		TurnTimeoutSec: 60,
 		HostUserID:     "user-dup-1",
+	})
+	require.NoError(t, err, "WAITING 방은 자동 퇴장 후 새 방 생성 허용")
+}
+
+func TestCreateRoom_DuplicateBlocked_PlayingState(t *testing.T) {
+	svc := newRoomService(t)
+
+	// 방 생성 + 게스트 참가 + PLAYING 상태로 변경
+	room, err := svc.CreateRoom(&CreateRoomRequest{
+		Name:           "게임방",
+		PlayerCount:    2,
+		TurnTimeoutSec: 60,
+		HostUserID:     "user-playing",
+	})
+	require.NoError(t, err)
+	err = svc.JoinRoom(room.ID, "guest-playing", "게스트")
+	require.NoError(t, err)
+	_, err = svc.StartGame(room.ID, "user-playing")
+	require.NoError(t, err)
+
+	// PLAYING 상태에서는 새 방 생성 거부
+	_, err = svc.CreateRoom(&CreateRoomRequest{
+		Name:           "새방",
+		PlayerCount:    2,
+		TurnTimeoutSec: 60,
+		HostUserID:     "user-playing",
 	})
 	require.Error(t, err)
 	se, ok := IsServiceError(err)
@@ -46,37 +72,26 @@ func TestCreateRoom_DuplicateBlocked(t *testing.T) {
 	assert.Equal(t, 409, se.Status)
 }
 
-func TestJoinRoom_DuplicateBlocked(t *testing.T) {
+func TestJoinRoom_DuplicateBlocked_WaitingAutoLeave(t *testing.T) {
 	svc := newRoomService(t)
 
-	// 방 A 생성 (host-A가 호스트)
+	// 방 A, B 생성
 	roomA, err := svc.CreateRoom(&CreateRoomRequest{
-		Name:           "방 A",
-		PlayerCount:    2,
-		TurnTimeoutSec: 60,
-		HostUserID:     "host-A",
+		Name: "방 A", PlayerCount: 2, TurnTimeoutSec: 60, HostUserID: "host-A",
 	})
 	require.NoError(t, err)
-
-	// 방 B 생성 (host-B가 호스트)
 	roomB, err := svc.CreateRoom(&CreateRoomRequest{
-		Name:           "방 B",
-		PlayerCount:    2,
-		TurnTimeoutSec: 60,
-		HostUserID:     "host-B",
+		Name: "방 B", PlayerCount: 2, TurnTimeoutSec: 60, HostUserID: "host-B",
 	})
 	require.NoError(t, err)
 
-	// user-guest가 방 A에 참가 성공
+	// user-guest가 방 A에 참가 (WAITING)
 	err = svc.JoinRoom(roomA.ID, "user-guest", "게스트")
 	require.NoError(t, err)
 
-	// user-guest가 방 B에도 참가 시도 -> 거부
+	// user-guest가 방 B에 참가 시도 -> WAITING이므로 자동 퇴장 후 허용
 	err = svc.JoinRoom(roomB.ID, "user-guest", "게스트")
-	require.Error(t, err)
-	se, ok := IsServiceError(err)
-	require.True(t, ok)
-	assert.Equal(t, "ALREADY_IN_ROOM", se.Code)
+	require.NoError(t, err, "WAITING 방은 자동 퇴장 후 다른 방 참가 허용")
 }
 
 func TestLeaveRoom_ClearsMapping(t *testing.T) {
@@ -200,15 +215,16 @@ func TestActiveRoom_U01_SetAndGet(t *testing.T) {
 	require.NoError(t, err)
 
 	// 호스트로 방을 만들면 active room이 설정됨
-	// 같은 유저가 새 방을 만들 수 없어야 함 (active room이 존재하므로)
-	_, err = svc.CreateRoom(&CreateRoomRequest{
-		Name:           "중복 방",
+	// WAITING 상태이므로 자동 퇴장 후 새 방 생성 허용
+	room2, err := svc.CreateRoom(&CreateRoomRequest{
+		Name:           "새 방",
 		PlayerCount:    2,
 		TurnTimeoutSec: 60,
 		HostUserID:     "user-dr-u01",
 	})
-	require.Error(t, err, "active room이 있으므로 새 방 생성 거부")
+	require.NoError(t, err, "WAITING 방은 자동 퇴장 후 새 방 생성 허용")
 	_ = room
+	_ = room2
 }
 
 func TestActiveRoom_U02_ClearThenGet(t *testing.T) {

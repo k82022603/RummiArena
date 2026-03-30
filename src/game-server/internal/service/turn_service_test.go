@@ -197,8 +197,8 @@ func TestTurnService_HandleTimeout_ForcesDrawAndAdvancesTurn(t *testing.T) {
 }
 
 func TestTurnService_HandleTimeout_EmptyDrawPile_GameEnds(t *testing.T) {
-	// 드로우 파일이 비었을 때 타임아웃 → 교착 판정 후 게임 종료
-	// rack0=R5a(5점), rack1=K1a(1점) → 점수 낮은 u1(seat1)이 승자
+	// 드로우 파일이 비었을 때 타임아웃 -> 패스 처리 (즉시 교착 아님).
+	// 전원 연속 패스 시 교착 종료.
 	rack0 := []string{"R5a"}
 	rack1 := []string{"K1a"}
 	state := &model.GameStateRedis{
@@ -215,14 +215,18 @@ func TestTurnService_HandleTimeout_EmptyDrawPile_GameEnds(t *testing.T) {
 	gs := NewGameService(repo)
 	ts := NewTurnService(repo, gs)
 
-	result, err := ts.HandleTimeout("ts-game-5", 0)
+	// seat0 타임아웃 -> ResetTurn + DrawTile(패스)
+	result1, err := ts.HandleTimeout("ts-game-5", 0)
 	require.NoError(t, err)
-	// 교착 판정: 점수 기반 승자 결정 → Success: true, GameEnded: true
-	assert.True(t, result.Success)
-	assert.Equal(t, model.GameStatusFinished, result.GameState.Status)
-	// K1a(1점) < R5a(5점) → u1 승리
-	assert.Equal(t, "u1", result.GameState.Players[1].UserID)
-	assert.Equal(t, "STALEMATE", result.ErrorCode)
+	assert.True(t, result1.Success)
+	assert.NotEqual(t, model.GameStatusFinished, result1.GameState.Status, "1/2 패스: 아직 교착 아님")
+
+	// seat1 타임아웃 -> ResetTurn + DrawTile(패스) -> 전원 패스 -> 교착
+	result2, err := ts.HandleTimeout("ts-game-5", 1)
+	require.NoError(t, err)
+	assert.True(t, result2.Success)
+	assert.Equal(t, model.GameStatusFinished, result2.GameState.Status)
+	assert.Equal(t, "STALEMATE", result2.ErrorCode)
 }
 
 // --- TestTurnService_GetCurrentSeat ---

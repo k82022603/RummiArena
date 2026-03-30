@@ -508,22 +508,16 @@ func (s *gameService) DrawTile(gameID string, seat int) (*GameActionResult, erro
 		return s.advanceToNextTurn(state)
 	}
 
-	// 1장 드로우
+	// 1장 드로우 — 타일을 실제로 뽑았으므로 게임이 진행된 것
 	drawnCode := state.DrawPile[0]
 	state.DrawPile = state.DrawPile[1:]
 	state.Players[playerIdx].Rack = append(state.Players[playerIdx].Rack, drawnCode)
-	state.ConsecutivePassCount++ // 드로우 = 패스: 교착 카운터 증가
+	state.ConsecutivePassCount = 0 // 드로우(타일 획득) = 게임 진행 → 교착 카운터 리셋
 
 	// 스냅샷 제거 (드로우하면 턴 종료, 되돌리기 불가)
 	s.snapshotMu.Lock()
 	delete(s.snapshots, snapshotKey(gameID, seat))
 	s.snapshotMu.Unlock()
-
-	// 교착 판정: 전원이 연속으로 1회 이상 드로우했으면 교착
-	activePlayerCount := countActivePlayers(state)
-	if activePlayerCount > 0 && state.ConsecutivePassCount >= activePlayerCount {
-		return s.finishGameStalemate(state)
-	}
 
 	// 다음 턴
 	nextSeat := advanceTurn(state)

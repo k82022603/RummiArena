@@ -367,7 +367,9 @@ func (s *roomService) ClearActiveRoomForUser(userID string) {
 }
 
 // checkDuplicateRoom 사용자가 이미 활성 방(WAITING/PLAYING)에 참가 중인지 확인한다.
-// 참가 중이면 409 ALREADY_IN_ROOM 에러를 반환한다.
+// - FINISHED/CANCELLED 방: 매핑만 정리하고 허용
+// - WAITING 방: 자동 퇴장 처리 후 허용 (대기실 방치 → 새 방 생성은 정상 UX)
+// - PLAYING 방: 409 ALREADY_IN_ROOM 거부 (게임 중 이탈 방지)
 func (s *roomService) checkDuplicateRoom(userID string) error {
 	existingRoomID, err := s.roomRepo.GetActiveRoomForUser(userID)
 	if err != nil {
@@ -387,7 +389,14 @@ func (s *roomService) checkDuplicateRoom(userID string) error {
 		_ = s.roomRepo.ClearActiveRoomForUser(userID)
 		return nil
 	}
-	return &ServiceError{Code: "ALREADY_IN_ROOM", Message: "이미 다른 방에 참가 중입니다.", Status: 409}
+	if room.Status == model.RoomStatusWaiting {
+		// WAITING 방: 자동 퇴장 처리 후 허용
+		// 대기실에 머물다 브라우저를 닫고 새 방을 만드는 것은 정상 UX
+		_, _ = s.LeaveRoom(existingRoomID, userID)
+		return nil
+	}
+	// PLAYING 방: 게임 중에는 다른 방 참가 불가
+	return &ServiceError{Code: "ALREADY_IN_ROOM", Message: "이미 게임 중인 방이 있습니다.", Status: 409}
 }
 
 // generateRoomCode 4자리 대문자 알파벳 방 코드를 생성한다.

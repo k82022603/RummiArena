@@ -600,7 +600,7 @@ func TestWSMultiplayer_FullTurnCycle(t *testing.T) {
 	assert.Less(t, firstDrawPileCount, initialDrawPileCount,
 		"드로우 후 drawPileCount(%d)가 초기값(%d)보다 작아야 한다", firstDrawPileCount, initialDrawPileCount)
 
-	// --- 2번째 드로우: 교착 판정 발동 → GAME_OVER 수신 ---
+	// --- 2번째 드로우: 드로우 파일 남아있으므로 정상 턴 전환 (교착 아님) ---
 	currentSeat = nextSeat
 	if currentSeat == hostClient.seat {
 		turnClient = hostClient
@@ -612,15 +612,19 @@ func TestWSMultiplayer_FullTurnCycle(t *testing.T) {
 
 	turnClient.sendMsg(handler.C2SDrawTile, struct{}{})
 
-	// 교착 판정: TILE_DRAWN 없이 GAME_OVER 수신
-	gameOver := turnClient.readMsgOfType(handler.S2CGameOver)
-	gameOverPayload := decodePayload(gameOver.Payload)
-	assert.NotNil(t, gameOverPayload, "교착 판정: GAME_OVER 페이로드가 있어야 한다")
-	assert.Equal(t, "STALEMATE", gameOverPayload["endType"], "교착 종료: endType이 STALEMATE여야 한다")
+	// TILE_DRAWN 수신 (정상 드로우 — 교착 아님)
+	ownDrawn2 := turnClient.readMsgOfType(handler.S2CTileDrawn)
+	ownDrawnPayload2 := decodePayload(ownDrawn2.Payload)
+	assert.NotNil(t, ownDrawnPayload2["drawnTile"], "2번째 드로우: 드로우 파일 있으면 정상 타일 수신")
 
-	// 상대도 GAME_OVER 수신
-	otherGameOver := otherClient.readMsgOfType(handler.S2CGameOver)
-	otherGameOverPayload := decodePayload(otherGameOver.Payload)
-	assert.NotNil(t, otherGameOverPayload)
-	assert.Equal(t, "STALEMATE", otherGameOverPayload["endType"], "상대방도 STALEMATE endType을 수신해야 한다")
+	_ = otherClient.readMsgOfType(handler.S2CTileDrawn)
+
+	// TURN_END + TURN_START 수신 (게임 계속)
+	turnEnd2 := turnClient.readMsgOfType(handler.S2CTurnEnd)
+	turnEndPayload2 := decodePayload(turnEnd2.Payload)
+	_ = otherClient.readMsgOfType(handler.S2CTurnEnd)
+	assert.Equal(t, "DRAW_TILE", turnEndPayload2["action"], "2번째 드로우도 정상 DRAW_TILE 액션")
+
+	_ = turnClient.readMsgOfType(handler.S2CTurnStart)
+	_ = otherClient.readMsgOfType(handler.S2CTurnStart)
 }
