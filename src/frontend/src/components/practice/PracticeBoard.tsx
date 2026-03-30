@@ -12,8 +12,22 @@ import {
   closestCenter,
 } from "@dnd-kit/core";
 import { motion, AnimatePresence } from "framer-motion";
-import type { TileCode, TableGroup } from "@/types/tile";
+import type { TileCode, TableGroup, GroupType } from "@/types/tile";
 import { parseTileCode } from "@/types/tile";
+
+// ------------------------------------------------------------------
+// BUG-UI-005: 타일 목록으로 그룹/런 자동 분류
+// ------------------------------------------------------------------
+function classifySetType(tiles: TileCode[]): GroupType {
+  const regular = tiles.filter((t) => t !== "JK1" && t !== "JK2");
+  if (regular.length === 0) return "run";
+  const parsed = regular.map((t) => parseTileCode(t));
+  const numbers = new Set(parsed.map((t) => t.number));
+  const colors = new Set(parsed.map((t) => t.color));
+  if (numbers.size === 1) return "group";
+  if (colors.size === 1) return "run";
+  return "run";
+}
 import GameBoard from "@/components/game/GameBoard";
 import PlayerRack from "@/components/game/PlayerRack";
 import Tile from "@/components/tile/Tile";
@@ -148,13 +162,13 @@ const PracticeBoard = memo(function PracticeBoard({
 
       const existingGroup = tableGroups.find((g) => g.id === over.id);
       if (existingGroup) {
-        // 랙 → 기존 그룹: 그룹에 타일 추가
+        // 랙 → 기존 그룹: 그룹에 타일 추가 + BUG-UI-005: 타입 재분류
         setTableGroups((prev) =>
-          prev.map((g) =>
-            g.id === existingGroup.id
-              ? { ...g, tiles: [...g.tiles, tileCode] }
-              : g
-          )
+          prev.map((g) => {
+            if (g.id !== existingGroup.id) return g;
+            const updatedTiles = [...g.tiles, tileCode];
+            return { ...g, tiles: updatedTiles, type: classifySetType(updatedTiles) };
+          })
         );
         setHand((prev) => {
           const idx = prev.indexOf(tileCode);
@@ -206,21 +220,21 @@ const PracticeBoard = memo(function PracticeBoard({
         })();
 
         if (lastGroup && !shouldCreateNewGroup) {
+          // BUG-UI-005: 타일 추가 시 타입 재분류
           setTableGroups((prev) =>
-            prev.map((g) =>
-              g.id === lastGroup.id
-                ? { ...g, tiles: [...g.tiles, tileCode] }
-                : g
-            )
+            prev.map((g) => {
+              if (g.id !== lastGroup.id) return g;
+              const updatedTiles = [...g.tiles, tileCode];
+              return { ...g, tiles: updatedTiles, type: classifySetType(updatedTiles) };
+            })
           );
         } else {
-          // 새 그룹 생성 (기본 타입은 goal에 따라 결정)
+          // 새 그룹 생성 -- BUG-UI-005: 타일 기반 타입 자동 판별
           const newGroupId = `practice-${Date.now()}`;
           const newGroup: TableGroup = {
             id: newGroupId,
             tiles: [tileCode],
-            // group 목표면 group 기본값, 그 외(run/joker/multi/master)는 run 기본값
-            type: goal === "group" ? "group" : "run",
+            type: classifySetType([tileCode]),
           };
           setTableGroups((prev) => [...prev, newGroup]);
           if (forceNewGroup) setForceNewGroup(false);

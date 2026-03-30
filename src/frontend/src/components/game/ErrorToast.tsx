@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useWSStore } from "@/store/wsStore";
 import { useGameStore } from "@/store/gameStore";
 
-const TOAST_DURATION_MS = 3000;
+const TOAST_DURATION_MS = 5000;
 
 /**
  * INVALID_MOVE 에러 토스트

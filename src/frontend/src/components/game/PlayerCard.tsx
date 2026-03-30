@@ -115,13 +115,14 @@ const PlayerCard = memo(function PlayerCard({
       )}
 
       {/* 상단: 이름 + 턴 표시 */}
-      <div className="flex items-center justify-between mb-2">
+      {/* BUG-UI-007: 이름과 배지를 2행으로 분리하여 잘림 방지 */}
+      <div className="mb-2">
         <div className="flex items-center gap-2 min-w-0">
           {/* 플레이어 타입 아이콘 */}
           <span
             className={[
-              "w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0",
-              "text-[10px] font-bold",
+              "w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0",
+              "text-[9px] font-bold",
               isForfeited
                 ? "bg-gray-600/20 text-gray-500"
                 : isHuman
@@ -136,24 +137,25 @@ const PlayerCard = memo(function PlayerCard({
 
           <span
             className={[
-              "text-tile-base font-medium truncate max-w-[100px]",
+              "text-tile-base font-medium truncate flex-1 min-w-0",
               isForfeited ? "text-text-secondary line-through" : "text-text-primary",
             ].join(" ")}
+            title={displayName}
           >
             {displayName}
           </span>
-        </div>
 
-        {/* 현재 턴 표시 */}
-        {isCurrentTurn && !isForfeited && (
-          <motion.span
-            initial={{ opacity: 0, scale: 0 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="text-[10px] bg-warning/20 text-warning px-1.5 py-0.5 rounded font-bold flex-shrink-0"
-          >
-            내 차례
-          </motion.span>
-        )}
+          {/* 현재 턴 표시 -- 아이콘 행에 함께 배치하되 축소된 크기 */}
+          {isCurrentTurn && !isForfeited && (
+            <motion.span
+              initial={{ opacity: 0, scale: 0 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="text-[9px] bg-warning/20 text-warning px-1 py-0.5 rounded font-bold flex-shrink-0 whitespace-nowrap"
+            >
+              내 차례
+            </motion.span>
+          )}
+        </div>
       </div>
 
       {/* ELO 티어 뱃지 + 연결 상태 */}

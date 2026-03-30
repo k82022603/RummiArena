@@ -52,7 +52,7 @@ class MoveGameStateDto {
 
   @IsArray()
   @ArrayMinSize(0)
-  @ArrayMaxSize(14)
+  @ArrayMaxSize(106)
   @IsString({ each: true })
   myTiles!: string[];
 

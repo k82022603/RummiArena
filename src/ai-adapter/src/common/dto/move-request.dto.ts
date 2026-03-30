@@ -67,10 +67,10 @@ export class GameStateDto {
   @Type(() => TileGroupDto)
   tableGroups!: TileGroupDto[];
 
-  /** AI 플레이어의 현재 타일 랙 */
+  /** AI 플레이어의 현재 타일 랙 (초기 14장 + 드로우 누적으로 14장 초과 가능) */
   @IsArray()
   @ArrayMinSize(0)
-  @ArrayMaxSize(14)
+  @ArrayMaxSize(106)
   @IsString({ each: true })
   myTiles!: string[];
 

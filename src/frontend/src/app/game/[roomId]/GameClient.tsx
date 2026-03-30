@@ -27,11 +27,32 @@ import ErrorToast from "@/components/game/ErrorToast";
 import ReconnectToast from "@/components/game/ReconnectToast";
 import Tile from "@/components/tile/Tile";
 
-import type { TileCode, TableGroup } from "@/types/tile";
+import type { TileCode, TableGroup, GroupType } from "@/types/tile";
 import { parseTileCode } from "@/types/tile";
 import { calculateScore } from "@/lib/practice/practice-engine";
 import type { GameOverPayload } from "@/types/websocket";
 import type { Player } from "@/types/game";
+
+// ------------------------------------------------------------------
+// BUG-UI-005: 타일 목록으로 그룹/런 자동 분류
+// 같은 숫자 + 다른 색상 → "group", 같은 색상 + 연속 숫자 → "run"
+// 조커 제외 후 나머지 타일로 판단, 판단 불가 시 기본 "run"
+// ------------------------------------------------------------------
+function classifySetType(tiles: TileCode[]): GroupType {
+  const regular = tiles.filter((t) => t !== "JK1" && t !== "JK2");
+  if (regular.length === 0) return "run"; // 조커만으로 구성 → 기본 run
+
+  const parsed = regular.map((t) => parseTileCode(t));
+  const numbers = new Set(parsed.map((t) => t.number));
+  const colors = new Set(parsed.map((t) => t.color));
+
+  // 모든 숫자가 같으면 → 그룹 (같은 숫자, 다른 색상)
+  if (numbers.size === 1) return "group";
+  // 모든 색상이 같으면 → 런 (같은 색상, 연속 숫자)
+  if (colors.size === 1) return "run";
+  // 판단 불가 시 기본값
+  return "run";
+}
 
 interface GameClientProps {
   roomId: string;
@@ -427,12 +448,12 @@ export default function GameClient({ roomId }: GameClientProps) {
       );
 
       if (existingPendingGroup) {
-        // 랙 -> pending 그룹: 해당 그룹에 타일 추가
-        const nextTableGroups = currentTableGroups.map((g) =>
-          g.id === existingPendingGroup.id
-            ? { ...g, tiles: [...g.tiles, tileCode] }
-            : g
-        );
+        // 랙 -> pending 그룹: 해당 그룹에 타일 추가 + BUG-UI-005: 타입 재분류
+        const nextTableGroups = currentTableGroups.map((g) => {
+          if (g.id !== existingPendingGroup.id) return g;
+          const updatedTiles = [...g.tiles, tileCode];
+          return { ...g, tiles: updatedTiles, type: classifySetType(updatedTiles) };
+        });
         const nextMyTiles = currentMyTiles.filter((c) => c !== tileCode);
         setPendingTableGroups(nextTableGroups);
         setPendingMyTiles(nextMyTiles);
@@ -485,10 +506,11 @@ export default function GameClient({ roomId }: GameClientProps) {
         })();
 
         if (lastPendingGroup && !shouldCreateNewGroup) {
-          // 마지막 pending 그룹에 타일 추가
+          // 마지막 pending 그룹에 타일 추가 + BUG-UI-005: 타입 재분류
+          const updatedTiles = [...lastPendingGroup.tiles, tileCode];
           const nextTableGroups = currentTableGroups.map((g) =>
             g.id === lastPendingGroup.id
-              ? { ...g, tiles: [...g.tiles, tileCode] }
+              ? { ...g, tiles: updatedTiles, type: classifySetType(updatedTiles) }
               : g
           );
           const nextMyTiles = currentMyTiles.filter((c) => c !== tileCode);
@@ -497,10 +519,11 @@ export default function GameClient({ roomId }: GameClientProps) {
         } else {
           // 새 그룹 생성 (서버 미전송, 프리뷰 상태)
           const newGroupId = `pending-${Date.now()}`;
+          // BUG-UI-005: 새 그룹 타일로 타입 자동 판별
           const newGroup: TableGroup = {
             id: newGroupId,
             tiles: [tileCode],
-            type: "run",
+            type: classifySetType([tileCode]),
           };
           const nextTableGroups = [...currentTableGroups, newGroup];
           const nextMyTiles = currentMyTiles.filter((c) => c !== tileCode);
@@ -560,6 +583,9 @@ export default function GameClient({ roomId }: GameClientProps) {
   );
 
   // 턴 확정: 프리뷰 상태를 서버에 전송 후 확정
+  // BUG-UI-006: pending 상태를 즉시 커밋하지 않음.
+  // 서버가 TURN_END(성공)를 보내면 TURN_START 핸들러에서 resetPending() 으로 정리되고,
+  // INVALID_MOVE(실패)를 보내면 resetPending() + ErrorToast 가 사유를 표시한다.
   const handleConfirm = useCallback(() => {
     if (!pendingTableGroups) return;
     const tilesFromRack = myTiles.filter(
@@ -570,24 +596,16 @@ export default function GameClient({ roomId }: GameClientProps) {
       tableGroups: pendingTableGroups,
       tilesFromRack,
     });
-    // 2단계: 턴 확정 요청
+    // 2단계: 턴 확정 요청 (서버 응답을 기다림 -- 로컬 상태는 아직 유지)
     send("CONFIRM_TURN", {
       tableGroups: pendingTableGroups,
       tilesFromRack,
     });
-    setMyTiles(pendingMyTiles ?? myTiles);
-    setPendingTableGroups(null);
-    setPendingMyTiles(null);
-    clearPendingGroupIds();
   }, [
     pendingTableGroups,
     pendingMyTiles,
     myTiles,
     send,
-    setMyTiles,
-    setPendingTableGroups,
-    setPendingMyTiles,
-    clearPendingGroupIds,
   ]);
 
   // 턴 되돌리기 (취소): 프리뷰 상태 전체 초기화 후 서버에 롤백 요청

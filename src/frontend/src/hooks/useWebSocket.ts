@@ -37,10 +37,14 @@ const INITIAL_RECONNECT_DELAY_MS = 3000; // 3s, 6s, 12s, 24s, 48s (2x backoff)
  * 서버 에러 코드 -> 한글 메시지 매핑 (websocket-protocol.md 기반)
  */
 const INVALID_MOVE_MESSAGES: Record<string, string> = {
-  ERR_INITIAL_MELD_SCORE: "초기 제출 점수가 30점 미만입니다 (최소 30점 필요)",
-  ERR_GROUP_COLOR_DUP: "같은 색 타일이 중복되어 있습니다",
-  ERR_RUN_SEQUENCE: "연속된 숫자가 아닙니다",
+  ERR_INITIAL_MELD_SCORE: "최초 등록은 30점 이상이어야 합니다",
+  ERR_GROUP_COLOR_DUP: "같은 색상 타일이 중복됩니다",
+  ERR_RUN_SEQUENCE: "유효하지 않은 조합입니다 (연속된 숫자가 아닙니다)",
   ERR_SET_SIZE: "세트는 최소 3개 타일이 필요합니다",
+  ERR_GROUP_INVALID: "유효하지 않은 그룹입니다",
+  ERR_RUN_INVALID: "유효하지 않은 런입니다",
+  ERR_NOT_YOUR_TURN: "지금은 내 차례가 아닙니다",
+  ERR_TILE_NOT_IN_RACK: "랙에 없는 타일을 배치하려 했습니다",
 };
 
 function resolveInvalidMoveMessage(code: string, fallback: string): string {
@@ -151,21 +155,30 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
         }
         case "TURN_END": {
           const payload = msg.payload as TurnEndPayload;
-          useGameStore.setState((state) => ({
-            gameState: state.gameState
-              ? {
-                  ...state.gameState,
-                  currentSeat: payload.nextSeat,
-                  tableGroups: payload.tableGroups,
-                  drawPileCount: payload.drawPileCount,
-                }
-              : state.gameState,
-            players: state.players.map((p) =>
-              p.seat === payload.seat
-                ? { ...p, tileCount: payload.playerTileCount, hasInitialMeld: payload.hasInitialMeld }
-                : p
-            ),
-          }));
+          useGameStore.setState((state) => {
+            const isMySeatTurn = payload.seat === state.mySeat;
+            return {
+              gameState: state.gameState
+                ? {
+                    ...state.gameState,
+                    currentSeat: payload.nextSeat,
+                    tableGroups: payload.tableGroups,
+                    drawPileCount: payload.drawPileCount,
+                  }
+                : state.gameState,
+              players: state.players.map((p) =>
+                p.seat === payload.seat
+                  ? { ...p, tileCount: payload.playerTileCount, hasInitialMeld: payload.hasInitialMeld }
+                  : p
+              ),
+              // BUG-UI-006: 서버가 내 턴 확정을 승인하면 pendingMyTiles를 myTiles로 커밋
+              ...(isMySeatTurn && state.pendingMyTiles != null
+                ? { myTiles: state.pendingMyTiles }
+                : {}),
+              // hasInitialMeld 업데이트 (내 턴인 경우)
+              ...(isMySeatTurn ? { hasInitialMeld: payload.hasInitialMeld } : {}),
+            };
+          });
           if (payload.nextTurnNumber != null) setTurnNumber(payload.nextTurnNumber);
           setAIThinkingSeat(null);
           // drawPileCount가 0이면 소진 상태 설정

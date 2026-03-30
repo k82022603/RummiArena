@@ -817,7 +817,7 @@ func (h *WSHandler) handleAITurn(roomID, gameID string, player *model.PlayerStat
 			MyTiles:         player.Rack,
 			Opponents:       opponents,
 			DrawPileCount:   len(state.DrawPile),
-			TurnNumber:      state.TurnCount,
+			TurnNumber:      state.TurnCount + 1, // TurnCount는 0-based이므로 ai-adapter의 @Min(1) 제약에 맞춰 +1
 			InitialMeldDone: player.HasInitialMeld,
 		},
 	}
