@@ -29,6 +29,7 @@ import Tile from "@/components/tile/Tile";
 
 import type { TileCode, TableGroup } from "@/types/tile";
 import { parseTileCode } from "@/types/tile";
+import { calculateScore } from "@/lib/practice/practice-engine";
 import type { GameOverPayload } from "@/types/websocket";
 import type { Player } from "@/types/game";
 
@@ -385,6 +386,15 @@ export default function GameClient({ roomId }: GameClientProps) {
     () => pendingMyTiles ?? myTiles,
     [pendingMyTiles, myTiles]
   );
+
+  // 이번 턴 pending 그룹들의 배치 점수 (최초 등록 30점 안내용)
+  const pendingPlacementScore = useMemo(() => {
+    if (!pendingTableGroups || pendingGroupIds.size === 0) return 0;
+    const pendingOnlyGroups = pendingTableGroups.filter((g) =>
+      pendingGroupIds.has(g.id)
+    );
+    return calculateScore(pendingOnlyGroups);
+  }, [pendingTableGroups, pendingGroupIds]);
 
   // 상대 플레이어 목록 (내 seat 제외)
   const opponents = players.filter((p) => p.seat !== effectiveMySeat);
@@ -788,9 +798,23 @@ export default function GameClient({ roomId }: GameClientProps) {
                   <span className="text-text-primary font-medium">
                     ({currentMyTiles.length}장)
                   </span>
-                  {hasInitialMeld
-                    ? " \u00B7 최초 등록 완료"
-                    : " \u00B7 최초 등록 30점 이상 필요"}
+                  {hasInitialMeld ? (
+                    <span> &middot; 최초 등록 완료</span>
+                  ) : pendingPlacementScore > 0 ? (
+                    <span
+                      className={
+                        pendingPlacementScore >= 30
+                          ? "text-green-400 font-semibold"
+                          : "text-warning font-semibold"
+                      }
+                    >
+                      {" "}&middot; 현재 배치: {pendingPlacementScore}점 / 30점 필요
+                    </span>
+                  ) : (
+                    <span className="text-warning font-medium">
+                      {" "}&middot; 최초 등록 30점 이상 필요
+                    </span>
+                  )}
                 </span>
                 {isMyTurn && (
                   <motion.span

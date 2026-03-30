@@ -11,7 +11,8 @@ import (
 
 const (
 	writeWait      = 10 * time.Second
-	pongWait       = 45 * time.Second
+	pongWait       = 60 * time.Second
+	pingPeriod     = 25 * time.Second // must be less than pongWait
 	authTimeout    = 5 * time.Second
 	maxMessageSize = 8192
 	sendBufferSize = 64
@@ -115,15 +116,38 @@ func (c *Connection) CloseWithReason(code int, reason string) {
 }
 
 // WritePump pumps messages from the send channel to the WebSocket.
+// It also sends periodic ping frames to keep the connection alive.
 // Exits when the send channel is closed.
 func (c *Connection) WritePump() {
-	defer func() { _ = c.conn.Close() }() //nolint:errcheck
+	ticker := time.NewTicker(pingPeriod)
+	defer func() {
+		ticker.Stop()
+		_ = c.conn.Close() //nolint:errcheck
+	}()
 
-	for data := range c.send {
-		_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
-		if err := c.conn.WriteMessage(websocket.TextMessage, data); err != nil {
-			c.logger.Debug("ws: write error", zap.String("user", c.userID), zap.Error(err))
-			return
+	for {
+		select {
+		case data, ok := <-c.send:
+			if !ok {
+				// send channel closed
+				_ = c.conn.WriteControl(
+					websocket.CloseMessage,
+					websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""),
+					time.Now().Add(writeWait),
+				)
+				return
+			}
+			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+			if err := c.conn.WriteMessage(websocket.TextMessage, data); err != nil {
+				c.logger.Debug("ws: write error", zap.String("user", c.userID), zap.Error(err))
+				return
+			}
+		case <-ticker.C:
+			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				c.logger.Debug("ws: ping write error", zap.String("user", c.userID), zap.Error(err))
+				return
+			}
 		}
 	}
 }
@@ -138,11 +162,17 @@ func (c *Connection) ReadPump(handler func(*Connection, *WSEnvelope)) {
 	}()
 
 	c.conn.SetReadLimit(maxMessageSize)
+	_ = c.conn.SetReadDeadline(time.Now().Add(pongWait))
+
+	// PongHandler: browser responds to server ping with pong automatically.
+	// Each pong resets the read deadline, keeping the connection alive
+	// even when the client sends no application-level messages.
+	c.conn.SetPongHandler(func(string) error {
+		_ = c.conn.SetReadDeadline(time.Now().Add(pongWait))
+		return nil
+	})
 
 	for {
-		// Reset read deadline on every iteration — any message keeps connection alive
-		_ = c.conn.SetReadDeadline(time.Now().Add(pongWait))
-
 		_, data, err := c.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
@@ -150,6 +180,9 @@ func (c *Connection) ReadPump(handler func(*Connection, *WSEnvelope)) {
 			}
 			return
 		}
+
+		// Any application-level message also resets the deadline.
+		_ = c.conn.SetReadDeadline(time.Now().Add(pongWait))
 
 		var env WSEnvelope
 		if err := json.Unmarshal(data, &env); err != nil {

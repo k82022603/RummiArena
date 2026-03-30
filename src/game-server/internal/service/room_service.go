@@ -104,13 +104,7 @@ func (s *roomService) CreateRoom(req *CreateRoomRequest) (*model.RoomState, erro
 		if aiIdx < len(req.AIPlayers) {
 			ai := req.AIPlayers[aiIdx]
 			aiUserID := uuid.New().String()
-			aiName := ai.Type
-			if ai.Persona != "" {
-				aiName = ai.Type + "-" + ai.Persona
-			}
-			if aiName == "" {
-				aiName = fmt.Sprintf("AI-Player-%d", i)
-			}
+			aiName := formatAIDisplayName(ai.Persona, ai.Type, i)
 			players[i] = model.RoomPlayer{
 				Seat:              i,
 				UserID:            aiUserID,
@@ -407,4 +401,37 @@ func generateRoomCode() string {
 		b[i] = letters[rand.Intn(len(letters))]
 	}
 	return string(b)
+}
+
+// aiTypeToFriendlyModel AI 타입 식별자를 사용자 친화적 모델명으로 변환한다.
+func aiTypeToFriendlyModel(aiType string) string {
+	switch aiType {
+	case "AI_OPENAI":
+		return "GPT-4o"
+	case "AI_CLAUDE":
+		return "Claude"
+	case "AI_DEEPSEEK":
+		return "DeepSeek"
+	case "AI_LLAMA":
+		return "LLaMA"
+	default:
+		if aiType != "" {
+			return aiType
+		}
+		return "AI"
+	}
+}
+
+// formatAIDisplayName AI 플레이어의 표시 이름을 생성한다.
+// 우선순위: Persona(캐릭터명) > 모델명 > 기본값.
+// 예: "Shark (GPT-4o)", "Fox (Claude)", "AI-Player-2"
+func formatAIDisplayName(persona, aiType string, seatIndex int) string {
+	model := aiTypeToFriendlyModel(aiType)
+	if persona != "" {
+		return fmt.Sprintf("%s (%s)", persona, model)
+	}
+	if aiType != "" {
+		return model
+	}
+	return fmt.Sprintf("AI-Player-%d", seatIndex)
 }

@@ -142,6 +142,15 @@ const Tile = memo(function Tile({
           {symbol}
         </span>
       )}
+
+      {/* b 세트 식별 도트 (우하단, mini/icon 크기에서는 생략) */}
+      {tile.set === "b" && size !== "mini" && size !== "icon" && (
+        <span
+          aria-hidden="true"
+          className="absolute bottom-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-current opacity-50"
+          title="b 세트"
+        />
+      )}
     </motion.div>
   );
 });

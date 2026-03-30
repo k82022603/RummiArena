@@ -1,10 +1,41 @@
 "use client";
 
-import React, { memo } from "react";
+import React, { memo, useMemo } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { motion, AnimatePresence } from "framer-motion";
 import type { TableGroup } from "@/types/tile";
+import { parseTileCode } from "@/types/tile";
 import Tile from "@/components/tile/Tile";
+
+/**
+ * 그룹 내 동일 색상 타일 중복 감지
+ * 같은 색상 타일이 2개 이상이면 경고를 반환한다.
+ * (그룹 타입에서만 의미 있지만, 런에서도 같은 색상+같은 숫자 중복은 항상 무효)
+ */
+function detectDuplicateColors(tiles: string[]): string | null {
+  const regular = tiles.filter((t) => t !== "JK1" && t !== "JK2");
+  if (regular.length < 2) return null;
+
+  const parsed = regular.map((t) => parseTileCode(t as import("@/types/tile").TileCode));
+  const colorCount = new Map<string, number>();
+  for (const tile of parsed) {
+    const c = tile.color as string;
+    colorCount.set(c, (colorCount.get(c) ?? 0) + 1);
+  }
+
+  const duplicates: string[] = [];
+  const COLOR_LABEL: Record<string, string> = { R: "빨강", B: "파랑", Y: "노랑", K: "검정" };
+  for (const [color, count] of colorCount) {
+    if (count >= 2) {
+      duplicates.push(COLOR_LABEL[color] ?? color);
+    }
+  }
+
+  if (duplicates.length > 0) {
+    return `같은 색상(${duplicates.join(", ")}) 중복!`;
+  }
+  return null;
+}
 
 interface GameBoardProps {
   tableGroups: TableGroup[];
@@ -58,6 +89,18 @@ const GameBoard = memo(function GameBoard({
   className = "",
 }: GameBoardProps) {
   const { setNodeRef, isOver } = useDroppable({ id: BOARD_DROP_ID });
+
+  // 그룹별 동일 색상 중복 경고 맵 (메모이제이션)
+  const duplicateColorWarnings = useMemo(() => {
+    const warnings: Record<string, string> = {};
+    for (const group of tableGroups) {
+      const warning = detectDuplicateColors(group.tiles);
+      if (warning) {
+        warnings[group.id] = warning;
+      }
+    }
+    return warnings;
+  }, [tableGroups]);
 
   // 드롭 존 테두리 상태 계산
   // - 드래그 중 + 내 턴 + 오버: 초록 강조
@@ -127,6 +170,7 @@ const GameBoard = memo(function GameBoard({
             {tableGroups.map((group) => {
               const isPending = pendingGroupIds.has(group.id);
               const tileCount = group.tiles.length;
+              const colorWarning = duplicateColorWarnings[group.id] ?? null;
               const groupContent = (
                 <motion.div
                   key={group.id}
@@ -177,7 +221,9 @@ const GameBoard = memo(function GameBoard({
                   <div
                     className={[
                       "flex gap-0.5 p-1.5 rounded-lg",
-                      isPending
+                      colorWarning
+                        ? "bg-red-500/10 border-2 border-red-500/70"
+                        : isPending
                         ? "bg-yellow-400/10 border border-dashed border-yellow-400"
                         : "bg-black/20 border border-board-border",
                     ].join(" ")}
@@ -191,6 +237,16 @@ const GameBoard = memo(function GameBoard({
                       />
                     ))}
                   </div>
+
+                  {/* 동일 색상 중복 경고 */}
+                  {colorWarning && (
+                    <span
+                      className="text-[10px] text-red-400 font-medium"
+                      role="alert"
+                    >
+                      {colorWarning}
+                    </span>
+                  )}
                 </motion.div>
               );
               return groupsDroppable ? (
