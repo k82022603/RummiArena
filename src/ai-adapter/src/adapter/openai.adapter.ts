@@ -9,7 +9,12 @@ import { ResponseParserService } from '../common/parser/response-parser.service'
 /**
  * OpenAI GPT 어댑터.
  * JSON mode를 활용하여 구조화된 응답을 강제한다.
- * 기본 모델: gpt-4o-mini (비용 절약). OPENAI_DEFAULT_MODEL 환경변수로 변경 가능.
+ * 기본 모델: gpt-5-mini (추론 모델).
+ *
+ * gpt-5-mini 이상은 추론 모델로 다음 API 차이가 있다:
+ * - max_tokens 대신 max_completion_tokens 사용
+ * - temperature 커스텀 미지원 (고정 1)
+ * - 응답에 reasoning_tokens 포함
  */
 @Injectable()
 export class OpenAiAdapter extends BaseAdapter {
@@ -26,7 +31,7 @@ export class OpenAiAdapter extends BaseAdapter {
     this.apiKey = this.configService.get<string>('OPENAI_API_KEY', '');
     this.defaultModel = this.configService.get<string>(
       'OPENAI_DEFAULT_MODEL',
-      'gpt-4o-mini',
+      'gpt-5-mini',
     );
   }
 
@@ -60,19 +65,27 @@ export class OpenAiAdapter extends BaseAdapter {
     promptTokens: number;
     completionTokens: number;
   }> {
+    // gpt-5 시리즈(추론 모델)는 max_completion_tokens + temperature 고정
+    // gpt-4o 시리즈(비추론)는 max_tokens + temperature 커스텀
+    const isReasoningModel = this.defaultModel.startsWith('gpt-5');
+    const body: Record<string, unknown> = {
+      model: this.defaultModel,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      response_format: { type: 'json_object' },
+    };
+    if (isReasoningModel) {
+      body.max_completion_tokens = 8192;
+    } else {
+      body.temperature = temperature;
+      body.max_tokens = 1024;
+    }
+
     const response = await axios.post(
       `${this.baseUrl}/chat/completions`,
-      {
-        model: this.defaultModel,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        // JSON mode: 반드시 JSON 형식으로 응답
-        response_format: { type: 'json_object' },
-        temperature,
-        max_tokens: 1024,
-      },
+      body,
       {
         headers: {
           Authorization: `Bearer ${this.apiKey}`,

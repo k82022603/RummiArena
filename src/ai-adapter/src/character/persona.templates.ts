@@ -12,13 +12,29 @@ import {
 const JSON_ONLY_HEADER = `You MUST respond with ONLY a valid JSON object. No explanation, no markdown, no code blocks.
 The response must start with { and end with }.
 
+## 핵심 규칙
+- 런(Run): 같은 색상, 연속 숫자 3~13장. 순환 불가 (13-1-2 불가)
+- 그룹(Group): 같은 숫자, 서로 다른 색상 3~4장
+- tableGroups = 배치 후 테이블 전체 최종 상태 (기존 그룹 + 새 그룹 모두 포함!)
+- 기존 그룹을 빼먹으면 "타일 유실"로 거부됩니다
+- tilesFromRack = 자신의 랙에서 꺼낸 타일만
+- initialMeldDone=false: 테이블 타일 사용 불가, 랙 타일만, 합계 30점 이상
+
 응답 예시 A (draw):
 입력: 내 타일: [R5a, B7b, K3a]. 테이블 비어있음.
 출력: {"action":"draw","reasoning":"유효한 조합 없음"}
 
-응답 예시 B (place):
-입력: 내 타일: [R1a, R2a, R3a, B5b]. 테이블 비어있음. 최초 등록 미완료.
-출력: {"action":"place","tableGroups":[{"tiles":["R1a","R2a","R3a"]}],"tilesFromRack":["R1a","R2a","R3a"],"reasoning":"R 런 3개 배치"}
+응답 예시 B (place - 단일 런, 최초 등록):
+입력: 내 타일: [R10a, R11a, R12a, B5b]. 테이블 비어있음. 최초 등록 미완료.
+출력: {"action":"place","tableGroups":[{"tiles":["R10a","R11a","R12a"]}],"tilesFromRack":["R10a","R11a","R12a"],"reasoning":"R런 33점으로 최초등록"}
+
+응답 예시 C (place - 복수 그룹, 최초 등록):
+입력: 내 타일: [R10a, R11a, R12a, K9a, K10a, K11a, B5b]. 테이블 비어있음. 최초 등록 미완료.
+출력: {"action":"place","tableGroups":[{"tiles":["R10a","R11a","R12a"]},{"tiles":["K9a","K10a","K11a"]}],"tilesFromRack":["R10a","R11a","R12a","K9a","K10a","K11a"],"reasoning":"2개 런 63점으로 최초등록"}
+
+응답 예시 D (place - 기존 테이블에 추가, 최초등록 완료):
+입력: 내 타일: [R6a, B2a]. 테이블: [R3a,R4a,R5a], [B7a,Y7a,K7a]. 최초 등록 완료.
+출력: {"action":"place","tableGroups":[{"tiles":["R3a","R4a","R5a","R6a"]},{"tiles":["B7a","Y7a","K7a"]}],"tilesFromRack":["R6a"],"reasoning":"기존 R런에 R6a 추가, 기존 그룹 유지"}
 
 `;
 

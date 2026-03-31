@@ -115,7 +115,7 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 - [x] 타일 랙 + 드래그&드롭 (dnd-kit) 인터랙션 — 점선 고스트 + overlay scale/shadow 완료 (2026-03-15)
 - [x] WebSocket 연결/동기화 (클라이언트) — 프로토콜 연동 완료 (2026-03-14)
 - [x] AI Adapter /move 엔드포인트 (4개 어댑터, 재시도 3회, fallback DRAW)
-- [ ] Ollama 로컬 연동 테스트
+- [x] Ollama 로컬 연동 테스트 — qwen2.5:3b 실 API 검증 PASS (2026-03-31)
 - [x] SonarQube 설치 (http://localhost:9001 UP, 2026-03-15)
 - [x] GitLab 프로젝트 생성 + glab 인증 (2026-03-15)
 - [x] GitLab CI Variables 등록 (SONAR_TOKEN, GITOPS_TOKEN) — 2026-03-15
@@ -138,10 +138,10 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 ### Sprint 4: AI Adapter
 - [ ] LangChain/LangGraph PoC 비교 → 방식 결정
 - [x] AI Adapter 공통 인터페이스 — AIClientInterface (game-server), AI Move API 계약서 (2026-03-21)
-- [x] OpenAI Adapter 구현 — OpenAiAdapter, gpt-4o-mini 기본값, 17/17 PASS (2026-03-23)
+- [x] OpenAI Adapter 구현 — OpenAiAdapter, gpt-5-mini (추론 모델), 17/17 PASS (2026-03-23, 모델 변경 2026-03-31)
 - [x] Claude Adapter 구현 — ClaudeAdapter 완료 (Sprint 1)
 - [x] DeepSeek Adapter 구현 — DeepSeekAdapter 완료 (Sprint 1)
-- [x] Ollama Adapter 구현 — OllamaAdapter + gemma3:1b K8s Pod 영속 (2026-03-23 K8s 이전)
+- [x] Ollama Adapter 구현 — OllamaAdapter + qwen2.5:3b K8s Pod 영속 (gemma3:1b→qwen2.5:3b 변경 2026-03-31)
 - [x] 프롬프트 설계 (전략별/캐릭터별/심리전 레벨별) — persona.templates.ts 6캐릭터 × 3난이도 × 4레벨 (2026-03-21)
 - [x] 재시도 + Fallback 로직 — 최대 3회 재시도, fallback DRAW (Sprint 1)
 - [x] AI 호출 로그/메트릭 수집 — CostTrackingService + MetricsService + API 5개 (2026-03-30)
@@ -218,7 +218,7 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 - [ ] 모델별 전략 비교 분석 리포트
 - [ ] 캐릭터 × 모델 조합별 승률 통계
 - [ ] 심리전 효과 검증 (유무 비교)
-- [ ] 프롬프트 최적화 실험
+- [x] 프롬프트 최적화 실험 — v1 고도화 완료 (30점 규칙, tableGroups, 전략 분석, 2026-03-31)
 - [ ] 운영 가이드 문서 작성
 - [ ] OpenShift 이관 검토
 
@@ -300,7 +300,7 @@ docs/
 **완료된 작업**:
 - ISS-001~004 전부 FIXED (ai-adapter 400, AI userID, Ollama K8s, WS GAME_OVER)
 - BUG-S4-001, BUG-P-004, BUG-G-001, BUG-GR-001, BUG-UI-001~003 전부 FIXED
-- Go 유닛 346개 (329 PASS + 17 SKIP, 95.6%) + Playwright E2E 153개 + AI Adapter 318개
+- Go 유닛 346개 (329 PASS + 17 SKIP, 95.6%) + Playwright E2E 153개 + AI Adapter 324개
 - WS 통합 테스트 16/16 PASS + admin API 7개 엔드포인트 실 구현
 - Google OAuth K8s 구조적 해결 + 빌드 경고 0개
 - 설계 4건 구현 완료 (퇴장/기권 7SP, 중복방 3SP, 교착 5SP, beforeunload 2SP = 17SP)
@@ -311,9 +311,12 @@ docs/
 - 사용자 플레이테스트 10건 버그 전량 수정+배포 (BUG-AI-001 CRITICAL 포함)
 
 **미완료 (Sprint 4 잔여)**:
-- [ ] LLM 3종 실 API 검증 (OpenAI, Claude, DeepSeek)
+- [x] LLM 4종 실 API 검증 (OpenAI gpt-5-mini, Claude, DeepSeek, Ollama qwen2.5:3b) — 전부 PASS (2026-03-31)
+- [x] 프롬프트 최적화 + 고도화 (30점 규칙, tableGroups 명확화, 전략 분석 절차) — (2026-03-31)
+- [x] ArgoCD ignoreDifferences 정비 (ai-adapter-secret, ConfigMap, Ollama, ResourceQuota) — (2026-03-31)
 - [ ] Human 1 + AI 3 혼합 게임 GAME_OVER 완주 E2E
-- [ ] AI 대전 재테스트 (BUG-AI-001 수정 효과 검증)
+- [ ] AI 대전 재테스트 (고도화된 프롬프트로 검증)
+- [ ] Sprint 4 종료 판정
 
 ### All-Hands 종합 리뷰 결과 (2026-03-30)
 
@@ -332,4 +335,12 @@ docs/
 - **BUG-WS-001 (CRITICAL)**: WS ping/pong heartbeat 미구현 → 끊김 반복
 - 상세: `docs/04-testing/23-user-playtest-bug-report-2026-03-30.md`
 
-다음 단계: AI 대전 재테스트 + LLM 3종 실 API 검증 + Human 1 + AI 3 E2E
+### LLM 4종 실 API 검증 완료 (2026-03-31)
+
+- OpenAI gpt-5-mini (추론 모델), Claude claude-sonnet-4-20250514, DeepSeek deepseek-chat, Ollama qwen2.5:3b -- 전부 PASS
+- 프롬프트 최적화 + 고도화 (30점 규칙 명시, tableGroups 명확화, 전략 분석 절차 추가)
+- AI Adapter 테스트 324 PASS (thinking 파싱 6개 신규)
+- ArgoCD ignoreDifferences 정비 (ai-adapter-secret, ConfigMap, Ollama, ResourceQuota)
+- 문서 2건: LLM 검증 보고서 (04-testing/24), 시크릿 주입 가이드 (05-deployment/06~07)
+
+다음 단계: AI 대전 재테스트 (고도화된 프롬프트) + Human 1 + AI 3 E2E + Sprint 4 종료 판정

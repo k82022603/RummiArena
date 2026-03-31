@@ -12,14 +12,19 @@ import { ResponseParserService } from '../common/parser/response-parser.service'
  * Ollama 로컬 LLM 어댑터.
  * 로컬에서 실행되므로 API 비용이 없다.
  * 응답 속도와 품질은 하드웨어에 따라 변동된다.
- * 기본 모델: gemma3:1b (변경 가능)
+ * 기본 모델: qwen2.5:3b (Qwen3 thinking 모드는 CPU 환경에서 속도 제약으로 비채택)
  *
  * 소형 모델의 JSON 오류율이 높으므로 최소 재시도 횟수를 5회로 보장한다.
+ * CPU 추론 속도를 고려하여 타임아웃을 120초로 보장한다.
+ * Qwen3 thinking 모드 응답(content 비고 thinking에 JSON)도 파싱 지원한다.
  */
 @Injectable()
 export class OllamaAdapter extends BaseAdapter {
-  /** 4B 소형 모델 JSON 오류율 대응: 최소 재시도 횟수 (MoveRequest.maxRetries < 이 값이면 override) */
+  /** 소형 모델 JSON 오류율 대응: 최소 재시도 횟수 */
   static readonly MIN_RETRIES = 5;
+
+  /** CPU 추론 + thinking 모드 대응: 최소 타임아웃 (ms) */
+  static readonly MIN_TIMEOUT_MS = 120_000;
 
   private readonly baseUrl: string;
   private readonly defaultModel: string;
@@ -49,18 +54,21 @@ export class OllamaAdapter extends BaseAdapter {
   }
 
   /**
-   * 4B 소형 모델의 JSON 오류율 대응을 위해 maxRetries를 MIN_RETRIES(5) 이상으로 보장한다.
-   * 요청자가 더 높은 값을 지정한 경우에는 그대로 사용한다.
+   * 소형 모델의 JSON 오류율 및 CPU 추론 속도를 고려하여
+   * maxRetries와 timeoutMs를 최소값 이상으로 보장한다.
    */
   async generateMove(request: MoveRequestDto): Promise<MoveResponseDto> {
-    const adjustedRequest: MoveRequestDto =
-      request.maxRetries < OllamaAdapter.MIN_RETRIES
-        ? { ...request, maxRetries: OllamaAdapter.MIN_RETRIES }
-        : request;
+    const adjustedRetries = Math.max(request.maxRetries, OllamaAdapter.MIN_RETRIES);
+    const adjustedTimeout = Math.max(request.timeoutMs, OllamaAdapter.MIN_TIMEOUT_MS);
+    const adjustedRequest: MoveRequestDto = {
+      ...request,
+      maxRetries: adjustedRetries,
+      timeoutMs: adjustedTimeout,
+    };
 
-    if (request.maxRetries < OllamaAdapter.MIN_RETRIES) {
+    if (request.maxRetries < OllamaAdapter.MIN_RETRIES || request.timeoutMs < OllamaAdapter.MIN_TIMEOUT_MS) {
       this.logger.log(
-        `[OllamaAdapter] maxRetries ${request.maxRetries} → ${OllamaAdapter.MIN_RETRIES} (4B 모델 JSON 오류율 대응)`,
+        `[OllamaAdapter] maxRetries ${request.maxRetries} → ${adjustedRetries}, timeout ${request.timeoutMs} → ${adjustedTimeout} (로컬 모델 대응)`,
       );
     }
 
@@ -102,7 +110,7 @@ export class OllamaAdapter extends BaseAdapter {
         stream: false,
         options: {
           temperature: Math.min(temperature, 0.7),
-          num_predict: 512,
+          num_predict: 4096,
           stop: ['```'],
         },
       },
@@ -112,12 +120,34 @@ export class OllamaAdapter extends BaseAdapter {
     );
 
     const content = (response.data.message?.content as string) ?? '';
+    const thinking = (response.data.message?.thinking as string) ?? '';
+
+    // Qwen3 등 thinking 모드 모델: content가 비고 thinking에 추론이 들어오는 경우 처리
+    let finalContent = content;
+    if (!content.trim() && thinking) {
+      // thinking에서 JSON 추출 시도 ({...} 패턴 매칭)
+      const jsonMatch = thinking.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        finalContent = jsonMatch[0];
+        this.logger.log(`[OllamaAdapter] thinking에서 JSON 추출 성공`);
+      } else {
+        this.logger.warn(
+          `[OllamaAdapter] content 비어있고 thinking에서도 JSON 없음`,
+        );
+      }
+    }
+    if (thinking) {
+      this.logger.debug(
+        `[OllamaAdapter] thinking: ${thinking.slice(0, 200)}...`,
+      );
+    }
+
     // Ollama는 토큰 사용량을 다른 형태로 제공한다
     const promptEvalCount = response.data.prompt_eval_count ?? 0;
     const evalCount = response.data.eval_count ?? 0;
 
     return {
-      content,
+      content: finalContent,
       promptTokens: promptEvalCount,
       completionTokens: evalCount,
     };

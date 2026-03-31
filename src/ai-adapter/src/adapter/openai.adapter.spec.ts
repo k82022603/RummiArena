@@ -62,7 +62,7 @@ const makeOpenAiResponse = (
       completion_tokens: completionTokens,
       total_tokens: promptTokens + completionTokens,
     },
-    model: 'gpt-4o-mini',
+    model: 'gpt-5-mini',
   },
   status: 200,
 });
@@ -81,7 +81,7 @@ describe('OpenAiAdapter', () => {
       get: jest.fn((key: string, defaultValue?: string) => {
         const config: Record<string, string> = {
           OPENAI_API_KEY: 'test-api-key',
-          OPENAI_DEFAULT_MODEL: 'gpt-4o-mini',
+          OPENAI_DEFAULT_MODEL: 'gpt-5-mini',
         };
         return config[key] ?? defaultValue;
       }),
@@ -95,15 +95,15 @@ describe('OpenAiAdapter', () => {
   // getModelInfo()
   // -----------------------------------------------------------------------
   describe('getModelInfo()', () => {
-    it('modelType=openai, modelName=gpt-4o-mini를 반환한다', () => {
+    it('modelType=openai, modelName=gpt-5-mini를 반환한다', () => {
       const info = adapter.getModelInfo();
 
       expect(info.modelType).toBe('openai');
-      expect(info.modelName).toBe('gpt-4o-mini');
+      expect(info.modelName).toBe('gpt-5-mini');
       expect(info.baseUrl).toContain('openai.com');
     });
 
-    it('환경변수 미설정 시 기본값(gpt-4o-mini)을 반환한다', () => {
+    it('환경변수 미설정 시 기본값(gpt-5-mini)을 반환한다', () => {
       const configWithDefaults = {
         get: jest.fn((key: string, defaultValue?: string) => defaultValue),
       } as unknown as ConfigService;
@@ -114,7 +114,7 @@ describe('OpenAiAdapter', () => {
       );
 
       const info = adapterWithDefaults.getModelInfo();
-      expect(info.modelName).toBe('gpt-4o-mini');
+      expect(info.modelName).toBe('gpt-5-mini');
     });
   });
 
@@ -245,7 +245,7 @@ describe('OpenAiAdapter', () => {
       expect(config.timeout).toBe(20000);
     });
 
-    it('beginner 난이도는 temperature=0.9로 API를 호출한다', async () => {
+    it('gpt-5 추론 모델은 temperature를 전송하지 않고 max_completion_tokens를 사용한다', async () => {
       mockedAxios.post = jest
         .fn()
         .mockResolvedValueOnce(
@@ -255,35 +255,10 @@ describe('OpenAiAdapter', () => {
       await adapter.generateMove(makeMoveRequest({ difficulty: 'beginner' }));
 
       const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
-      expect(body.temperature).toBe(0.9);
-    });
-
-    it('intermediate 난이도는 temperature=0.7로 API를 호출한다', async () => {
-      mockedAxios.post = jest
-        .fn()
-        .mockResolvedValueOnce(
-          makeOpenAiResponse(JSON.stringify({ action: 'draw' })),
-        );
-
-      await adapter.generateMove(
-        makeMoveRequest({ difficulty: 'intermediate' }),
-      );
-
-      const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
-      expect(body.temperature).toBe(0.7);
-    });
-
-    it('expert 난이도는 temperature=0.3으로 API를 호출한다', async () => {
-      mockedAxios.post = jest
-        .fn()
-        .mockResolvedValueOnce(
-          makeOpenAiResponse(JSON.stringify({ action: 'draw' })),
-        );
-
-      await adapter.generateMove(makeMoveRequest({ difficulty: 'expert' }));
-
-      const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
-      expect(body.temperature).toBe(0.3);
+      // gpt-5-mini는 추론 모델이므로 temperature 미지원, max_completion_tokens 사용
+      expect(body.temperature).toBeUndefined();
+      expect(body.max_completion_tokens).toBe(8192);
+      expect(body.max_tokens).toBeUndefined();
     });
   });
 

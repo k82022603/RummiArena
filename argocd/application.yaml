@@ -46,6 +46,31 @@ spec:
       jsonPointers:
         - /data/NEXTAUTH_SECRET
         - /data/GOOGLE_CLIENT_SECRET
+    - kind: Secret
+      name: ai-adapter-secret
+      namespace: rummikub
+      jsonPointers:
+        - /data/OPENAI_API_KEY
+        - /data/CLAUDE_API_KEY
+        - /data/DEEPSEEK_API_KEY
+    - kind: ResourceQuota
+      name: rummikub-quota
+      namespace: rummikub
+      jsonPointers:
+        - /spec/hard
+    - group: apps
+      kind: Deployment
+      name: ollama
+      namespace: rummikub
+      jsonPointers:
+        - /spec/template/spec/containers/0/resources/limits/memory
+        - /spec/template/spec/containers/0/resources/requests/memory
+    - kind: ConfigMap
+      name: ai-adapter-config
+      namespace: rummikub
+      jsonPointers:
+        - /data/OPENAI_DEFAULT_MODEL
+        - /data/OLLAMA_DEFAULT_MODEL
     - kind: ConfigMap
       name: frontend-config
       namespace: rummikub

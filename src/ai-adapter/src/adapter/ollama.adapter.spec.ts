@@ -58,6 +58,25 @@ const makeOllamaApiResponse = (content: string) => ({
   status: 200,
 });
 
+/** Qwen3 thinking 모드 응답 형식으로 래핑 (content + thinking) */
+const makeOllamaThinkingResponse = (
+  content: string,
+  thinking: string,
+) => ({
+  data: {
+    model: 'qwen3:4b',
+    message: {
+      role: 'assistant',
+      content,
+      thinking,
+    },
+    done: true,
+    prompt_eval_count: 150,
+    eval_count: 80,
+  },
+  status: 200,
+});
+
 describe('OllamaAdapter', () => {
   let adapter: OllamaAdapter;
   let promptBuilder: PromptBuilderService;
@@ -407,7 +426,7 @@ describe('OllamaAdapter', () => {
       expect(body.messages[1].role).toBe('user');
     });
 
-    it('options에 num_predict=512과 stop 토큰이 포함된다 (BL-P2-007 잘림 방지 상향)', async () => {
+    it('options에 num_predict=4096과 stop 토큰이 포함된다 (thinking + JSON 공간 확보)', async () => {
       mockedAxios.post = jest
         .fn()
         .mockResolvedValueOnce(
@@ -417,22 +436,36 @@ describe('OllamaAdapter', () => {
       await adapter.generateMove(makeMoveRequest());
 
       const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
-      expect(body.options.num_predict).toBe(512);
+      expect(body.options.num_predict).toBe(4096);
       // BL-P2-007: '\n\n' stop 토큰 제거 (place 응답 잘림 방지), '```' 코드블록만 유지
       expect(body.options.stop).toEqual(['```']);
     });
 
-    it('timeoutMs를 axios 타임아웃에 전달한다', async () => {
+    it('timeoutMs를 axios 타임아웃에 전달한다 (MIN_TIMEOUT_MS 이상으로 보정)', async () => {
       mockedAxios.post = jest
         .fn()
         .mockResolvedValueOnce(
           makeOllamaApiResponse(JSON.stringify({ action: 'draw' })),
         );
 
+      // timeoutMs=15000은 MIN_TIMEOUT_MS(120000)보다 작으므로 120000으로 보정됨
       await adapter.generateMove(makeMoveRequest({ timeoutMs: 15000 }));
 
       const [, , config] = (mockedAxios.post as jest.Mock).mock.calls[0];
-      expect(config.timeout).toBe(15000);
+      expect(config.timeout).toBe(OllamaAdapter.MIN_TIMEOUT_MS);
+    });
+
+    it('timeoutMs가 MIN_TIMEOUT_MS보다 크면 보정 없이 그대로 전달한다', async () => {
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(
+          makeOllamaApiResponse(JSON.stringify({ action: 'draw' })),
+        );
+
+      await adapter.generateMove(makeMoveRequest({ timeoutMs: 180000 }));
+
+      const [, , config] = (mockedAxios.post as jest.Mock).mock.calls[0];
+      expect(config.timeout).toBe(180000);
     });
   });
 
@@ -499,6 +532,93 @@ describe('OllamaAdapter', () => {
 
       expect(response.action).toBe('draw');
       expect(response.metadata.isFallbackDraw).toBe(false);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // generateMove() - Qwen3 thinking 모드 응답 처리
+  // -----------------------------------------------------------------------
+  describe('generateMove() - thinking 모드 응답', () => {
+    it('content가 비고 thinking에 JSON이 있으면 thinking에서 추출하여 파싱한다', async () => {
+      const thinkingText =
+        '이 상황에서는 30점을 넘기기 어려우므로 드로우해야 합니다.\n' +
+        JSON.stringify({ action: 'draw', reasoning: 'thinking에서 추출된 드로우' });
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(makeOllamaThinkingResponse('', thinkingText));
+
+      const response = await adapter.generateMove(makeMoveRequest());
+
+      expect(response.action).toBe('draw');
+      expect(response.reasoning).toContain('thinking에서 추출된 드로우');
+      expect(response.metadata.isFallbackDraw).toBe(false);
+    });
+
+    it('content가 비고 thinking에 place JSON이 있으면 추출하여 파싱한다', async () => {
+      const placeJson = JSON.stringify({
+        action: 'place',
+        tableGroups: [{ tiles: ['R7a', 'R8a', 'R9a'] }],
+        tilesFromRack: ['R7a', 'R8a', 'R9a'],
+        reasoning: 'thinking에서 추출된 배치',
+      });
+      const thinkingText = `R7-R8-R9 런 조합을 분석합니다.\n${placeJson}`;
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(makeOllamaThinkingResponse('', thinkingText));
+
+      const response = await adapter.generateMove(makeMoveRequest());
+
+      expect(response.action).toBe('place');
+      expect(response.tableGroups).toHaveLength(1);
+      expect(response.tilesFromRack).toEqual(['R7a', 'R8a', 'R9a']);
+      expect(response.metadata.isFallbackDraw).toBe(false);
+    });
+
+    it('content와 thinking 둘 다 있으면 content를 우선 사용한다', async () => {
+      const contentJson = JSON.stringify({
+        action: 'draw',
+        reasoning: 'content의 드로우',
+      });
+      const thinkingJson = JSON.stringify({
+        action: 'place',
+        tableGroups: [{ tiles: ['R7a', 'R8a', 'R9a'] }],
+        tilesFromRack: ['R7a', 'R8a', 'R9a'],
+        reasoning: 'thinking의 배치',
+      });
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(
+          makeOllamaThinkingResponse(contentJson, thinkingJson),
+        );
+
+      const response = await adapter.generateMove(makeMoveRequest());
+
+      // content가 비어있지 않으므로 content를 사용
+      expect(response.action).toBe('draw');
+      expect(response.reasoning).toContain('content의 드로우');
+    });
+
+    it('content가 비고 thinking에도 JSON이 없으면 재시도 후 fallback 드로우를 반환한다', async () => {
+      const thinkingNoJson = '이 상황에서는 어떤 조합도 만들 수 없습니다. 드로우해야 합니다.';
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValue(makeOllamaThinkingResponse('', thinkingNoJson));
+
+      const response = await adapter.generateMove(makeMoveRequest());
+
+      expect(response.action).toBe('draw');
+      expect(response.metadata.isFallbackDraw).toBe(true);
+    });
+
+    it('content가 비고 thinking이 빈 문자열이면 재시도 후 fallback 드로우를 반환한다', async () => {
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValue(makeOllamaThinkingResponse('', ''));
+
+      const response = await adapter.generateMove(makeMoveRequest());
+
+      expect(response.action).toBe('draw');
+      expect(response.metadata.isFallbackDraw).toBe(true);
     });
   });
 });

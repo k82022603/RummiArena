@@ -10,6 +10,8 @@ import { ResponseParserService } from '../common/parser/response-parser.service'
  * DeepSeek 어댑터.
  * OpenAI 호환 API를 사용하므로 openai.adapter.ts와 구조가 유사하다.
  * 기본 모델: deepseek-chat (비용 효율적)
+ *
+ * deepseek-reasoner 사용 시 reasoning_content 필드 파싱도 지원한다.
  */
 @Injectable()
 export class DeepSeekAdapter extends BaseAdapter {
@@ -60,19 +62,25 @@ export class DeepSeekAdapter extends BaseAdapter {
     promptTokens: number;
     completionTokens: number;
   }> {
-    // DeepSeek은 OpenAI 호환 API를 제공하므로 동일한 요청 구조를 사용한다
+    const isReasoner = this.defaultModel.includes('reasoner');
+
+    // deepseek-reasoner는 response_format: json_object를 지원하지 않는다
+    const body: Record<string, unknown> = {
+      model: this.defaultModel,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      temperature,
+      max_tokens: isReasoner ? 8192 : 1024,
+    };
+    if (!isReasoner) {
+      body.response_format = { type: 'json_object' };
+    }
+
     const response = await axios.post(
       `${this.baseUrl}/chat/completions`,
-      {
-        model: this.defaultModel,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        response_format: { type: 'json_object' },
-        temperature,
-        max_tokens: 1024,
-      },
+      body,
       {
         headers: {
           Authorization: `Bearer ${this.apiKey}`,
@@ -84,9 +92,33 @@ export class DeepSeekAdapter extends BaseAdapter {
 
     const choice = response.data.choices[0];
     const usage = response.data.usage;
+    const content = (choice.message.content as string) ?? '';
+    const reasoningContent =
+      (choice.message.reasoning_content as string) ?? '';
+
+    // reasoner 모드: content가 비면 reasoning_content에서 JSON 추출
+    let finalContent = content;
+    if (!content.trim() && reasoningContent) {
+      const jsonMatch = reasoningContent.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        finalContent = jsonMatch[0];
+        this.logger.log(
+          '[DeepSeekAdapter] reasoning_content에서 JSON 추출 성공',
+        );
+      } else {
+        this.logger.warn(
+          '[DeepSeekAdapter] content 비어있고 reasoning_content에서도 JSON 없음',
+        );
+      }
+    }
+    if (reasoningContent) {
+      this.logger.debug(
+        `[DeepSeekAdapter] reasoning: ${reasoningContent.slice(0, 200)}...`,
+      );
+    }
 
     return {
-      content: choice.message.content as string,
+      content: finalContent,
       promptTokens: usage?.prompt_tokens ?? 0,
       completionTokens: usage?.completion_tokens ?? 0,
     };

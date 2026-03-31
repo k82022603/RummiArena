@@ -71,6 +71,9 @@ export class PromptBuilderService {
       gameState.tableGroups.forEach((group, idx) => {
         lines.push(`  그룹${idx + 1}: [${group.tiles.join(', ')}]`);
       });
+      lines.push(
+        `  (총 ${gameState.tableGroups.length}개 그룹 -- 배치 시 이 그룹들을 tableGroups에 모두 포함하세요)`,
+      );
     }
 
     // 내 타일
@@ -85,9 +88,22 @@ export class PromptBuilderService {
     lines.push('## 게임 진행 상황');
     lines.push(`  현재 턴: ${gameState.turnNumber}`);
     lines.push(`  드로우 파일: ${gameState.drawPileCount}장 남음`);
-    lines.push(
-      `  최초 등록 완료: ${gameState.initialMeldDone ? '완료' : '미완료 (30점 이상 필요)'}`,
-    );
+    if (!gameState.initialMeldDone) {
+      lines.push(
+        `  최초 등록: 미완료 -- 이번 턴에 배치하려면 합계 30점 이상 필요!`,
+      );
+      lines.push(
+        `  30점 미만 배치는 무효 -> draw를 선택하거나 30점 이상 조합을 만드세요`,
+      );
+      lines.push(
+        `  테이블 타일 사용 불가: 자신의 랙 타일만으로 그룹/런을 구성하세요`,
+      );
+    } else {
+      lines.push(`  최초 등록: 완료 (점수 제한 없음)`);
+      lines.push(
+        `  기존 테이블 그룹을 확장하거나 분리/합체하여 더 많은 타일을 배치할 수 있습니다`,
+      );
+    }
 
     // 상대 정보 (beginner는 제외)
     if (difficulty !== 'beginner' && gameState.opponents.length > 0) {
@@ -137,11 +153,14 @@ export class PromptBuilderService {
     lines.push('');
     lines.push('배치할 때:');
     lines.push(
-      '{"action":"place","tableGroups":[{"tiles":["R1a","R2a","R3a"]}],"tilesFromRack":["R1a","R2a","R3a"],"reasoning":"이유"}',
+      '{"action":"place","tableGroups":[{"tiles":["R10a","R11a","R12a"]}],"tilesFromRack":["R10a","R11a","R12a"],"reasoning":"R런 33점으로 최초등록"}',
     );
     lines.push('');
     lines.push(
       '규칙: action은 "place" 또는 "draw"만 가능. tableGroups의 각 그룹은 타일 3개 이상.',
+    );
+    lines.push(
+      '주의: tableGroups = 배치 후 테이블 전체 최종 상태. 기존 테이블 그룹을 모두 포함하고, 새 그룹을 추가하세요.',
     );
     lines.push('지금 즉시 JSON만 출력하라:');
 

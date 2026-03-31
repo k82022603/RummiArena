@@ -17,14 +17,14 @@ persistence:
   mountPath: /root/.ollama
 
 # 기본 로드 모델 (pod 시작 후 자동 pull)
-defaultModel: "gemma3:1b"
+defaultModel: "qwen2.5:3b"
 
 resources:
   requests:
-    memory: "512Mi"
+    memory: "1Gi"
     cpu: "200m"
   limits:
-    memory: "2Gi"
+    memory: "4Gi"
     cpu: "2000m"
 
 livenessProbe:

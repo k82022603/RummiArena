@@ -1,0 +1,18 @@
+dependencies:
+- name: postgres
+  repository: file://charts/postgres
+  version: 0.1.0
+- name: redis
+  repository: file://charts/redis
+  version: 0.1.0
+- name: game-server
+  repository: file://charts/game-server
+  version: 0.1.0
+- name: ai-adapter
+  repository: file://charts/ai-adapter
+  version: 0.1.0
+- name: frontend
+  repository: file://charts/frontend
+  version: 0.1.0
+digest: sha256:53e6efbe21db76f9d8427dbef1d0b3aa6e1373e0b252f596e6a24db537c1f1bc
+generated: "2026-03-25T16:18:52.494246333+09:00"
