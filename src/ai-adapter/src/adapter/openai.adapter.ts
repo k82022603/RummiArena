@@ -15,9 +15,13 @@ import { ResponseParserService } from '../common/parser/response-parser.service'
  * - max_tokens 대신 max_completion_tokens 사용
  * - temperature 커스텀 미지원 (고정 1)
  * - 응답에 reasoning_tokens 포함
+ * - 추론 시간이 길어 최소 타임아웃 60초 보장
  */
 @Injectable()
 export class OpenAiAdapter extends BaseAdapter {
+  /** gpt-5 추론 모델 최소 타임아웃 (ms) */
+  static readonly REASONING_MIN_TIMEOUT_MS = 60_000;
+
   private readonly apiKey: string;
   private readonly defaultModel: string;
   private readonly baseUrl = 'https://api.openai.com/v1';
@@ -91,7 +95,9 @@ export class OpenAiAdapter extends BaseAdapter {
           Authorization: `Bearer ${this.apiKey}`,
           'Content-Type': 'application/json',
         },
-        timeout: timeoutMs,
+        timeout: isReasoningModel
+          ? Math.max(timeoutMs, OpenAiAdapter.REASONING_MIN_TIMEOUT_MS)
+          : timeoutMs,
       },
     );
 
