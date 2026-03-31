@@ -62,6 +62,12 @@ type WSMessage struct {
 
 // --- Common Structs ---
 
+// FallbackInfo AI 강제 드로우(fallback) 정보
+type FallbackInfo struct {
+	IsFallbackDraw bool   // AI가 정상 행동 실패로 강제 드로우했는지 여부
+	FallbackReason string // "AI_TIMEOUT", "INVALID_MOVE", "AI_ERROR"
+}
+
 // WSTableGroup WebSocket 메시지용 테이블 세트
 type WSTableGroup struct {
 	ID    string   `json:"id"`
@@ -149,6 +155,8 @@ type TurnEndPayload struct {
 	DrawPileCount    int            `json:"drawPileCount"`
 	NextSeat         int            `json:"nextSeat"`
 	NextTurnNumber   int            `json:"nextTurnNumber"`
+	IsFallbackDraw   bool           `json:"isFallbackDraw,omitempty"`
+	FallbackReason   string         `json:"fallbackReason,omitempty"` // "AI_TIMEOUT", "INVALID_MOVE", "AI_ERROR"
 }
 
 // TilePlacedPayload TILE_PLACED 페이로드 (실시간 피드백)

@@ -836,14 +836,14 @@ func (h *WSHandler) handleAITurn(roomID, gameID string, player *model.PlayerStat
 			zap.Int("seat", player.SeatOrder),
 			zap.Error(err),
 		)
-		h.forceAIDraw(roomID, gameID, player.SeatOrder)
+		h.forceAIDraw(roomID, gameID, player.SeatOrder, "AI_TIMEOUT")
 		return
 	}
 
 	if resp.Action == "place" && len(resp.TilesFromRack) > 0 {
 		h.processAIPlace(roomID, gameID, player.SeatOrder, resp)
 	} else {
-		h.forceAIDraw(roomID, gameID, player.SeatOrder)
+		h.forceAIDraw(roomID, gameID, player.SeatOrder, "AI_ERROR")
 	}
 }
 
@@ -872,7 +872,7 @@ func (h *WSHandler) processAIPlace(roomID, gameID string, seat int, resp *client
 			zap.Int("seat", seat),
 			zap.String("errorCode", errCode),
 		)
-		h.forceAIDraw(roomID, gameID, seat)
+		h.forceAIDraw(roomID, gameID, seat, "INVALID_MOVE")
 		return
 	}
 
@@ -889,7 +889,8 @@ func (h *WSHandler) processAIPlace(roomID, gameID string, seat int, resp *client
 
 // forceAIDraw AI 드로우를 강제로 수행한다.
 // ai-adapter 호출 실패 또는 배치 검증 실패 시 폴백으로 사용한다.
-func (h *WSHandler) forceAIDraw(roomID, gameID string, seat int) {
+// reason: "AI_TIMEOUT", "INVALID_MOVE", "AI_ERROR" 중 하나
+func (h *WSHandler) forceAIDraw(roomID, gameID string, seat int, reason string) {
 	result, err := h.gameSvc.DrawTile(gameID, seat)
 	if err != nil {
 		h.logger.Error("ws: AI force draw failed",
@@ -922,7 +923,10 @@ func (h *WSHandler) forceAIDraw(roomID, gameID string, seat int) {
 		},
 	})
 
-	h.broadcastTurnEndFromState(roomID, seat, state, "DRAW_TILE", 0)
+	h.broadcastTurnEndFromState(roomID, seat, state, "DRAW_TILE", 0, &FallbackInfo{
+		IsFallbackDraw: true,
+		FallbackReason: reason,
+	})
 	h.broadcastTurnStart(roomID, state)
 	h.startTurnTimer(roomID, gameID, state.CurrentSeat, state.TurnTimeoutSec)
 }
@@ -1187,7 +1191,8 @@ func (h *WSHandler) deleteSessionFromRedis(conn *Connection) {
 
 // broadcastTurnEndFromState Connection 없이 roomID 기반으로 TURN_END를 브로드캐스트한다.
 // AI 턴 처리에서 Connection이 존재하지 않을 때 사용한다.
-func (h *WSHandler) broadcastTurnEndFromState(roomID string, seat int, state *model.GameStateRedis, action string, tilesPlaced int) {
+// fallback은 선택적이며, AI 강제 드로우 시에만 전달한다.
+func (h *WSHandler) broadcastTurnEndFromState(roomID string, seat int, state *model.GameStateRedis, action string, tilesPlaced int, fallback ...*FallbackInfo) {
 	playerIdx := findPlayerBySeatInState(state.Players, seat)
 	playerTileCount := 0
 	hasInitialMeld := false
@@ -1196,18 +1201,25 @@ func (h *WSHandler) broadcastTurnEndFromState(roomID string, seat int, state *mo
 		hasInitialMeld = state.Players[playerIdx].HasInitialMeld
 	}
 
+	payload := TurnEndPayload{
+		Seat:             seat,
+		Action:           action,
+		TableGroups:      stateTableToWSGroups(state.Table),
+		TilesPlacedCount: tilesPlaced,
+		PlayerTileCount:  playerTileCount,
+		HasInitialMeld:   hasInitialMeld,
+		DrawPileCount:    len(state.DrawPile),
+		NextSeat:         state.CurrentSeat,
+	}
+
+	if len(fallback) > 0 && fallback[0] != nil {
+		payload.IsFallbackDraw = fallback[0].IsFallbackDraw
+		payload.FallbackReason = fallback[0].FallbackReason
+	}
+
 	h.hub.BroadcastToRoom(roomID, &WSMessage{
-		Type: S2CTurnEnd,
-		Payload: TurnEndPayload{
-			Seat:             seat,
-			Action:           action,
-			TableGroups:      stateTableToWSGroups(state.Table),
-			TilesPlacedCount: tilesPlaced,
-			PlayerTileCount:  playerTileCount,
-			HasInitialMeld:   hasInitialMeld,
-			DrawPileCount:    len(state.DrawPile),
-			NextSeat:         state.CurrentSeat,
-		},
+		Type:    S2CTurnEnd,
+		Payload: payload,
 	})
 }
 

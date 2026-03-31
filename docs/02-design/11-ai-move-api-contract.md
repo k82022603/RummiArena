@@ -405,6 +405,26 @@ HTTP 401
 }
 ```
 
+### 8.4 game-server 측 연동 환경변수
+
+game-server에서 ai-adapter를 호출하기 위해 다음 환경변수가 필요하다. K8s 환경에서는 Helm values(`helm/charts/game-server/values.yaml`)에 정의한다.
+
+| 환경변수 | K8s 리소스 | 기본값 | 필수 | 설명 |
+|----------|-----------|--------|------|------|
+| `AI_ADAPTER_URL` | ConfigMap | `http://ai-adapter:8081` | Y | ai-adapter 서비스 Base URL |
+| `AI_ADAPTER_TIMEOUT_SEC` | ConfigMap | `200` | N | HTTP 호출 전체 타임아웃(초). Ollama 재시도를 고려하여 넉넉히 설정. |
+| `AI_ADAPTER_INTERNAL_TOKEN` | Secret | (없음) | Y | `X-Internal-Token` 헤더에 전달할 공유 비밀키. ai-adapter 측과 동일한 값이어야 한다. |
+
+**`AI_ADAPTER_URL` 미설정 시 동작**:
+
+game-server는 기동 시 `AI_ADAPTER_URL` 환경변수를 확인한다. 미설정(빈 문자열 또는 변수 자체 부재)이면 다음과 같이 동작한다.
+
+1. 서버 시작 로그에 `"AI adapter URL not configured -- AI turns disabled"` 경고를 출력한다.
+2. AI 플레이어의 턴이 도래하면 ai-adapter를 호출하지 않고 즉시 강제 draw를 수행한다.
+3. game-server 자체의 기동과 Human 플레이어 기능에는 영향이 없다.
+
+이 설계는 ai-adapter가 선택적 의존성(optional dependency)임을 보장한다. AI 없이 Human-only 게임을 먼저 테스트하거나, ai-adapter를 나중에 배포할 수 있다.
+
 ---
 
 ## 9. 타일 인코딩 규칙
@@ -694,3 +714,4 @@ Node 개발자: Ollama 모델 로드에 최초 30~60초 걸릴 수 있다. /heal
 | 날짜 | 변경 내용 | 작성자 |
 |------|-----------|--------|
 | 2026-03-21 | 최초 작성 (Sprint 2 사전 인터페이스 설계 미팅) | 아키텍트 |
+| 2026-03-31 | 8.4절 "game-server 측 연동 환경변수" 추가 (AI_ADAPTER_URL 누락 이슈 문서화) | DevOps Agent |

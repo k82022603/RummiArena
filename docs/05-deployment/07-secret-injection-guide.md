@@ -78,6 +78,19 @@ flowchart LR
 
 > frontend-config는 Secret이 아닌 ConfigMap이지만, ArgoCD ignoreDifferences 관리 대상이므로 함께 기술한다.
 
+### 2.6 game-server-config (ConfigMap) -- inject-secrets.sh 비관리 대상
+
+다음 환경변수는 **Secret이 아닌 ConfigMap** 값이므로 `inject-secrets.sh`로 주입하지 않는다. `helm/charts/game-server/values.yaml`에 직접 정의하며, ArgoCD sync를 통해 K8s에 배포된다.
+
+| 필드 | Helm values 기본값 | 필수 | 설명 |
+|------|-------------------|------|------|
+| AI_ADAPTER_URL | `http://ai-adapter:8081` | Y | ai-adapter 서비스 Base URL. **미설정 시 AI 턴이 전면 비활성화된다.** |
+| AI_ADAPTER_TIMEOUT_SEC | `200` | N | ai-adapter HTTP 호출 전체 타임아웃 (초) |
+
+> **주의**: `AI_ADAPTER_URL`은 민감 정보가 아니므로 Git에 커밋 가능하며, Helm values에 실제 값을 직접 넣는다. inject-secrets.sh의 "빈 플레이스홀더 + kubectl patch" 패턴과는 다른 관리 방식이다.
+>
+> 반면 `AI_ADAPTER_INTERNAL_TOKEN`은 인증 토큰(민감 정보)이므로 `game-server-secret`에서 관리한다(2.2절 참조).
+
 ---
 
 ## 3. inject-secrets.sh 실행 방법
@@ -513,3 +526,4 @@ kubectl apply -f argocd/application.yaml
 > | 1.0 | 2026-03-31 | DevOps Agent | 초안 작성 (ai-adapter-secret selfHeal 이슈 해결 문서화) |
 > | 1.1 | 2026-03-31 | DevOps Agent | 5장 "K8s Secret vs Docker Compose 환경변수 비교" 섹션 추가 |
 > | 1.2 | 2026-03-31 | DevOps Agent | 6.5장 "Git Push 전 로컬 Helm 변경 -> K8s 즉시 반영 워크플로우" 추가 |
+> | 1.3 | 2026-03-31 | DevOps Agent | 2.6절 "game-server-config (ConfigMap)" 추가 -- AI_ADAPTER_URL/TIMEOUT_SEC 문서화 |

@@ -198,6 +198,26 @@ kubectl get svc -n rummikub
 | frontend | 30000 | 3000 |
 | postgres | 30432 | 5432 |
 
+### Step 9: game-server 환경변수 (AI Adapter 연동)
+
+game-server가 ai-adapter와 통신하려면 다음 환경변수가 ConfigMap/Secret에 설정되어야 한다.
+
+| 환경변수 | 리소스 종류 | 기본값 | 필수 | 설명 |
+|----------|-------------|--------|------|------|
+| `AI_ADAPTER_URL` | ConfigMap | `http://ai-adapter:8081` | Y | ai-adapter 서비스 Base URL. 미설정 시 AI 턴이 전면 비활성화된다 (경고 로그 출력, 모든 AI 턴 강제 draw). |
+| `AI_ADAPTER_TIMEOUT_SEC` | ConfigMap | `200` | N | ai-adapter HTTP 호출 전체 타임아웃 (초). Ollama 재시도 고려 시 200초 권장. |
+| `AI_ADAPTER_INTERNAL_TOKEN` | Secret | (없음) | Y | 내부 서비스 인증 토큰. `X-Internal-Token` 헤더로 전달. ai-adapter 측과 동일한 값 필요. |
+
+이 값들은 `helm/charts/game-server/values.yaml`에 정의되어 있으며, ArgoCD sync를 통해 K8s에 배포된다.
+
+```bash
+# 현재 설정 확인
+kubectl get configmap game-server-config -n rummikub -o yaml | grep AI_ADAPTER
+kubectl get secret game-server-secret -n rummikub -o jsonpath='{.data.AI_ADAPTER_INTERNAL_TOKEN}' | base64 -d
+```
+
+> **주의**: `AI_ADAPTER_URL`이 누락되면 game-server 기동은 정상이지만, AI 플레이어가 참여한 게임에서 모든 AI 턴이 강제 draw로 처리된다. AI 대전 기능을 사용하려면 반드시 설정해야 한다.
+
 ## 4. 환경 검증
 
 셋업 완료 후 아래 항목을 확인한다:

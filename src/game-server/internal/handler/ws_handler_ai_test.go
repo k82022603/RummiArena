@@ -345,7 +345,7 @@ func TestForceAIDraw_DrawPileEmpty(t *testing.T) {
 	}
 	hub.Register(conn)
 
-	h.forceAIDraw("room-empty", "game-empty", 1)
+	h.forceAIDraw("room-empty", "game-empty", 1, "AI_ERROR")
 
 	time.Sleep(50 * time.Millisecond)
 	// GAME_OVER 브로드캐스트 확인
