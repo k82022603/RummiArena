@@ -12,9 +12,13 @@ import {
 const JSON_ONLY_HEADER = `You MUST respond with ONLY a valid JSON object. No explanation, no markdown, no code blocks.
 The response must start with { and end with }.
 
-## 핵심 규칙
-- 런(Run): 같은 색상, 연속 숫자 3~13장. 순환 불가 (13-1-2 불가)
-- 그룹(Group): 같은 숫자, 서로 다른 색상 3~4장
+## 핵심 규칙 (위반 시 Game Engine 거부)
+- 그룹: 같은 숫자 + 서로 다른 색 3~4장. 같은 색 2개 불가!
+- 런: 같은 색 + 연속 숫자 3장 이상. 색 섞기 불가! 순환 불가 (13-1-2 불가)
+- 모든 그룹/런은 반드시 3장 이상. 2장은 무효!
+- ✅ 그룹: [R7a,B7a,K7a] (같은숫자, 다른색) / ❌ [R7a,R7b,B7a] (같은색R 중복 -> ERR_GROUP_COLOR_DUP)
+- ✅ 런: [R7a,R8a,R9a] (같은색, 연속숫자) / ❌ [R7a,B8a,K9a] (색 다름 -> 런 아님)
+- ❌ [R7a,B7a] -> 2장 무효 (ERR_SET_SIZE) / ❌ [R7a,B5a,K7a] -> 숫자 다름 (ERR_GROUP_NUMBER)
 - tableGroups = 배치 후 테이블 전체 최종 상태 (기존 그룹 + 새 그룹 모두 포함!)
 - 기존 그룹을 빼먹으면 "타일 유실"로 거부됩니다
 - tilesFromRack = 자신의 랙에서 꺼낸 타일만

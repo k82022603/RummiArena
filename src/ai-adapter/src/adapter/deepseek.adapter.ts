@@ -86,7 +86,9 @@ export class DeepSeekAdapter extends BaseAdapter {
           Authorization: `Bearer ${this.apiKey}`,
           'Content-Type': 'application/json',
         },
-        timeout: timeoutMs,
+        timeout: isReasoner
+          ? Math.max(timeoutMs, 150_000)
+          : timeoutMs,
       },
     );
 

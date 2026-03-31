@@ -74,26 +74,57 @@ export class ClaudeAdapter extends BaseAdapter {
     promptTokens: number;
     completionTokens: number;
   }> {
+    const useThinking = this.configService.get<string>(
+      'CLAUDE_EXTENDED_THINKING',
+      'true',
+    ) === 'true';
+
+    const body: Record<string, unknown> = {
+      model: this.defaultModel,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }],
+    };
+
+    if (useThinking) {
+      // Extended thinking: temperature 설정 불가, budget_tokens로 사고량 제어
+      body.max_tokens = 16000;
+      body.thinking = { type: 'enabled', budget_tokens: 10000 };
+    } else {
+      body.max_tokens = 1024;
+      body.temperature = temperature;
+    }
+
     const response = await axios.post(
       `${this.baseUrl}/messages`,
-      {
-        model: this.defaultModel,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userPrompt }],
-        max_tokens: 1024,
-        temperature,
-      },
+      body,
       {
         headers: {
           'x-api-key': this.apiKey,
           'anthropic-version': this.anthropicVersion,
           'Content-Type': 'application/json',
         },
-        timeout: timeoutMs,
+        timeout: useThinking
+          ? Math.max(timeoutMs, 120_000)
+          : timeoutMs,
       },
     );
 
-    const content = (response.data.content[0]?.text as string) ?? '';
+    // Extended thinking 응답: [{type:"thinking",...},{type:"text",...}]
+    const contentBlocks = response.data.content as Array<{
+      type: string;
+      text?: string;
+      thinking?: string;
+    }>;
+    const textBlock = contentBlocks.find((b) => b.type === 'text');
+    const thinkingBlock = contentBlocks.find((b) => b.type === 'thinking');
+    const content = textBlock?.text ?? '';
+
+    if (thinkingBlock?.thinking) {
+      this.logger.debug(
+        `[ClaudeAdapter] thinking: ${thinkingBlock.thinking.slice(0, 200)}...`,
+      );
+    }
+
     const usage = response.data.usage;
 
     return {
