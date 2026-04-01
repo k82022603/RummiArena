@@ -74,10 +74,9 @@ export class ClaudeAdapter extends BaseAdapter {
     promptTokens: number;
     completionTokens: number;
   }> {
-    const useThinking = this.configService.get<string>(
-      'CLAUDE_EXTENDED_THINKING',
-      'true',
-    ) === 'true';
+    const useThinking =
+      this.configService.get<string>('CLAUDE_EXTENDED_THINKING', 'true') ===
+      'true';
 
     const body: Record<string, unknown> = {
       model: this.defaultModel,
@@ -94,20 +93,14 @@ export class ClaudeAdapter extends BaseAdapter {
       body.temperature = temperature;
     }
 
-    const response = await axios.post(
-      `${this.baseUrl}/messages`,
-      body,
-      {
-        headers: {
-          'x-api-key': this.apiKey,
-          'anthropic-version': this.anthropicVersion,
-          'Content-Type': 'application/json',
-        },
-        timeout: useThinking
-          ? Math.max(timeoutMs, 120_000)
-          : timeoutMs,
+    const response = await axios.post(`${this.baseUrl}/messages`, body, {
+      headers: {
+        'x-api-key': this.apiKey,
+        'anthropic-version': this.anthropicVersion,
+        'Content-Type': 'application/json',
       },
-    );
+      timeout: useThinking ? Math.max(timeoutMs, 120_000) : timeoutMs,
+    });
 
     // Extended thinking 응답: [{type:"thinking",...},{type:"text",...}]
     const contentBlocks = response.data.content as Array<{

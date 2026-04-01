@@ -81,9 +81,7 @@ describe('MetricsService', () => {
       await service.recordMetric(makeMetricRecord({ parseSuccess: true }));
 
       const calls = mockPipeline.hincrby.mock.calls;
-      const parseCall = calls.find(
-        (c: any[]) => c[1] === 'parse_success',
-      );
+      const parseCall = calls.find((c: any[]) => c[1] === 'parse_success');
       expect(parseCall).toBeDefined();
       expect(parseCall[2]).toBe(1);
     });
@@ -92,21 +90,15 @@ describe('MetricsService', () => {
       await service.recordMetric(makeMetricRecord({ parseSuccess: false }));
 
       const calls = mockPipeline.hincrby.mock.calls;
-      const parseCall = calls.find(
-        (c: any[]) => c[1] === 'parse_fail',
-      );
+      const parseCall = calls.find((c: any[]) => c[1] === 'parse_fail');
       expect(parseCall).toBeDefined();
     });
 
     it('fallback draw 시 fallback_draws를 증가시킨다', async () => {
-      await service.recordMetric(
-        makeMetricRecord({ isFallbackDraw: true }),
-      );
+      await service.recordMetric(makeMetricRecord({ isFallbackDraw: true }));
 
       const calls = mockPipeline.hincrby.mock.calls;
-      const fbCall = calls.find(
-        (c: any[]) => c[1] === 'fallback_draws',
-      );
+      const fbCall = calls.find((c: any[]) => c[1] === 'fallback_draws');
       expect(fbCall).toBeDefined();
     });
 
@@ -139,10 +131,7 @@ describe('MetricsService', () => {
         .mockResolvedValueOnce(['member1', '450']) // p50
         .mockResolvedValueOnce(['member2', '1200']); // p95
 
-      const summary = await service.getModelSummary(
-        'openai',
-        '2026-03-30',
-      );
+      const summary = await service.getModelSummary('openai', '2026-03-30');
 
       expect(summary.modelType).toBe('openai');
       expect(summary.totalRequests).toBe(100);
@@ -160,10 +149,7 @@ describe('MetricsService', () => {
       mockRedis.hgetall.mockResolvedValueOnce({});
       mockRedis.zcard.mockResolvedValueOnce(0);
 
-      const summary = await service.getModelSummary(
-        'claude',
-        '2026-03-30',
-      );
+      const summary = await service.getModelSummary('claude', '2026-03-30');
 
       expect(summary.totalRequests).toBe(0);
       expect(summary.avgLatencyMs).toBe(0);

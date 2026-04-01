@@ -15,6 +15,7 @@ src/game-server/server
 .env
 .env.local
 .env.*.local
+.env.cicd
 
 # MCP config (contains tokens)
 .mcp.json

@@ -232,7 +232,7 @@ describe('OpenAiAdapter', () => {
       expect(config.headers.Authorization).toContain('Bearer');
     });
 
-    it('timeoutMs가 axios 타임아웃에 전달된다', async () => {
+    it('gpt-5 추론 모델은 최소 타임아웃(120s)이 보장된다', async () => {
       mockedAxios.post = jest
         .fn()
         .mockResolvedValueOnce(
@@ -242,7 +242,8 @@ describe('OpenAiAdapter', () => {
       await adapter.generateMove(makeMoveRequest({ timeoutMs: 20000 }));
 
       const [, , config] = (mockedAxios.post as jest.Mock).mock.calls[0];
-      expect(config.timeout).toBe(20000);
+      // gpt-5-mini는 추론 모델이므로 Math.max(20000, 120000) = 120000
+      expect(config.timeout).toBe(120000);
     });
 
     it('gpt-5 추론 모델은 temperature를 전송하지 않고 max_completion_tokens를 사용한다', async () => {

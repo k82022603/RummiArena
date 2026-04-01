@@ -12,6 +12,7 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   workers: 1,
   globalSetup: "./e2e/global-setup.ts",
+  globalTeardown: "./e2e/global-teardown.ts",
   reporter: [["list"], ["html", { outputFolder: "playwright-report", open: "never" }]],
 
   use: {

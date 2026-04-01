@@ -3,7 +3,7 @@ import { PromptBuilderService } from '../prompt/prompt-builder.service';
 import { ResponseParserService } from '../common/parser/response-parser.service';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
-import { MoveRequestDto, GameStateDto } from '../common/dto/move-request.dto';
+import { MoveRequestDto, GameStateDto, Difficulty } from '../common/dto/move-request.dto';
 
 // axios 전체를 mock
 jest.mock('axios');
@@ -247,7 +247,7 @@ describe('ClaudeAdapter', () => {
       expect(generateMoveCall![1].system).toBeDefined();
     });
 
-    it('timeoutMs가 axios 타임아웃에 전달된다', async () => {
+    it('extended thinking 활성 시 최소 타임아웃(120s)이 보장된다', async () => {
       mockedAxios.post = jest
         .fn()
         .mockResolvedValueOnce(
@@ -257,13 +257,14 @@ describe('ClaudeAdapter', () => {
       await adapter.generateMove(makeMoveRequest({ timeoutMs: 25000 }));
 
       const calls = (mockedAxios.post as jest.Mock).mock.calls;
+      // extended thinking 기본 활성 → Math.max(25000, 120000) = 120000
       const callLlmCall = calls.find(
-        ([, , cfg]) => cfg && cfg.timeout === 25000,
+        ([, , cfg]) => cfg && cfg.timeout === 120000,
       );
       expect(callLlmCall).toBeDefined();
     });
 
-    it('beginner 난이도는 요청 바디에 temperature=0.9를 포함한다', async () => {
+    it('extended thinking 활성 시 temperature 대신 thinking 설정을 전송한다', async () => {
       mockedAxios.post = jest
         .fn()
         .mockResolvedValueOnce(
@@ -273,35 +274,53 @@ describe('ClaudeAdapter', () => {
       await adapter.generateMove(makeMoveRequest({ difficulty: 'beginner' }));
 
       const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
-      expect(body.temperature).toBe(0.9);
+      // extended thinking 기본 활성 → temperature 미전송, thinking 설정 전송
+      expect(body.temperature).toBeUndefined();
+      expect(body.thinking).toEqual({ type: 'enabled', budget_tokens: 10000 });
+      expect(body.max_tokens).toBe(16000);
     });
 
-    it('intermediate 난이도는 요청 바디에 temperature=0.7을 포함한다', async () => {
-      mockedAxios.post = jest
-        .fn()
-        .mockResolvedValueOnce(
-          makeClaudeResponse(JSON.stringify({ action: 'draw' })),
-        );
-
-      await adapter.generateMove(
-        makeMoveRequest({ difficulty: 'intermediate' }),
+    it('thinking 비활성 시 beginner=0.9, intermediate=0.7, expert=0.3 temperature를 전송한다', async () => {
+      // CLAUDE_EXTENDED_THINKING=false 설정
+      const noThinkingConfig = {
+        get: jest.fn((key: string, defaultValue?: string) => {
+          const config: Record<string, string> = {
+            CLAUDE_API_KEY: 'test-claude-key',
+            CLAUDE_DEFAULT_MODEL: 'claude-sonnet-4-20250514',
+            CLAUDE_EXTENDED_THINKING: 'false',
+          };
+          return config[key] ?? defaultValue;
+        }),
+      } as unknown as ConfigService;
+      const noThinkingAdapter = new ClaudeAdapter(
+        promptBuilder,
+        responseParser,
+        noThinkingConfig,
       );
 
-      const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
-      expect(body.temperature).toBe(0.7);
-    });
+      const difficulties = [
+        { level: 'beginner', expected: 0.9 },
+        { level: 'intermediate', expected: 0.7 },
+        { level: 'expert', expected: 0.3 },
+      ];
 
-    it('expert 난이도는 요청 바디에 temperature=0.3을 포함한다', async () => {
-      mockedAxios.post = jest
-        .fn()
-        .mockResolvedValueOnce(
-          makeClaudeResponse(JSON.stringify({ action: 'draw' })),
+      for (const { level, expected } of difficulties) {
+        jest.clearAllMocks();
+        mockedAxios.post = jest
+          .fn()
+          .mockResolvedValueOnce(
+            makeClaudeResponse(JSON.stringify({ action: 'draw' })),
+          );
+
+        await noThinkingAdapter.generateMove(
+          makeMoveRequest({ difficulty: level as Difficulty }),
         );
 
-      await adapter.generateMove(makeMoveRequest({ difficulty: 'expert' }));
-
-      const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
-      expect(body.temperature).toBe(0.3);
+        const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
+        expect(body.temperature).toBe(expected);
+        expect(body.thinking).toBeUndefined();
+        expect(body.max_tokens).toBe(1024);
+      }
     });
   });
 

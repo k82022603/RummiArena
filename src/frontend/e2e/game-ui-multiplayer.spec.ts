@@ -9,6 +9,7 @@
  */
 
 import { test, expect, type Page } from "@playwright/test";
+import { cleanupViaPage } from "./helpers/room-cleanup";
 
 // ------------------------------------------------------------------
 // 헬퍼
@@ -32,6 +33,11 @@ async function createRoomAndStart(
   opts: { playerCount?: 2 | 3 | 4; aiCount?: number; turnTimeout?: number } = {}
 ): Promise<string> {
   const { playerCount = 2, aiCount = 1, turnTimeout = 60 } = opts;
+
+  // 이전 테스트에서 남은 활성 방 정리
+  await page.goto("/lobby");
+  await page.waitForLoadState("domcontentloaded");
+  await cleanupViaPage(page);
 
   // 방 만들기 페이지로 이동
   await page.goto("/room/create");
@@ -172,6 +178,11 @@ test.describe("A-1: 로비/방 생성/참여", () => {
   });
 
   test("Human+AI 2인 방 생성 -> 대기실 진입", async ({ page }) => {
+    // 이전 테스트에서 남은 활성 방 정리
+    await page.goto("/lobby");
+    await page.waitForLoadState("domcontentloaded");
+    await cleanupViaPage(page);
+
     await page.goto("/room/create");
     await page.waitForLoadState("domcontentloaded");
     await expect(

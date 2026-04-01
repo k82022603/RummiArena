@@ -58,15 +58,24 @@ export class OllamaAdapter extends BaseAdapter {
    * maxRetries와 timeoutMs를 최소값 이상으로 보장한다.
    */
   async generateMove(request: MoveRequestDto): Promise<MoveResponseDto> {
-    const adjustedRetries = Math.max(request.maxRetries, OllamaAdapter.MIN_RETRIES);
-    const adjustedTimeout = Math.max(request.timeoutMs, OllamaAdapter.MIN_TIMEOUT_MS);
+    const adjustedRetries = Math.max(
+      request.maxRetries,
+      OllamaAdapter.MIN_RETRIES,
+    );
+    const adjustedTimeout = Math.max(
+      request.timeoutMs,
+      OllamaAdapter.MIN_TIMEOUT_MS,
+    );
     const adjustedRequest: MoveRequestDto = {
       ...request,
       maxRetries: adjustedRetries,
       timeoutMs: adjustedTimeout,
     };
 
-    if (request.maxRetries < OllamaAdapter.MIN_RETRIES || request.timeoutMs < OllamaAdapter.MIN_TIMEOUT_MS) {
+    if (
+      request.maxRetries < OllamaAdapter.MIN_RETRIES ||
+      request.timeoutMs < OllamaAdapter.MIN_TIMEOUT_MS
+    ) {
       this.logger.log(
         `[OllamaAdapter] maxRetries ${request.maxRetries} → ${adjustedRetries}, timeout ${request.timeoutMs} → ${adjustedTimeout} (로컬 모델 대응)`,
       );

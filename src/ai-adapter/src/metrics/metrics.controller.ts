@@ -21,18 +21,14 @@ export class MetricsController {
    * GET /stats/metrics?date=2026-03-30
    */
   @Get('metrics')
-  async getAllMetrics(
-    @Query('date') date?: string,
-  ): Promise<{
+  async getAllMetrics(@Query('date') date?: string): Promise<{
     date: string;
     models: ModelMetricsSummary[];
   }> {
-    const targetDate =
-      date ?? new Date().toISOString().slice(0, 10);
+    const targetDate = date ?? new Date().toISOString().slice(0, 10);
     this.logger.log(`GET /stats/metrics date=${targetDate}`);
 
-    const models =
-      await this.metricsService.getAllModelSummaries(targetDate);
+    const models = await this.metricsService.getAllModelSummaries(targetDate);
 
     return { date: targetDate, models };
   }
@@ -48,16 +44,12 @@ export class MetricsController {
     @Query('date') date?: string,
   ): Promise<ModelMetricsSummary> {
     const targetModel = model ?? 'openai';
-    const targetDate =
-      date ?? new Date().toISOString().slice(0, 10);
+    const targetDate = date ?? new Date().toISOString().slice(0, 10);
 
     this.logger.log(
       `GET /stats/metrics/model model=${targetModel} date=${targetDate}`,
     );
 
-    return this.metricsService.getModelSummary(
-      targetModel,
-      targetDate,
-    );
+    return this.metricsService.getModelSummary(targetModel, targetDate);
   }
 }

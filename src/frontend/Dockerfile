@@ -30,9 +30,12 @@ COPY . .
 # NEXT_PUBLIC_WS_URL: 브라우저 WebSocket 주소 (클라이언트 번들에 포함)
 ARG GAME_SERVER_INTERNAL_URL=http://game-server:8080
 ARG NEXT_PUBLIC_WS_URL=ws://localhost:30080
+# E2E 테스트 브릿지: Zustand 스토어를 window.__gameStore로 노출 (Playwright에서 상태 주입)
+ARG NEXT_PUBLIC_E2E_BRIDGE=true
 
 ENV GAME_SERVER_INTERNAL_URL=${GAME_SERVER_INTERNAL_URL}
 ENV NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL}
+ENV NEXT_PUBLIC_E2E_BRIDGE=${NEXT_PUBLIC_E2E_BRIDGE}
 # 텔레메트리 비활성화 (빌드 시간 단축)
 ENV NEXT_TELEMETRY_DISABLED=1
 

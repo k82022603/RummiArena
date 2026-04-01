@@ -79,7 +79,6 @@ func seedRankingData(t *testing.T, repo repository.EloRepository) {
 		{UserID: "test-user3", Rating: 1150, Tier: "SILVER", Wins: 15, GamesPlayed: 30},
 	}
 	for _, r := range ratings {
-		r := r
 		require.NoError(t, repo.Upsert(t.Context(), &r))
 	}
 }
@@ -198,7 +197,6 @@ func TestGetUserRatingHistory_OK(t *testing.T) {
 		{UserID: "test-user1", GameID: "test-game-2", RatingBefore: 1490, RatingAfter: 1500, RatingDelta: 10},
 	}
 	for _, h := range histories {
-		h := h
 		require.NoError(t, repo.AddHistory(t.Context(), &h))
 	}
 

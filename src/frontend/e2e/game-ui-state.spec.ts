@@ -8,6 +8,7 @@
  */
 
 import { test, expect, type Page } from "@playwright/test";
+import { cleanupViaPage } from "./helpers/room-cleanup";
 
 // ------------------------------------------------------------------
 // 헬퍼
@@ -27,6 +28,11 @@ async function createRoomAndStart(
   } = {}
 ): Promise<void> {
   const { playerCount = 2, aiCount = 1, turnTimeout = 120 } = opts;
+
+  // 이전 테스트에서 남은 활성 방 정리
+  await page.goto("/lobby");
+  await page.waitForLoadState("domcontentloaded");
+  await cleanupViaPage(page);
 
   await page.goto("/room/create");
   await page.waitForLoadState("domcontentloaded");

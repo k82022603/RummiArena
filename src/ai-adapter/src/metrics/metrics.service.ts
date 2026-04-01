@@ -81,11 +81,7 @@ export class MetricsService {
       // 집계 Hash 갱신
       pipeline.hincrby(summaryKey, 'total_requests', 1);
       pipeline.hincrby(summaryKey, 'total_tokens_in', record.promptTokens);
-      pipeline.hincrby(
-        summaryKey,
-        'total_tokens_out',
-        record.completionTokens,
-      );
+      pipeline.hincrby(summaryKey, 'total_tokens_out', record.completionTokens);
       pipeline.hincrby(
         summaryKey,
         record.parseSuccess ? 'parse_success' : 'parse_fail',
@@ -95,11 +91,7 @@ export class MetricsService {
         pipeline.hincrby(summaryKey, 'fallback_draws', 1);
       }
       pipeline.hincrby(summaryKey, 'total_retries', record.retryCount);
-      pipeline.hincrby(
-        summaryKey,
-        'total_latency_ms',
-        record.latencyMs,
-      );
+      pipeline.hincrby(summaryKey, 'total_latency_ms', record.latencyMs);
 
       // TTL 설정 (키가 처음 생성될 때만)
       pipeline.expire(latencyKey, MetricsService.METRICS_TTL_SECONDS, 'NX');
@@ -134,27 +126,15 @@ export class MetricsService {
         this.redis.zcard(latencyKey),
       ]);
 
-      const totalRequests = parseInt(
-        summaryData['total_requests'] ?? '0',
-        10,
-      );
+      const totalRequests = parseInt(summaryData['total_requests'] ?? '0', 10);
       const totalLatencyMs = parseInt(
         summaryData['total_latency_ms'] ?? '0',
         10,
       );
-      const parseSuccess = parseInt(
-        summaryData['parse_success'] ?? '0',
-        10,
-      );
+      const parseSuccess = parseInt(summaryData['parse_success'] ?? '0', 10);
       const parseFail = parseInt(summaryData['parse_fail'] ?? '0', 10);
-      const fallbackDraws = parseInt(
-        summaryData['fallback_draws'] ?? '0',
-        10,
-      );
-      const totalRetries = parseInt(
-        summaryData['total_retries'] ?? '0',
-        10,
-      );
+      const fallbackDraws = parseInt(summaryData['fallback_draws'] ?? '0', 10);
+      const totalRetries = parseInt(summaryData['total_retries'] ?? '0', 10);
 
       // p50, p95 계산 (Sorted Set에서 인덱스 기반)
       let p50 = 0;
@@ -186,19 +166,11 @@ export class MetricsService {
         modelType,
         totalRequests,
         avgLatencyMs:
-          totalRequests > 0
-            ? Math.round(totalLatencyMs / totalRequests)
-            : 0,
+          totalRequests > 0 ? Math.round(totalLatencyMs / totalRequests) : 0,
         p50LatencyMs: Math.round(p50),
         p95LatencyMs: Math.round(p95),
-        totalTokensIn: parseInt(
-          summaryData['total_tokens_in'] ?? '0',
-          10,
-        ),
-        totalTokensOut: parseInt(
-          summaryData['total_tokens_out'] ?? '0',
-          10,
-        ),
+        totalTokensIn: parseInt(summaryData['total_tokens_in'] ?? '0', 10),
+        totalTokensOut: parseInt(summaryData['total_tokens_out'] ?? '0', 10),
         parseSuccessRate:
           totalParseAttempts > 0
             ? Math.round((parseSuccess / totalParseAttempts) * 10000) / 100
@@ -213,9 +185,7 @@ export class MetricsService {
             : 0,
       };
     } catch (err) {
-      this.logger.warn(
-        `[Metrics] Redis 조회 실패: ${(err as Error).message}`,
-      );
+      this.logger.warn(`[Metrics] Redis 조회 실패: ${(err as Error).message}`);
       return {
         modelType,
         totalRequests: 0,
@@ -234,9 +204,7 @@ export class MetricsService {
   /**
    * 모든 모델의 일별 메트릭 요약을 조회한다.
    */
-  async getAllModelSummaries(
-    date?: string,
-  ): Promise<ModelMetricsSummary[]> {
+  async getAllModelSummaries(date?: string): Promise<ModelMetricsSummary[]> {
     const models = ['openai', 'claude', 'deepseek', 'ollama'];
     return Promise.all(
       models.map((model) => this.getModelSummary(model, date)),

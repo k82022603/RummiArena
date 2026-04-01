@@ -27,9 +27,7 @@ export class CostController {
    * @param date YYYY-MM-DD 형식. 생략 시 오늘 날짜.
    */
   @Get('cost')
-  async getDailyCost(
-    @Query('date') date?: string,
-  ): Promise<DailyCostSummary> {
+  async getDailyCost(@Query('date') date?: string): Promise<DailyCostSummary> {
     this.logger.log(`GET /stats/cost date=${date ?? 'today'}`);
 
     // 날짜 형식 검증 (간이)
@@ -62,8 +60,7 @@ export class CostController {
     const targetDays = Math.min(Math.max(days ?? 7, 1), 30);
     this.logger.log(`GET /stats/cost/history days=${targetDays}`);
 
-    const history =
-      await this.costTrackingService.getRecentDays(targetDays);
+    const history = await this.costTrackingService.getRecentDays(targetDays);
 
     return { days: targetDays, history };
   }

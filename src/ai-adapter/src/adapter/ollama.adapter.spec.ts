@@ -59,10 +59,7 @@ const makeOllamaApiResponse = (content: string) => ({
 });
 
 /** Qwen3 thinking 모드 응답 형식으로 래핑 (content + thinking) */
-const makeOllamaThinkingResponse = (
-  content: string,
-  thinking: string,
-) => ({
+const makeOllamaThinkingResponse = (content: string, thinking: string) => ({
   data: {
     model: 'qwen3:4b',
     message: {
@@ -542,7 +539,10 @@ describe('OllamaAdapter', () => {
     it('content가 비고 thinking에 JSON이 있으면 thinking에서 추출하여 파싱한다', async () => {
       const thinkingText =
         '이 상황에서는 30점을 넘기기 어려우므로 드로우해야 합니다.\n' +
-        JSON.stringify({ action: 'draw', reasoning: 'thinking에서 추출된 드로우' });
+        JSON.stringify({
+          action: 'draw',
+          reasoning: 'thinking에서 추출된 드로우',
+        });
       mockedAxios.post = jest
         .fn()
         .mockResolvedValueOnce(makeOllamaThinkingResponse('', thinkingText));
@@ -599,7 +599,8 @@ describe('OllamaAdapter', () => {
     });
 
     it('content가 비고 thinking에도 JSON이 없으면 재시도 후 fallback 드로우를 반환한다', async () => {
-      const thinkingNoJson = '이 상황에서는 어떤 조합도 만들 수 없습니다. 드로우해야 합니다.';
+      const thinkingNoJson =
+        '이 상황에서는 어떤 조합도 만들 수 없습니다. 드로우해야 합니다.';
       mockedAxios.post = jest
         .fn()
         .mockResolvedValue(makeOllamaThinkingResponse('', thinkingNoJson));

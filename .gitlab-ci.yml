@@ -98,7 +98,7 @@ lint-go:
 lint-nest:
   stage: lint
   <<: *local-runner
-  image: node:20-alpine
+  image: node:22-alpine
   cache:
     <<: *node-ai-cache
     policy: pull-push
@@ -115,7 +115,7 @@ lint-nest:
 lint-frontend:
   stage: lint
   <<: *local-runner
-  image: node:20-alpine
+  image: node:22-alpine
   cache:
     <<: *node-fe-cache
     policy: pull-push
@@ -132,7 +132,7 @@ lint-frontend:
 lint-admin:
   stage: lint
   <<: *local-runner
-  image: node:20-alpine
+  image: node:22-alpine
   cache:
     <<: *node-admin-cache
     policy: pull-push
@@ -191,14 +191,15 @@ test-go:
 test-nest:
   stage: test
   <<: *local-runner
-  image: node:20-alpine
+  image: node:22-alpine
   cache:
     <<: *node-ai-cache
     policy: pull
   script:
     - cd src/ai-adapter
     - npm ci --prefer-offline
-    - npm run test:cov
+    # Jest 기본 reporters(json,text,lcov,clover)에 cobertura 추가 — GitLab Coverage 리포트용
+    - npx jest --coverage --coverageReporters=text --coverageReporters=lcov --coverageReporters=cobertura
   artifacts:
     reports:
       coverage_report:
@@ -231,7 +232,7 @@ sonarqube:
         -Dsonar.projectKey=$SONAR_PROJECT_KEY
         -Dsonar.projectName="RummiArena"
         -Dsonar.host.url=$SONAR_HOST_URL
-        -Dsonar.login=$SONAR_TOKEN
+        -Dsonar.token=$SONAR_TOKEN
         -Dsonar.qualitygate.wait=true
         -Dsonar.sources=src/
         -Dsonar.exclusions="**/node_modules/**,**/*.test.go,**/*.spec.ts,**/*.spec.js,**/dist/**,**/coverage/**"
@@ -267,7 +268,7 @@ trivy-fs:
         --no-progress
         --format table
         --cache-dir "$TRIVY_CACHE_DIR"
-        --skip-dirs "src/ai-adapter/node_modules,src/frontend/node_modules,.cache"
+        --skip-dirs "src/ai-adapter/node_modules,src/frontend/node_modules,src/admin/node_modules,.cache"
         src/
   allow_failure: false
   rules:
@@ -281,10 +282,13 @@ trivy-fs:
 
 .build-common: &build-common
   stage: build
-  image: docker:26-dind
+  <<: *local-runner
+  image: docker:26-cli
   services:
     - name: docker:26-dind
       alias: docker
+  variables:
+    DOCKER_HOST: tcp://docker:2375
   before_script:
     - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
   rules:
@@ -385,10 +389,18 @@ update-gitops:
   script:
     - git clone https://oauth2:$GITOPS_TOKEN@github.com/k82022603/RummiArena.git gitops
     - cd gitops
-    - 'sed -i "s|registry.gitlab.com/k82022603/rummiarena/game-server:.*|registry.gitlab.com/k82022603/rummiarena/game-server:$CI_COMMIT_SHA|g" helm/environments/dev-values.yaml'
-    - 'sed -i "s|registry.gitlab.com/k82022603/rummiarena/ai-adapter:.*|registry.gitlab.com/k82022603/rummiarena/ai-adapter:$CI_COMMIT_SHA|g" helm/environments/dev-values.yaml'
-    - 'sed -i "s|registry.gitlab.com/k82022603/rummiarena/frontend:.*|registry.gitlab.com/k82022603/rummiarena/frontend:$CI_COMMIT_SHA|g" helm/environments/dev-values.yaml'
-    - 'sed -i "s|registry.gitlab.com/k82022603/rummiarena/admin:.*|registry.gitlab.com/k82022603/rummiarena/admin:$CI_COMMIT_SHA|g" helm/environments/dev-values.yaml'
+    # dev-values.yaml 구조: repository + tag 분리 (Helm 표준)
+    # repository를 GitLab Registry 경로로 교체하고 tag를 커밋 SHA로 업데이트
+    # gameServer 섹션
+    - 'sed -i "/gameServer:/,/aiAdapter:/{s|repository:.*|repository: $DOCKER_IMAGE/game-server|;s|tag:.*|tag: \"$CI_COMMIT_SHA\"|}" helm/environments/dev-values.yaml'
+    # aiAdapter 섹션
+    - 'sed -i "/aiAdapter:/,/frontend:/{s|repository:.*|repository: $DOCKER_IMAGE/ai-adapter|;s|tag:.*|tag: \"$CI_COMMIT_SHA\"|}" helm/environments/dev-values.yaml'
+    # frontend 섹션
+    - 'sed -i "/^frontend:/,/^admin:/{s|repository:.*|repository: $DOCKER_IMAGE/frontend|;s|tag:.*|tag: \"$CI_COMMIT_SHA\"|}" helm/environments/dev-values.yaml'
+    # admin 섹션
+    - 'sed -i "/^admin:/,\${s|repository:.*|repository: $DOCKER_IMAGE/admin|;s|tag:.*|tag: \"$CI_COMMIT_SHA\"|}" helm/environments/dev-values.yaml'
+    # imagePullPolicy를 IfNotPresent로 전환 (Registry 이미지 사용 시)
+    - 'sed -i "s|imagePullPolicy:.*|imagePullPolicy: IfNotPresent|" helm/environments/dev-values.yaml'
     - git add helm/environments/dev-values.yaml
     - 'git diff --staged --quiet || git commit -m "ci: update image tags to $CI_COMMIT_SHA [skip ci]"'
     - git push

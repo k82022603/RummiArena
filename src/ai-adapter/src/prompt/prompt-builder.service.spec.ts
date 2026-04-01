@@ -41,7 +41,9 @@ describe('PromptBuilderService', () => {
 
     it('JSON-only 강제 지시가 시스템 프롬프트 앞에 포함된다 (#31 gemma3:4b 최적화)', () => {
       const prompt = service.buildSystemPrompt(makeRequest());
-      expect(prompt).toContain('You MUST respond with ONLY a valid JSON object');
+      expect(prompt).toContain(
+        'You MUST respond with ONLY a valid JSON object',
+      );
       expect(prompt).toContain('No explanation, no markdown, no code blocks');
     });
 
@@ -154,7 +156,9 @@ describe('PromptBuilderService', () => {
         const prompt = serviceWithCharacter.buildSystemPrompt(
           makeRequest({ persona }),
         );
-        expect(prompt).toContain('You MUST respond with ONLY a valid JSON object');
+        expect(prompt).toContain(
+          'You MUST respond with ONLY a valid JSON object',
+        );
         expect(prompt).toContain('"action":"draw"');
         expect(prompt).toContain('"action":"place"');
       });

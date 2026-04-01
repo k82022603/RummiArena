@@ -17,6 +17,7 @@ const mockedAxios = axios as jest.Mocked<typeof axios>;
 //   - healthCheck() 동작 확인
 //   - getModelInfo() 설정값 반영 확인
 //   - OpenAI 호환 포맷(choices[0].message.content)으로 파싱되는지 확인
+//   - Reasoner 모드: 전용 프롬프트, JSON 추출, reasoning_content 파싱 확인
 // -----------------------------------------------------------------------
 
 const makeGameState = (): GameStateDto => ({
@@ -26,6 +27,15 @@ const makeGameState = (): GameStateDto => ({
   drawPileCount: 55,
   turnNumber: 1,
   initialMeldDone: false,
+});
+
+const makeGameStateWithTable = (): GameStateDto => ({
+  tableGroups: [{ tiles: ['R3a', 'R4a', 'R5a'] }],
+  myTiles: ['R6a', 'B2a', 'K10a'],
+  opponents: [{ playerId: 'opponent-01', remainingTiles: 5 }],
+  drawPileCount: 40,
+  turnNumber: 10,
+  initialMeldDone: true,
 });
 
 const makeMoveRequest = (
@@ -70,6 +80,70 @@ const makeDeepSeekResponse = (
   },
   status: 200,
 });
+
+/** DeepSeek Reasoner 응답 형식 (reasoning_content 포함) */
+const makeReasonerResponse = (
+  content: string,
+  reasoningContent: string,
+  promptTokens = 200,
+  completionTokens = 500,
+) => ({
+  data: {
+    id: 'chatcmpl-reasoner-test',
+    object: 'chat.completion',
+    choices: [
+      {
+        index: 0,
+        message: {
+          role: 'assistant',
+          content,
+          reasoning_content: reasoningContent,
+        },
+        finish_reason: 'stop',
+      },
+    ],
+    usage: {
+      prompt_tokens: promptTokens,
+      completion_tokens: completionTokens,
+      total_tokens: promptTokens + completionTokens,
+    },
+    model: 'deepseek-reasoner',
+  },
+  status: 200,
+});
+
+/** deepseek-chat 어댑터 생성 헬퍼 (향후 chat 모델 테스트용) */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const makeChatAdapter = () => {
+  const promptBuilder = new PromptBuilderService();
+  const responseParser = new ResponseParserService();
+  const configService = {
+    get: jest.fn((key: string, defaultValue?: string) => {
+      const config: Record<string, string> = {
+        DEEPSEEK_API_KEY: 'test-deepseek-key',
+        DEEPSEEK_DEFAULT_MODEL: 'deepseek-chat',
+      };
+      return config[key] ?? defaultValue;
+    }),
+  } as unknown as ConfigService;
+  return new DeepSeekAdapter(promptBuilder, responseParser, configService);
+};
+
+/** deepseek-reasoner 어댑터 생성 헬퍼 */
+const makeReasonerAdapter = () => {
+  const promptBuilder = new PromptBuilderService();
+  const responseParser = new ResponseParserService();
+  const configService = {
+    get: jest.fn((key: string, defaultValue?: string) => {
+      const config: Record<string, string> = {
+        DEEPSEEK_API_KEY: 'test-deepseek-key',
+        DEEPSEEK_DEFAULT_MODEL: 'deepseek-reasoner',
+      };
+      return config[key] ?? defaultValue;
+    }),
+  } as unknown as ConfigService;
+  return new DeepSeekAdapter(promptBuilder, responseParser, configService);
+};
 
 describe('DeepSeekAdapter', () => {
   let adapter: DeepSeekAdapter;
@@ -150,7 +224,7 @@ describe('DeepSeekAdapter', () => {
   });
 
   // -----------------------------------------------------------------------
-  // generateMove() - draw 응답
+  // generateMove() - draw 응답 (deepseek-chat)
   // -----------------------------------------------------------------------
   describe('generateMove() - draw 응답', () => {
     it('DeepSeek이 draw JSON을 반환하면 action=draw 응답을 반환한다', async () => {
@@ -171,7 +245,7 @@ describe('DeepSeekAdapter', () => {
   });
 
   // -----------------------------------------------------------------------
-  // generateMove() - place 응답
+  // generateMove() - place 응답 (deepseek-chat)
   // -----------------------------------------------------------------------
   describe('generateMove() - place 응답', () => {
     it('place JSON 응답(OpenAI 호환 포맷)을 올바르게 파싱한다', async () => {
@@ -194,7 +268,7 @@ describe('DeepSeekAdapter', () => {
   });
 
   // -----------------------------------------------------------------------
-  // generateMove() - API 호출 파라미터
+  // generateMove() - API 호출 파라미터 (deepseek-chat)
   // -----------------------------------------------------------------------
   describe('generateMove() - API 호출 파라미터', () => {
     it('/chat/completions 엔드포인트로 POST 요청을 보낸다', async () => {
@@ -333,6 +407,316 @@ describe('DeepSeekAdapter', () => {
         .mockRejectedValue(new Error('Network Error'));
 
       const response = await adapter.generateMove(
+        makeMoveRequest({ maxRetries: 2 }),
+      );
+
+      expect(response.action).toBe('draw');
+      expect(response.metadata.isFallbackDraw).toBe(true);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Reasoner 모드: 전용 프롬프트 사용 확인
+  // -----------------------------------------------------------------------
+  describe('Reasoner 모드 - 전용 프롬프트', () => {
+    let reasonerAdapter: DeepSeekAdapter;
+
+    beforeEach(() => {
+      reasonerAdapter = makeReasonerAdapter();
+      jest.clearAllMocks();
+    });
+
+    it('reasoner 모드에서 요청 바디에 temperature가 포함되지 않는다', async () => {
+      const content = JSON.stringify({ action: 'draw', reasoning: 'no combo' });
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(makeReasonerResponse(content, 'thinking...'));
+
+      await reasonerAdapter.generateMove(makeMoveRequest());
+
+      const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
+      expect(body.temperature).toBeUndefined();
+    });
+
+    it('reasoner 모드에서 response_format이 포함되지 않는다', async () => {
+      const content = JSON.stringify({ action: 'draw', reasoning: 'no combo' });
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(makeReasonerResponse(content, 'thinking...'));
+
+      await reasonerAdapter.generateMove(makeMoveRequest());
+
+      const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
+      expect(body.response_format).toBeUndefined();
+    });
+
+    it('reasoner 모드에서 최소 타임아웃 150초가 적용된다', async () => {
+      const content = JSON.stringify({ action: 'draw', reasoning: 'no combo' });
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(makeReasonerResponse(content, ''));
+
+      await reasonerAdapter.generateMove(makeMoveRequest({ timeoutMs: 10000 }));
+
+      const [, , config] = (mockedAxios.post as jest.Mock).mock.calls[0];
+      expect(config.timeout).toBe(150_000);
+    });
+
+    it('reasoner 모드에서 영어 기반 시스템 프롬프트를 사용한다', async () => {
+      const content = JSON.stringify({ action: 'draw', reasoning: 'no combo' });
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(makeReasonerResponse(content, ''));
+
+      await reasonerAdapter.generateMove(makeMoveRequest());
+
+      const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
+      const systemContent = body.messages[0].content;
+      // Reasoner 전용 프롬프트는 영어 기반
+      expect(systemContent).toContain('You are a Rummikub game AI');
+      expect(systemContent).toContain('Step-by-Step Thinking Procedure');
+    });
+
+    it('reasoner 모드에서 유저 프롬프트가 영어 기반으로 생성된다', async () => {
+      const content = JSON.stringify({ action: 'draw', reasoning: 'no combo' });
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(makeReasonerResponse(content, ''));
+
+      await reasonerAdapter.generateMove(makeMoveRequest());
+
+      const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
+      const userContent = body.messages[1].content;
+      expect(userContent).toContain('# Current Table');
+      expect(userContent).toContain('# My Rack Tiles');
+      expect(userContent).toContain('# Game Status');
+    });
+
+    it('reasoner 모드에서 draw 응답을 정상 파싱한다', async () => {
+      const content = JSON.stringify({
+        action: 'draw',
+        reasoning: 'no valid combination for initial meld',
+      });
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(
+          makeReasonerResponse(content, 'I analyzed all tiles...'),
+        );
+
+      const response = await reasonerAdapter.generateMove(makeMoveRequest());
+
+      expect(response.action).toBe('draw');
+      expect(response.metadata.modelType).toBe('deepseek');
+      expect(response.metadata.modelName).toBe('deepseek-reasoner');
+    });
+
+    it('reasoner 모드에서 place 응답을 정상 파싱한다', async () => {
+      const content = JSON.stringify({
+        action: 'place',
+        tableGroups: [{ tiles: ['K1a', 'K2a', 'K3a'] }],
+        tilesFromRack: ['K1a', 'K2a', 'K3a'],
+        reasoning: 'K run 1-2-3 for 6 points, need 30 but trying',
+      });
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(makeReasonerResponse(content, 'Let me find...'));
+
+      const response = await reasonerAdapter.generateMove(makeMoveRequest());
+
+      expect(response.action).toBe('place');
+      expect(response.tableGroups).toHaveLength(1);
+      expect(response.tilesFromRack).toEqual(['K1a', 'K2a', 'K3a']);
+    });
+
+    it('reasoner 모드에서 initialMeldDone=true 시 기존 테이블 정보를 포함한다', async () => {
+      const content = JSON.stringify({
+        action: 'place',
+        tableGroups: [{ tiles: ['R3a', 'R4a', 'R5a', 'R6a'] }],
+        tilesFromRack: ['R6a'],
+        reasoning: 'extend existing run',
+      });
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(makeReasonerResponse(content, 'thinking...'));
+
+      const response = await reasonerAdapter.generateMove(
+        makeMoveRequest({ gameState: makeGameStateWithTable() }),
+      );
+
+      expect(response.action).toBe('place');
+      expect(response.tilesFromRack).toEqual(['R6a']);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Reasoner 모드: JSON 추출 로직
+  // -----------------------------------------------------------------------
+  describe('Reasoner 모드 - JSON 추출 (extractBestJson)', () => {
+    let reasonerAdapter: DeepSeekAdapter;
+
+    beforeEach(() => {
+      reasonerAdapter = makeReasonerAdapter();
+      jest.clearAllMocks();
+    });
+
+    it('content가 순수 JSON이면 그대로 사용한다', () => {
+      const json = '{"action":"draw","reasoning":"no combo"}';
+      const result = reasonerAdapter.extractBestJson(json, '');
+      expect(JSON.parse(result)).toEqual({
+        action: 'draw',
+        reasoning: 'no combo',
+      });
+    });
+
+    it('content가 마크다운 코드블록에 감싸져 있어도 JSON을 추출한다', () => {
+      const wrapped = '```json\n{"action":"draw","reasoning":"no combo"}\n```';
+      const result = reasonerAdapter.extractBestJson(wrapped, '');
+      expect(JSON.parse(result)).toEqual({
+        action: 'draw',
+        reasoning: 'no combo',
+      });
+    });
+
+    it('content 앞뒤에 설명 텍스트가 있어도 JSON을 추출한다', () => {
+      const messy =
+        'Here is my response:\n{"action":"draw","reasoning":"test"}\nThat was my answer.';
+      const result = reasonerAdapter.extractBestJson(messy, '');
+      expect(JSON.parse(result).action).toBe('draw');
+    });
+
+    it('content에 trailing comma가 있어도 복구하여 파싱한다', () => {
+      const withTrailing = '{"action":"draw","reasoning":"test",}';
+      const result = reasonerAdapter.extractBestJson(withTrailing, '');
+      expect(JSON.parse(result).action).toBe('draw');
+    });
+
+    it('content가 비어있고 reasoning_content에 JSON이 있으면 추출한다', () => {
+      const reasoning =
+        'Let me think about this... I should draw.\n{"action":"draw","reasoning":"no valid combination"}';
+      const result = reasonerAdapter.extractBestJson('', reasoning);
+      expect(JSON.parse(result).action).toBe('draw');
+    });
+
+    it('reasoning_content에 여러 JSON이 있으면 마지막(최종 답변)을 추출한다', () => {
+      const reasoning =
+        'First attempt: {"action":"place","tableGroups":[]}\n' +
+        'Wait, that is wrong. Let me reconsider.\n' +
+        '{"action":"draw","reasoning":"no valid combination after reconsideration"}';
+      const result = reasonerAdapter.extractBestJson('', reasoning);
+      const parsed = JSON.parse(result);
+      expect(parsed.action).toBe('draw');
+      expect(parsed.reasoning).toContain('reconsideration');
+    });
+
+    it('content가 잘못된 JSON이고 reasoning_content에 유효한 JSON이 있으면 reasoning에서 추출한다', () => {
+      const badContent = 'I think the answer is draw';
+      const reasoning =
+        'After analysis: {"action":"draw","reasoning":"K tiles sum to 6, need 30 for initial meld"}';
+      const result = reasonerAdapter.extractBestJson(badContent, reasoning);
+      expect(JSON.parse(result).action).toBe('draw');
+    });
+
+    it('content와 reasoning 모두 JSON이 없으면 원본 content를 반환한다', () => {
+      const result = reasonerAdapter.extractBestJson(
+        'no json here',
+        'no json here either',
+      );
+      expect(result).toBe('no json here');
+    });
+
+    it('place 응답에서 배열 trailing comma를 복구한다', () => {
+      const json =
+        '{"action":"place","tableGroups":[{"tiles":["R7a","B7a","K7a",]},],"tilesFromRack":["R7a","B7a",],"reasoning":"group"}';
+      const result = reasonerAdapter.extractBestJson(json, '');
+      const parsed = JSON.parse(result);
+      expect(parsed.action).toBe('place');
+      expect(parsed.tableGroups[0].tiles).toEqual(['R7a', 'B7a', 'K7a']);
+    });
+
+    it('reasoner API 호출 시 content가 비어있으면 reasoning_content에서 JSON을 추출한다', async () => {
+      const reasoning =
+        'I need to analyze my tiles K1a, K2a, K3a, Y7b...\n' +
+        'K1+K2+K3 = 6 points, not enough for initial meld (need 30).\n' +
+        'I should draw.\n' +
+        '{"action":"draw","reasoning":"K run sum is only 6, need 30 for initial meld"}';
+
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(makeReasonerResponse('', reasoning));
+
+      const response = await reasonerAdapter.generateMove(makeMoveRequest());
+
+      expect(response.action).toBe('draw');
+      expect(response.metadata.isFallbackDraw).toBe(false);
+    });
+
+    it('reasoner API 호출 시 content에 코드블록 래핑된 JSON도 파싱한다', async () => {
+      const content =
+        '```json\n{"action":"place","tableGroups":[{"tiles":["K1a","K2a","K3a"]}],"tilesFromRack":["K1a","K2a","K3a"],"reasoning":"K run"}\n```';
+
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(makeReasonerResponse(content, 'thinking...'));
+
+      const response = await reasonerAdapter.generateMove(makeMoveRequest());
+
+      expect(response.action).toBe('place');
+      expect(response.tableGroups).toHaveLength(1);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Reasoner 모드: 재시도 및 fallback
+  // -----------------------------------------------------------------------
+  describe('Reasoner 모드 - 재시도 및 fallback', () => {
+    let reasonerAdapter: DeepSeekAdapter;
+
+    beforeEach(() => {
+      reasonerAdapter = makeReasonerAdapter();
+      jest.clearAllMocks();
+    });
+
+    it('reasoner 모드에서 모든 재시도 실패 시 fallback draw를 반환한다', async () => {
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValue(
+          makeReasonerResponse('invalid response', 'random thoughts'),
+        );
+
+      const response = await reasonerAdapter.generateMove(
+        makeMoveRequest({ maxRetries: 2 }),
+      );
+
+      expect(response.action).toBe('draw');
+      expect(response.metadata.isFallbackDraw).toBe(true);
+      expect(response.metadata.retryCount).toBe(2);
+    });
+
+    it('reasoner 모드에서 첫 시도 실패 후 두 번째 시도 성공 시 정상 응답한다', async () => {
+      const failResponse = makeReasonerResponse('not json', 'thinking...');
+      const successResponse = makeReasonerResponse(
+        JSON.stringify({ action: 'draw', reasoning: 'retry success' }),
+        'reconsidered...',
+      );
+
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(failResponse)
+        .mockResolvedValueOnce(successResponse);
+
+      const response = await reasonerAdapter.generateMove(
+        makeMoveRequest({ maxRetries: 3 }),
+      );
+
+      expect(response.action).toBe('draw');
+      expect(response.metadata.isFallbackDraw).toBe(false);
+      expect(response.metadata.retryCount).toBe(1); // 두 번째 시도(index 1)
+    });
+
+    it('reasoner 모드에서 네트워크 에러 시 재시도 후 fallback 반환한다', async () => {
+      mockedAxios.post = jest.fn().mockRejectedValue(new Error('timeout'));
+
+      const response = await reasonerAdapter.generateMove(
         makeMoveRequest({ maxRetries: 2 }),
       );
 

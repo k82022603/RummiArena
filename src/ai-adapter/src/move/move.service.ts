@@ -59,13 +59,11 @@ export class MoveService {
     );
 
     // 비용 추적 + 메트릭 기록 (비동기, fire-and-forget)
-    this.recordCostAndMetrics(model, request.gameId, response).catch(
-      (err) => {
-        this.logger.warn(
-          `[MoveService] 비용/메트릭 기록 실패: ${(err as Error).message}`,
-        );
-      },
-    );
+    this.recordCostAndMetrics(model, request.gameId, response).catch((err) => {
+      this.logger.warn(
+        `[MoveService] 비용/메트릭 기록 실패: ${(err as Error).message}`,
+      );
+    });
 
     return response;
   }

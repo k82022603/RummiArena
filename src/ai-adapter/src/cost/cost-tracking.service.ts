@@ -86,9 +86,7 @@ export class CostTrackingService {
       'DAILY_COST_LIMIT_USD',
       5,
     );
-    this.logger.log(
-      `비용 추적 초기화: 일일 한도 $${this.dailyCostLimitUsd}`,
-    );
+    this.logger.log(`비용 추적 초기화: 일일 한도 $${this.dailyCostLimitUsd}`);
   }
 
   /**
@@ -101,8 +99,7 @@ export class CostTrackingService {
       const pricing = MODEL_PRICING[record.modelType] ?? MODEL_PRICING.ollama;
 
       // 비용 계산 (USD)
-      const inputCost =
-        (record.promptTokens / 1_000_000) * pricing.inputPer1M;
+      const inputCost = (record.promptTokens / 1_000_000) * pricing.inputPer1M;
       const outputCost =
         (record.completionTokens / 1_000_000) * pricing.outputPer1M;
       const totalCost = inputCost + outputCost;
@@ -148,10 +145,7 @@ export class CostTrackingService {
   async isDailyLimitExceeded(): Promise<boolean> {
     try {
       const dateKey = this.todayKey();
-      const totalCostScaled = await this.redis.hget(
-        dateKey,
-        'total_cost_usd',
-      );
+      const totalCostScaled = await this.redis.hget(dateKey, 'total_cost_usd');
 
       if (!totalCostScaled) {
         return false;
@@ -210,10 +204,7 @@ export class CostTrackingService {
         }
       }
 
-      const totalCostScaled = parseInt(
-        data['total_cost_usd'] ?? '0',
-        10,
-      );
+      const totalCostScaled = parseInt(data['total_cost_usd'] ?? '0', 10);
       const totalCostUsd =
         Math.round(
           (totalCostScaled / CostTrackingService.COST_SCALE) * 1_000_000,

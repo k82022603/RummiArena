@@ -162,8 +162,14 @@ export const useGameStore = create<GameStore>()(
   }))
 );
 
-// E2E 테스트 브릿지: 비프로덕션 환경에서 Zustand 스토어를 window에 노출
+// E2E 테스트 브릿지: Zustand 스토어를 window에 노출
 // Playwright page.evaluate에서 window.__gameStore.getState() / setState() 사용 가능
-if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
+// NEXT_PUBLIC_E2E_BRIDGE=true 일 때 활성화 (빌드 타임 환경변수, 프로덕션 빌드에서도 사용 가능)
+// NODE_ENV !== "production" 일 때도 활성화 (로컬 개발 환경)
+if (
+  typeof window !== "undefined" &&
+  (process.env.NODE_ENV !== "production" ||
+    process.env.NEXT_PUBLIC_E2E_BRIDGE === "true")
+) {
   (window as unknown as Record<string, unknown>).__gameStore = useGameStore;
 }

@@ -95,7 +95,7 @@ services:
         hard: 65536
     healthcheck:
       # /api/system/status 가 UP 반환할 때까지 대기
-      test: ["CMD-SHELL", "curl -sf http://localhost:9000/api/system/status | grep -q '\"status\":\"UP\"' || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9000/api/system/status | grep -q '\"status\":\"UP\"' || exit 1"]
       # 내부 컨테이너는 9000 포트 사용, 호스트는 9001로 노출
       interval: 30s
       timeout: 10s

@@ -18,6 +18,7 @@
  */
 
 import { test, expect, type Page } from "@playwright/test";
+import { cleanupViaPage } from "./helpers/room-cleanup";
 
 // ------------------------------------------------------------------
 // 공통 헬퍼
@@ -29,6 +30,11 @@ async function createRoomAndStart(
   opts: { playerCount?: 2 | 3 | 4; aiCount?: number; turnTimeout?: number } = {}
 ): Promise<string> {
   const { playerCount = 2, aiCount = 1, turnTimeout = 120 } = opts;
+
+  // 이전 테스트에서 남은 활성 방 정리
+  await page.goto("/lobby");
+  await page.waitForLoadState("domcontentloaded");
+  await cleanupViaPage(page);
 
   await page.goto("/room/create");
   await page.waitForLoadState("domcontentloaded");
@@ -240,6 +246,11 @@ test.describe("TC-BU: 브라우저 이탈 경고 (beforeunload)", () => {
   // TC-BU-005: 대기실에서 이동 -> 경고 없음
   // ------------------------------------------------------------------
   test("TC-BU-005: 대기실에서 이동 시 경고 없음", async ({ page }) => {
+    // 이전 테스트에서 남은 활성 방 정리
+    await page.goto("/lobby");
+    await page.waitForLoadState("domcontentloaded");
+    await cleanupViaPage(page);
+
     await page.goto("/room/create");
     await page.waitForLoadState("domcontentloaded");
     await expect(
@@ -650,6 +661,8 @@ test.describe("TC-LF-E: 퇴장/기권 UI", () => {
     await waitForStoreReady(page);
 
     // 상대 플레이어를 DISCONNECTED로 변경 + disconnectedPlayers에 추가
+    // PlayerCard는 AI 플레이어의 DISCONNECTED를 무시하므로 (isAI 체크),
+    // 상대 playerType을 HUMAN으로 변경하여 연결 끊김 UI를 테스트한다.
     await page.evaluate(() => {
       const store = (window as unknown as Record<string, {
         getState: () => Record<string, unknown>;
@@ -665,7 +678,9 @@ test.describe("TC-LF-E: 퇴장/기권 UI", () => {
       const opponentName = players.find((p) => p.seat !== mySeat)?.displayName ?? "Opponent";
 
       const updated = players.map((p) =>
-        p.seat === opponentSeat ? { ...p, status: "DISCONNECTED" } : p
+        p.seat === opponentSeat
+          ? { ...p, status: "DISCONNECTED", type: "HUMAN", displayName: opponentName }
+          : p
       );
 
       store.setState({

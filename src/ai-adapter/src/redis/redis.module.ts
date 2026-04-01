@@ -27,15 +27,11 @@ export const REDIS_CLIENT = 'REDIS_CLIENT';
           // 연결 실패 시 재시도 (최대 10회, 점진적 백오프)
           retryStrategy: (times: number) => {
             if (times > 10) {
-              logger.error(
-                `Redis 연결 재시도 ${times}회 초과. 연결 포기.`,
-              );
+              logger.error(`Redis 연결 재시도 ${times}회 초과. 연결 포기.`);
               return null;
             }
             const delay = Math.min(times * 500, 5000);
-            logger.warn(
-              `Redis 연결 재시도 ${times}회 (${delay}ms 후)`,
-            );
+            logger.warn(`Redis 연결 재시도 ${times}회 (${delay}ms 후)`);
             return delay;
           },
           // 연결 타임아웃 5초
