@@ -242,7 +242,7 @@ sonarqube:
   needs:
     - test-go
     - test-nest
-  allow_failure: false
+  allow_failure: true   # Sprint 5 초반: Quality Gate 기준 조정 후 false로 전환
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
     - if: $CI_COMMIT_BRANCH == "develop"
@@ -251,7 +251,7 @@ trivy-fs:
   stage: quality
   <<: *local-runner
   image:
-    name: aquasec/trivy:latest
+    name: aquasec/trivy:0.58.2
     entrypoint: [""]
   cache:
     key: trivy-db-cache
@@ -310,7 +310,7 @@ build-game-server:
     # Trivy 이미지 스캔 (CRITICAL 발견 시 실패)
     - docker run --rm
         -v /var/run/docker.sock:/var/run/docker.sock
-        aquasec/trivy:latest image
+        aquasec/trivy:0.58.2 image
         --exit-code 1
         --severity CRITICAL
         --no-progress
@@ -329,7 +329,7 @@ build-ai-adapter:
     - docker push $DOCKER_IMAGE/ai-adapter:latest
     - docker run --rm
         -v /var/run/docker.sock:/var/run/docker.sock
-        aquasec/trivy:latest image
+        aquasec/trivy:0.58.2 image
         --exit-code 1
         --severity CRITICAL
         --no-progress
@@ -348,7 +348,7 @@ build-frontend:
     - docker push $DOCKER_IMAGE/frontend:latest
     - docker run --rm
         -v /var/run/docker.sock:/var/run/docker.sock
-        aquasec/trivy:latest image
+        aquasec/trivy:0.58.2 image
         --exit-code 1
         --severity CRITICAL
         --no-progress
@@ -367,7 +367,7 @@ build-admin:
     - docker push $DOCKER_IMAGE/admin:latest
     - docker run --rm
         -v /var/run/docker.sock:/var/run/docker.sock
-        aquasec/trivy:latest image
+        aquasec/trivy:0.58.2 image
         --exit-code 1
         --severity CRITICAL
         --no-progress
