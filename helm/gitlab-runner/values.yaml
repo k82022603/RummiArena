@@ -118,7 +118,7 @@ rbac:
   rules:
     - apiGroups: [""]
       resources: ["pods", "pods/exec", "pods/attach", "secrets", "configmaps"]
-      verbs: ["get", "list", "watch", "create", "patch", "delete"]
+      verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
     - apiGroups: [""]
       resources: ["pods/log"]
       verbs: ["get", "list", "watch"]
