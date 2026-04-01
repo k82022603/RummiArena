@@ -1,0 +1,126 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - alert [ref=e2]
+  - generic [ref=e3]:
+    - banner [ref=e4]:
+      - heading "Room 15406ac7" [level=1] [ref=e5]
+      - timer "남은 시간 61초" [ref=e6]:
+        - generic [ref=e9]: 61s
+      - generic [ref=e10]: "턴 #1"
+    - generic "상대 플레이어" [ref=e11]:
+      - generic "LLaMA () 플레이어 카드" [ref=e13]:
+        - generic [ref=e15]:
+          - generic [ref=e16]: A
+          - generic "LLaMA ()" [ref=e17]
+          - generic [ref=e18]: 내 차례
+        - generic [ref=e19]:
+          - generic "연결됨" [ref=e20]
+          - generic [ref=e21]: 연결됨
+        - generic [ref=e22]:
+          - generic "최초 등록 미완료" [ref=e23]
+          - generic [ref=e24]: 등록 전
+        - img "타일 14개" [ref=e26]:
+          - generic [ref=e41]: "14"
+        - generic [ref=e44]: 고수
+    - generic [ref=e45]:
+      - complementary "내 정보 패널" [ref=e46]:
+        - generic "QA-테스터 플레이어 카드" [ref=e47]:
+          - generic [ref=e49]:
+            - generic [ref=e50]: H
+            - generic "QA-테스터" [ref=e51]
+          - generic [ref=e52]:
+            - generic "연결됨" [ref=e53]
+            - generic [ref=e54]: 연결됨
+          - generic [ref=e55]:
+            - generic "최초 등록 미완료" [ref=e56]
+            - generic [ref=e57]: 등록 전
+          - img "타일 15개" [ref=e59]:
+            - generic [ref=e75]: "15"
+        - generic [ref=e76]:
+          - paragraph [ref=e77]: 드로우 파일
+          - 'generic "드로우 파일: 77장 남음" [ref=e78]':
+            - generic [ref=e83]: 77장
+      - main [ref=e84]:
+        - region "게임 테이블" [ref=e85]:
+          - heading "게임 테이블 (0개 그룹)" [level=2] [ref=e86]
+          - generic:
+            - generic:
+              - generic: +
+            - paragraph: 타일을 여기에 드롭하세요
+            - paragraph: 랙에서 타일을 끌어다 테이블에 올려놓으세요
+        - generic [ref=e87]:
+          - generic [ref=e89]:
+            - text: 내 패
+            - generic [ref=e90]: (15장)
+            - generic [ref=e91]: · 최초 등록 30점 이상 필요
+          - region "내 타일 랙" [ref=e92]:
+            - heading "내 타일 (15개)" [level=2] [ref=e93]
+            - generic [ref=e95]:
+              - text: 내 타일
+              - generic [ref=e96]: (15개)
+            - generic [ref=e97]:
+              - button "R12b 타일 (드래그 가능)" [disabled] [ref=e98] [cursor=pointer]:
+                - img "R12b 타일 (드래그 가능)" [ref=e99]:
+                  - generic [ref=e100]: "12"
+                  - generic [ref=e101]: ◆
+              - button "Y11a 타일 (드래그 가능)" [disabled] [ref=e103] [cursor=pointer]:
+                - img "Y11a 타일 (드래그 가능)" [ref=e104]:
+                  - generic [ref=e105]: "11"
+                  - generic [ref=e106]: ▲
+              - button "R5b 타일 (드래그 가능)" [disabled] [ref=e107] [cursor=pointer]:
+                - img "R5b 타일 (드래그 가능)" [ref=e108]:
+                  - generic [ref=e109]: "5"
+                  - generic [ref=e110]: ◆
+              - button "R9a 타일 (드래그 가능)" [disabled] [ref=e112] [cursor=pointer]:
+                - img "R9a 타일 (드래그 가능)" [ref=e113]:
+                  - generic [ref=e114]: "9"
+                  - generic [ref=e115]: ◆
+              - button "K2a 타일 (드래그 가능)" [disabled] [ref=e116] [cursor=pointer]:
+                - img "K2a 타일 (드래그 가능)" [ref=e117]:
+                  - generic [ref=e118]: "2"
+                  - generic [ref=e119]: ■
+              - button "K4a 타일 (드래그 가능)" [disabled] [ref=e120] [cursor=pointer]:
+                - img "K4a 타일 (드래그 가능)" [ref=e121]:
+                  - generic [ref=e122]: "4"
+                  - generic [ref=e123]: ■
+              - button "JK2 타일 (드래그 가능)" [disabled] [ref=e124] [cursor=pointer]:
+                - img "JK2 타일 (드래그 가능)" [ref=e125]:
+                  - generic [ref=e126]: ★
+                  - generic [ref=e127]: JK
+                  - generic [ref=e128]: ★
+              - button "Y9b 타일 (드래그 가능)" [disabled] [ref=e129] [cursor=pointer]:
+                - img "Y9b 타일 (드래그 가능)" [ref=e130]:
+                  - generic [ref=e131]: "9"
+                  - generic [ref=e132]: ▲
+              - button "B9b 타일 (드래그 가능)" [disabled] [ref=e134] [cursor=pointer]:
+                - img "B9b 타일 (드래그 가능)" [ref=e135]:
+                  - generic [ref=e136]: "9"
+                  - generic [ref=e137]: ●
+              - button "B5b 타일 (드래그 가능)" [disabled] [ref=e139] [cursor=pointer]:
+                - img "B5b 타일 (드래그 가능)" [ref=e140]:
+                  - generic [ref=e141]: "5"
+                  - generic [ref=e142]: ●
+              - button "R2b 타일 (드래그 가능)" [disabled] [ref=e144] [cursor=pointer]:
+                - img "R2b 타일 (드래그 가능)" [ref=e145]:
+                  - generic [ref=e146]: "2"
+                  - generic [ref=e147]: ◆
+              - button "B1b 타일 (드래그 가능)" [disabled] [ref=e149] [cursor=pointer]:
+                - img "B1b 타일 (드래그 가능)" [ref=e150]:
+                  - generic [ref=e151]: "1"
+                  - generic [ref=e152]: ●
+              - button "Y9a 타일 (드래그 가능)" [disabled] [ref=e154] [cursor=pointer]:
+                - img "Y9a 타일 (드래그 가능)" [ref=e155]:
+                  - generic [ref=e156]: "9"
+                  - generic [ref=e157]: ▲
+              - button "K5a 타일 (드래그 가능)" [disabled] [ref=e158] [cursor=pointer]:
+                - img "K5a 타일 (드래그 가능)" [ref=e159]:
+                  - generic [ref=e160]: "5"
+                  - generic [ref=e161]: ■
+              - button "Y3a 타일 (드래그 가능)" [disabled] [ref=e162] [cursor=pointer]:
+                - img "Y3a 타일 (드래그 가능)" [ref=e163]:
+                  - generic [ref=e164]: "3"
+                  - generic [ref=e165]: ▲
+  - status [ref=e166]
+```

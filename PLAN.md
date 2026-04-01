@@ -17,9 +17,9 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 |-------|------|--------|-------------|------|
 | 1 | 기획 & 환경 구축 | Sprint 0 | 기획/설계 문서, K8s/ArgoCD/Traefik 환경 | **완료** |
 | 2 | 핵심 게임 개발 (MVP) | Sprint 1~3 | Game Engine (Go), Backend API, Frontend 기본 | **완료** (2026-03-23) |
-| 3 | AI 연동 & 멀티플레이 | Sprint 4~5 | AI Adapter (NestJS), 실시간 대전, 1인 연습 모드 | **진행 중** (Sprint 4) |
+| 3 | AI 연동 & 멀티플레이 | Sprint 4~5 | AI Adapter (NestJS), 실시간 대전, 1인 연습 모드 | **Sprint 4 완료** (2026-04-01), Sprint 5 진행 중 |
 | 4 | 플랫폼 기능 확장 | Sprint 6 | 관리자 대시보드, 카카오톡 알림, ELO, 게임 복기 | 일부 선행 완료 (ELO, 관리자) |
-| 5 | DevSecOps 고도화 | Sprint 7~9 | Observability, 보안 고도화, Istio Service Mesh | 미착수 |
+| 5 | DevSecOps 고도화 | Sprint 7~9 | Observability, 보안 고도화, Istio Service Mesh | **Sprint 5에서 선행 착수** (CI/CD, SonarQube, Trivy) |
 | 6 | 운영 & 실험 | (Phase 6) | AI 토너먼트, 모델 비교 분석, OpenShift 검토 | 미착수 |
 
 ---
@@ -166,8 +166,24 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 - [x] 1인 연습 모드 Stage 4~6 — 조커 마스터/복합 배치/루미큐브 마스터 (2026-03-21)
 - [x] 통합 테스트 (Human 2명 WebSocket 대전) — ws_multiplayer_test.go 7개 PASS (2026-03-21)
 
+### Sprint 4 추가 완료 (2026-04-01)
+- [x] Playwright E2E 153→338개 확장 (185 신규, 100% PASS) — 2026-04-01
+- [x] E2E 안정화 (global-teardown, room-cleanup) — 기존 34건 실패 → 1건 — 2026-04-01
+- [x] DeepSeek Reasoner 전용 영문 프롬프트 + 4단계 JSON 추출 — 2026-04-01
+- [x] AI 대전 E2E 27개 작성 (25/27 PASS) — 2026-04-01
+- [x] Sprint 4 종료 선언 — 2026-04-01
+
+### Sprint 5 Day 1: CI/CD 파이프라인 (2026-04-01)
+- [x] GitLab Runner K8s 등록 (Runner ID 52511778, cicd NS) — 2026-04-01
+- [x] SonarQube 서버 배포 (9.9.8 LTS, SONAR_TOKEN 생성) — 2026-04-01
+- [x] CI Variables 3개 설정 (SONAR_HOST_URL, SONAR_TOKEN, GITOPS_TOKEN) — 2026-04-01
+- [x] .gitlab-ci.yml 11건 수정 — 2026-04-01
+- [x] CI lint 4/4 PASS + test 2/2 PASS — 2026-04-01
+- [ ] CI quality 2/2 PASS — SonarQube OOM Kill 해결 필요
+- [ ] CI build 4/4 + update-gitops — quality 통과 후
+
 ### AI 연동 완료 기준
-- [ ] Human 1 + AI 3 (서로 다른 모델) 게임 정상 동작
+- [ ] Human 1 + AI 3 (서로 다른 모델) 게임 정상 동작 — Sprint 5 이월
 - [x] AI 캐릭터 (하수/중수/고수) 차이 확인 — CharacterService + DIFFICULTY_TEMPERATURE 구현 (2026-03-21)
 - [x] 1인 연습 Stage 1~3 동작 — 구현 완료 (2026-03-21)
 - [x] 1인 연습 Stage 4~6 동작 — 구현 완료 (2026-03-21)
@@ -189,8 +205,8 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 ## Phase 5: DevSecOps 고도화 (Sprint 7)
 
 ### 보안 & 품질
-- [ ] SonarQube CI 파이프라인 연동 (Quality Gate)
-- [ ] Trivy 이미지 스캔 자동화
+- [x] SonarQube CI 파이프라인 연동 (Quality Gate) — Sprint 5 Day 1 착수 (OOM 해결 필요)
+- [x] Trivy 이미지 스캔 자동화 — Sprint 5 Day 1 착수 (CVE 패치 완료, 재실행 필요)
 - [ ] OWASP ZAP 동적 보안 테스트 (선택)
 - [ ] Sealed Secrets 도입
 
