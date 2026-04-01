@@ -20,6 +20,9 @@ src/game-server/server
 # MCP config (contains tokens)
 .mcp.json
 
+# MCP config (contains tokens)
+.mcp.json
+
 # IDE
 .vscode/
 .idea/
