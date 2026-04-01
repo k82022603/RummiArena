@@ -88,7 +88,7 @@ lint-go:
     policy: pull-push
   script:
     - cd src/game-server
-    - golangci-lint run ./... --timeout 5m
+    - golangci-lint run ./... --timeout 10m
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == "main"

@@ -654,9 +654,10 @@ func (s *gameService) SetPlayerStatus(gameID string, seat int, status model.Play
 	}
 
 	state.Players[playerIdx].Status = status
-	if status == model.PlayerStatusDisconnected {
+	switch status {
+	case model.PlayerStatusDisconnected:
 		state.Players[playerIdx].DisconnectedAt = time.Now().UnixMilli()
-	} else if status == model.PlayerStatusActive {
+	case model.PlayerStatusActive:
 		state.Players[playerIdx].DisconnectedAt = 0
 	}
 
