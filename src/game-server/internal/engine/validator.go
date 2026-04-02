@@ -1,5 +1,7 @@
 package engine
 
+import "fmt"
+
 // SetType identifies whether a set is a group or a run.
 type SetType int
 
@@ -106,6 +108,13 @@ func ValidateTurnConfirm(req TurnConfirmRequest) error {
 		return err
 	}
 
+	// V-06 강화: 코드 수준 빈도 비교 — tableBefore의 모든 타일이 tableAfter에 존재해야 한다.
+	// 단순 총 수 비교만으로는 "R7a가 사라지고 B7a가 추가된" 교체를 감지하지 못한다.
+	// 단, JokerReturnedCodes에 포함된 타일은 교체로 회수된 것이므로 제외한다 (V-07에서 별도 검증).
+	if err := validateTileConservation(req.TableBefore, req.TableAfter, req.JokerReturnedCodes); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -161,6 +170,32 @@ func validateJokerReturned(req TurnConfirmRequest) error {
 	for _, joker := range req.JokerReturnedCodes {
 		if afterCodes[joker] == 0 {
 			return newValidationError(ErrJokerNotUsed, ErrorMessages[ErrJokerNotUsed], joker)
+		}
+	}
+	return nil
+}
+
+// validateTileConservation 테이블 타일의 코드 수준 보전을 검증한다.
+// tableBefore의 모든 타일 코드가 tableAfter에도 동일한 빈도 이상으로 존재해야 한다.
+// jokerReturnedCodes에 포함된 타일은 교체로 회수된 것이므로 검증에서 제외한다.
+func validateTileConservation(tableBefore, tableAfter []*TileSet, jokerReturnedCodes []string) error {
+	beforeFreq := collectTileCodes(tableBefore)
+	afterFreq := collectTileCodes(tableAfter)
+
+	// 조커 회수 코드는 테이블에서 합법적으로 제거될 수 있으므로 beforeFreq에서 차감
+	jokerFreq := make(map[string]int, len(jokerReturnedCodes))
+	for _, code := range jokerReturnedCodes {
+		jokerFreq[code]++
+	}
+
+	for code, count := range beforeFreq {
+		required := count - jokerFreq[code]
+		if required < 0 {
+			required = 0
+		}
+		if afterFreq[code] < required {
+			return newValidationError(ErrTableTileMissing,
+				fmt.Sprintf("기존 테이블 타일 '%s'이(가) 유실되었습니다", code), code)
 		}
 	}
 	return nil

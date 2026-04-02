@@ -10,7 +10,8 @@ import type { GameOverPayload } from "@/types/websocket";
 export interface DisconnectedPlayerInfo {
   seat: number;
   displayName: string;
-  graceDeadlineMs: number; // Unix timestamp (ms)
+  graceSec: number;         // 서버가 보낸 유예 시간 (초)
+  disconnectedAt: number;   // 수신 시점 Unix timestamp (ms)
 }
 
 interface GameStore {

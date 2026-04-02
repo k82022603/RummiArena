@@ -121,6 +121,21 @@ func (h *Hub) SendToUser(roomID, userID string, msg *WSMessage) {
 	}
 }
 
+// ForEachInRoom calls fn for every connection in the room.
+// fn receives the connection; the caller must not hold Hub locks.
+func (h *Hub) ForEachInRoom(roomID string, fn func(conn *Connection)) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	room, ok := h.rooms[roomID]
+	if !ok {
+		return
+	}
+	for _, conn := range room {
+		fn(conn)
+	}
+}
+
 // RoomConnectionCount returns the number of active connections in a room.
 func (h *Hub) RoomConnectionCount(roomID string) int {
 	h.mu.RLock()

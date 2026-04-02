@@ -6,6 +6,8 @@ import { motion, AnimatePresence } from "framer-motion";
 export interface ActionBarProps {
   isMyTurn: boolean;
   hasPending: boolean;
+  /** 모든 pending 그룹의 타일 수가 3개 이상인지 여부 */
+  allGroupsValid?: boolean;
   drawPileCount?: number;
   onDraw: () => void;
   onUndo: () => void;
@@ -29,6 +31,7 @@ export interface ActionBarProps {
 const ActionBar = memo(function ActionBar({
   isMyTurn,
   hasPending,
+  allGroupsValid = true,
   drawPileCount,
   onDraw,
   onUndo,
@@ -114,11 +117,11 @@ const ActionBar = memo(function ActionBar({
               <span aria-hidden="true">&#x21BA;</span> 초기화
             </button>
 
-            {/* 확정 버튼 */}
+            {/* 확정 버튼: C-3: hasPending이고 모든 그룹이 3개 이상 타일일 때만 활성 */}
             <button
               type="button"
               onClick={onConfirm}
-              disabled={!hasPending}
+              disabled={!hasPending || !allGroupsValid}
               className={[
                 "flex-1 py-2.5 rounded-xl font-bold text-tile-sm",
                 "bg-warning text-gray-900 hover:bg-yellow-400",

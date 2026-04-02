@@ -16,6 +16,7 @@ import { useRouter } from "next/navigation";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useGameLeaveGuard } from "@/hooks/useGameLeaveGuard";
 import { useGameStore } from "@/store/gameStore";
+import { useWSStore } from "@/store/wsStore";
 import { useRoomStore } from "@/store/roomStore";
 import GameBoard from "@/components/game/GameBoard";
 import PlayerRack from "@/components/game/PlayerRack";
@@ -27,7 +28,7 @@ import ErrorToast from "@/components/game/ErrorToast";
 import ReconnectToast from "@/components/game/ReconnectToast";
 import Tile from "@/components/tile/Tile";
 
-import type { TileCode, TableGroup, GroupType } from "@/types/tile";
+import type { TileCode, TileNumber, TableGroup, GroupType } from "@/types/tile";
 import { parseTileCode } from "@/types/tile";
 import { calculateScore } from "@/lib/practice/practice-engine";
 import type { GameOverPayload } from "@/types/websocket";
@@ -52,6 +53,15 @@ function classifySetType(tiles: TileCode[]): GroupType {
   if (colors.size === 1) return "run";
   // 판단 불가 시 기본값
   return "run";
+}
+
+/**
+ * m-1: 배열에서 첫 번째 일치 항목만 제거하는 헬퍼
+ * filter()는 모든 일치를 제거하므로 동일 타일 코드가 여러 장일 때 문제가 된다.
+ */
+function removeFirstOccurrence<T>(arr: T[], item: T): T[] {
+  const idx = arr.indexOf(item);
+  return idx >= 0 ? [...arr.slice(0, idx), ...arr.slice(idx + 1)] : arr;
 }
 
 interface GameClientProps {
@@ -377,7 +387,9 @@ export default function GameClient({ roomId }: GameClientProps) {
       const now = Date.now();
       const counts: Record<number, number> = {};
       for (const dp of disconnectedPlayers) {
-        const remaining = Math.max(0, Math.ceil((dp.graceDeadlineMs - now) / 1000));
+        // C-7: graceSec 기반 카운트다운 (disconnectedAt 시점부터 경과 시간 차감)
+        const elapsed = Math.floor((now - dp.disconnectedAt) / 1000);
+        const remaining = Math.max(0, dp.graceSec - elapsed);
         counts[dp.seat] = remaining;
       }
       setDisconnectCountdowns(counts);
@@ -407,6 +419,12 @@ export default function GameClient({ roomId }: GameClientProps) {
     () => pendingMyTiles ?? myTiles,
     [pendingMyTiles, myTiles]
   );
+
+  // C-3: 모든 pending 그룹이 3개 이상 타일을 가지는지 검증
+  const allGroupsValid = useMemo(() => {
+    if (!pendingTableGroups) return true;
+    return pendingTableGroups.every((g) => g.tiles.length >= 3);
+  }, [pendingTableGroups]);
 
   // 이번 턴 pending 그룹들의 배치 점수 (최초 등록 30점 안내용)
   const pendingPlacementScore = useMemo(() => {
@@ -454,7 +472,7 @@ export default function GameClient({ roomId }: GameClientProps) {
           const updatedTiles = [...g.tiles, tileCode];
           return { ...g, tiles: updatedTiles, type: classifySetType(updatedTiles) };
         });
-        const nextMyTiles = currentMyTiles.filter((c) => c !== tileCode);
+        const nextMyTiles = removeFirstOccurrence(currentMyTiles, tileCode);
         setPendingTableGroups(nextTableGroups);
         setPendingMyTiles(nextMyTiles);
       } else if (over.id === "game-board") {
@@ -500,6 +518,17 @@ export default function GameClient({ roomId }: GameClientProps) {
             // 런 후보: 새 타일 색상이 다르면 새 그룹 생성 (런은 13개까지 허용)
             const runColor = existingTiles[0].color;
             if (newTile.color !== runColor) return true;
+            // m-4: 비연속 숫자이면 새 그룹 생성
+            if (newTile.number !== null) {
+              const allNums = existingTiles
+                .map((t) => t.number)
+                .filter((n): n is TileNumber => n !== null);
+              allNums.push(newTile.number);
+              allNums.sort((a, b) => a - b);
+              for (let i = 1; i < allNums.length; i++) {
+                if (allNums[i] - allNums[i - 1] !== 1) return true;
+              }
+            }
           }
 
           return false;
@@ -513,7 +542,7 @@ export default function GameClient({ roomId }: GameClientProps) {
               ? { ...g, tiles: updatedTiles, type: classifySetType(updatedTiles) }
               : g
           );
-          const nextMyTiles = currentMyTiles.filter((c) => c !== tileCode);
+          const nextMyTiles = removeFirstOccurrence(currentMyTiles, tileCode);
           setPendingTableGroups(nextTableGroups);
           setPendingMyTiles(nextMyTiles);
         } else {
@@ -526,7 +555,7 @@ export default function GameClient({ roomId }: GameClientProps) {
             type: classifySetType([tileCode]),
           };
           const nextTableGroups = [...currentTableGroups, newGroup];
-          const nextMyTiles = currentMyTiles.filter((c) => c !== tileCode);
+          const nextMyTiles = removeFirstOccurrence(currentMyTiles, tileCode);
           setPendingTableGroups(nextTableGroups);
           setPendingMyTiles(nextMyTiles);
           // 새로 생성된 그룹을 프리뷰 ID 세트에 등록
@@ -588,8 +617,45 @@ export default function GameClient({ roomId }: GameClientProps) {
   // INVALID_MOVE(실패)를 보내면 resetPending() + ErrorToast 가 사유를 표시한다.
   const handleConfirm = useCallback(() => {
     if (!pendingTableGroups) return;
+    // M-4: pendingMyTiles가 null이면 확정 차단
+    if (!pendingMyTiles) return;
+
+    // C-3: 클라이언트 측 사전 검증 -- 서버 전송 전 기본 유효성 확인
+    for (const group of pendingTableGroups) {
+      if (group.tiles.length < 3) {
+        useWSStore.getState().setLastError("세트는 최소 3개 타일이 필요합니다");
+        return;
+      }
+      const nonJokerTiles = group.tiles.filter((t) => t !== "JK1" && t !== "JK2");
+      if (nonJokerTiles.length > 0) {
+        const parsed = nonJokerTiles.map((t) => parseTileCode(t as TileCode));
+        const numbers = new Set(parsed.map((p) => p.number));
+        const colors = new Set(parsed.map((p) => p.color));
+
+        if (numbers.size === 1) {
+          // 그룹: 같은 숫자, 다른 색 -- 색상 중복 검사
+          if (colors.size !== nonJokerTiles.length) {
+            useWSStore.getState().setLastError("같은 색상 타일이 중복됩니다");
+            return;
+          }
+        } else if (colors.size === 1) {
+          // 런: 같은 색, 연속 숫자
+          const sortedNums = Array.from(numbers).filter((n): n is TileNumber => n !== null).sort((a, b) => a - b);
+          for (let i = 1; i < sortedNums.length; i++) {
+            if (sortedNums[i] - sortedNums[i - 1] !== 1) {
+              useWSStore.getState().setLastError("유효하지 않은 조합입니다 (연속된 숫자가 아닙니다)");
+              return;
+            }
+          }
+        } else {
+          useWSStore.getState().setLastError("유효하지 않은 세트입니다");
+          return;
+        }
+      }
+    }
+
     const tilesFromRack = myTiles.filter(
-      (t) => !(pendingMyTiles ?? []).includes(t)
+      (t) => !pendingMyTiles.includes(t)
     );
     // 1단계: 이번 턴 배치 내용을 서버에 전송
     send("PLACE_TILES", {
@@ -856,6 +922,7 @@ export default function GameClient({ roomId }: GameClientProps) {
               <ActionBar
                 isMyTurn={isMyTurn}
                 hasPending={!!pendingTableGroups}
+                allGroupsValid={allGroupsValid}
                 drawPileCount={gameState?.drawPileCount}
                 onDraw={handleDraw}
                 onUndo={handleUndo}

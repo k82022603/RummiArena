@@ -221,7 +221,7 @@ const GameBoard = memo(function GameBoard({
                   <div
                     className={[
                       "flex gap-0.5 p-1.5 rounded-lg",
-                      colorWarning
+                      isPending && colorWarning
                         ? "bg-red-500/10 border-2 border-red-500/70"
                         : isPending
                         ? "bg-yellow-400/10 border border-dashed border-yellow-400"
@@ -238,8 +238,8 @@ const GameBoard = memo(function GameBoard({
                     ))}
                   </div>
 
-                  {/* 동일 색상 중복 경고 */}
-                  {colorWarning && (
+                  {/* 동일 색상 중복 경고: m-3: pending 그룹에서만 표시 */}
+                  {isPending && colorWarning && (
                     <span
                       className="text-[10px] text-red-400 font-medium"
                       role="alert"

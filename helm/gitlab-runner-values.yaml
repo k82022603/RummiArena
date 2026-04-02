@@ -1,0 +1,52 @@
+# GitLab Runner Helm Values
+# 용도: helm upgrade gitlab-runner gitlab/gitlab-runner -n gitlab-runner -f helm/gitlab-runner-values.yaml
+#
+# 변경사항 (2026-04-02):
+#   1. tags에 "rummiarena" 추가 (CI의 .local-runner 태그와 일치)
+#   2. runners.config에 cache_dir + PVC 볼륨 마운트 설정
+#   3. Job pod 리소스 제한 (10GB WSL 환경 보호)
+#
+# 사전 조건:
+#   kubectl apply -f - <<EOF
+#   apiVersion: v1
+#   kind: PersistentVolumeClaim
+#   metadata:
+#     name: gitlab-runner-cache
+#     namespace: gitlab-runner
+#   spec:
+#     accessModes: [ReadWriteOnce]
+#     storageClassName: hostpath
+#     resources:
+#       requests:
+#         storage: 2Gi
+#   EOF
+
+gitlabUrl: https://gitlab.com
+runnerToken: "glrt-p1huVp4KIu161gDQgaoZnm86MQpwOjFic2o4bAp0OjMKdTo2ZXNxcxg.01.1j0ocm0b1"
+
+rbac:
+  create: true
+
+serviceAccount:
+  create: true
+
+runners:
+  executor: kubernetes
+  name: rummiarena-k8s-runner
+  tags: "k8s,rummiarena,docker"
+  runUntagged: true
+  kubernetes:
+    namespace: gitlab-runner
+  config: |
+    [[runners]]
+      cache_dir = "/cache"
+      [runners.kubernetes]
+        namespace = "{{ default .Release.Namespace .Values.runners.jobNamespace }}"
+        image = "alpine"
+        cpu_request = "200m"
+        cpu_limit = "1"
+        memory_request = "256Mi"
+        memory_limit = "1Gi"
+        [[runners.kubernetes.volumes.pvc]]
+          name = "gitlab-runner-cache"
+          mount_path = "/cache"

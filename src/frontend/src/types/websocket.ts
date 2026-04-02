@@ -125,6 +125,8 @@ export interface TurnEndPayload {
   drawPileCount: number;
   nextSeat: number;
   nextTurnNumber?: number;
+  /** 서버가 보내는 해당 플레이어의 실제 랙 타일 목록 (본인 턴일 때만 포함) */
+  myRack?: string[];
 }
 
 export interface TilePlacedPayload {
@@ -204,7 +206,8 @@ export interface ChatBroadcastPayload {
 export interface PlayerDisconnectedPayload {
   seat: number;
   displayName: string;
-  graceDeadlineMs: number;
+  /** Grace Period 초 단위 (서버 전송 기준) */
+  graceSec: number;
 }
 
 /** S2C: PLAYER_RECONNECTED - 플레이어 Grace Period 내 재연결 */
@@ -224,8 +227,7 @@ export interface PlayerForfeitedPayload {
 
 /** S2C: DRAW_PILE_EMPTY - 드로우 파일 소진 */
 export interface DrawPileEmptyPayload {
-  consecutivePassCount: number;
-  activePlayerCount: number;
+  message: string;
 }
 
 /** S2C: GAME_DEADLOCK_END - 교착 상태(전원 연속 패스)로 게임 종료 */

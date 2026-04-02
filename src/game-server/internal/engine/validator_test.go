@@ -428,3 +428,101 @@ func TestValidateTurnConfirm_EmptyRackAfterFirstMeld(t *testing.T) {
 	err := ValidateTurnConfirm(req)
 	assert.NoError(t, err, "랙 완전 소진 최초 등록은 성공해야 한다")
 }
+
+// ─── V-06 강화: 타일 코드 수준 보전 (Universe Conservation) ────────────────────
+
+// TestValidateTurnConfirm_TileConservation_CodeLevelMissing
+// tableBefore의 특정 타일 코드가 tableAfter에서 사라지면 ERR_TABLE_TILE_MISSING 에러를 반환한다.
+// 총 타일 수는 증가하지만 코드 수준에서 보전이 깨진 케이스.
+func TestValidateTurnConfirm_TileConservation_CodeLevelMissing(t *testing.T) {
+	// tableBefore: {R7a, B7a, K7b} (3타일)
+	// tableAfter:  {R7a, B7a, Y7a} + {R1a, R2a, R3a} (6타일)
+	// K7b가 tableBefore에 있었는데 tableAfter에서 사라짐 (Y7a로 대체)
+	// 총 수 증가(3->6)이므로 단순 카운트는 통과하지만 코드 보전 위반
+	req := makeTurnReq(
+		[]*TileSet{makeSet(t, "g1", []string{"R7a", "B7a", "K7b"})},
+		[]*TileSet{
+			makeSet(t, "g1", []string{"R7a", "B7a", "Y7a"}), // K7b -> Y7a 교체
+			makeSet(t, "r1", []string{"R1a", "R2a", "R3a"}), // 새 세트 추가
+		},
+		[]string{"Y7a", "R1a", "R2a", "R3a"},
+		[]string{},
+		true, // 최초 등록 완료 상태
+	)
+	err := ValidateTurnConfirm(req)
+	require.Error(t, err, "코드 수준 타일 보전 위반은 실패해야 한다")
+	ve, ok := err.(*ValidationError)
+	require.True(t, ok, "ValidationError 타입이어야 한다")
+	assert.Equal(t, ErrTableTileMissing, ve.Code)
+	assert.Contains(t, ve.Message, "K7b")
+}
+
+// TestValidateTurnConfirm_TileConservation_ValidRearrangement
+// tableBefore의 모든 타일이 tableAfter에 존재하면서 재배치 + 추가가 이루어진 정상 케이스.
+func TestValidateTurnConfirm_TileConservation_ValidRearrangement(t *testing.T) {
+	// tableBefore: {R7a, B7a, K7b} (3타일)
+	// tableAfter:  {R7a, K7b, Y7a} + {B7a, R8a, R9a} (6타일)
+	// R7a, B7a, K7b 모두 보전 + 추가 타일(Y7a, R8a, R9a)
+	req := makeTurnReq(
+		[]*TileSet{makeSet(t, "g1", []string{"R7a", "B7a", "K7b"})},
+		[]*TileSet{
+			makeSet(t, "g1", []string{"R7a", "K7b", "Y7a"}), // 재배치 + Y7a 추가
+			makeSet(t, "r1", []string{"B7a", "B8a", "B9a"}), // B7a 이동 + 새 타일 추가
+		},
+		[]string{"Y7a", "B8a", "B9a"},
+		[]string{},
+		true,
+	)
+	err := ValidateTurnConfirm(req)
+	assert.NoError(t, err, "정상 재배치 + 추가는 통과해야 한다")
+}
+
+// TestValidateTurnConfirm_TileConservation_DuplicateCodeMissing
+// tableBefore에 같은 코드가 2번 있을 때, tableAfter에 1번만 있으면 실패한다.
+func TestValidateTurnConfirm_TileConservation_DuplicateCodeMissing(t *testing.T) {
+	// tableBefore: {R5a, B5a, K5b} + {R5a, Y5a, K5a} (R5a가 2번, 총 6타일)
+	// tableAfter:  {R5a, B5a, K5b} + {Y5a, K5a, B5b} + {R1a, R2a, R3a} (R5a가 1번, 총 9타일)
+	// 총 수는 증가(6->9)하지만 R5a의 빈도가 2->1로 감소 = 보전 위반
+	req := makeTurnReq(
+		[]*TileSet{
+			makeSet(t, "g1", []string{"R5a", "B5a", "K5b"}),
+			makeSet(t, "g2", []string{"R5a", "Y5a", "K5a"}),
+		},
+		[]*TileSet{
+			makeSet(t, "g1", []string{"R5a", "B5a", "K5b"}),
+			makeSet(t, "g2", []string{"Y5a", "K5a", "B5b"}),  // R5a -> B5b 교체
+			makeSet(t, "r1", []string{"R1a", "R2a", "R3a"}),   // 새 세트 추가 (V-03 통과)
+		},
+		[]string{"B5b", "R1a", "R2a", "R3a"},
+		[]string{},
+		true,
+	)
+	err := ValidateTurnConfirm(req)
+	require.Error(t, err, "동일 코드 빈도 감소는 실패해야 한다")
+	ve, ok := err.(*ValidationError)
+	require.True(t, ok)
+	assert.Equal(t, ErrTableTileMissing, ve.Code)
+}
+
+// TestValidateTurnConfirm_TileConservation_JokerSwapExcluded
+// JokerReturnedCodes에 포함된 타일은 테이블에서 합법적으로 제거되므로 보전 검증에서 제외된다.
+func TestValidateTurnConfirm_TileConservation_JokerSwapExcluded(t *testing.T) {
+	// tableBefore: {R5a, JK1, R7a}
+	// tableAfter:  {R5a, R6a, R7a} + {B8a, JK1, K8b} (JK1 재사용)
+	// JK1은 jokerReturnedCodes에 포함 -> 테이블에서 제거 허용
+	req := TurnConfirmRequest{
+		TableBefore: []*TileSet{
+			makeSet(t, "r1", []string{"R5a", "JK1", "R7a"}),
+		},
+		TableAfter: []*TileSet{
+			makeSet(t, "r1", []string{"R5a", "R6a", "R7a"}),
+			makeSet(t, "g1", []string{"B8a", "JK1", "K8b"}),
+		},
+		RackBefore:         []string{"R6a", "B8a", "K8b"},
+		RackAfter:          []string{},
+		HasInitialMeld:     true,
+		JokerReturnedCodes: []string{"JK1"},
+	}
+	err := ValidateTurnConfirm(req)
+	assert.NoError(t, err, "조커 교체 후 재사용은 보전 검증을 통과해야 한다")
+}

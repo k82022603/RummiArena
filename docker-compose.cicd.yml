@@ -71,9 +71,10 @@ services:
       SONAR_JDBC_USERNAME: sonar
       SONAR_JDBC_PASSWORD: ${CI_SONAR_DB_PASSWORD:-sonarpass}
       # JVM 힙 최소화 (10GB WSL 제약)
-      SONAR_WEB_JAVAOPTS:  "-Xms256m -Xmx256m"
-      SONAR_CE_JAVAOPTS:   "-Xms128m -Xmx128m"
-      SONAR_SEARCH_JAVAOPTS: "-Xms512m -Xmx512m -XX:+UseG1GC"
+      # Web(256) + CE(128) + ES(384) = 768MB → mem_limit 1.2g 충분
+      SONAR_WEB_JAVAOPTS:  "-Xms128m -Xmx256m -XX:+UseSerialGC"
+      SONAR_CE_JAVAOPTS:   "-Xms64m -Xmx128m -XX:+UseSerialGC"
+      SONAR_SEARCH_JAVAOPTS: "-Xms256m -Xmx384m -XX:+UseSerialGC"
       # 익명 분석 비활성화
       SONAR_TELEMETRY_ENABLE: "false"
     ports:
@@ -84,7 +85,7 @@ services:
       - sonarqube_extensions:/opt/sonarqube/extensions
     networks:
       - cicd-net
-    mem_limit: 2g
+    mem_limit: 1280m
     cpus: "1.0"
     restart: unless-stopped
     # SonarQube 내장 Elasticsearch는 vm.max_map_count >= 262144 필요

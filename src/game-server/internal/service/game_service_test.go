@@ -1365,3 +1365,163 @@ func TestDrawTile_U03_PassNotReachDeadlock(t *testing.T) {
 	assert.Equal(t, model.GameStatusPlaying, saved.Status, "아직 교착 도달 전")
 	assert.Equal(t, 2, saved.ConsecutivePassCount, "패스 카운터 2")
 }
+
+// ============================================================
+// ConfirmTurn 검증 실패 시 서버 자동 롤백 테스트
+// (Architect 피드백: Stateless 서버 원칙 — 클라이언트 롤백 위임 금지)
+// ============================================================
+
+func TestConfirmTurn_InvalidMove_AutoRollback_RackRestored(t *testing.T) {
+	// PlaceTiles로 랙에서 타일 제거 후 ConfirmTurn 실패 시,
+	// 서버가 자동으로 스냅샷 복원하여 랙이 원래대로 돌아와야 한다.
+	rack0 := []string{"R5a", "R6a", "B1a"}
+	rack1 := []string{"K1a"}
+	state := newTestGameState("auto-rollback-1", twoPlayerState(rack0, rack1), []string{"Y1a"})
+	state.Players[0].HasInitialMeld = true
+	svc, repo := seedRepo(t, state)
+
+	// 2장짜리 세트 배치 (최소 3장 규칙 위반)
+	tilesFromRack := []string{"R5a", "R6a"}
+	tableGroups := []TilePlacement{{ID: "bad-set", Tiles: tilesFromRack}}
+
+	// PlaceTiles: 랙에서 R5a, R6a 제거
+	_, err := svc.PlaceTiles("auto-rollback-1", &PlaceRequest{
+		Seat:          0,
+		TableGroups:   tableGroups,
+		TilesFromRack: tilesFromRack,
+	})
+	require.NoError(t, err)
+
+	// PlaceTiles 후 랙 확인: B1a만 남아있어야 함
+	afterPlace, _ := repo.GetGameState("auto-rollback-1")
+	assert.Equal(t, []string{"B1a"}, afterPlace.Players[0].Rack, "PlaceTiles 후 랙에서 타일 제거됨")
+
+	// ConfirmTurn 실패: 유효하지 않은 세트
+	_, err = svc.ConfirmTurn("auto-rollback-1", &ConfirmRequest{
+		Seat:        0,
+		TableGroups: tableGroups,
+	})
+	require.Error(t, err)
+
+	// 자동 롤백 검증: 랙이 원래대로 복원되어야 함
+	afterRollback, _ := repo.GetGameState("auto-rollback-1")
+	assert.ElementsMatch(t, rack0, afterRollback.Players[0].Rack,
+		"ConfirmTurn 실패 후 서버가 자동으로 랙을 복원해야 한다")
+	assert.Empty(t, afterRollback.Table,
+		"ConfirmTurn 실패 후 서버가 자동으로 테이블을 복원해야 한다")
+}
+
+func TestConfirmTurn_InvalidMove_AutoRollback_TableRestored(t *testing.T) {
+	// 기존 테이블 세트가 있는 상태에서 PlaceTiles + ConfirmTurn 실패 시,
+	// 기존 테이블 세트도 복원되어야 한다.
+	rack0 := []string{"R3a", "R5a", "R7a", "K1a"}
+	rack1 := []string{"K2a"}
+
+	existingTable := []*model.SetOnTable{
+		{ID: "existing-run", Tiles: []*model.Tile{
+			{Code: "B8a"}, {Code: "B9a"}, {Code: "B10a"},
+		}},
+	}
+
+	state := &model.GameStateRedis{
+		GameID:      "auto-rollback-2",
+		Status:      model.GameStatusPlaying,
+		CurrentSeat: 0,
+		DrawPile:    []string{"Y1a"},
+		Table:       existingTable,
+		Players:     twoPlayerState(rack0, rack1),
+		TurnStartAt: time.Now().Unix(),
+	}
+	state.Players[0].HasInitialMeld = true
+	svc, repo := seedRepo(t, state)
+
+	// 불연속 런 배치 (R3a, R5a, R7a) - 유효하지 않은 세트
+	tilesFromRack := []string{"R3a", "R5a", "R7a"}
+	tableGroups := []TilePlacement{
+		{ID: "existing-run", Tiles: []string{"B8a", "B9a", "B10a"}},
+		{ID: "bad-run", Tiles: tilesFromRack},
+	}
+
+	_, err := svc.PlaceTiles("auto-rollback-2", &PlaceRequest{
+		Seat:          0,
+		TableGroups:   tableGroups,
+		TilesFromRack: tilesFromRack,
+	})
+	require.NoError(t, err)
+
+	// ConfirmTurn 실패
+	_, err = svc.ConfirmTurn("auto-rollback-2", &ConfirmRequest{
+		Seat:          0,
+		TableGroups:   tableGroups,
+		TilesFromRack: tilesFromRack,
+	})
+	require.Error(t, err)
+
+	// 자동 롤백 검증
+	afterRollback, _ := repo.GetGameState("auto-rollback-2")
+	assert.ElementsMatch(t, rack0, afterRollback.Players[0].Rack,
+		"랙이 원래대로 복원되어야 한다")
+	require.Len(t, afterRollback.Table, 1, "테이블에 기존 세트 1개만 있어야 한다")
+	assert.Equal(t, "existing-run", afterRollback.Table[0].ID,
+		"기존 테이블 세트가 복원되어야 한다")
+}
+
+func TestConfirmTurn_InvalidMove_AutoRollback_NoSnapshot(t *testing.T) {
+	// PlaceTiles 없이 직접 ConfirmTurn 호출 시 (스냅샷 없음),
+	// 자동 롤백이 안전하게 no-op으로 동작해야 한다.
+	rack0 := []string{"R1a", "R2a", "R3a"}
+	rack1 := []string{"K1a"}
+	state := newTestGameState("auto-rollback-3", twoPlayerState(rack0, rack1), []string{"Y1a"})
+	// HasInitialMeld = false → 30점 미달로 실패할 것
+	svc, repo := seedRepo(t, state)
+
+	// PlaceTiles 없이 바로 ConfirmTurn (스냅샷 미생성 상태)
+	tilesFromRack := []string{"R1a", "R2a", "R3a"}
+	tableGroups := []TilePlacement{{ID: "run-1", Tiles: tilesFromRack}}
+
+	_, err := svc.ConfirmTurn("auto-rollback-3", &ConfirmRequest{
+		Seat:          0,
+		TableGroups:   tableGroups,
+		TilesFromRack: tilesFromRack,
+	})
+	require.Error(t, err)
+
+	// 스냅샷 없는 경우: getOrCreateSnapshot이 현재 상태를 스냅샷으로 사용.
+	// ConfirmTurn에서 resolveRackAfter가 rackBefore에서 tilesFromRack을 제거하므로
+	// 스냅샷 복원으로 원래 랙이 복원되어야 한다.
+	afterRollback, _ := repo.GetGameState("auto-rollback-3")
+	assert.ElementsMatch(t, rack0, afterRollback.Players[0].Rack,
+		"스냅샷 없는 경우에도 랙이 원래대로 유지되어야 한다")
+}
+
+func TestConfirmTurn_InvalidMove_AutoRollback_SnapshotConsumed(t *testing.T) {
+	// 자동 롤백 후 스냅샷이 소비되어야 한다.
+	// 이후 ResetTurn 호출 시 "이미 롤백됨" (스냅샷 없음) 상태로 안전하게 동작.
+	rack0 := []string{"R5a", "R6a", "B1a"}
+	rack1 := []string{"K1a"}
+	state := newTestGameState("auto-rollback-4", twoPlayerState(rack0, rack1), []string{"Y1a"})
+	state.Players[0].HasInitialMeld = true
+	svc, _ := seedRepo(t, state)
+
+	// PlaceTiles → ConfirmTurn 실패 (자동 롤백)
+	tilesFromRack := []string{"R5a", "R6a"}
+	tableGroups := []TilePlacement{{ID: "bad-set", Tiles: tilesFromRack}}
+
+	_, _ = svc.PlaceTiles("auto-rollback-4", &PlaceRequest{
+		Seat:          0,
+		TableGroups:   tableGroups,
+		TilesFromRack: tilesFromRack,
+	})
+
+	_, err := svc.ConfirmTurn("auto-rollback-4", &ConfirmRequest{
+		Seat:        0,
+		TableGroups: tableGroups,
+	})
+	require.Error(t, err)
+
+	// 자동 롤백 후 ResetTurn 호출: 스냅샷이 없으므로 현재 상태 그대로 반환
+	resetResult, err := svc.ResetTurn("auto-rollback-4", 0)
+	require.NoError(t, err)
+	assert.True(t, resetResult.Success,
+		"자동 롤백 후 ResetTurn은 no-op으로 성공해야 한다")
+}

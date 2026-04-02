@@ -689,7 +689,8 @@ test.describe("TC-LF-E: 퇴장/기권 UI", () => {
           {
             seat: opponentSeat,
             displayName: opponentName,
-            graceDeadlineMs: Date.now() + 45000, // 45초 후
+            graceSec: 45,                       // 45초 유예
+            disconnectedAt: Date.now(),         // 현재 시점
           },
         ],
       });

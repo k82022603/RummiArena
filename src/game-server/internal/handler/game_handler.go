@@ -87,9 +87,10 @@ func (h *GameHandler) PlaceTiles(c *gin.Context) {
 
 // confirmTurnRequest POST /api/games/:id/confirm 요청 바디
 type confirmTurnRequest struct {
-	Seat          int                        `json:"seat" binding:"min=0,max=3"`
-	TableGroups   []service.TilePlacement    `json:"tableGroups" binding:"required"`
-	TilesFromRack []string                   `json:"tilesFromRack"`
+	Seat               int                     `json:"seat" binding:"min=0,max=3"`
+	TableGroups        []service.TilePlacement `json:"tableGroups" binding:"required"`
+	TilesFromRack      []string                `json:"tilesFromRack"`
+	JokerReturnedCodes []string                `json:"jokerReturnedCodes,omitempty"`
 }
 
 // ConfirmTurn POST /api/games/:id/confirm
@@ -113,9 +114,10 @@ func (h *GameHandler) ConfirmTurn(c *gin.Context) {
 	}
 
 	result, err := h.gameSvc.ConfirmTurn(gameID, &service.ConfirmRequest{
-		Seat:          req.Seat,
-		TableGroups:   req.TableGroups,
-		TilesFromRack: req.TilesFromRack,
+		Seat:               req.Seat,
+		TableGroups:        req.TableGroups,
+		TilesFromRack:      req.TilesFromRack,
+		JokerReturnedCodes: req.JokerReturnedCodes,
 	})
 	if err != nil {
 		if se, ok := service.IsServiceError(err); ok && se.Status == 422 {

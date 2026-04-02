@@ -82,6 +82,7 @@ variables:
 lint-go:
   stage: lint
   <<: *local-runner
+  timeout: 15m
   image: golangci/golangci-lint:v2.1
   cache:
     <<: *go-cache
@@ -98,6 +99,7 @@ lint-go:
 lint-nest:
   stage: lint
   <<: *local-runner
+  timeout: 15m
   image: node:22-alpine
   cache:
     <<: *node-ai-cache
@@ -115,6 +117,7 @@ lint-nest:
 lint-frontend:
   stage: lint
   <<: *local-runner
+  timeout: 15m
   image: node:22-alpine
   cache:
     <<: *node-fe-cache
@@ -132,6 +135,7 @@ lint-frontend:
 lint-admin:
   stage: lint
   <<: *local-runner
+  timeout: 15m
   image: node:22-alpine
   cache:
     <<: *node-admin-cache
@@ -153,6 +157,7 @@ lint-admin:
 test-go:
   stage: test
   <<: *local-runner
+  timeout: 10m
   image: golang:1.24-alpine
   cache:
     <<: *go-cache
@@ -191,6 +196,7 @@ test-go:
 test-nest:
   stage: test
   <<: *local-runner
+  timeout: 10m
   image: node:22-alpine
   cache:
     <<: *node-ai-cache
@@ -221,19 +227,43 @@ test-nest:
 sonarqube:
   stage: quality
   <<: *local-runner
+  timeout: 20m
   image: sonarsource/sonar-scanner-cli:5.0
   variables:
     SONAR_HOST_URL: $SONAR_HOST_URL   # GitLab CI Variable로 주입
     SONAR_TOKEN: $SONAR_TOKEN         # GitLab CI Variable로 주입
     # SonarQube Scanner JVM 메모리 최소화 (CI 모드 10GB 제약)
-    SONAR_SCANNER_OPTS: "-server -Xmx512m"
+    # -client: 서버 모드 대비 예약 메모리 절감 (~30% 감소)
+    # -Xmx384m: 512m → 384m 축소 (소스 3개 프로젝트 분석에 충분)
+    # -XX:+UseSerialGC: GC 스레드 1개로 메모리 오버헤드 최소화
+    # -XX:MaxMetaspaceSize: 메타스페이스 무제한 증가 방지
+    SONAR_SCANNER_OPTS: "-Xmx384m -XX:+UseSerialGC -XX:MaxMetaspaceSize=128m"
+    # Scanner 내부 Node.js 분석 프로세스 메모리 제한
+    NODE_OPTIONS: "--max-old-space-size=256"
   script:
+    # SonarQube 서버 상태 확인 (서버 미기동 시 조기 실패)
+    - |
+      echo "Waiting for SonarQube server..."
+      for i in $(seq 1 12); do
+        STATUS=$(wget -qO- "$SONAR_HOST_URL/api/system/status" 2>/dev/null | grep -o '"status":"[^"]*"' | cut -d'"' -f4 || true)
+        if [ "$STATUS" = "UP" ]; then
+          echo "SonarQube is UP"
+          break
+        fi
+        echo "  Attempt $i/12: status=$STATUS, retrying in 10s..."
+        sleep 10
+      done
+      if [ "$STATUS" != "UP" ]; then
+        echo "ERROR: SonarQube server not available at $SONAR_HOST_URL"
+        exit 1
+      fi
     - sonar-scanner
         -Dsonar.projectKey=$SONAR_PROJECT_KEY
         -Dsonar.projectName="RummiArena"
         -Dsonar.host.url=$SONAR_HOST_URL
         -Dsonar.token=$SONAR_TOKEN
         -Dsonar.qualitygate.wait=true
+        -Dsonar.qualitygate.timeout=300
         -Dsonar.sources=src/
         -Dsonar.exclusions="**/node_modules/**,**/*.test.go,**/*.spec.ts,**/*.spec.js,**/dist/**,**/coverage/**,**/playwright-report/**,**/test-results/**,src/frontend/**,src/admin/**"
         -Dsonar.coverage.exclusions="src/frontend/**,src/admin/**"
@@ -250,6 +280,7 @@ sonarqube:
 trivy-fs:
   stage: quality
   <<: *local-runner
+  timeout: 10m
   image:
     name: aquasec/trivy:0.58.2
     entrypoint: [""]
@@ -283,6 +314,7 @@ trivy-fs:
 .build-common: &build-common
   stage: build
   <<: *local-runner
+  timeout: 15m
   image: docker:26-cli
   services:
     - name: docker:26-dind
@@ -380,6 +412,7 @@ build-admin:
 update-gitops:
   stage: update-gitops
   <<: *local-runner
+  timeout: 5m
   image:
     name: alpine/git:latest
     entrypoint: [""]

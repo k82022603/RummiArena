@@ -102,8 +102,9 @@ type PlaceTilesPayload struct {
 
 // ConfirmTurnPayload CONFIRM_TURN 메시지 페이로드
 type ConfirmTurnPayload struct {
-	TableGroups   []WSTableGroup `json:"tableGroups"`
-	TilesFromRack []string       `json:"tilesFromRack"`
+	TableGroups        []WSTableGroup `json:"tableGroups"`
+	TilesFromRack      []string       `json:"tilesFromRack"`
+	JokerReturnedCodes []string       `json:"jokerReturnedCodes,omitempty"`
 }
 
 // ChatPayload CHAT 메시지 페이로드
@@ -155,6 +156,7 @@ type TurnEndPayload struct {
 	DrawPileCount    int            `json:"drawPileCount"`
 	NextSeat         int            `json:"nextSeat"`
 	NextTurnNumber   int            `json:"nextTurnNumber"`
+	MyRack           []string       `json:"myRack,omitempty"`
 	IsFallbackDraw   bool           `json:"isFallbackDraw,omitempty"`
 	FallbackReason   string         `json:"fallbackReason,omitempty"` // "AI_TIMEOUT", "INVALID_MOVE", "AI_ERROR"
 }

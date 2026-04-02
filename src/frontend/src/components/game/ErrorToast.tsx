@@ -3,7 +3,6 @@
 import { useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useWSStore } from "@/store/wsStore";
-import { useGameStore } from "@/store/gameStore";
 
 const TOAST_DURATION_MS = 5000;
 
@@ -11,8 +10,9 @@ const TOAST_DURATION_MS = 5000;
  * INVALID_MOVE 에러 토스트
  *
  * - wsStore.lastError 를 구독, null 이 아니면 상단 중앙에 표시
- * - 3초 후 자동 소멸 (Framer Motion AnimatePresence)
- * - 노출 시 pendingTableGroups / pendingMyTiles 를 null 로 초기화 (스냅샷 롤백)
+ * - 5초 후 자동 소멸 (Framer Motion AnimatePresence)
+ * - m-2: resetPending()은 useWebSocket.ts의 INVALID_MOVE 핸들러에서 처리하므로
+ *   여기서는 이중 호출하지 않는다.
  *
  * 디자인 토큰:
  *   bg-danger  (#F85149)  text-white
@@ -21,21 +21,17 @@ const TOAST_DURATION_MS = 5000;
  */
 export default function ErrorToast() {
   const { lastError, setLastError } = useWSStore();
-  const { resetPending } = useGameStore();
 
-  // 에러가 표시될 때 pending 상태 롤백 + 타이머 설정
+  // 에러가 표시될 때 타이머 설정 (자동 소멸)
   useEffect(() => {
     if (!lastError) return;
-
-    // 스냅샷 롤백
-    resetPending();
 
     const timer = setTimeout(() => {
       setLastError(null);
     }, TOAST_DURATION_MS);
 
     return () => clearTimeout(timer);
-  }, [lastError, resetPending, setLastError]);
+  }, [lastError, setLastError]);
 
   return (
     <AnimatePresence>

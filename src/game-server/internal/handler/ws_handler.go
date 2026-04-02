@@ -426,9 +426,10 @@ func (h *WSHandler) handleConfirmTurn(conn *Connection, env *WSEnvelope) {
 	tableGroups := wsGroupsToService(payload.TableGroups)
 
 	req := &service.ConfirmRequest{
-		Seat:          conn.seat,
-		TableGroups:   tableGroups,
-		TilesFromRack: payload.TilesFromRack,
+		Seat:               conn.seat,
+		TableGroups:        tableGroups,
+		TilesFromRack:      payload.TilesFromRack,
+		JokerReturnedCodes: payload.JokerReturnedCodes,
 	}
 
 	result, err := h.gameSvc.ConfirmTurn(conn.gameID, req)
@@ -636,7 +637,18 @@ func (h *WSHandler) sendGameState(conn *Connection) {
 
 	tableGroups := make([]WSTableGroup, len(view.Table))
 	for i, t := range view.Table {
-		tableGroups[i] = WSTableGroup{ID: t.ID, Tiles: t.Tiles}
+		groupType := "run"
+		numbers := map[int]bool{}
+		for _, code := range t.Tiles {
+			parsed, err := engine.Parse(code)
+			if err == nil && !parsed.IsJoker {
+				numbers[parsed.Number] = true
+			}
+		}
+		if len(numbers) == 1 {
+			groupType = "group"
+		}
+		tableGroups[i] = WSTableGroup{ID: t.ID, Tiles: t.Tiles, Type: groupType}
 	}
 
 	players := make([]WSPlayerInfo, len(view.Players))
@@ -694,18 +706,33 @@ func (h *WSHandler) broadcastTurnEnd(conn *Connection, state *model.GameStateRed
 		hasInitialMeld = state.Players[playerIdx].HasInitialMeld
 	}
 
-	h.hub.BroadcastToRoom(conn.roomID, &WSMessage{
-		Type: S2CTurnEnd,
-		Payload: TurnEndPayload{
+	tableGroups := stateTableToWSGroups(state.Table)
+
+	// 각 플레이어에게 개인화된 TURN_END 전송 (자신의 myRack만 포함)
+	h.hub.ForEachInRoom(conn.roomID, func(c *Connection) {
+		payload := TurnEndPayload{
 			Seat:             conn.seat,
+			TurnNumber:       state.TurnCount - 1,
 			Action:           action,
-			TableGroups:      stateTableToWSGroups(state.Table),
+			TableGroups:      tableGroups,
 			TilesPlacedCount: tilesPlaced,
 			PlayerTileCount:  playerTileCount,
 			HasInitialMeld:   hasInitialMeld,
 			DrawPileCount:    len(state.DrawPile),
 			NextSeat:         state.CurrentSeat,
-		},
+			NextTurnNumber:   state.TurnCount,
+		}
+		// 수신자의 rack 정보를 포함 (자신의 seat에 해당하는 rack만)
+		recvIdx := findPlayerBySeatInState(state.Players, c.seat)
+		if recvIdx >= 0 {
+			rack := make([]string, len(state.Players[recvIdx].Rack))
+			copy(rack, state.Players[recvIdx].Rack)
+			payload.MyRack = rack
+		}
+		c.Send(&WSMessage{
+			Type:    S2CTurnEnd,
+			Payload: payload,
+		})
 	})
 }
 
@@ -1201,25 +1228,42 @@ func (h *WSHandler) broadcastTurnEndFromState(roomID string, seat int, state *mo
 		hasInitialMeld = state.Players[playerIdx].HasInitialMeld
 	}
 
-	payload := TurnEndPayload{
-		Seat:             seat,
-		Action:           action,
-		TableGroups:      stateTableToWSGroups(state.Table),
-		TilesPlacedCount: tilesPlaced,
-		PlayerTileCount:  playerTileCount,
-		HasInitialMeld:   hasInitialMeld,
-		DrawPileCount:    len(state.DrawPile),
-		NextSeat:         state.CurrentSeat,
+	tableGroups := stateTableToWSGroups(state.Table)
+
+	var fb *FallbackInfo
+	if len(fallback) > 0 {
+		fb = fallback[0]
 	}
 
-	if len(fallback) > 0 && fallback[0] != nil {
-		payload.IsFallbackDraw = fallback[0].IsFallbackDraw
-		payload.FallbackReason = fallback[0].FallbackReason
-	}
-
-	h.hub.BroadcastToRoom(roomID, &WSMessage{
-		Type:    S2CTurnEnd,
-		Payload: payload,
+	// 각 플레이어에게 개인화된 TURN_END 전송 (자신의 myRack만 포함)
+	h.hub.ForEachInRoom(roomID, func(c *Connection) {
+		payload := TurnEndPayload{
+			Seat:             seat,
+			TurnNumber:       state.TurnCount - 1,
+			Action:           action,
+			TableGroups:      tableGroups,
+			TilesPlacedCount: tilesPlaced,
+			PlayerTileCount:  playerTileCount,
+			HasInitialMeld:   hasInitialMeld,
+			DrawPileCount:    len(state.DrawPile),
+			NextSeat:         state.CurrentSeat,
+			NextTurnNumber:   state.TurnCount,
+		}
+		if fb != nil {
+			payload.IsFallbackDraw = fb.IsFallbackDraw
+			payload.FallbackReason = fb.FallbackReason
+		}
+		// 수신자의 rack 정보를 포함 (자신의 seat에 해당하는 rack만)
+		recvIdx := findPlayerBySeatInState(state.Players, c.seat)
+		if recvIdx >= 0 {
+			rack := make([]string, len(state.Players[recvIdx].Rack))
+			copy(rack, state.Players[recvIdx].Rack)
+			payload.MyRack = rack
+		}
+		c.Send(&WSMessage{
+			Type:    S2CTurnEnd,
+			Payload: payload,
+		})
 	})
 }
 
@@ -1726,7 +1770,21 @@ func stateTableToWSGroups(table []*model.SetOnTable) []WSTableGroup {
 		for j, t := range s.Tiles {
 			tiles[j] = t.Code
 		}
-		result[i] = WSTableGroup{ID: s.ID, Tiles: tiles}
+		// 세트 타입 자동 판별: 비조커 타일의 숫자가 모두 같으면 group, 아니면 run
+		groupType := "run"
+		if len(s.Tiles) > 0 {
+			numbers := map[int]bool{}
+			for _, t := range s.Tiles {
+				parsed, err := engine.Parse(t.Code)
+				if err == nil && !parsed.IsJoker {
+					numbers[parsed.Number] = true
+				}
+			}
+			if len(numbers) == 1 {
+				groupType = "group"
+			}
+		}
+		result[i] = WSTableGroup{ID: s.ID, Tiles: tiles, Type: groupType}
 	}
 	return result
 }

@@ -256,6 +256,20 @@ func (s *gameService) PlaceTiles(gameID string, req *PlaceRequest) (*GameActionR
 	}
 	s.snapshotMu.Unlock()
 
+	// tilesFromRack의 타일이 tableGroups에 실제 존재하는지 확인 [C-6]
+	if len(req.TilesFromRack) > 0 {
+		tableGroupTiles := collectAllTilesFromGroups(req.TableGroups)
+		for _, t := range req.TilesFromRack {
+			if !containsTileCode(tableGroupTiles, t) {
+				return nil, &ServiceError{
+					Code:    "INVALID_REQUEST",
+					Message: fmt.Sprintf("랙에서 제거된 타일 '%s'이(가) 테이블에 포함되지 않았습니다", t),
+					Status:  400,
+				}
+			}
+		}
+	}
+
 	// 랙에서 tilesFromRack 제거
 	newRack, err := removeTilesFromRack(state.Players[playerIdx].Rack, req.TilesFromRack)
 	if err != nil {
@@ -299,9 +313,17 @@ func (s *gameService) ConfirmTurn(gameID string, req *ConfirmRequest) (*GameActi
 		return nil, &ServiceError{Code: "INVALID_REQUEST", Message: err.Error(), Status: 400}
 	}
 
-	validateReq := buildValidateRequest(tableBefore, tableAfter, rackBefore, rackAfter, state.Players[playerIdx].HasInitialMeld, req.JokerReturnedCodes)
+	validateReq, err := buildValidateRequest(tableBefore, tableAfter, rackBefore, rackAfter, state.Players[playerIdx].HasInitialMeld, req.JokerReturnedCodes)
+	if err != nil {
+		return nil, &ServiceError{Code: "INVALID_REQUEST", Message: err.Error(), Status: 400}
+	}
 
 	if err := engine.ValidateTurnConfirm(validateReq); err != nil {
+		// Stateless 서버 원칙: 검증 실패 시 서버가 자동으로 스냅샷 복원 (클라이언트 롤백 의존 제거)
+		if s.restoreSnapshot(state, gameID, req.Seat, playerIdx) {
+			// best-effort 저장: 복원된 상태를 영속화한다. 저장 실패 시에도 원래 검증 에러를 반환한다.
+			_ = s.gameRepo.SaveGameState(state)
+		}
 		return s.buildValidationFailResult(state, err), &ServiceError{Code: extractErrCode(err), Message: err.Error(), Status: 422}
 	}
 
@@ -350,15 +372,24 @@ func (s *gameService) resolveRackAfter(currentRack, rackBefore, tilesFromRack []
 }
 
 // buildValidateRequest engine.TurnConfirmRequest를 조립한다.
-func buildValidateRequest(tableBefore, tableAfter []*model.SetOnTable, rackBefore, rackAfter []string, hasInitialMeld bool, jokerReturnedCodes []string) engine.TurnConfirmRequest {
+// 유효하지 않은 타일 코드가 있으면 에러를 반환한다.
+func buildValidateRequest(tableBefore, tableAfter []*model.SetOnTable, rackBefore, rackAfter []string, hasInitialMeld bool, jokerReturnedCodes []string) (engine.TurnConfirmRequest, error) {
+	engineBefore, err := modelSetsToEngineSets(tableBefore)
+	if err != nil {
+		return engine.TurnConfirmRequest{}, err
+	}
+	engineAfter, err := modelSetsToEngineSets(tableAfter)
+	if err != nil {
+		return engine.TurnConfirmRequest{}, err
+	}
 	return engine.TurnConfirmRequest{
-		TableBefore:        modelSetsToEngineSets(tableBefore),
-		TableAfter:         modelSetsToEngineSets(tableAfter),
+		TableBefore:        engineBefore,
+		TableAfter:         engineAfter,
 		RackBefore:         rackBefore,
 		RackAfter:          rackAfter,
 		HasInitialMeld:     hasInitialMeld,
 		JokerReturnedCodes: jokerReturnedCodes,
-	}
+	}, nil
 }
 
 // extractErrCode ValidationError에서 에러 코드를 추출한다. 타입이 다르면 ErrInvalidSet을 반환한다.
@@ -548,6 +579,23 @@ func (s *gameService) ResetTurn(gameID string, seat int) (*GameActionResult, err
 		return nil, &ServiceError{Code: "NOT_FOUND", Message: errMsgPlayerNotFound, Status: 404}
 	}
 
+	restored := s.restoreSnapshot(state, gameID, seat, playerIdx)
+	if !restored {
+		// 스냅샷 없음 = 이번 턴에 아무것도 하지 않음
+		return &GameActionResult{Success: true, NextSeat: seat, GameState: state}, nil
+	}
+
+	if err := s.gameRepo.SaveGameState(state); err != nil {
+		return nil, fmt.Errorf("game_service: save after reset: %w", err)
+	}
+
+	return &GameActionResult{Success: true, NextSeat: seat, GameState: state}, nil
+}
+
+// restoreSnapshot 스냅샷이 존재하면 state의 랙과 테이블을 복원하고 스냅샷을 삭제한다.
+// 복원했으면 true, 스냅샷이 없었으면 false를 반환한다.
+// state 객체를 직접 수정하므로, 호출자가 SaveGameState를 별도로 호출해야 한다.
+func (s *gameService) restoreSnapshot(state *model.GameStateRedis, gameID string, seat int, playerIdx int) bool {
 	snapKey := snapshotKey(gameID, seat)
 	s.snapshotMu.Lock()
 	snap, exists := s.snapshots[snapKey]
@@ -557,19 +605,12 @@ func (s *gameService) ResetTurn(gameID string, seat int) (*GameActionResult, err
 	s.snapshotMu.Unlock()
 
 	if !exists {
-		// 스냅샷 없음 = 이번 턴에 아무것도 하지 않음
-		return &GameActionResult{Success: true, NextSeat: seat, GameState: state}, nil
+		return false
 	}
 
-	// 스냅샷으로 복원
 	state.Players[playerIdx].Rack = snap.rack
 	state.Table = snap.table
-
-	if err := s.gameRepo.SaveGameState(state); err != nil {
-		return nil, fmt.Errorf("game_service: save after reset: %w", err)
-	}
-
-	return &GameActionResult{Success: true, NextSeat: seat, GameState: state}, nil
+	return true
 }
 
 // ForfeitPlayer 플레이어를 기권 처리한다.
@@ -754,15 +795,15 @@ func convertToSetOnTable(placements []TilePlacement) []*model.SetOnTable {
 }
 
 // modelSetsToEngineSets model.SetOnTable 슬라이스를 engine.TileSet 슬라이스로 변환한다.
-func modelSetsToEngineSets(sets []*model.SetOnTable) []*engine.TileSet {
+// 유효하지 않은 타일 코드가 있으면 에러를 반환한다.
+func modelSetsToEngineSets(sets []*model.SetOnTable) ([]*engine.TileSet, error) {
 	result := make([]*engine.TileSet, 0, len(sets))
 	for _, s := range sets {
 		tiles := make([]*engine.Tile, 0, len(s.Tiles))
 		for _, t := range s.Tiles {
 			parsed, err := engine.Parse(t.Code)
 			if err != nil {
-				tiles = append(tiles, &engine.Tile{Code: t.Code})
-				continue
+				return nil, fmt.Errorf("유효하지 않은 타일 코드: %s", t.Code)
 			}
 			tiles = append(tiles, parsed)
 		}
@@ -771,7 +812,7 @@ func modelSetsToEngineSets(sets []*model.SetOnTable) []*engine.TileSet {
 			Tiles: tiles,
 		})
 	}
-	return result
+	return result, nil
 }
 
 // cloneTable SetOnTable 슬라이스를 딥 카피한다.
@@ -788,6 +829,26 @@ func cloneTable(table []*model.SetOnTable) []*model.SetOnTable {
 		result[i] = &copied
 	}
 	return result
+}
+
+// collectAllTilesFromGroups TilePlacement 슬라이스에서 모든 타일 코드를 빈도 맵으로 수집한다.
+func collectAllTilesFromGroups(groups []TilePlacement) map[string]int {
+	freq := make(map[string]int)
+	for _, g := range groups {
+		for _, t := range g.Tiles {
+			freq[t]++
+		}
+	}
+	return freq
+}
+
+// containsTileCode 빈도 맵에서 타일 코드가 1개 이상 있는지 확인하고 사용 시 차감한다.
+func containsTileCode(freq map[string]int, code string) bool {
+	if freq[code] > 0 {
+		freq[code]--
+		return true
+	}
+	return false
 }
 
 // snapshotKey 스냅샷 맵의 키를 생성한다.
