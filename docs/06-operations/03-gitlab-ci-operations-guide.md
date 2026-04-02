@@ -29,36 +29,147 @@ flowchart LR
 
 총 13개 job이 병렬/직렬로 조합되어 실행된다. 전체 파이프라인 완주 시 GitLab Container Registry에 이미지가 등록되고, ArgoCD가 감시하는 `dev-values.yaml`의 이미지 태그가 자동 업데이트된다.
 
-### 1.2 실행 환경
+### 1.2 물리 아키텍처 — CI/CD 실행 환경
 
-| 항목 | 값 |
-|------|-----|
-| CI 플랫폼 | GitLab.com (SaaS) |
-| Runner 위치 | Docker Desktop K8s (`gitlab-runner` namespace) |
-| Runner Executor | Kubernetes Executor |
-| Runner 동시 실행 | concurrent: 2 (10GB WSL 제약) |
-| SonarQube 서버 | `docker-compose.cicd.yml` (localhost:9001) |
-| Container Registry | `registry.gitlab.com/k82022603/rummiarena` |
-| GitOps 저장소 | `github.com/k82022603/RummiArena` (소스 + GitOps 통합) |
+운영자의 노트북에서 파이프라인이 실행되는 전체 물리 구조:
 
-### 1.3 교대 실행 전략 (10GB WSL 제약)
+```mermaid
+flowchart TB
+    subgraph LAPTOP["🖥️ LG Gram 15Z90R\n(i7-1360P, RAM 16GB)"]
+        subgraph WIN["Windows 11\n(~6GB 사용)"]
+            BROWSER["🌐 브라우저\n(GitLab UI 모니터링)"]
+            DOCKER_ENGINE["🐋 Docker Desktop\n(K8s 통합)"]
+        end
+
+        subgraph WSL2["📦 WSL2 Ubuntu\n(.wslconfig: 10GB 할당)"]
+            subgraph K8S["☸️ Docker Desktop Kubernetes (v1.34)"]
+                subgraph NS_RUNNER["Namespace: gitlab-runner"]
+                    RUNNER["GitLab Runner Pod\n(alpine-v18.9.0)\n256Mi"]
+                    JOB_POD["Job Pod (동적 생성)\n이미지별 생성/소멸\nmemory_limit: 2Gi"]
+                    CACHE_PVC["PVC: gitlab-runner-cache\n(hostpath 2Gi)"]
+                end
+
+                subgraph NS_RUMMIKUB["Namespace: rummikub\n(Deploy 모드 시)"]
+                    APP_PODS["App Pods\n(game-server, ai-adapter,\nfrontend, admin, redis, pg)"]
+                    ARGOCD["ArgoCD\n(Helm 자동 배포)"]
+                end
+            end
+
+            subgraph COMPOSE["Docker Compose\n(CI 모드 시)"]
+                SONAR["SonarQube 9.9 LTS\n(JVM 768MB, 컨테이너 1280Mi)"]
+                SONAR_PG["PostgreSQL\n(SonarQube DB)"]
+            end
+
+            GIT_CLI["Git CLI\n(운영자 → GitLab push)"]
+        end
+    end
+
+    subgraph CLOUD["☁️ 외부 서비스"]
+        GITLAB["GitLab.com\n(소스 저장소 + CI 오케스트레이터)"]
+        GL_REG["GitLab Container Registry\n(Docker 이미지 저장)"]
+        GITHUB["GitHub\n(GitOps dev-values.yaml)"]
+    end
+
+    GIT_CLI -->|"① git push gitlab main"| GITLAB
+    GITLAB -->|"② Webhook: 파이프라인 생성"| RUNNER
+    RUNNER -->|"③ Job Pod 생성\n(이미지 pull + 스크립트 실행)"| JOB_POD
+    JOB_POD -->|"④ 캐시 읽기/쓰기"| CACHE_PVC
+    JOB_POD -->|"⑤ SonarQube 분석 전송\n(host.docker.internal:9001)"| SONAR
+    JOB_POD -->|"⑥ Docker 이미지 Push"| GL_REG
+    JOB_POD -->|"⑦ dev-values.yaml\n이미지 태그 업데이트"| GITHUB
+    GITHUB -->|"⑧ 3분 주기 Sync"| ARGOCD
+    ARGOCD -->|"⑨ Helm Upgrade"| APP_PODS
+    APP_PODS -->|"⑩ 이미지 Pull"| GL_REG
+
+    style LAPTOP fill:#f8f9fa,stroke:#495057
+    style WSL2 fill:#e3f2fd,stroke:#1565c0
+    style K8S fill:#e8f5e9,stroke:#2e7d32
+    style COMPOSE fill:#fff8e1,stroke:#f9a825
+    style CLOUD fill:#fce4ec,stroke:#c62828
+```
+
+### 1.3 실행 환경 요약
+
+| 항목 | 값 | 물리 위치 |
+|------|-----|----------|
+| CI 플랫폼 | GitLab.com (SaaS) | 클라우드 (파이프라인 오케스트레이션) |
+| Runner | rummiarena-k8s-runner (K8s Executor) | 노트북 → WSL2 → K8s `gitlab-runner` NS |
+| Job Pod | 동적 생성/소멸 (이미지별) | 노트북 → WSL2 → K8s `gitlab-runner` NS |
+| Job Pod 메모리 | request 512Mi / limit 2Gi | 노트북 RAM에서 할당 |
+| SonarQube | docker-compose (localhost:9001) | 노트북 → WSL2 → Docker Compose |
+| Container Registry | `registry.gitlab.com/k82022603/rummiarena` | GitLab 클라우드 |
+| GitOps 저장소 | `github.com/k82022603/RummiArena` | GitHub 클라우드 |
+| ArgoCD | K8s `rummikub` namespace | 노트북 → WSL2 → K8s |
+| PVC 캐시 | gitlab-runner-cache (hostpath 2Gi) | 노트북 SSD |
+
+### 1.4 데이터 흐름 시퀀스
+
+```mermaid
+sequenceDiagram
+    participant OP as 🧑‍💻 운영자<br/>(노트북)
+    participant GL as ☁️ GitLab.com<br/>(CI 오케스트레이터)
+    participant RUNNER as ☸️ K8s Runner<br/>(노트북 WSL2)
+    participant POD as 📦 Job Pod<br/>(노트북 WSL2)
+    participant SQ as 📊 SonarQube<br/>(노트북 Docker)
+    participant REG as 🐳 GitLab Registry<br/>(클라우드)
+    participant GH as 📂 GitHub<br/>(GitOps Repo)
+    participant ARGO as 🚀 ArgoCD<br/>(노트북 K8s)
+
+    OP->>GL: ① git push gitlab main
+    GL->>RUNNER: ② 파이프라인 생성 (Webhook)
+
+    Note over POD: Stage 1: Lint (4개 병렬)
+    RUNNER->>POD: ③ Job Pod 생성 (golangci-lint / node:22-alpine)
+    POD->>POD: golangci-lint / ESLint 실행
+    POD-->>GL: 결과 보고 (성공/실패)
+
+    Note over POD: Stage 2: Test (2개 병렬)
+    RUNNER->>POD: ③ Job Pod 생성 (golang:1.24 / node:22-alpine)
+    POD->>POD: go test -coverprofile / jest --coverage
+    POD-->>GL: 결과 + 커버리지 아티팩트 보고
+
+    Note over POD: Stage 3: Quality (2개 병렬)
+    RUNNER->>POD: ③ Job Pod 생성 (sonar-scanner / trivy)
+    POD->>SQ: ④ 소스 분석 + 커버리지 전송
+    SQ-->>POD: Quality Gate 판정
+    POD->>POD: Trivy FS 스캔 (HIGH/CRITICAL)
+    POD-->>GL: 결과 보고
+
+    Note over POD: Stage 4: Build (4개 병렬)
+    RUNNER->>POD: ③ Job Pod 생성 (docker:26-cli + DinD)
+    POD->>POD: Docker Multi-stage Build
+    POD->>REG: ⑤ 이미지 Push (SHA 태그 + latest)
+    POD->>POD: Trivy 이미지 스캔 (CRITICAL)
+    POD-->>GL: 결과 보고
+
+    Note over POD: Stage 5: Update GitOps
+    RUNNER->>POD: ③ Job Pod 생성 (alpine/git)
+    POD->>GH: ⑥ dev-values.yaml 태그 → SHA
+
+    Note over ARGO: 3분 주기 Sync
+    ARGO->>GH: ⑦ 변경 감지
+    ARGO->>REG: ⑧ 새 이미지 Pull
+    ARGO->>ARGO: ⑨ Helm Upgrade → Rolling Update
+```
+
+### 1.5 교대 실행 전략 (10GB WSL 제약)
 
 16GB 물리 RAM에서 WSL2에 10GB를 할당한 환경이므로, 모든 서비스를 동시에 실행할 수 없다. 세 가지 모드를 교대로 사용한다.
 
 ```mermaid
 stateDiagram-v2
-    state "Dev 모드\n(PG + Redis + Traefik + App + Claude)\n~6.5GB" as Dev
-    state "CI 모드\n(PG(Sonar) + SonarQube + GitLab Runner)\n~2.5GB" as CI
-    state "Deploy 모드\n(PG + Redis + K8s + Traefik + ArgoCD)\n~5GB" as Deploy
+    state "🛠️ Dev 모드\n(PG + Redis + Traefik + App + Claude)\n~6.5GB | 노트북 WSL2" as Dev
+    state "🔄 CI 모드\n(PG(Sonar) + SonarQube + GitLab Runner)\n~2.5GB | 노트북 WSL2" as CI
+    state "🚀 Deploy 모드\n(PG + Redis + K8s 7개 서비스 + ArgoCD)\n~5GB | 노트북 WSL2" as Deploy
 
     [*] --> Dev: 기본 개발 시
-    Dev --> CI: CI 파이프라인 실행 필요 시
+    Dev --> CI: 운영자가 CI 파이프라인 실행 시
     CI --> Dev: 빌드 완료 후
     CI --> Deploy: ArgoCD 배포 테스트 시
     Deploy --> Dev: 배포 검증 완료 후
 ```
 
-**핵심 규칙**: Dev/Deploy 모드와 CI 모드를 동시에 실행하지 않는다.
+**핵심 규칙**: Dev/Deploy 모드와 CI 모드를 동시에 실행하지 않는다. 모든 모드는 **동일한 노트북의 WSL2** 위에서 실행된다.
 
 ---
 

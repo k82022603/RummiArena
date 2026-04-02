@@ -72,9 +72,9 @@ services:
       SONAR_JDBC_PASSWORD: ${CI_SONAR_DB_PASSWORD:-sonarpass}
       # JVM 힙 최소화 (10GB WSL 제약)
       # Web(256) + CE(128) + ES(384) = 768MB → mem_limit 1.2g 충분
-      SONAR_WEB_JAVAOPTS:  "-Xms128m -Xmx256m -XX:+UseSerialGC"
-      SONAR_CE_JAVAOPTS:   "-Xms64m -Xmx128m -XX:+UseSerialGC"
-      SONAR_SEARCH_JAVAOPTS: "-Xms256m -Xmx384m -XX:+UseSerialGC"
+      SONAR_WEB_JAVAOPTS:  "-Xms128m -Xmx256m"
+      SONAR_CE_JAVAOPTS:   "-Xms64m -Xmx128m"
+      SONAR_SEARCH_JAVAOPTS: "-Xms384m -Xmx384m"
       # 익명 분석 비활성화
       SONAR_TELEMETRY_ENABLE: "false"
     ports:
