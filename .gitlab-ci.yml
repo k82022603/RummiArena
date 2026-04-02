@@ -165,14 +165,16 @@ test-go:
   cache:
     <<: *go-cache
     policy: pull
+  variables:
+    GOGC: "50"
   before_script:
     - apk add --no-cache gcc musl-dev
   script:
     - cd src/game-server
-    # 사전 빌드 (캐시 미적중 시 OOM 방지)
-    - go build ./...
-    # 커버리지 프로파일 수집
-    - go test ./... -v
+    # 패키지별 순차 빌드 (메모리 피크 방지)
+    - go build -p 1 ./...
+    # 커버리지 프로파일 수집 (verbose 제거, 병렬도 제한)
+    - go test ./... -p 1
         -coverprofile=coverage.out
         -covermode=atomic
         -timeout 120s
