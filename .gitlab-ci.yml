@@ -29,12 +29,19 @@ variables:
   DOCKER_DRIVER: overlay2
   DOCKER_TLS_CERTDIR: ""          # DinD TLS 비활성화 (로컬 러너)
   SONAR_PROJECT_KEY: rummiarena
-  # Go 모듈 캐시 경로
-  GOPATH: "$CI_PROJECT_DIR/.cache/go"
-  # Node.js npm 캐시
-  npm_config_cache: "$CI_PROJECT_DIR/.cache/npm"
-  # Trivy DB 캐시 (매 실행 DB 재다운로드 방지)
-  TRIVY_CACHE_DIR: "$CI_PROJECT_DIR/.cache/trivy"
+  # =========================================================================
+  # PVC 직접 캐시 전략 (/cache → gitlab-runner-cache PVC, 2Gi)
+  # GitLab cache 메커니즘(압축/해제) 대신 PVC 파일시스템에 직접 저장.
+  # Job Pod마다 /cache가 마운트되어 모든 파이프라인에서 영구 재사용.
+  # =========================================================================
+  # Go: 모듈 캐시 + 빌드 캐시 → PVC
+  GOMODCACHE: "/cache/go/mod"
+  GOCACHE: "/cache/go/build"
+  GOPATH: "/cache/go/path"
+  # Node.js: npm 캐시 → PVC
+  npm_config_cache: "/cache/npm"
+  # Trivy: DB 캐시 → PVC
+  TRIVY_CACHE_DIR: "/cache/trivy"
 
 # 로컬 K8s 런너 강제 실행 앵커
 # quality/lint/test는 host.docker.internal 접근이 필요하므로 공유 런너 사용 금지
@@ -42,38 +49,6 @@ variables:
   tags:
     - k8s
     - rummiarena
-
-# 공통 캐시 앵커 (YAML 앵커 재사용)
-.go-cache: &go-cache
-  key:
-    files:
-      - src/game-server/go.sum
-  paths:
-    - .cache/go/
-
-.node-ai-cache: &node-ai-cache
-  key:
-    files:
-      - src/ai-adapter/package-lock.json
-  paths:
-    - src/ai-adapter/node_modules/
-    - .cache/npm/
-
-.node-fe-cache: &node-fe-cache
-  key:
-    files:
-      - src/frontend/package-lock.json
-  paths:
-    - src/frontend/node_modules/
-    - .cache/npm/
-
-.node-admin-cache: &node-admin-cache
-  key:
-    files:
-      - src/admin/package-lock.json
-  paths:
-    - src/admin/node_modules/
-    - .cache/npm/
 
 # =============================================================================
 # Lint Stage — 코드 스타일 및 정적 문법 검사
@@ -84,9 +59,6 @@ lint-go:
   <<: *local-runner
   timeout: 15m
   image: golangci/golangci-lint:v2.1
-  cache:
-    <<: *go-cache
-    policy: pull-push
   variables:
     GOFLAGS: "-buildvcs=false"
     GOGC: "50"
@@ -104,9 +76,6 @@ lint-nest:
   <<: *local-runner
   timeout: 15m
   image: node:22-alpine
-  cache:
-    <<: *node-ai-cache
-    policy: pull-push
   script:
     - cd src/ai-adapter
     - npm ci --prefer-offline
@@ -122,9 +91,6 @@ lint-frontend:
   <<: *local-runner
   timeout: 15m
   image: node:22-alpine
-  cache:
-    <<: *node-fe-cache
-    policy: pull-push
   script:
     - cd src/frontend
     - npm ci --prefer-offline
@@ -140,9 +106,6 @@ lint-admin:
   <<: *local-runner
   timeout: 15m
   image: node:22-alpine
-  cache:
-    <<: *node-admin-cache
-    policy: pull-push
   script:
     - cd src/admin
     - npm ci --prefer-offline
@@ -162,19 +125,16 @@ test-go:
   <<: *local-runner
   timeout: 20m
   image: golang:1.24-alpine
-  cache:
-    <<: *go-cache
-    policy: pull
   variables:
     GOGC: "50"
   before_script:
     - apk add --no-cache gcc musl-dev
   script:
     - cd src/game-server
-    # 패키지별 순차 빌드 (메모리 피크 방지)
-    - go build -p 1 ./...
-    # 커버리지 프로파일 수집 (verbose 제거, 병렬도 제한)
-    - go test ./... -p 1
+    # 패키지별 순차 빌드 (첫 실행 OOM 방지, 캐시 있으면 빠름)
+    - go build -p 2 ./...
+    # 커버리지 프로파일 수집 (병렬도 제한)
+    - go test ./... -p 2
         -coverprofile=coverage.out
         -covermode=atomic
         -timeout 120s
@@ -205,9 +165,6 @@ test-nest:
   <<: *local-runner
   timeout: 10m
   image: node:22-alpine
-  cache:
-    <<: *node-ai-cache
-    policy: pull
   script:
     - cd src/ai-adapter
     - npm ci --prefer-offline
@@ -291,13 +248,6 @@ trivy-fs:
   image:
     name: aquasec/trivy:0.58.2
     entrypoint: [""]
-  cache:
-    key: trivy-db-cache
-    paths:
-      - .cache/trivy/
-    policy: pull-push
-  variables:
-    TRIVY_CACHE_DIR: ".cache/trivy"
   script:
     # 파일시스템 취약점 스캔 (HIGH/CRITICAL 발견 시 파이프라인 실패)
     - trivy fs

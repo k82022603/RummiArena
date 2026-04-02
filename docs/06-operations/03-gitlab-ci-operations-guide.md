@@ -177,7 +177,7 @@ stateDiagram-v2
 
 ### 2.1 lint Stage (코드 스타일 검사)
 
-4개 job이 **병렬 실행**된다. 캐시 정책은 `pull-push`로 캐시를 읽고 갱신한다.
+4개 job이 **병렬 실행**된다. PVC(`/cache`)에 모듈/빌드 캐시를 직접 저장하므로, 2회차부터는 다운로드가 생략된다.
 
 #### lint-go
 
@@ -187,7 +187,7 @@ stateDiagram-v2
 | 이미지 | `golangci/golangci-lint:v2.1` |
 | timeout | 15m |
 | 작업 경로 | `src/game-server/` |
-| 캐시 | `go.sum` 파일 해시 기반, `.cache/go/` 경로 |
+| 캐시 | PVC 직접: `GOMODCACHE=/cache/go/mod`, `GOCACHE=/cache/go/build` |
 | 주요 설정 | `GOGC=50` (GC 빈도 증가로 메모리 절감), `-j 1` (단일 스레드 빌드) |
 | 성공 기준 | golangci-lint 규칙 위반 0건 |
 | 실행 조건 | main, develop, MR |
@@ -208,7 +208,7 @@ golangci-lint run ./... --timeout 10m --build-tags="" -j 1
 | 이미지 | `node:22-alpine` |
 | timeout | 15m |
 | 작업 경로 | `src/ai-adapter/` |
-| 캐시 | `package-lock.json` 해시 기반, `node_modules/` + `.cache/npm/` |
+| 캐시 | PVC 직접: `npm_config_cache=/cache/npm` |
 | 성공 기준 | ESLint 경고/오류 0건 |
 | 실행 조건 | main, develop, MR |
 
@@ -220,7 +220,7 @@ golangci-lint run ./... --timeout 10m --build-tags="" -j 1
 | 이미지 | `node:22-alpine` |
 | timeout | 15m |
 | 작업 경로 | `src/frontend/` |
-| 캐시 | `package-lock.json` 해시 기반 |
+| 캐시 | PVC 직접: `npm_config_cache=/cache/npm` |
 | 성공 기준 | ESLint 경고/오류 0건 |
 | 실행 조건 | main, develop, MR |
 
@@ -232,7 +232,7 @@ golangci-lint run ./... --timeout 10m --build-tags="" -j 1
 | 이미지 | `node:22-alpine` |
 | timeout | 15m |
 | 작업 경로 | `src/admin/` |
-| 캐시 | `package-lock.json` 해시 기반 |
+| 캐시 | PVC 직접: `npm_config_cache=/cache/npm` |
 | 성공 기준 | ESLint 경고/오류 0건 |
 | 실행 조건 | main, develop, MR |
 
@@ -744,7 +744,7 @@ script:
 
 **원인**: 해당 캐시 키로 저장된 캐시가 아직 없음 (첫 실행 또는 의존성 파일 변경).
 
-**해결**: 정상 동작이다. `pull-push` 정책의 lint job이 실행 완료되면 캐시가 생성되며, 이후 실행부터는 캐시가 적중한다. test job은 `pull` 정책이므로 lint가 먼저 완료되어야 캐시를 활용할 수 있다.
+**해결**: PVC 직접 캐시 전략으로 전환하여 해결됨. 환경 변수(`GOMODCACHE`, `GOCACHE`, `npm_config_cache`)가 PVC 마운트 경로(`/cache/`)를 가리키므로, 첫 실행에서 다운로드된 모듈이 영구 보존되어 이후 실행에서는 다운로드가 생략된다. GitLab의 cache 메커니즘(tar 압축/해제)은 더 이상 사용하지 않는다.
 
 ### 5.7 Runner 등록 실패 (DNS 오류)
 
@@ -1032,24 +1032,67 @@ glab api "projects/k82022603%2Frummiarena/variables/SONAR_TOKEN" --method DELETE
 
 ---
 
-## 9. 캐시 전략 요약
+## 9. 캐시 전략
 
-### 9.1 캐시 앵커 목록
+### 9.1 PVC 직접 캐시 (현행)
 
-| 캐시명 | 키 방식 | 캐시 경로 | 적용 Job | 정책 |
-|--------|---------|----------|----------|------|
-| go-cache | `go.sum` 파일 해시 | `.cache/go/` | lint-go(`pull-push`), test-go(`pull`) | 파일 변경 시 무효화 |
-| node-ai-cache | `package-lock.json` 해시 | `node_modules/` + `.cache/npm/` | lint-nest(`pull-push`), test-nest(`pull`) | 파일 변경 시 무효화 |
-| node-fe-cache | `package-lock.json` 해시 | `node_modules/` + `.cache/npm/` | lint-frontend(`pull-push`) | 파일 변경 시 무효화 |
-| node-admin-cache | `package-lock.json` 해시 | `node_modules/` + `.cache/npm/` | lint-admin(`pull-push`) | 파일 변경 시 무효화 |
-| trivy-db-cache | 고정 키 `trivy-db-cache` | `.cache/trivy/` | trivy-fs(`pull-push`) | 수동 삭제까지 유지 |
+GitLab의 cache 메커니즘(tar 압축/해제)은 사용하지 않는다. 대신 **PVC를 Job Pod에 직접 마운트**하여 캐시를 영구 보관한다.
 
-### 9.2 캐시 정책
+```mermaid
+flowchart LR
+    subgraph PVC["💾 PVC: gitlab-runner-cache\n(hostpath 2Gi, 노트북 SSD)"]
+        GO_MOD["/cache/go/mod\n(Go 모듈)"]
+        GO_BUILD["/cache/go/build\n(Go 빌드 캐시)"]
+        NPM["/cache/npm\n(npm 패키지)"]
+        TRIVY["/cache/trivy\n(Trivy 취약점 DB)"]
+    end
 
-| 정책 | 동작 | 사용 시점 |
-|------|------|-----------|
-| `pull-push` | 캐시 읽기 + 실행 후 갱신 | lint job (의존성 설치 후 업데이트 필요) |
-| `pull` | 캐시 읽기만 (갱신 없음) | test job (읽기 전용, 속도 향상) |
+    subgraph JOBS["Job Pod (매 실행마다 생성)"]
+        J1["lint-go / test-go\nGOMODCACHE=/cache/go/mod\nGOCACHE=/cache/go/build"]
+        J2["lint-nest / test-nest\nlint-frontend / lint-admin\nnpm_config_cache=/cache/npm"]
+        J3["trivy-fs\nTRIVY_CACHE_DIR=/cache/trivy"]
+    end
+
+    J1 <-->|"읽기/쓰기"| GO_MOD
+    J1 <-->|"읽기/쓰기"| GO_BUILD
+    J2 <-->|"읽기/쓰기"| NPM
+    J3 <-->|"읽기/쓰기"| TRIVY
+```
+
+| 환경 변수 | PVC 경로 | 적용 Job | 효과 |
+|-----------|---------|----------|------|
+| `GOMODCACHE` | `/cache/go/mod` | lint-go, test-go | Go 모듈 재다운로드 방지 |
+| `GOCACHE` | `/cache/go/build` | lint-go, test-go | 컴파일 결과 재사용 (export data 포함) |
+| `GOPATH` | `/cache/go/path` | lint-go, test-go | go install 바이너리 캐시 |
+| `npm_config_cache` | `/cache/npm` | lint-nest/fe/admin, test-nest | npm 패키지 재다운로드 방지 |
+| `TRIVY_CACHE_DIR` | `/cache/trivy` | trivy-fs | 취약점 DB 재다운로드 방지 |
+
+### 9.2 기존 방식과 비교
+
+| 항목 | GitLab cache (이전) | PVC 직접 캐시 (현행) |
+|------|---------------------|---------------------|
+| 저장소 | Job Pod 로컬 → tar 아카이브 | PVC (hostpath SSD) |
+| 압축/해제 | 매번 tar.gz 압축/해제 (수십 초) | **없음** (직접 파일 접근) |
+| 키 관리 | `go.sum` / `package-lock.json` 해시 | 불필요 (항상 최신 상태) |
+| 캐시 미스 | 첫 실행 또는 키 변경 시 전량 재다운로드 | **첫 실행만** (이후 증분 업데이트) |
+| 영속성 | Pod 소멸 시 유실 가능 | PVC 삭제까지 영구 보존 |
+| 속도 향상 | 2회차부터 ~30% | 2회차부터 **~80%** |
+
+### 9.3 캐시 관리
+
+```bash
+# 캐시 사용량 확인
+kubectl exec -n gitlab-runner deploy/gitlab-runner -- du -sh /cache/* 2>/dev/null
+
+# Go 빌드 캐시 정리 (OOM 이슈 시)
+kubectl exec -n gitlab-runner deploy/gitlab-runner -- rm -rf /cache/go/build/*
+
+# 전체 캐시 초기화 (의존성 버전 충돌 시)
+kubectl exec -n gitlab-runner deploy/gitlab-runner -- rm -rf /cache/*
+
+# PVC 용량 확인
+kubectl get pvc -n gitlab-runner
+```
 
 ---
 
