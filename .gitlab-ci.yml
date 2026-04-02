@@ -158,7 +158,7 @@ lint-admin:
 test-go:
   stage: test
   <<: *local-runner
-  timeout: 10m
+  timeout: 15m
   image: golang:1.24-alpine
   cache:
     <<: *go-cache
@@ -167,6 +167,8 @@ test-go:
     - apk add --no-cache gcc musl-dev
   script:
     - cd src/game-server
+    # 사전 빌드 (캐시 미적중 시 OOM 방지)
+    - go build ./...
     # 커버리지 프로파일 수집
     - go test ./... -v
         -coverprofile=coverage.out
