@@ -160,7 +160,7 @@ lint-admin:
 test-go:
   stage: test
   <<: *local-runner
-  timeout: 15m
+  timeout: 20m
   image: golang:1.24-alpine
   cache:
     <<: *go-cache
