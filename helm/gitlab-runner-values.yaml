@@ -45,8 +45,8 @@ runners:
         image = "alpine"
         cpu_request = "200m"
         cpu_limit = "1"
-        memory_request = "256Mi"
-        memory_limit = "1Gi"
+        memory_request = "512Mi"
+        memory_limit = "2Gi"
         [[runners.kubernetes.volumes.pvc]]
           name = "gitlab-runner-cache"
           mount_path = "/cache"
