@@ -110,18 +110,46 @@ async function waitForGameReady(page: Page): Promise<void> {
   );
 }
 
-/** 내 차례를 대기한다 */
+/**
+ * 내 차례를 대기한다.
+ * ActionBar(게임 액션 그룹)는 isMyTurn일 때만 렌더되므로
+ * 이를 기준으로 판정한다. "내 차례" 텍스트는 상대 PlayerCard에도
+ * 나타나므로 정확한 판별자가 아니다.
+ */
 async function waitForMyTurn(page: Page, timeoutMs = 180_000): Promise<void> {
   await expect(
-    page.locator("text=내 차례").first()
+    page.locator('[aria-label="게임 액션"]')
   ).toBeVisible({ timeout: timeoutMs });
 }
 
-/** AI 사고 중 상태를 대기한다 */
-async function waitForAIThinking(page: Page, timeoutMs = 180_000): Promise<void> {
+/**
+ * 드로우/배치 후 내 차례 복귀를 대기한다.
+ * 1) ActionBar가 사라짐 → 상대 턴으로 전환 확인
+ * 2) ActionBar가 다시 나타남 → 내 차례 복귀
+ */
+async function waitForMyTurnAfterAction(page: Page, timeoutMs = 180_000): Promise<void> {
+  const actionBar = page.locator('[aria-label="게임 액션"]');
+  // 1) 내 턴이 끝나서 ActionBar가 사라질 때까지 대기
+  await expect(actionBar).not.toBeVisible({ timeout: 60_000 });
+  // 2) 상대 턴 완료 후 ActionBar 재출현 대기
+  await expect(actionBar).toBeVisible({ timeout: timeoutMs });
+}
+
+/**
+ * AI 턴 중 상태를 대기한다.
+ * 서버가 AI_THINKING 메시지를 보내지 않으므로 "사고 중..." 오버레이는 렌더되지 않는다.
+ * 대신 ActionBar 숨김 + 상대 PlayerCard "내 차례" 배지로 AI 턴 진행을 판별한다.
+ */
+async function waitForAITurn(page: Page, timeoutMs = 60_000): Promise<void> {
+  // ActionBar가 사라져야 AI 턴으로 전환된 것
   await expect(
-    page.locator("text=AI 사고 중...").first()
-  ).toBeVisible({ timeout: timeoutMs });
+    page.locator('[aria-label="게임 액션"]')
+  ).not.toBeVisible({ timeout: timeoutMs });
+
+  // 상대 플레이어 영역에 "내 차례" 배지가 보여야 함
+  await expect(
+    page.locator('[aria-label="상대 플레이어"]').locator("text=내 차례").first()
+  ).toBeVisible({ timeout: 10_000 });
 }
 
 /** 턴 번호를 읽는다 */
@@ -131,24 +159,25 @@ async function getTurnNumber(page: Page): Promise<number> {
   return match ? parseInt(match[1], 10) : 0;
 }
 
-/** 특정 턴까지 대기한다 (AI 턴 포함) */
-async function waitForTurn(
+/** 턴 번호가 특정 값보다 커질 때까지 대기한다 */
+async function waitForTurnGreaterThan(
   page: Page,
-  targetTurn: number,
+  currentTurn: number,
   timeoutMs = 300_000
 ): Promise<void> {
   await page.waitForFunction(
-    (target) => {
-      const el = document.querySelector('[class*="text-text-secondary"]');
-      if (!el) return false;
-      const texts = Array.from(document.querySelectorAll("*"))
-        .map((e) => e.textContent ?? "")
-        .find((t) => t.includes("턴 #"));
-      if (!texts) return false;
-      const match = texts.match(/턴 #(\d+)/);
-      return match ? parseInt(match[1], 10) >= target : false;
+    (minTurn) => {
+      const allElements = document.querySelectorAll("*");
+      for (const el of allElements) {
+        const text = el.textContent ?? "";
+        if (text.includes("턴 #")) {
+          const match = text.match(/턴 #(\d+)/);
+          if (match && parseInt(match[1], 10) > minTurn) return true;
+        }
+      }
+      return false;
     },
-    targetTurn,
+    currentTurn,
     { timeout: timeoutMs }
   );
 }
@@ -285,7 +314,7 @@ test.describe("TC-AB: AI 대전 기본 흐름 (Ollama)", () => {
     expect(afterCount).toBe(beforeCount + 1);
   });
 
-  test("TC-AB-008: AI 차례에 'AI 사고 중...' 표시가 나타난다", async ({ page }) => {
+  test("TC-AB-008: AI 차례에 상대 카드에 '내 차례' 배지가 표시된다", async ({ page }) => {
     await createAIBattle(page, {
       playerCount: 2,
       aiModel: "LLaMA (Ollama)",
@@ -298,10 +327,10 @@ test.describe("TC-AB: AI 대전 기본 흐름 (Ollama)", () => {
     await waitForMyTurn(page, 120_000);
     await page.locator('button:has-text("드로우")').first().click();
 
-    // AI 사고 중 표시 확인 (Ollama CPU: ~25s 응답)
-    await expect(
-      page.locator("text=AI 사고 중...").first()
-    ).toBeVisible({ timeout: 120_000 });
+    // AI 턴 확인: ActionBar 숨김 + 상대 PlayerCard에 "내 차례" 배지 표시
+    // (서버가 AI_THINKING 메시지를 보내지 않으므로 "사고 중..." 오버레이 대신
+    //  상대 카드 "내 차례" 배지 + 액션바 숨김으로 AI 턴 진행을 확인한다)
+    await waitForAITurn(page, 60_000);
   });
 
   test("TC-AB-009: AI 턴이 끝나면 다시 내 차례로 돌아온다", async ({ page }) => {
@@ -318,10 +347,10 @@ test.describe("TC-AB: AI 대전 기본 흐름 (Ollama)", () => {
     await page.locator('button:has-text("드로우")').first().click();
 
     // AI 턴 대기 → 내 차례 복귀 (Ollama CPU: ~25초)
-    await waitForMyTurn(page, 180_000);
+    await waitForMyTurnAfterAction(page, 180_000);
 
-    // 내 차례 뱃지 재확인
-    await expect(page.locator("text=내 차례").first()).toBeVisible();
+    // ActionBar가 다시 보이면 내 차례
+    await expect(page.locator('[aria-label="게임 액션"]')).toBeVisible();
   });
 
   test("TC-AB-010: 최초 등록 30점 안내가 표시된다", async ({ page }) => {
@@ -598,16 +627,20 @@ test.describe("TC-GP: AI 대전 게임 진행 (Ollama)", () => {
     const turn1 = await getTurnNumber(page);
     await page.locator('button:has-text("드로우")').first().click();
 
-    // AI 턴 대기 → 턴 2: 내 차례
-    await waitForMyTurn(page, 180_000);
+    // AI 턴 완료 후 내 차례 복귀 대기
+    // waitForMyTurnAfterAction: "내 차례" 사라짐 확인 → 다시 나타남 확인
+    await waitForMyTurnAfterAction(page, 180_000);
+    // 턴 번호가 확실히 증가했는지 대기 (DOM 업데이트 타이밍 보장)
+    await waitForTurnGreaterThan(page, turn1, 10_000);
     const turn2 = await getTurnNumber(page);
     expect(turn2).toBeGreaterThan(turn1);
 
     // 턴 2: 드로우
     await page.locator('button:has-text("드로우")').first().click();
 
-    // AI 턴 대기 → 턴 3: 내 차례
-    await waitForMyTurn(page, 180_000);
+    // AI 턴 완료 후 내 차례 복귀 대기
+    await waitForMyTurnAfterAction(page, 180_000);
+    await waitForTurnGreaterThan(page, turn2, 10_000);
     const turn3 = await getTurnNumber(page);
     expect(turn3).toBeGreaterThan(turn2);
   });
