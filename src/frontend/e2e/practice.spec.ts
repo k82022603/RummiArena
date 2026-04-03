@@ -78,9 +78,16 @@ test.describe("Stage 2 — 런 만들기", () => {
     await expect(page.locator('span[role="status"]:has-text("클리어 가능!")')).toBeVisible({ timeout: 5000 });
   });
 
-  test("런 그룹 기본 타입이 런이다", async ({ page }) => {
+  test("단일 타일 배치 시 그룹 타입이고 런으로 토글 가능하다", async ({ page }) => {
     await dragTileToBoard(page, "R4a");
-    // 그룹 타입 토글 버튼: aria-label에 "런 → 그룹" 포함
+    // 단일 타일은 classifySetType에서 numbers.size===1 이므로 "group" 기본값
+    // 토글 버튼: 현재 "그룹" 상태 -> "런으로 변경" 가능
+    await expect(
+      page.locator('[aria-label="그룹 타입 그룹 → 런으로 변경"]')
+    ).toBeVisible({ timeout: 5000 });
+
+    // 토글 클릭 후 런으로 변경되는지 확인
+    await page.locator('[aria-label="그룹 타입 그룹 → 런으로 변경"]').click();
     await expect(
       page.locator('[aria-label="그룹 타입 런 → 그룹으로 변경"]')
     ).toBeVisible({ timeout: 5000 });

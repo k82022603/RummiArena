@@ -10,9 +10,15 @@
 
 import { test, expect, type Page } from "@playwright/test";
 import { cleanupViaPage } from "./helpers/room-cleanup";
+import {
+  createRoomAndStart,
+  waitForGameReady,
+  waitForMyTurn,
+  getRackTileCodes,
+} from "./helpers/game-helpers";
 
 // ------------------------------------------------------------------
-// 헬퍼
+// 헬퍼 (이 파일 전용)
 // ------------------------------------------------------------------
 
 /** 로비 페이지로 이동하고 렌더링 완료를 대기한다 */
@@ -22,95 +28,6 @@ async function goToLobby(page: Page): Promise<void> {
   await expect(
     page.locator('main[aria-label="로비 페이지"]')
   ).toBeVisible({ timeout: 15_000 });
-}
-
-/**
- * 방 생성 폼을 작성하고 제출 -> 대기실 -> 게임 시작까지 진행한다.
- * 반환: roomId (URL에서 추출)
- */
-async function createRoomAndStart(
-  page: Page,
-  opts: { playerCount?: 2 | 3 | 4; aiCount?: number; turnTimeout?: number } = {}
-): Promise<string> {
-  const { playerCount = 2, aiCount = 1, turnTimeout = 60 } = opts;
-
-  // 이전 테스트에서 남은 활성 방 정리
-  await page.goto("/lobby");
-  await page.waitForLoadState("domcontentloaded");
-  await cleanupViaPage(page);
-
-  // 방 만들기 페이지로 이동
-  await page.goto("/room/create");
-  await page.waitForLoadState("domcontentloaded");
-  await expect(
-    page.locator('form[aria-label="게임 방 생성 폼"]')
-  ).toBeVisible({ timeout: 10_000 });
-
-  // 플레이어 수 선택
-  await page.getByRole("button", { name: `${playerCount}인` }).click();
-
-  // 턴 타임아웃 선택
-  await page.getByRole("button", { name: `${turnTimeout}초` }).click();
-
-  // AI 슬롯 수 조정 (기본 1개가 이미 있으므로 추가 필요한 만큼)
-  const currentSlots = await page.locator('[aria-label^="AI 슬롯"]').count();
-  for (let i = currentSlots; i < aiCount; i++) {
-    const addBtn = page.getByLabel("AI 플레이어 추가");
-    if (await addBtn.isVisible()) await addBtn.click();
-  }
-  // 초과 슬롯 제거
-  for (let i = currentSlots; i > aiCount; i--) {
-    const removeBtn = page.getByLabel(`AI ${i} 제거`);
-    if (await removeBtn.isVisible()) await removeBtn.click();
-  }
-
-  // 게임 방 만들기 버튼 클릭
-  await page.getByRole("button", { name: "게임 방 만들기" }).click();
-
-  // 대기실로 이동 대기
-  await page.waitForURL(/\/room\//, { timeout: 15_000 });
-  await expect(page.locator('main[aria-label="대기실"]')).toBeVisible({
-    timeout: 15_000,
-  });
-
-  // 게임 시작 버튼 클릭
-  const startBtn = page.getByLabel("게임 시작");
-  await expect(startBtn).toBeVisible({ timeout: 15_000 });
-  await startBtn.click();
-
-  // 게임 화면(/game/{roomId})으로 이동 대기
-  await page.waitForURL(/\/game\//, { timeout: 30_000 });
-
-  const url = page.url();
-  const roomId = url.split("/game/")[1]?.split("?")[0] ?? "";
-  return roomId;
-}
-
-/** 게임 화면이 초기화될 때까지 대기 (WebSocket GAME_STATE 수신 후) */
-async function waitForGameReady(page: Page): Promise<void> {
-  // 내 타일 랙이 보이고 타일이 1개 이상 존재할 때까지 대기
-  await expect(
-    page.locator('section[aria-label="내 타일 랙"]')
-  ).toBeVisible({ timeout: 30_000 });
-
-  // 타일이 로드될 때까지 대기 (GAME_STATE 메시지 수신)
-  await page.waitForFunction(
-    () => {
-      const rack = document.querySelector('[aria-label="내 타일 랙"]');
-      if (!rack) return false;
-      const tiles = rack.querySelectorAll('[aria-label*="타일 (드래그"]');
-      return tiles.length >= 1;
-    },
-    { timeout: 30_000 }
-  );
-}
-
-/** 게임 화면에서 내 차례인지 확인 (최대 90초 대기) */
-async function waitForMyTurn(page: Page, timeoutMs = 90_000): Promise<void> {
-  // "내 차례" 배지가 2곳에 나타날 수 있으므로 .first() 사용
-  await expect(
-    page.locator("text=내 차례").first()
-  ).toBeVisible({ timeout: timeoutMs });
 }
 
 /** 랙에서 특정 타일을 보드로 dnd-kit 드래그한다 */
@@ -140,23 +57,6 @@ async function dragTileToBoard(page: Page, tileCode: string): Promise<void> {
   await page.waitForTimeout(60);
   await page.mouse.up();
   await page.waitForTimeout(150);
-}
-
-/** 랙의 타일 코드 목록을 반환한다 */
-async function getRackTileCodes(page: Page): Promise<string[]> {
-  const tiles = page.locator(
-    'section[aria-label="내 타일 랙"] [aria-label*="타일 (드래그 가능)"]'
-  );
-  const count = await tiles.count();
-  const codes: string[] = [];
-  for (let i = 0; i < count; i++) {
-    const label = await tiles.nth(i).getAttribute("aria-label");
-    if (label) {
-      const code = label.replace(" 타일 (드래그 가능)", "");
-      codes.push(code);
-    }
-  }
-  return codes;
 }
 
 // ==================================================================

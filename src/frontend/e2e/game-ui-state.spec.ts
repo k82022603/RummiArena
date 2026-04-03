@@ -7,87 +7,12 @@
  * 이 테스트는 실제 게임을 생성한 상태에서 수행한다.
  */
 
-import { test, expect, type Page } from "@playwright/test";
-import { cleanupViaPage } from "./helpers/room-cleanup";
-
-// ------------------------------------------------------------------
-// 헬퍼
-// ------------------------------------------------------------------
-
-/**
- * 방 생성 -> 대기실 -> 게임 시작까지 진행.
- * createRoomAndStart 완료 후 page는 /game/{roomId} 에 위치한다.
- * 중복 page.goto 없이 사용할 것.
- */
-async function createRoomAndStart(
-  page: Page,
-  opts: {
-    playerCount?: 2 | 3 | 4;
-    aiCount?: number;
-    turnTimeout?: number;
-  } = {}
-): Promise<void> {
-  const { playerCount = 2, aiCount = 1, turnTimeout = 120 } = opts;
-
-  // 이전 테스트에서 남은 활성 방 정리
-  await page.goto("/lobby");
-  await page.waitForLoadState("domcontentloaded");
-  await cleanupViaPage(page);
-
-  await page.goto("/room/create");
-  await page.waitForLoadState("domcontentloaded");
-  await expect(
-    page.locator('form[aria-label="게임 방 생성 폼"]')
-  ).toBeVisible({ timeout: 10_000 });
-
-  await page.getByRole("button", { name: `${playerCount}인` }).click();
-  await page.getByRole("button", { name: `${turnTimeout}초` }).click();
-
-  const currentSlots = await page.locator('[aria-label^="AI 슬롯"]').count();
-  for (let i = currentSlots; i < aiCount; i++) {
-    const addBtn = page.getByLabel("AI 플레이어 추가");
-    if (await addBtn.isVisible()) await addBtn.click();
-  }
-  for (let i = currentSlots; i > aiCount; i--) {
-    const removeBtn = page.getByLabel(`AI ${i} 제거`);
-    if (await removeBtn.isVisible()) await removeBtn.click();
-  }
-
-  await page.getByRole("button", { name: "게임 방 만들기" }).click();
-  await page.waitForURL(/\/room\//, { timeout: 15_000 });
-  await expect(page.locator('main[aria-label="대기실"]')).toBeVisible({
-    timeout: 15_000,
-  });
-
-  const startBtn = page.getByLabel("게임 시작");
-  await expect(startBtn).toBeVisible({ timeout: 15_000 });
-  await startBtn.click();
-
-  await page.waitForURL(/\/game\//, { timeout: 30_000 });
-}
-
-async function waitForGameReady(page: Page): Promise<void> {
-  await expect(
-    page.locator('section[aria-label="내 타일 랙"]')
-  ).toBeVisible({ timeout: 30_000 });
-
-  await page.waitForFunction(
-    () => {
-      const rack = document.querySelector('[aria-label="내 타일 랙"]');
-      if (!rack) return false;
-      const tiles = rack.querySelectorAll('[aria-label*="타일 (드래그"]');
-      return tiles.length >= 1;
-    },
-    { timeout: 30_000 }
-  );
-}
-
-/** 내 차례를 대기한다. "내 차례" 배지가 2곳에 동시에 뜨므로 .first() 사용 */
-async function waitForMyTurn(page: Page, timeoutMs = 90_000): Promise<void> {
-  await expect(
-    page.locator("text=내 차례").first()
-  ).toBeVisible({ timeout: timeoutMs });
-}
+import { test, expect } from "@playwright/test";
+import {
+  createRoomAndStart,
+  waitForGameReady,
+  waitForMyTurn,
+} from "./helpers/game-helpers";
 
 // ==================================================================
 // C-1. 플레이어 패널

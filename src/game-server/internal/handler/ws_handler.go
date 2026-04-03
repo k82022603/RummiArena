@@ -712,7 +712,7 @@ func (h *WSHandler) broadcastTurnEnd(conn *Connection, state *model.GameStateRed
 	h.hub.ForEachInRoom(conn.roomID, func(c *Connection) {
 		payload := TurnEndPayload{
 			Seat:             conn.seat,
-			TurnNumber:       state.TurnCount - 1,
+			TurnNumber:       state.TurnCount,
 			Action:           action,
 			TableGroups:      tableGroups,
 			TilesPlacedCount: tilesPlaced,
@@ -720,7 +720,7 @@ func (h *WSHandler) broadcastTurnEnd(conn *Connection, state *model.GameStateRed
 			HasInitialMeld:   hasInitialMeld,
 			DrawPileCount:    len(state.DrawPile),
 			NextSeat:         state.CurrentSeat,
-			NextTurnNumber:   state.TurnCount,
+			NextTurnNumber:   state.TurnCount + 1,
 		}
 		// 수신자의 rack 정보를 포함 (자신의 seat에 해당하는 rack만)
 		recvIdx := findPlayerBySeatInState(state.Players, c.seat)
@@ -749,7 +749,7 @@ func (h *WSHandler) broadcastTurnStart(roomID string, state *model.GameStateRedi
 		Type: S2CTurnStart,
 		Payload: TurnStartPayload{
 			Seat:          state.CurrentSeat,
-			TurnNumber:    state.TurnCount,
+			TurnNumber:    state.TurnCount + 1,
 			PlayerType:    playerType,
 			TimeoutSec:    state.TurnTimeoutSec,
 			TurnStartedAt: time.Unix(state.TurnStartAt, 0).UTC().Format(time.RFC3339),
@@ -1239,7 +1239,7 @@ func (h *WSHandler) broadcastTurnEndFromState(roomID string, seat int, state *mo
 	h.hub.ForEachInRoom(roomID, func(c *Connection) {
 		payload := TurnEndPayload{
 			Seat:             seat,
-			TurnNumber:       state.TurnCount - 1,
+			TurnNumber:       state.TurnCount,
 			Action:           action,
 			TableGroups:      tableGroups,
 			TilesPlacedCount: tilesPlaced,
@@ -1247,7 +1247,7 @@ func (h *WSHandler) broadcastTurnEndFromState(roomID string, seat int, state *mo
 			HasInitialMeld:   hasInitialMeld,
 			DrawPileCount:    len(state.DrawPile),
 			NextSeat:         state.CurrentSeat,
-			NextTurnNumber:   state.TurnCount,
+			NextTurnNumber:   state.TurnCount + 1,
 		}
 		if fb != nil {
 			payload.IsFallbackDraw = fb.IsFallbackDraw
