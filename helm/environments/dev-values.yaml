@@ -7,14 +7,14 @@ global:
   environment: dev
   imageTag: dev
   # CI가 정상화되면 registry.gitlab.com/k82022603/rummiarena/... + IfNotPresent 으로 복원
-  imagePullPolicy: Never
+  imagePullPolicy: IfNotPresent
 
 # game-server 이미지 오버라이드 (update-gitops CI job이 tag를 업데이트)
 gameServer:
   replicas: 1
   image:
-    repository: rummiarena/game-server
-    tag: dev
+    repository: registry.gitlab.com/k82022603/rummiarena/game-server
+    tag: "eb325a827d8c67be267ce34a3122afb2698a8daf"
   resources:
     requests:
       cpu: "100m"
@@ -30,8 +30,8 @@ gameServer:
 aiAdapter:
   replicas: 1
   image:
-    repository: rummiarena/ai-adapter
-    tag: dev
+    repository: registry.gitlab.com/k82022603/rummiarena/ai-adapter
+    tag: "eb325a827d8c67be267ce34a3122afb2698a8daf"
   resources:
     requests:
       cpu: "100m"
@@ -44,8 +44,8 @@ aiAdapter:
 frontend:
   replicas: 1
   image:
-    repository: rummiarena/frontend
-    tag: dev
+    repository: registry.gitlab.com/k82022603/rummiarena/frontend
+    tag: "eb325a827d8c67be267ce34a3122afb2698a8daf"
   resources:
     requests:
       cpu: "50m"
@@ -58,8 +58,8 @@ frontend:
 admin:
   replicas: 1
   image:
-    repository: rummiarena/admin
-    tag: dev
+    repository: registry.gitlab.com/k82022603/rummiarena/admin
+    tag: "eb325a827d8c67be267ce34a3122afb2698a8daf"
   resources:
     requests:
       cpu: "50m"
