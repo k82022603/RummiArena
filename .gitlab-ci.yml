@@ -6,6 +6,7 @@
 #   K8s Executor privileged=false → DinD 불가 → Kaniko userspace 빌드로 전환 (2026-04-03)
 #   Kaniko: Docker daemon 없이 Dockerfile 빌드/푸시. 보안 우수, 메모리 효율적.
 #   첫 빌드: 캐시 미스로 ~15-25분 (전 레이어 Registry 푸시). 이후 빌드: ~3-5분 (캐시 히트).
+#   빌드 직렬화: Phase 1(game-server+ai-adapter) → Phase 2(frontend+admin) — Registry push 대역폭 경쟁 해소
 #
 # 교대 실행 전략 (10GB WSL 제약):
 #   CI 모드: PG(Sonar) + SonarQube + GitLab Runner ~ 2.5 GB
@@ -290,7 +291,8 @@ trivy-fs:
   stage: build
   <<: *local-runner
   # 첫 빌드(캐시 미스): ~15-25분 (레이어 빌드+Registry 푸시), 이후: ~3-5분 (캐시 히트)
-  timeout: 30m
+  # Next.js 앱(frontend/admin)은 node_modules 레이어가 대용량이라 Registry push에 시간 소요
+  timeout: 45m
   image:
     name: gcr.io/kaniko-project/executor:v1.23.2-debug
     entrypoint: [""]
@@ -378,6 +380,8 @@ scan-ai-adapter:
 
 build-frontend:
   <<: *build-kaniko
+  # Phase 2: game-server 빌드 완료 후 실행 — Registry push 대역폭 경쟁 해소
+  needs: ["build-game-server"]
   script:
     - /kaniko/executor
         --context "${CI_PROJECT_DIR}/src/frontend"
@@ -404,6 +408,8 @@ scan-frontend:
 
 build-admin:
   <<: *build-kaniko
+  # Phase 2: ai-adapter 빌드 완료 후 실행 — Registry push 대역폭 경쟁 해소
+  needs: ["build-ai-adapter"]
   script:
     - /kaniko/executor
         --context "${CI_PROJECT_DIR}/src/admin"
