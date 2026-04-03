@@ -541,33 +541,80 @@ kubectl get configmap ai-adapter-config -n rummikub -o yaml | grep DAILY_COST
 
 | 시나리오 | 상태 | 소요 시간 | 발견 결함 | 비고 |
 |----------|------|-----------|-----------|------|
-| S1: 1v1 기본 대전 | | | | |
-| S2: 4인 풀 대전 | | | | |
-| S3: INVALID_MOVE 유도 | | | | |
-| S4: 조커 교환 + 재배치 | | | | |
-| S5: 장기전 50턴+ | | | | |
-| S6: 네트워크 장애 복원 | | | | |
-| S7: 교착 상태 | | | | |
+| S1: 1v1 기본 대전 | PARTIAL (11/13) | 8분 | 1건 (m-10 미수정) | AI=Ollama TIMEOUT fallback 다수 |
+| S2: 4인 풀 대전 | 미수행 | - | - | 유료 API 미사용 (Sprint 5 예정) |
+| S3: INVALID_MOVE 유도 | **PASS (17/17)** | 2분 | 0건 | 핵심 C-1 수정 **검증 완료** |
+| S4: 조커 교환 + 재배치 | 미수행 | - | - | 브라우저 수동 필요 |
+| S5: 장기전 50턴+ | 미수행 | - | - | S1에서 20턴 안정성 확인 |
+| S6: 네트워크 장애 복원 | 미수행 | - | - | 브라우저 수동 필요 |
+| S7: 교착 상태 | 미수행 | - | - | S1에서 드로우파일 소진 미도달 |
 
 ### 6.2 버그 수정 효과 검증 결과
 
 | 수정 대상 | 검증 시나리오 | 재현 여부 | 판정 |
 |-----------|-------------|-----------|------|
-| C-1: INVALID_MOVE 후 RESET_TURN 미전송 | S3 | | |
-| C-2: TURN_END에서 myRack 미동기화 | S3, S5 | | |
-| C-3: 클라이언트 세트 유효성 미검증 | S3 | | |
-| C-4: Universe Conservation 미검증 | S4 | | |
-| C-5: V-06 타일 코드 비교 | S4 | | |
-| C-6: PlaceTiles 타일 보전 미검증 | S4 | | |
-| C-7: graceSec vs graceDeadlineMs 불일치 | S6 | | |
-| M-1: JokerReturnedCodes 미정의 | S4 | | |
-| M-4: pendingMyTiles null 방어 | S3 (E3) | | |
-| M-5: 에러 코드 매핑 누락 | S3 | | |
-| M-6: INVALID_MOVE 후 턴 교착 | S3 | | |
+| C-1: INVALID_MOVE 후 RESET_TURN 미전송 | S3 | **미재현** | **FIX CONFIRMED** -- 3회 연속 INVALID_MOVE 후 RESET_TURN 전송, 매회 rack 14장 완벽 복원 |
+| C-2: TURN_END에서 myRack 미동기화 | S1 | **미재현** | **FIX CONFIRMED** -- 모든 Human TURN_END에 myRack 포함 (10/10) |
+| C-3: 클라이언트 세트 유효성 미검증 | S3 | **미재현** | **FIX CONFIRMED** -- ERR_SET_SIZE, ERR_GROUP_NUMBER 정상 반환 |
+| C-4: Universe Conservation 미검증 | S4 | 미수행 | 브라우저 수동 필요 |
+| C-5: V-06 타일 코드 비교 | S4 | 미수행 | 브라우저 수동 필요 |
+| C-6: PlaceTiles 타일 보전 미검증 | S4 | 미수행 | 브라우저 수동 필요 |
+| C-7: graceSec vs graceDeadlineMs 불일치 | S6 | 미수행 | 브라우저 수동 필요 |
+| M-1: JokerReturnedCodes 미정의 | S4 | 미수행 | 브라우저 수동 필요 |
+| M-4: pendingMyTiles null 방어 | S3 (E3) | 미수행 | 프론트엔드 로직 |
+| M-5: 에러 코드 매핑 누락 | S3 | **미재현** | **FIX CONFIRMED** -- 한글 에러 메시지 정상 표시 ("세트는 최소 3장 이상이어야 합니다.") |
+| M-6: INVALID_MOVE 후 턴 교착 | S3 | **미재현** | **FIX CONFIRMED** -- 3회 INVALID 후 정상 DRAW + AI 턴 전환 + 추가 2턴 안정 |
 
 ### 6.3 총평
 
-> (테스트 수행 후 작성)
+> **2026-04-03 자동 API 플레이테스트 결과:**
+>
+> 1. **S3 핵심 검증 완료 (17/17 PASS)**: 24건 버그의 근본 원인이었던 C-1(INVALID_MOVE 후 서버 랙 미복원)이 완벽히 수정되었음을 자동화 테스트로 입증했다. 3종류의 무효 배치(V-02 2장, V-02 1장, V-14 숫자 불일치)를 연속 시도했고, 매회 RESET_TURN 후 14장 rack이 정확히 복원되었다. INVALID_MOVE 후 정상 DRAW, AI 턴 전환, 추가 2턴 진행까지 안정적으로 동작했다.
+>
+> 2. **S1 기본 대전 검증 (11/13 PASS)**: 10턴 Human vs AI 대전이 WebSocket을 통해 정상 교대 진행되었다. 인프라 제약(Ollama qwen2.5:3b가 K8s CPU에서 60초 턴 타임아웃 초과)으로 AI는 TIMEOUT fallback DRAW를 수행했으나, 턴 교대/타이머/타일 분배/WS 메시지 흐름 등 게임 생명주기 자체는 완벽히 동작했다.
+>
+> 3. **발견 사항**:
+>    - m-10 (TURN_END turnNumber=0): 최초 TURN_END의 turnNumber가 0. TurnCount가 0-based인데 broadcastTurnEnd에서 `TurnCount-1`을 사용하여 발생. 기능에 영향 없음(Minor).
+>    - AI 응답 속도: Ollama qwen2.5:3b는 K8s CPU 환경에서 60초 이내 응답 불가. 유료 API(OpenAI, Claude)는 Round 2에서 정상 응답 확인 완료(별도 문서).
+>
+> 4. **미수행 시나리오**: S2(4인 유료 API), S4(조커 교환), S5(장기전), S6(네트워크 장애), S7(교착)은 브라우저 수동 테스트 또는 유료 API가 필요하여 이번 자동화 범위에서 제외했다.
+
+### 6.4 자동 테스트 실행 환경
+
+| 항목 | 내용 |
+|------|------|
+| 실행 도구 | `scripts/playtest-s1-s3.py` (Python3 + websockets + REST) |
+| 실행 시각 | 2026-04-03 14:51 ~ 15:03 KST |
+| 서버 환경 | K8s rummikub namespace, 7 pods Running |
+| AI 모델 | Ollama qwen2.5:3b (무료, K8s CPU) |
+| 턴 타임아웃 | 60초 |
+| 테스트 방식 | REST(방 생성/상태 조회) + WebSocket(AUTH/DRAW_TILE/CONFIRM_TURN/RESET_TURN) |
+| S1 게임 ID | `56d725a7-2f53-4cb0-ad12-ea45e5c29849` |
+| S3 게임 ID | `8652f3c4-76c9-48d1-b123-e696b620e094` |
+
+### 6.5 S3 상세 검증 로그
+
+```
+INVALID_MOVE #1: CONFIRM_TURN with 2 tiles [Y1b, K4b]
+  -> Server: 422 ERR_SET_SIZE "세트는 최소 3장 이상이어야 합니다."
+  -> RESET_TURN -> Rack: 14 tiles, match=True
+
+INVALID_MOVE #2: CONFIRM_TURN with 3 random tiles [Y1b, R9a, JK2]
+  -> Server: 422 ERR_GROUP_NUMBER "그룹의 모든 타일은 같은 숫자여야 합니다."
+  -> RESET_TURN -> Rack: 14 tiles, match=True
+
+INVALID_MOVE #3: CONFIRM_TURN with 1 tile [Y1b]
+  -> Server: 422 ERR_SET_SIZE "세트는 최소 3장 이상이어야 합니다."
+  -> RESET_TURN -> Rack: 14 tiles, match=True
+
+After 3x INVALID_MOVE:
+  -> Game status: PLAYING, rack: 14 (cumulative intact)
+  -> DRAW_TILE: drew Y4b, rack: 15
+  -> AI turn completed (TIMEOUT), AI rack: 15
+  -> Extra turn 1: rack=15, drew R13b
+  -> Extra turn 2: rack=16, drew R13a
+  -> All stable
+```
 
 ---
 
@@ -601,4 +648,4 @@ kubectl exec -it deployment/redis -n rummikub -- redis-cli get "game:{gameId}:st
 |------|------|-----------|------|
 | 2026-03-30 16:22 | `23-user-playtest-bug-report-2026-03-30.md` | 10건 | 최초 수동 테스트 |
 | 2026-04-02 오전 | `27-game-bug-analysis-and-fix-plan.md` | 24건 (5건+분석) | 근본 원인 발견 |
-| **2026-04-03** | **본 문서** | **(수행 후 기입)** | **수정 효과 검증** |
+| **2026-04-03 14:51** | **본 문서 Section 6** | **1건 (m-10 미수정)** | **S1+S3 자동 API 검증, C-1/C-2/C-3/M-5/M-6 수정 확인** |

@@ -2,11 +2,15 @@
 # RummiArena GitLab CI/CD 파이프라인
 # DevSecOps: lint → test → quality → build → update-gitops
 #
-# 빌드 전략: Kaniko (DinD 대체)
-#   K8s Executor privileged=false → DinD 불가 → Kaniko userspace 빌드로 전환 (2026-04-03)
+# 파이프라인 현황: **17/17 ALL GREEN** (Pipeline #96, 2026-04-03)
+#   lint(4) + test(2) + quality(2) + build(4 Kaniko + 4 Trivy scan) + update-gitops(1)
+#
+# 빌드 전략: Kaniko (DinD 대체, 2026-04-03~)
+#   K8s Executor privileged=false → DinD 불가 → Kaniko userspace 빌드로 전환
 #   Kaniko: Docker daemon 없이 Dockerfile 빌드/푸시. 보안 우수, 메모리 효율적.
 #   첫 빌드: 캐시 미스로 ~15-25분 (전 레이어 Registry 푸시). 이후 빌드: ~3-5분 (캐시 히트).
 #   빌드 직렬화: Phase 1(game-server+ai-adapter) → Phase 2(frontend+admin) — Registry push 대역폭 경쟁 해소
+#   해결 이력: Pipeline #94 DinD→Kaniko 전환 → #95 timeout 30m → #96 timeout 45m + 직렬화 → 17/17 GREEN
 #
 # 교대 실행 전략 (10GB WSL 제약):
 #   CI 모드: PG(Sonar) + SonarQube + GitLab Runner ~ 2.5 GB

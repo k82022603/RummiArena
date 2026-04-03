@@ -67,7 +67,7 @@ def create_room(base_url, token, model_config):
     body = {
         "name": room_name,
         "playerCount": 2,
-        "turnTimeoutSec": 180,  # 3분 (DeepSeek Reasoner 충분한 여유)
+        "turnTimeoutSec": 120,  # 2분 (서버 max=120, DeepSeek adapter timeout=150s 별도)
         "displayName": "AutoDraw-Host",
         "aiPlayers": [
             {
@@ -255,7 +255,7 @@ async def run_battle(base_url, ws_url, model_config):
                                 print(
                                     f" PLACE ({tiles_placed} tiles, cumulative={stats['ai_tiles_placed']}) [{resp_time}s]"
                                 )
-                            elif action == "DRAW":
+                            elif action in ("DRAW", "DRAW_TILE", "TIMEOUT"):
                                 stats["ai_draw"] += 1
                                 if is_fallback:
                                     stats["ai_fallback"] += 1

@@ -5,7 +5,7 @@
 RummiArena의 로컬 개발/테스트 인프라 전체 구성을 정리한다.
 개별 도구의 설치·설정은 [도구 매뉴얼](../00-tools/00-index.md)을 참조하고, 이 문서는 **전체 흐름과 통합 지점**에 집중한다.
 
-> **현재 상태 (Sprint 4 기준)**: 모든 서비스가 K8s(rummikub namespace)에서 Running. Docker Compose는 더 이상 사용하지 않음.
+> **현재 상태 (Sprint 5 기준)**: 모든 서비스가 K8s(rummikub namespace)에서 Running. CI/CD 파이프라인 17/17 ALL GREEN (Pipeline #96, 2026-04-03). Docker Compose는 더 이상 사용하지 않음.
 
 ## 2. 인프라 스택 구조
 
@@ -21,7 +21,7 @@ graph TB
     K8s --> NS3["sonarqube\n(코드 품질)"]
     WSL --> Claude["Claude Code\nMCP 서버 4개"]
     Claude --> MCP["github, filesystem\npostgres, kubernetes"]
-    WSL --> GitLab["GitLab Runner\n(Docker Executor)"]
+    WSL --> GitLab["GitLab Runner\n(K8s Executor)"]
 ```
 
 ## 3. 리소스 할당 전략
@@ -49,7 +49,7 @@ sparseVhd=true                # VHD 디스크 자동 축소
 
 > 상세: [23-wslconfig.md](../00-tools/23-wslconfig.md)
 
-### 3.3 서비스별 메모리 실측 (Sprint 4 기준)
+### 3.3 서비스별 메모리 실측 (Sprint 5 기준)
 
 | 서비스 | 메모리 | 비고 |
 |--------|--------|------|
@@ -79,20 +79,37 @@ sparseVhd=true                # VHD 디스크 자동 축소
 
 > SonarQube와 Ollama 동시 실행 시 ~8GB → .wslconfig memory 상향 필요
 
-## 4. Kubernetes 구성 현황 (Sprint 4)
+## 4. Kubernetes 구성 현황 (Sprint 5)
 
 ### 4.1 네임스페이스 구조
 
 ```mermaid
 graph LR
     Cluster["docker-desktop\n(K8s cluster)"]
-    Cluster --> NS1["rummikub\n앱 서비스"]
+    Cluster --> NS1["rummikub\n앱 서비스 7개"]
     Cluster --> NS2["argocd\nArgoCD (GitOps)"]
+    Cluster --> NS5["gitlab-runner\nCI Runner (K8s Executor)"]
     Cluster --> NS3["sonarqube\n코드 품질"]
     Cluster --> NS4["istio-system\nIstio (Phase 5 예정)"]
 ```
 
-### 4.2 rummikub namespace 현재 Pod 목록
+### 4.2 gitlab-runner namespace
+
+```
+NAME                             READY   STATUS    AGE
+gitlab-runner-xxxxx              1/1     Running   -
+```
+
+| 항목 | 값 |
+|------|-----|
+| Runner ID | 52262488 |
+| Executor | kubernetes |
+| 버전 | 18.9.0 |
+| 태그 | `k8s`, `rummiarena` |
+| 빌드 도구 | **Kaniko v1.23.2** (DinD 대체) |
+| 파이프라인 | **17/17 ALL GREEN** (Pipeline #96, 2026-04-03) |
+
+### 4.3 rummikub namespace 현재 Pod 목록
 
 ```
 NAME                           READY   STATUS    AGE
@@ -111,15 +128,18 @@ kubectl get pods -n rummikub
 kubectl get svc -n rummikub
 ```
 
-### 4.3 배포 방식
+### 4.4 배포 방식
 
 ```mermaid
 flowchart LR
-    GH["GitHub\n(소스)"] --> CI["GitLab CI\n(빌드/테스트/스캔)"] --> GitOps["GitOps Repo\n(Helm values)"]
+    GH["GitHub\n(소스)"] --> GL["GitLab\n(CI 미러)"]
+    GL --> CI["GitLab CI\n17 Jobs (Kaniko 빌드)"]
+    CI --> Registry["GitLab\nContainer Registry"]
+    CI --> GitOps["GitOps Repo\n(Helm values\n이미지 태그 업데이트)"]
     GitOps --> ArgoCD["ArgoCD\n(감시)"] --> K8s["K8s\n(rummikub namespace)"]
 ```
 
-### 4.4 로컬 빌드 & 배포 (개발 시)
+### 4.5 로컬 빌드 & 배포 (개발 시)
 
 ```bash
 # Frontend 재빌드 (NEXT_PUBLIC_WS_URL 필수 build-arg)
@@ -224,6 +244,8 @@ flowchart TB
 | [03-helm.md](../00-tools/03-helm.md) | Helm Chart 관리 |
 | [05-gitlab-ci.md](../00-tools/05-gitlab-ci.md) | CI 파이프라인 |
 | [06-argocd.md](../00-tools/06-argocd.md) | GitOps CD |
+| [13-cicd-readiness-checklist.md](../03-development/13-cicd-readiness-checklist.md) | CI/CD 준비 체크리스트 (17/17 GREEN) |
+| [14-ci-operations-manual.md](../03-development/14-ci-operations-manual.md) | CI/CD 운영 매뉴얼 |
 | [02-gateway-architecture.md](./02-gateway-architecture.md) | API 게이트웨이 (Traefik) 계획 |
 | [01-architecture.md](../02-design/01-architecture.md) | 시스템 아키텍처 |
 
@@ -231,4 +253,5 @@ flowchart TB
 > | 버전 | 날짜 | 작성자 | 내용 |
 > |------|------|--------|------|
 > | 1.0 | 2026-03-13 | Claude | 초안 (Docker Compose + K8s 계획) |
-> | 2.0 | 2026-03-23 | Claude | Sprint 4 현행화 — 모든 서비스 K8s 이전 완료, NodePort 포트 매핑, 빌드 주의사항 추가 |
+> | 2.0 | 2026-03-23 | Claude | Sprint 4 현행화 -- 모든 서비스 K8s 이전 완료, NodePort 포트 매핑, 빌드 주의사항 추가 |
+> | 3.0 | 2026-04-03 | DevOps Agent | Sprint 5 현행화 -- Pipeline #96 17/17 ALL GREEN, gitlab-runner NS 추가, K8s Executor/Kaniko 빌드 전략, CI/CD+GitOps 배포 흐름 갱신 |

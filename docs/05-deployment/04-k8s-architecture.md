@@ -1,6 +1,6 @@
 # K8s 인프라 구성도 및 배포 프로세스
 
-> Phase 1 (Sprint 0) 완료 기준 문서
+> Phase 1 (Sprint 0) 초안 | 최종 업데이트: 2026-04-03 (Pipeline #96 17/17 ALL GREEN, Kaniko 빌드 반영)
 > 작성일: 2026-03-13 | 작성자: DevOps Agent
 
 ---
@@ -130,13 +130,10 @@ flowchart LR
     FE -->|"WebSocket\ngame-server:8080/ws"| GS
     GS -->|"GORM\npostgres:5432"| PG
     GS -->|"go-redis\nredis:6379"| Redis
-    GS -.->|"향후 연동\nai-adapter:8081/move"| AI
-
-    style AI stroke-dasharray: 5 5
+    GS -->|"REST\nai-adapter:8081/api/move"| AI
 ```
 
 > Redis와 PostgreSQL은 ClusterIP 또는 NodePort로 노출되나, 실제 앱 통신은 `svc.cluster.local` DNS를 통한 클러스터 내부 통신만 사용한다.
-> ai-adapter 연동은 Sprint 1에서 구현 예정이다.
 
 ---
 
@@ -162,16 +159,39 @@ flowchart TB
 
 ## 4. 배포 프로세스
 
-### 4.1 GitOps 배포 흐름 (자동)
+### 4.1 CI/CD + GitOps 전체 배포 흐름
 
 ```mermaid
 flowchart LR
     Dev["개발자\n(애벌레)"]
     GitHub["GitHub\nmain 브랜치"]
+    GitLab["GitLab\n(CI 미러)"]
+    CI["GitLab CI\n17 Jobs"]
+    Registry["GitLab\nContainer Registry"]
+    GitOps["GitHub\ndev-values.yaml\n(이미지 태그)"]
     ArgoCD["ArgoCD\n(argocd ns)"]
-    K8s["K8s rummikub ns\n(5개 Deployment)"]
+    K8s["K8s rummikub ns\n(7개 Deployment)"]
 
     Dev -->|"git push"| GitHub
+    Dev -->|"git push gitlab"| GitLab
+    GitLab -->|"lint → test → quality\n→ build (Kaniko) → scan"| CI
+    CI -->|"이미지 push"| Registry
+    CI -->|"update-gitops\nsed tag 업데이트"| GitOps
+    GitOps -->|"Poll (3분 간격)\nhelm/ 변경 감지"| ArgoCD
+    ArgoCD -->|"helm template 적용\nauto sync + selfHeal"| K8s
+```
+
+> **Pipeline #96** (2026-04-03): 17/17 ALL GREEN -- lint(4) + test(2) + quality(2) + build(4 Kaniko) + scan(4 Trivy) + update-gitops(1)
+> Pipeline URL: https://gitlab.com/k82022603/RummiArena/-/pipelines/2427283301
+
+### 4.2 GitOps 배포 흐름 (ArgoCD 자동 동기화)
+
+```mermaid
+flowchart LR
+    GitHub["GitHub\nmain 브랜치"]
+    ArgoCD["ArgoCD\n(argocd ns)"]
+    K8s["K8s rummikub ns\n(7개 Deployment)"]
+
     GitHub -->|"Poll (3분 간격)\nhelm/ 변경 감지"| ArgoCD
     ArgoCD -->|"helm template 적용\nauto sync + selfHeal"| K8s
 
@@ -179,7 +199,7 @@ flowchart LR
     ArgoCD --- note1
 ```
 
-### 4.2 수동 배포 순서 (deploy.sh)
+### 4.3 수동 배포 순서 (deploy.sh)
 
 의존성 순서에 따라 하위 인프라부터 배포한다.
 
@@ -206,7 +226,7 @@ flowchart TB
     Start --> Step1 --> Step1_Wait --> Step2 --> Step2_Wait --> Step3 --> Step4 --> Step5 --> Health --> End
 ```
 
-### 4.3 주요 배포 명령어
+### 4.4 주요 배포 명령어
 
 ```bash
 # 전체 설치 (최초)
@@ -346,13 +366,54 @@ Traefik IngressRoute는 `argocd/ingress-route.yaml`로 별도 관리한다.
 
 ---
 
-## 10. 참고 문서
+## 10. CI/CD 파이프라인 현황 (2026-04-03)
+
+### 10.1 빌드 전략: Kaniko (DinD 대체)
+
+K8s Executor에서 `privileged=false` 보안 정책으로 DinD가 불가하므로, **Kaniko v1.23.2**로 전환하여 userspace 빌드를 수행한다.
+
+| 항목 | DinD (이전) | Kaniko (현재) |
+|------|-----------|-------------|
+| Docker daemon | 필요 (privileged 필수) | 불필요 (userspace 빌드) |
+| 보안 | privileged container | rootless, 권한 상승 불필요 |
+| 메모리 | ~512MB+ | ~300MB |
+| 캐시 | `--cache-from` | `--cache-repo` (Registry 레이어 캐시) |
+| 인증 | `docker login` | `/kaniko/.docker/config.json` |
+
+### 10.2 빌드 직렬화 (Phase 1/2)
+
+4개 빌드를 2단계로 나누어 Registry push 대역폭 경쟁을 해소한다.
+
+| Phase | 서비스 | needs 의존 | 소요 시간 (첫 빌드) |
+|-------|--------|-----------|-------------------|
+| 1 | game-server, ai-adapter | (없음, 병렬) | ~10.6m / ~4.2m |
+| 2 | frontend, admin | build-game-server / build-ai-adapter | ~10.6m / ~6.1m |
+
+> 첫 빌드 후 캐시가 Registry에 저장되므로, 이후 빌드는 ~3-5분 내 완료 예상.
+
+### 10.3 Pipeline #96 결과 (17/17 ALL GREEN)
+
+| 스테이지 | Job 수 | 소요 시간 |
+|---------|--------|-----------|
+| lint | 4/4 PASS | ~54s 각 |
+| test | 2/2 PASS | ~53s 각 |
+| quality | 2/2 PASS | 2.2m + 0.3m |
+| build (Kaniko) | 4/4 PASS | 4.2m ~ 10.6m |
+| scan (Trivy) | 4/4 PASS | ~20s 각 |
+| update-gitops | 1/1 PASS | 0.4m |
+
+---
+
+## 11. 참고 문서
 
 | 문서 | 경로 |
 |------|------|
 | 로컬 인프라 가이드 | `docs/05-deployment/01-local-infra-guide.md` |
 | API 게이트웨이 (Traefik) | `docs/05-deployment/02-gateway-architecture.md` |
 | 인프라 설치 체크리스트 | `docs/05-deployment/03-infra-setup-checklist.md` |
+| CI/CD 준비 체크리스트 | `docs/03-development/13-cicd-readiness-checklist.md` |
+| CI/CD 운영 매뉴얼 | `docs/03-development/14-ci-operations-manual.md` |
+| DevSecOps CI/CD 구조 | `docs/03-development/11-devsecops-cicd-guide.md` |
 | 시스템 아키텍처 | `docs/02-design/01-architecture.md` |
 | 도구 체인 | `docs/01-planning/04-tool-chain.md` |
 | Helm Umbrella Chart | `helm/Chart.yaml` |
@@ -365,3 +426,4 @@ Traefik IngressRoute는 `argocd/ingress-route.yaml`로 별도 관리한다.
 > | 버전 | 날짜 | 작성자 | 내용 |
 > |------|------|--------|------|
 > | 1.0 | 2026-03-13 | DevOps Agent | 초안 작성 (K8s 구성도, Helm 구조, 배포 프로세스, 포트 매핑, ResourceQuota) |
+> | 2.0 | 2026-04-03 | DevOps Agent | Pipeline #96 17/17 ALL GREEN 반영 -- CI/CD+GitOps 전체 배포 흐름 추가, Kaniko 빌드 전략/직렬화, ai-adapter 연동 완료 반영 |

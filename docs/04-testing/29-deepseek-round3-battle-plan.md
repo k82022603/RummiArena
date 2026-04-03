@@ -306,3 +306,157 @@ Round 3 결과는 다음 문서에 추가한다.
 | `docs/04-testing/21-ai-vs-ai-tournament-test-plan.md` | AI vs AI 토너먼트 전체 계획 |
 | `src/ai-adapter/src/adapter/deepseek.adapter.ts` | DeepSeek 어댑터 구현 |
 | `src/ai-adapter/src/adapter/deepseek.adapter.spec.ts` | DeepSeek 어댑터 테스트 (38건) |
+
+---
+
+## 9. Round 3 실행 결과 (2026-04-03 14:14 ~ 14:55)
+
+### 9.1 결과 요약
+
+| 항목 | Round 2 | Round 3 | Delta | 비고 |
+|------|---------|---------|-------|------|
+| **Place Rate** | 5.0% | **12.5%** | **+7.5%p** | C등급 (부분 개선) |
+| Place Count | 2 | **5** | **+3** | 2.5배 증가 |
+| Tiles Placed | 14 | **22** | **+8** | 1.57배 증가 |
+| Draw Count | 37 | 33 | -4 | DRAW_TILE + TIMEOUT 합산 |
+| Timeout Count | 0 | 2 | +2 | context deadline exceeded |
+| Fallback Count | 0 | **0** | 0 | 폴백 없음 (개선 유지) |
+| Total Turns | 80 | 80 | 0 | 동일 조건 |
+| Elapsed Time | 1,995s | **2,450s** | +455s | 응답 시간 증가 |
+| Avg Response Time | 미측정 | **62.8s** | - | min 1.9s ~ max 120.2s |
+| Invalid Place | 미측정 | **4** | - | 게임 엔진이 거부 |
+| API Timeout | 0 | **11** | - | game-server -> ai-adapter deadline |
+| Total API Cost | ~$0.04 | **$0.066** | +$0.026 | 재시도 포함 |
+| Input Tokens | - | 42,138 | - | avg 1,003/call |
+| Output Tokens | - | 215,572 | - | avg 5,132/call |
+| Cost/Turn | $0.001 | **$0.0017** | +$0.0007 | 재시도 비용 포함 |
+
+### 9.2 Place Details
+
+| AI Turn | Turn# | Tiles | Cumulative | Response Time | 의미 |
+|---------|-------|-------|------------|---------------|------|
+| 12 | T24 | **9** | 9 | 83.3s | 초기 멜드 (30+점) |
+| 17 | T34 | 1 | 10 | 10.4s | 단일 타일 추가 |
+| 20 | T40 | 3 | 13 | 85.6s | 3타일 런/그룹 |
+| 22 | T44 | **6** | 19 | 97.9s | 6타일 대량 배치 |
+| 30 | T60 | 3 | 22 | 60.9s | 3타일 추가 |
+
+### 9.3 AI Adapter 내부 분석
+
+```mermaid
+flowchart TB
+    subgraph ADAPTER["AI Adapter 처리 (39 AI 턴)"]
+        A1["retryCount=0: 28건\n(첫 시도 성공)"]
+        A2["retryCount=1: 9건\n(1회 재시도)"]
+        A3["retryCount=2: 2건\n(2회 재시도)"]
+    end
+
+    subgraph ENGINE["Game Engine 검증"]
+        E1["PLACE 시도: 11건\n(adapter가 place 응답)"]
+        E2["유효: 5건 (45%)\n-> 클라이언트에 PLACE_TILES 전달"]
+        E3["무효: 4건\n-> fallback to draw"]
+        E4["타임아웃: 2건\n-> 응답 초과"]
+    end
+
+    subgraph SERVER["Game Server 에러 로그"]
+        S1["place invalid: 4건\n(무효 타일 조합)"]
+        S2["deadline exceeded: 11건\n(adapter 응답 지연)"]
+        S3["NOT_YOUR_TURN: 2건\n(턴 넘어간 후 응답 도착)"]
+    end
+
+    A1 --> E1
+    A2 --> E1
+    A3 --> E1
+    E1 --> E2
+    E1 --> E3
+    E1 --> E4
+    E3 --> S1
+    E4 --> S2
+    S2 --> S3
+
+    style E2 fill:#2ecc71,color:#fff,stroke:#333
+    style E3 fill:#e74c3c,color:#fff,stroke:#333
+    style E4 fill:#f39c12,color:#000,stroke:#333
+```
+
+**핵심 발견**:
+- DeepSeek Reasoner는 PLACE를 11회 시도했으나, 게임 엔진이 4회 거부 (무효 타일 조합)
+- 엔진 검증 통과율: 5/11 = **45.5%** (GPT-5-mini는 ~80% 추정)
+- 11건의 `context deadline exceeded`는 DeepSeek의 긴 추론 시간(avg 62.8s, max 120s)이 game-server의 120s 타임아웃을 초과한 것
+
+### 9.4 응답 시간 분포
+
+| 구간 | 건수 | 비율 | 설명 |
+|------|------|------|------|
+| < 10s | 4 | 10.3% | 빠른 DRAW 결정 |
+| 10~30s | 3 | 7.7% | 단순 배치 |
+| 30~60s | 8 | 20.5% | 일반 추론 |
+| 60~90s | 13 | 33.3% | 복잡한 타일 조합 탐색 |
+| 90~120s | 8 | 20.5% | 경계 시간 |
+| 120s+ | 3 | 7.7% | 타임아웃 (TIMEOUT/deadline) |
+
+- **Adapter 관점**: avg=158s, median=134s, p90=170s (재시도 포함 누적 시간)
+- **Client 관점**: avg=62.8s, median=~63s (단일 응답 기준)
+
+### 9.5 등급 판정
+
+| 기준 | 결과 | 판정 |
+|------|------|------|
+| Place Rate 12.5% | 10~14% 구간 | **C등급 (부분 개선)** |
+| Place Count 5 (vs 2) | 2.5배 증가 | 유의미한 개선 |
+| Tiles Placed 22 (vs 14) | 1.57배 증가 | 개선 |
+| Fallback 0 | 동일 | 안정성 유지 |
+| Invalid Place 4/11 | 55% 무효율 | **주요 병목** |
+
+> **판정: C등급 (부분 개선)** -- Place Rate가 5% -> 12.5%로 2.5배 증가했으나 목표 15%에는 미달. 프롬프트 최적화와 버그 수정의 효과가 확인되었으나, 무효 배치 비율(55%)이 주요 병목이다.
+
+### 9.6 가성비 분석 (Round 3 기준)
+
+| 모델 | Cost/Turn | Place Rate | Place/$ (40턴 기준) |
+|------|-----------|-----------|---------------------|
+| gpt-5-mini (R2) | $0.025 | 28% | 11.2 |
+| Claude Sonnet 4 (R2) | $0.074 | 23% | 3.1 |
+| **DeepSeek Reasoner (R3)** | **$0.0017** | **12.5%** | **73.5** |
+| DeepSeek Reasoner (R2) | $0.001 | 5% | 50.0 |
+
+> **DeepSeek의 Place/$는 GPT의 6.6배, Claude의 23.7배**. 비용 효율은 압도적이나, 절대 성능(Place Rate)은 여전히 GPT의 45%, Claude의 54% 수준.
+
+### 9.7 근본 원인 분석
+
+```mermaid
+flowchart TB
+    ROOT["DeepSeek R3\nPlace Rate 12.5%\n(목표 15% 미달)"]
+
+    ROOT --> C1["원인 1: 초기 멜드 지연\n(T24에 첫 PLACE)"]
+    ROOT --> C2["원인 2: 무효 배치 55%\n(11 시도 중 4건 무효)"]
+    ROOT --> C3["원인 3: 보수적 전략\n(draw 선호 경향)"]
+
+    C1 --> D1["DeepSeek의 30점 조합 탐색\n시간이 오래 걸림\n(11턴 소요 vs GPT ~5턴)"]
+    C2 --> D2["타일 코드 해석 오류\n(R7a vs R7b 구분 실패 추정)"]
+    C2 --> D3["테이블 상태 이해 부족\n(기존 세트 조작 오류)"]
+    C3 --> D4["reasoning_content에서\n30점 미달 판단 -> draw 선택\n(실제로는 조합 가능한 경우)"]
+
+    style ROOT fill:#e74c3c,color:#fff,stroke:#333
+    style C2 fill:#f39c12,color:#000,stroke:#333
+    style D2 fill:#f39c12,color:#000,stroke:#333
+```
+
+### 9.8 후속 조치 (C등급 기준)
+
+| 우선순위 | 개선 항목 | 예상 효과 | 구현 난이도 |
+|---------|----------|----------|------------|
+| **P1** | Few-shot 예시 2~3개 추가 | 무효 배치 비율 55% -> 30% | 중 |
+| **P1** | 타일 코드 명시적 설명 보강 | 타일 해석 오류 감소 | 낮음 |
+| P2 | 중국어 프롬프트 실험 | DeepSeek 중국어 강점 활용 | 중 |
+| P3 | 초기 멜드 전용 프롬프트 분리 | 첫 PLACE까지 턴 수 감소 | 높음 |
+| P3 | game-server 타임아웃 180s 확대 | deadline exceeded 11건 제거 | 낮음 |
+
+---
+
+## 10. 스크립트 버그 수정
+
+Round 3 실행 중 발견된 스크립트 버그: `ai-battle-deepseek-r3.py`에서 `TURN_END`의 action 필드를 `"DRAW"`로 비교하고 있었으나, game-server는 `"DRAW_TILE"`을 전송한다. 이로 인해 `ai_draw` 카운터가 항상 0이 되어 Place Rate가 100%로 잘못 계산되었다.
+
+**수정 내용**: `action == "DRAW"` -> `action in ("DRAW", "DRAW_TILE", "TIMEOUT")`
+
+본 문서의 결과는 로그 분석을 통해 정확한 수치로 보정하였다.

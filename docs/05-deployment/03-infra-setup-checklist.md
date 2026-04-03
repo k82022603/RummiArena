@@ -2,7 +2,7 @@
 
 > Phase 1 (Sprint 0) — Traefik + ArgoCD + GitLab Runner 설치 준비
 > 작성일: 2026-03-12 | 작성자: DevOps Agent
-> **현행화: 2026-03-23 (Sprint 4 기준) — §1.2~1.6 실제 상태 반영**
+> **현행화: 2026-04-03 (Sprint 5 기준) — Pipeline #96 17/17 ALL GREEN, Kaniko 빌드, K8s Executor 반영**
 
 ---
 
@@ -10,7 +10,7 @@
 
 ### 1.1 점검 기준일
 
-~~2026-03-12 기준 상태 (초안 추정)~~ → **2026-03-23 Sprint 4 기준 실측 상태로 갱신**
+~~2026-03-12 기준 상태 (초안 추정)~~ → **2026-04-03 Sprint 5 기준 실측 상태로 갱신 (Pipeline #96 17/17 ALL GREEN)**
 
 ### 1.2 Docker Desktop / Kubernetes
 
@@ -44,7 +44,7 @@
 | `helm/` 디렉토리 | ✅ 존재 | charts/ 7개 + traefik/ |
 | Traefik 릴리스 | ✅ **Running** (`traefik` namespace) | Sprint 5+ North-South 활성화 예정 |
 | ArgoCD 릴리스 | ✅ Running (`argocd` namespace) | repo-server 가끔 Error — 재시작으로 복구 |
-| GitLab Runner | ✅ 등록됨 | Docker Executor |
+| GitLab Runner | ✅ **online** (ID: 52262488) | **K8s Executor** (gitlab-runner NS, v18.9.0) |
 | `rummikub` namespace | ✅ Active | 앱 서비스 7개 |
 | `argocd` namespace | ✅ Active | GitOps CD |
 | `traefik` namespace | ✅ Active | Traefik v3 Pod Running |
@@ -58,7 +58,7 @@
 |------|------|
 | `helm/` 디렉토리 | ✅ **존재** — charts/ 7개 (admin, ai-adapter, frontend, game-server, ollama, postgres, redis) + traefik/ |
 | `argocd/` 디렉토리 | ✅ **존재** — application.yaml, ingress-route.yaml |
-| `.gitlab-ci.yml` | ✅ **존재** — 13개 job ALL GREEN |
+| `.gitlab-ci.yml` | ✅ **존재** — **17개 job ALL GREEN** (Pipeline #96, 2026-04-03) |
 | `src/` 서비스 코드 | ✅ **존재** — frontend, game-server, ai-adapter, admin |
 
 ### 1.6 설치 완료 체크리스트 (Sprint 4 기준)
@@ -136,7 +136,7 @@ flowchart TB
 | K8s 컴포넌트 | — | ~500MB | — | — | API server, etcd, scheduler |
 | **Traefik** | 64Mi | 128Mi | 100m | 500m | Helm values로 제한 |
 | **ArgoCD** (합산) | 256Mi | 512Mi | 100m | 500m | server + repo-server + app-controller |
-| **GitLab Runner** | 256Mi | 512Mi | 200m | 1000m | Docker Executor |
+| **GitLab Runner** | 256Mi | 512Mi | 200m | 1000m | K8s Executor (gitlab-runner NS) |
 | **SonarQube** | 512Mi | 2Gi | 200m | 1000m | CI 모드에서만 실행 |
 | App 서비스 x3 | 128Mi x3 | 512Mi x3 | 100m x3 | 500m x3 | Sprint 1~ |
 
@@ -585,240 +585,121 @@ kubectl get application -n argocd
 
 ---
 
-## 6. GitLab Runner 등록 체크리스트
+## 6. GitLab Runner 및 CI/CD 파이프라인 (2026-04-03 현행화)
 
-### 6.1 전략 결정 사항
+### 6.1 현재 상태 (Pipeline #96 17/17 ALL GREEN)
 
-GitLab Runner는 **CI 모드에서만 실행** (교대 실행 전략). Dev 모드나 Deploy 테스트 모드와 동시 실행하지 않는다.
+| 항목 | 값 |
+|------|-----|
+| Runner ID | 52262488 |
+| Runner 이름 | rummiarena-k8s-runner |
+| Executor | **kubernetes** (gitlab-runner namespace) |
+| Runner 버전 | 18.9.0 |
+| 태그 | `k8s`, `rummiarena` |
+| 상태 | **online** |
+| 빌드 도구 | **Kaniko v1.23.2** (DinD 대체, 2026-04-03~) |
+| 파이프라인 | **17/17 ALL GREEN** (Pipeline #96, 2026-04-03) |
+| Pipeline URL | https://gitlab.com/k82022603/RummiArena/-/pipelines/2427283301 |
 
-| 항목 | 결정 |
-|------|------|
-| Executor | Docker Executor (Docker-in-Docker) |
-| 설치 방식 | Docker Compose (K8s 외부) |
-| 실행 모드 | CI 모드에서만 — PG + GitLab Runner + SonarQube |
-| CI 소스 | GitHub RummiArena 레포 → GitLab 미러 또는 GitLab 전용 레포 |
+> **DinD -> Kaniko 전환**: K8s Executor는 `privileged=false` 보안 정책으로 DinD가 불가하다. Kaniko는 Docker daemon 없이 userspace에서 이미지를 빌드하므로 privileged 권한이 불필요하다. 상세: [14-ci-operations-manual.md](../03-development/14-ci-operations-manual.md)
 
-### 6.2 사전 준비 — GitLab 레포 설정
+### 6.2 파이프라인 구조 (17개 Job)
 
-GitLab Runner를 등록하려면 GitLab 레포와 Runner 토큰이 필요하다.
+```mermaid
+flowchart LR
+    subgraph Lint["Lint (병렬 4 jobs)"]
+        LG["lint-go"]
+        LN["lint-nest"]
+        LF["lint-frontend"]
+        LA["lint-admin"]
+    end
 
-```
-GitLab 레포 구성 옵션:
-  A) gitlab.com에 RummiArena 레포 새로 생성 (GitHub 미러)
-  B) gitlab.com에 CI 전용 레포 생성 (.gitlab-ci.yml만 관리)
-  C) 자체 GitLab 인스턴스 (리소스 부담 큼 — 16GB 환경에서 비권장)
+    subgraph Test["Test (병렬 2 jobs)"]
+        TG["test-go"]
+        TN["test-nest"]
+    end
 
-권장: 옵션 A 또는 B (gitlab.com SaaS 사용, 자체 호스팅 불필요)
-```
+    subgraph Quality["Quality (병렬 2 jobs)"]
+        SQ["sonarqube"]
+        TR["trivy-fs"]
+    end
 
-GitLab 레포 생성 후:
-1. Settings > CI/CD > Runners > New project runner
-2. Runner 토큰 복사 (glrt-xxxx 형식)
+    subgraph Build["Build (Kaniko + Trivy)"]
+        direction TB
+        subgraph P1["Phase 1 (병렬)"]
+            BGS["build-game-server"]
+            BAI["build-ai-adapter"]
+        end
+        subgraph P2["Phase 2 (후속)"]
+            BFE["build-frontend"]
+            BAD["build-admin"]
+        end
+        subgraph Scan["Image Scan"]
+            S1["scan-game-server"]
+            S2["scan-ai-adapter"]
+            S3["scan-frontend"]
+            S4["scan-admin"]
+        end
+        P1 --> P2
+    end
 
-### 6.3 Step 1 — GitLab Runner Docker Compose 설정
+    UG["update-gitops"]
 
-```bash
-# 데이터 디렉토리 생성
-mkdir -p /srv/gitlab-runner/config
-```
-
-```yaml
-# docker-compose.ci.yml
-# CI 모드에서만 실행 (docker compose -f docker-compose.ci.yml up -d)
-services:
-  gitlab-runner:
-    image: gitlab/gitlab-runner:latest
-    container_name: gitlab-runner
-    restart: unless-stopped
-    volumes:
-      - /srv/gitlab-runner/config:/etc/gitlab-runner
-      - /var/run/docker.sock:/var/run/docker.sock
-    mem_limit: 512m
-    cpus: "1.0"
-```
-
-```bash
-# CI 모드 시작
-docker compose -f docker-compose.ci.yml up -d
-
-# 컨테이너 상태 확인
-docker ps | grep gitlab-runner
-```
-
-### 6.4 Step 2 — Runner 등록
-
-```bash
-# Runner 등록 (대화형)
-docker exec -it gitlab-runner gitlab-runner register \
-  --url https://gitlab.com/ \
-  --token <RUNNER_REGISTRATION_TOKEN> \
-  --executor docker \
-  --docker-image docker:latest \
-  --description "rummikub-runner-docker" \
-  --tag-list "rummikub,docker,go,node" \
-  --docker-privileged \
-  --docker-volumes "/var/run/docker.sock:/var/run/docker.sock" \
-  --docker-shm-size 268435456 \
-  --non-interactive
+    Lint --> Test --> Quality --> Build --> UG
 ```
 
-> `--docker-privileged`: Docker-in-Docker 빌드를 위해 필수. 보안 위험이 있으나 로컬 개발 환경에서는 허용.
+### 6.3 빌드 전략: Kaniko + Phase 직렬화
 
-### 6.5 Step 3 — Runner 등록 확인
+| 항목 | DinD (이전) | Kaniko (현재) |
+|------|-----------|-------------|
+| Docker daemon | 필요 (privileged 필수) | **불필요** (userspace 빌드) |
+| 보안 | privileged container 필요 | **rootless**, 권한 상승 불필요 |
+| 메모리 | ~512MB+ (dockerd) | **~300MB** (executor) |
+| 캐시 | `--cache-from` (이미지 pull) | `--cache-repo` (Registry 레이어 캐시) |
+| 인증 | `docker login` | `/kaniko/.docker/config.json` |
+| 이미지 | `docker:26-dind` | `gcr.io/kaniko-project/executor:v1.23.2-debug` |
+| Trivy 스캔 | 동일 job 내 docker socket | **별도 job** (Registry 풀링) |
 
-```bash
-# Runner 상태 확인
-docker exec gitlab-runner gitlab-runner list
+**Phase 1/2 직렬화**: 4개 Kaniko 빌드가 동시 Registry push 시 대역폭 경쟁으로 타임아웃 발생. Phase 1(game-server+ai-adapter) 완료 후 Phase 2(frontend+admin) 시작.
 
-# GitLab 웹 UI에서 확인
-# GitLab 레포 > Settings > CI/CD > Runners > 등록된 Runner 목록
-```
+### 6.4 CI/CD Variables 현재 상태
 
-### 6.6 Step 4 — .gitlab-ci.yml 기본 파이프라인 작성
+GitLab 레포 > Settings > CI/CD > Variables:
 
-```yaml
-# .gitlab-ci.yml (프로젝트 루트)
-stages:
-  - lint
-  - test
-  - scan
-  - build
-  - update-gitops
+| 변수명 | 상태 | Masked | Protected | 비고 |
+|-------|------|--------|-----------|------|
+| `SONAR_HOST_URL` | SET | No | No | `http://host.docker.internal:9001` |
+| `SONAR_TOKEN` | SET | Yes | No | SonarQube 분석 토큰 |
+| `GITOPS_TOKEN` | SET | Yes | No | GitHub PAT (GitOps repo push) |
+| `CI_REGISTRY_USER` | 자동 | - | - | GitLab 자동 제공 |
+| `CI_REGISTRY_PASSWORD` | 자동 | - | - | GitLab 자동 제공 |
 
-variables:
-  DOCKER_IMAGE: registry.gitlab.com/$CI_PROJECT_PATH
-  DOCKER_DRIVER: overlay2
-  DOCKER_TLS_CERTDIR: ""      # DinD TLS 비활성화 (로컬 개발)
+### 6.5 Container Registry
 
-# Go 린트 (game-server)
-lint-go:
-  stage: lint
-  image: golangci/golangci-lint:latest
-  script:
-    - cd src/game-server
-    - golangci-lint run ./...
-  only:
-    - main
-    - develop
-    - merge_requests
+| 리포지토리 | 경로 | 최종 빌드 |
+|------------|------|-----------|
+| game-server | `registry.gitlab.com/k82022603/rummiarena/game-server` | Pipeline #96 |
+| ai-adapter | `registry.gitlab.com/k82022603/rummiarena/ai-adapter` | Pipeline #96 |
+| frontend | `registry.gitlab.com/k82022603/rummiarena/frontend` | Pipeline #96 |
+| admin | `registry.gitlab.com/k82022603/rummiarena/admin` | Pipeline #96 |
+| cache | `registry.gitlab.com/k82022603/rummiarena/cache` | Kaniko 레이어 캐시 |
 
-# NestJS 린트 (ai-adapter)
-lint-nest:
-  stage: lint
-  image: node:20-alpine
-  script:
-    - cd src/ai-adapter
-    - npm ci
-    - npm run lint
-  only:
-    - main
-    - develop
-    - merge_requests
-
-# Go 테스트
-test-go:
-  stage: test
-  image: golang:1.22-alpine
-  script:
-    - cd src/game-server
-    - go test ./... -v -coverprofile=coverage.out
-    - go tool cover -func=coverage.out
-  artifacts:
-    reports:
-      coverage_report:
-        coverage_format: cobertura
-        path: src/game-server/coverage.xml
-  only:
-    - main
-    - develop
-
-# SonarQube 스캔
-sonarqube:
-  stage: scan
-  image: sonarsource/sonar-scanner-cli:latest
-  variables:
-    SONAR_HOST_URL: $SONAR_HOST_URL
-    SONAR_TOKEN: $SONAR_TOKEN
-  script:
-    - sonar-scanner
-      -Dsonar.projectKey=rummikub
-      -Dsonar.host.url=$SONAR_HOST_URL
-      -Dsonar.login=$SONAR_TOKEN
-      -Dsonar.qualitygate.wait=true
-  allow_failure: false
-  only:
-    - main
-
-# Trivy 이미지 스캔 (빌드 전)
-trivy-scan:
-  stage: scan
-  image:
-    name: aquasec/trivy:latest
-    entrypoint: [""]
-  script:
-    - trivy fs --exit-code 1 --severity HIGH,CRITICAL src/
-  allow_failure: false
-  only:
-    - main
-
-# Docker 빌드 (game-server)
-build-game-server:
-  stage: build
-  image: docker:24-dind
-  services:
-    - docker:24-dind
-  before_script:
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-  script:
-    - docker build -t $DOCKER_IMAGE/game-server:$CI_COMMIT_SHA
-        --target production
-        src/game-server/
-    - docker push $DOCKER_IMAGE/game-server:$CI_COMMIT_SHA
-  only:
-    - main
-
-# GitOps 레포 image tag 업데이트
-update-gitops:
-  stage: update-gitops
-  image: alpine/git:latest
-  script:
-    - git config --global user.email "ci@rummiarena.local"
-    - git config --global user.name "GitLab CI"
-    - git clone https://oauth2:$GITOPS_TOKEN@github.com/k82022603/RummiArena.git gitops
-    - cd gitops
-    - "sed -i 's|tag:.*|tag: \"$CI_COMMIT_SHA\"|' helm/environments/dev-values.yaml"
-    - git add helm/environments/dev-values.yaml
-    - "git commit -m 'ci: update game-server image tag to $CI_COMMIT_SHA'"
-    - git push
-  only:
-    - main
-  when: on_success
-```
-
-### 6.7 Step 5 — GitLab CI 변수 등록
-
-GitLab 레포 > Settings > CI/CD > Variables에 등록:
-
-| 변수명 | 값 | Protected | Masked |
-|-------|-----|-----------|--------|
-| `SONAR_HOST_URL` | `http://localhost:9000` (또는 외부 URL) | No | No |
-| `SONAR_TOKEN` | SonarQube 인증 토큰 | Yes | Yes |
-| `GITOPS_TOKEN` | GitHub PAT (repo 권한) | Yes | Yes |
-| `CI_REGISTRY` | `registry.gitlab.com` | No | No |
-
-### 6.8 GitLab Runner 설치 체크리스트 표
+### 6.6 GitLab Runner / CI 체크리스트 (2026-04-03 최종)
 
 | 단계 | 작업 | 확인 |
 |------|------|------|
-| 1 | GitLab 레포 생성 (또는 미러 설정) | `[ ]` |
-| 2 | GitLab Settings에서 Runner 토큰 발급 | `[ ]` |
-| 3 | `docker-compose.ci.yml` 작성 완료 | `[ ]` |
-| 4 | `docker compose -f docker-compose.ci.yml up -d` 완료 | `[ ]` |
-| 5 | `gitlab-runner register` 완료 | `[ ]` |
-| 6 | GitLab UI에서 Runner "Active" 상태 확인 | `[ ]` |
-| 7 | `.gitlab-ci.yml` 작성 및 푸시 | `[ ]` |
-| 8 | CI 파이프라인 첫 실행 확인 | `[ ]` |
-| 9 | CI 변수 등록 완료 | `[ ]` |
+| 1 | GitLab 레포 생성 (gitlab.com SaaS) | `[x]` |
+| 2 | GitLab Runner K8s Executor 배포 (gitlab-runner NS) | `[x]` |
+| 3 | Runner 태그 `k8s`, `rummiarena` 설정 | `[x]` |
+| 4 | CI/CD Variables 등록 (SONAR_HOST_URL, SONAR_TOKEN, GITOPS_TOKEN) | `[x]` |
+| 5 | `.gitlab-ci.yml` 17개 Job 구성 완료 | `[x]` |
+| 6 | lint 4/4 PASS | `[x]` |
+| 7 | test 2/2 PASS | `[x]` |
+| 8 | quality 2/2 PASS (SonarQube + Trivy FS) | `[x]` |
+| 9 | build 4/4 PASS (Kaniko + Phase 직렬화) | `[x]` |
+| 10 | scan 4/4 PASS (Trivy Image) | `[x]` |
+| 11 | update-gitops 1/1 PASS | `[x]` |
+| 12 | **17/17 ALL GREEN** (Pipeline #96) | `[x]` |
 
 ---
 
@@ -846,11 +727,14 @@ helm/
 │   ├── frontend/
 │   ├── ai-adapter/
 │   ├── redis/
-│   └── postgres/
+│   ├── postgres/
+│   ├── ollama/
+│   ├── admin/
+│   └── rummikub/                 # 공통 리소스 (ResourceQuota)
 ├── environments/
-│   ├── dev-values.yaml           # 개발 환경 overrides
+│   ├── dev-values.yaml           # 개발 환경 overrides (CI가 이미지 태그 자동 업데이트)
 │   └── prod-values.yaml          # 운영 환경 overrides (미래)
-traefik/
+├── traefik/
 │   └── values.yaml               # Traefik 전용 values
 └── argocd/
     └── values.yaml               # ArgoCD 전용 values
@@ -973,15 +857,14 @@ kubectl delete namespace argocd
 ### 8.3 GitLab Runner 롤백
 
 ```bash
-# Runner 컨테이너 중지
-docker compose -f docker-compose.ci.yml down
+# Runner Pod 재시작 (K8s Executor)
+kubectl rollout restart deploy/gitlab-runner -n gitlab-runner
 
-# 설정 파일 초기화 (필요 시)
-rm -rf /srv/gitlab-runner/config/config.toml
+# Runner Pod 상태 확인
+kubectl get pods -n gitlab-runner
 
-# 재시작 후 재등록
-docker compose -f docker-compose.ci.yml up -d
-# → Step 6.4 Runner 등록부터 재시작
+# Runner 로그 확인
+kubectl logs -n gitlab-runner -l app=gitlab-runner --tail=50
 ```
 
 ### 8.4 K8s 클러스터 전체 리셋
@@ -1006,7 +889,7 @@ flowchart TB
 
     What -->|Traefik| TCheck["kubectl describe pod -n traefik"]
     What -->|ArgoCD| ACheck["kubectl describe pod -n argocd"]
-    What -->|Runner| RCheck["docker logs gitlab-runner"]
+    What -->|Runner| RCheck["kubectl logs -n gitlab-runner\n-l app=gitlab-runner"]
 
     TCheck --> TFix{"수정 가능?"}
     TFix -->|values 오류| TValFix["values.yaml 수정 후\nhelm upgrade"]
@@ -1022,7 +905,7 @@ flowchart TB
 
     RCheck --> RFix{"등록 문제?"}
     RFix -->|토큰 만료| RRereg["Runner 재등록"]
-    RFix -->|컨테이너 오류| RRestart["docker compose restart"]
+    RFix -->|Pod 오류| RRestart["kubectl rollout restart\ndeploy/gitlab-runner -n gitlab-runner"]
 ```
 
 ---
@@ -1091,20 +974,23 @@ kubectl get application -n argocd
 # http://localhost:9000/dashboard/#/http/routers
 ```
 
-### 최종 체크리스트
+### 최종 체크리스트 (2026-04-03 기준)
 
 | 항목 | 확인 |
 |------|------|
-| `traefik` namespace + Pod Running | `[ ]` |
-| `argocd` namespace + 모든 Pod Running | `[ ]` |
-| `rummikub` namespace 생성됨 | `[ ]` |
-| Traefik Dashboard 접속 성공 | `[ ]` |
-| ArgoCD 웹 UI 접속 성공 | `[ ]` |
-| ArgoCD Application 등록 (Synced) | `[ ]` |
-| GitLab Runner Active 상태 | `[ ]` |
-| `.gitlab-ci.yml` 첫 파이프라인 성공 | `[ ]` |
-| WSL 메모리 10GB 이하 유지 | `[ ]` |
-| `kp-*` 컨테이너 영향 없음 확인 | `[ ]` |
+| `traefik` namespace + Pod Running | `[x]` |
+| `argocd` namespace + 모든 Pod Running | `[x]` |
+| `rummikub` namespace + 서비스 7개 Running | `[x]` |
+| `gitlab-runner` namespace + Runner Pod Running | `[x]` |
+| Traefik Dashboard 접속 성공 | `[x]` |
+| ArgoCD 웹 UI 접속 성공 | `[x]` |
+| ArgoCD Application 등록 (Synced) | `[x]` |
+| GitLab Runner online (ID: 52262488, K8s Executor) | `[x]` |
+| CI/CD 파이프라인 **17/17 ALL GREEN** (Pipeline #96) | `[x]` |
+| Container Registry 4개 이미지 push 완료 | `[x]` |
+| update-gitops → dev-values.yaml 태그 업데이트 | `[x]` |
+| WSL 메모리 10GB 이하 유지 | `[x]` |
+| `kp-*` 컨테이너 영향 없음 확인 | `[x]` |
 
 ---
 
@@ -1121,6 +1007,9 @@ kubectl get application -n argocd
 | `docs/00-tools/06-argocd.md` | ArgoCD GitOps |
 | `docs/00-tools/07-sonarqube.md` | SonarQube 설치 |
 | `docs/00-tools/23-wslconfig.md` | WSL 프로파일 관리 |
+| `docs/03-development/13-cicd-readiness-checklist.md` | CI/CD 준비 체크리스트 (17/17 GREEN) |
+| `docs/03-development/14-ci-operations-manual.md` | CI/CD 운영 매뉴얼 (트러블슈팅) |
+| `docs/03-development/11-devsecops-cicd-guide.md` | DevSecOps CI/CD 구조 가이드 |
 
 ---
 
@@ -1128,3 +1017,5 @@ kubectl get application -n argocd
 > | 버전 | 날짜 | 작성자 | 내용 |
 > |------|------|--------|------|
 > | 1.0 | 2026-03-12 | DevOps Agent | 초안 작성 (현황 점검, 설치 체크리스트, 롤백 절차) |
+> | 1.1 | 2026-03-23 | DevOps Agent | Sprint 4 현행화 -- Pod 상태, Helm/ArgoCD 실측 반영 |
+> | 2.0 | 2026-04-03 | DevOps Agent | Pipeline #96 17/17 ALL GREEN 반영 -- GitLab Runner K8s Executor, DinD->Kaniko 전환, 빌드 직렬화, CI/CD Variables, Container Registry 현행화 |

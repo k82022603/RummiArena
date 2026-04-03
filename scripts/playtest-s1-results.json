@@ -1,0 +1,24 @@
+{
+  "scenario": "S1",
+  "checks": {
+    "login": "PASS",
+    "room": "PASS",
+    "start": "PASS",
+    "ws": "PASS",
+    "rack_14": "PASS",
+    "dp_78": "PASS",
+    "human_turns": "PASS (10)",
+    "ai_turns": "PASS (9)",
+    "alternation": "PASS",
+    "ai_not_all_fallback": "PASS",
+    "game_complete": "INCOMPLETE (PLAYING, 19 turns)",
+    "turn_number_nonzero": "FAIL (1 turns with turnNumber=0)",
+    "turn_end_has_myRack": "PASS"
+  },
+  "human_turns": 10,
+  "ai_turns": 9,
+  "ai_places": 0,
+  "ai_fallbacks": 6,
+  "final_status": "PLAYING",
+  "status": "PARTIAL"
+}

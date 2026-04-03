@@ -1,0 +1,57 @@
+[
+  {
+    "scenario": "S1",
+    "start_time": "2026-04-03T14:40:21Z",
+    "game_id": "78a92a16-89df-4a2f-b4f0-9f32d5b787ec",
+    "checks": {
+      "dev_login": "PASS",
+      "room_created": "PASS",
+      "game_started": "PASS",
+      "ws_connected": "PASS",
+      "initial_rack_14": "PASS",
+      "draw_pile_78": "PASS",
+      "human_turns_played": "PASS (20)",
+      "ai_turns_played": "PASS (19)",
+      "turn_alternation": "PASS",
+      "ai_not_all_fallback": "PASS",
+      "game_over": "INCOMPLETE (PLAYING, 39 turns)"
+    },
+    "human_turns": 20,
+    "ai_turns": 19,
+    "ai_places": 0,
+    "ai_fallbacks": 16,
+    "final_status": "PLAYING",
+    "end_time": "2026-04-03T14:56:49Z",
+    "status": "PARTIAL"
+  },
+  {
+    "scenario": "S3",
+    "start_time": "2026-04-03T14:56:49Z",
+    "game_id": "110bb2c7-8a67-47fa-a018-479b5da894ab",
+    "checks": {
+      "dev_login": "PASS",
+      "room_created": "PASS",
+      "game_started": "PASS",
+      "ws_connected": "PASS",
+      "initial_rack_14": "PASS",
+      "invalid_1_rejected": "PASS",
+      "invalid_1_korean_msg": "PASS",
+      "rack_preserved_1": "PASS",
+      "invalid_2_rejected": "PASS",
+      "rack_preserved_2": "PASS",
+      "invalid_3_rejected": "PASS",
+      "rack_preserved_3": "PASS",
+      "game_still_playable": "PASS",
+      "cumulative_rack_intact": "PASS",
+      "draw_after_invalids": "PASS",
+      "ai_turn_completed": "PASS",
+      "extra_turns_stable": "PASS"
+    },
+    "core_c1_verified": true,
+    "ws_invalids": 3,
+    "ws_turns": 5,
+    "final_status": "PLAYING",
+    "end_time": "2026-04-03T14:58:57Z",
+    "status": "PASS"
+  }
+]
