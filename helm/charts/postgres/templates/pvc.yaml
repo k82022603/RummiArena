@@ -5,6 +5,8 @@ kind: PersistentVolumeClaim
 metadata:
   name: {{ .Values.persistence.claimName }}
   namespace: {{ .Release.Namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
   labels:
     app: postgres
     release: {{ .Release.Name }}

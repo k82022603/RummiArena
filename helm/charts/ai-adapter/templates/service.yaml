@@ -4,6 +4,8 @@ kind: Service
 metadata:
   name: ai-adapter
   namespace: {{ .Release.Namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
   labels:
     app: ai-adapter
     release: {{ .Release.Name }}

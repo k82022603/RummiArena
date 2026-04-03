@@ -4,6 +4,8 @@ kind: Service
 metadata:
   name: frontend
   namespace: {{ .Release.Namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
   labels:
     app: frontend
     release: {{ .Release.Name }}

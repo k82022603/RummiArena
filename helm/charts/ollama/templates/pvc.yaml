@@ -5,6 +5,8 @@ kind: PersistentVolumeClaim
 metadata:
   name: ollama-models
   namespace: {{ .Release.Namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
   labels:
     app: ollama
     release: {{ .Release.Name }}

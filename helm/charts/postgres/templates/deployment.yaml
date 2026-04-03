@@ -4,6 +4,8 @@ kind: Deployment
 metadata:
   name: postgres
   namespace: {{ .Release.Namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
   labels:
     app: postgres
     release: {{ .Release.Name }}

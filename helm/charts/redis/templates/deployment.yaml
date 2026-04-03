@@ -4,6 +4,8 @@ kind: Deployment
 metadata:
   name: redis
   namespace: {{ .Release.Namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
   labels:
     app: redis
     release: {{ .Release.Name }}
