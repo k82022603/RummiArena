@@ -295,13 +295,13 @@ test.describe("TC-AB: AI 대전 기본 흐름 (Ollama)", () => {
     await waitForGameReady(page);
 
     // 내 차례에 드로우하여 턴 넘기기
-    await waitForMyTurn(page, 60_000);
+    await waitForMyTurn(page, 120_000);
     await page.locator('button:has-text("드로우")').first().click();
 
-    // AI 사고 중 표시 확인
+    // AI 사고 중 표시 확인 (Ollama CPU: ~25s 응답)
     await expect(
       page.locator("text=AI 사고 중...").first()
-    ).toBeVisible({ timeout: 60_000 });
+    ).toBeVisible({ timeout: 120_000 });
   });
 
   test("TC-AB-009: AI 턴이 끝나면 다시 내 차례로 돌아온다", async ({ page }) => {
@@ -593,8 +593,8 @@ test.describe("TC-GP: AI 대전 게임 진행 (Ollama)", () => {
     });
     await waitForGameReady(page);
 
-    // 턴 1: 내 차례 → 드로우
-    await waitForMyTurn(page, 60_000);
+    // 턴 1: 내 차례 → 드로우 (Ollama CPU: 초기 로딩 느림)
+    await waitForMyTurn(page, 120_000);
     const turn1 = await getTurnNumber(page);
     await page.locator('button:has-text("드로우")').first().click();
 
