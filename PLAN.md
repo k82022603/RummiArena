@@ -179,8 +179,30 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 - [x] CI Variables 3개 설정 (SONAR_HOST_URL, SONAR_TOKEN, GITOPS_TOKEN) — 2026-04-01
 - [x] .gitlab-ci.yml 11건 수정 — 2026-04-01
 - [x] CI lint 4/4 PASS + test 2/2 PASS — 2026-04-01
-- [ ] CI quality 2/2 PASS — SonarQube OOM Kill 해결 필요
-- [ ] CI build 4/4 + update-gitops — quality 통과 후
+- [x] CI quality 2/2 PASS — SonarQube Xms=Xmx=256m 93초, Trivy 42초 (2026-04-02)
+- [x] CI build 4/4 PASS — DinD→Kaniko 전환 + Phase 직렬화 + timeout 45m (2026-04-03)
+- [x] CI scan 4/4 PASS — Trivy 이미지 스캔 각 ~20s (2026-04-03)
+- [x] CI update-gitops 1/1 PASS — GitOps repo 자동 업데이트 (2026-04-03)
+- [x] **Pipeline #96: 17/17 ALL GREEN** — lint 4 + test 2 + quality 2 + build 4 + scan 4 + gitops 1 (2026-04-03)
+
+### Sprint 5 Day 2: 게임 버그 수정 + CI 관통 (2026-04-02)
+- [x] 게임 버그 24건 수정 (Critical 7 + Major 7 + Minor 10) — 2026-04-02
+- [x] Go 테스트 346→355개 (+9 신규) — 2026-04-02
+- [x] DnD E2E 24건 작성 (game-dnd-manipulation.spec.ts) — 2026-04-02
+- [x] CI 8/13 관통 (lint+test+quality) — 2026-04-02
+
+### Sprint 5 Day 3: 품질 게이트 완성 (2026-04-03)
+- [x] CI/CD **17/17 완주** (Pipeline #96 ALL GREEN) — 2026-04-03
+- [x] ArgoCD SyncWave Helm 24개 템플릿 — 2026-04-03
+- [x] DnD E2E **24/24 PASS** — 2026-04-03
+- [x] Conservation 테스트 +24 (Go 379→611 PASS) — 2026-04-03
+- [x] K8s 4서비스 배포 (빌드+롤아웃+헬스 OK, 191Mi) — 2026-04-03
+- [x] DeepSeek Round 3: 5%→**12.5%** (+2.5배), C등급 — 2026-04-03
+- [x] 플레이테스트 S1 11/13 PASS, **S3 INVALID_MOVE 17/17 PASS** — 2026-04-03
+- [x] E2E 34건 실패 해결 → **362/362 전량 PASS** — 2026-04-03
+- [x] turnNumber 0-based→1-based 수정 — 2026-04-03
+- [x] CI/CD 문서 6개 업데이트 (배포 가이드 v2.0~v3.0) — 2026-04-03
+- [x] E2E 전량 PASS 보고서 (docs/04-testing/30) — 2026-04-03
 
 ### AI 연동 완료 기준
 - [ ] Human 1 + AI 3 (서로 다른 모델) 게임 정상 동작 — Sprint 5 이월
@@ -205,8 +227,8 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 ## Phase 5: DevSecOps 고도화 (Sprint 7)
 
 ### 보안 & 품질
-- [x] SonarQube CI 파이프라인 연동 (Quality Gate) — Sprint 5 Day 1 착수 (OOM 해결 필요)
-- [x] Trivy 이미지 스캔 자동화 — Sprint 5 Day 1 착수 (CVE 패치 완료, 재실행 필요)
+- [x] SonarQube CI 파이프라인 연동 (Quality Gate) — 93초 PASS (2026-04-02)
+- [x] Trivy 이미지 스캔 자동화 — fs-scan 18초 + image-scan 4개 각 ~20초 PASS (2026-04-03)
 - [ ] OWASP ZAP 동적 보안 테스트 (선택)
 - [ ] Sealed Secrets 도입
 
