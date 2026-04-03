@@ -29,8 +29,9 @@ gitlabUrl: https://gitlab.com
 # Runner 등록 토큰 (실제 값은 --set으로 주입, 여기에 커밋 금지)
 runnerToken: ""
 
-# 동시 실행 Job 수 (10GB RAM 제약 — 보수적 설정)
-concurrent: 2
+# 동시 실행 Job 수 — Kaniko 빌드 4개 병렬 + lint/test 병렬 대응
+# 메모리: 4 x 2Gi = 8Gi (최대). WSL 10GB에서 Runner Pod + K8s 오버헤드 ~2GB 여유.
+concurrent: 4
 
 # Job 폴링 간격 (초)
 checkInterval: 15
@@ -53,22 +54,20 @@ runners:
   config: |
     [[runners]]
       executor = "kubernetes"
-      limit = 2
+      limit = 4
+      cache_dir = "/cache"
       [runners.kubernetes]
-        namespace = "cicd"
+        namespace = "gitlab-runner"
         image = "alpine:3.19"
         privileged = false
         pull_policy = ["if-not-present", "always"]
-        # Job Pod 리소스 제한 (10GB WSL 제약)
-        cpu_request = "100m"
-        cpu_limit = "500m"
-        memory_request = "128Mi"
-        memory_limit = "512Mi"
-        # Service 컨테이너 리소스
-        service_cpu_request = "100m"
-        service_cpu_limit = "300m"
-        service_memory_request = "64Mi"
-        service_memory_limit = "256Mi"
+        # Job Pod 리소스 제한
+        # Kaniko 빌드는 ~1.2GB 사용 → 2Gi 필수 (512Mi → OOM Kill)
+        # lint/test 는 ~300-500MB 범위
+        cpu_request = "200m"
+        cpu_limit = "1"
+        memory_request = "512Mi"
+        memory_limit = "2Gi"
         # Helper 컨테이너 리소스
         helper_cpu_request = "50m"
         helper_cpu_limit = "200m"
@@ -78,8 +77,12 @@ runners:
           "app" = "gitlab-runner-job"
           "project" = "rummiarena"
           "app.kubernetes.io/managed-by" = "gitlab-runner"
+        # PVC 캐시 마운트 (Go 모듈, npm, Trivy DB)
+        [[runners.kubernetes.volumes.pvc]]
+          name = "gitlab-runner-cache"
+          mount_path = "/cache"
 
-  # 캐시 비활성화 (로컬 개발 환경)
+  # 캐시 비활성화 (PVC 직접 캐시 전략 사용)
   cache: {}
 
 # ---------------------------------------------------------------------------
@@ -107,7 +110,7 @@ securityContext:
 
 # ---------------------------------------------------------------------------
 # 서비스 어카운트 + RBAC
-# Job Pod가 cicd 네임스페이스에서 Pod 생성 권한을 가져야 함
+# Job Pod가 gitlab-runner 네임스페이스에서 Pod 생성 권한을 가져야 함
 # ---------------------------------------------------------------------------
 serviceAccount:
   create: true

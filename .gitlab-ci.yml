@@ -5,6 +5,7 @@
 # 빌드 전략: Kaniko (DinD 대체)
 #   K8s Executor privileged=false → DinD 불가 → Kaniko userspace 빌드로 전환 (2026-04-03)
 #   Kaniko: Docker daemon 없이 Dockerfile 빌드/푸시. 보안 우수, 메모리 효율적.
+#   첫 빌드: 캐시 미스로 ~15-25분 (전 레이어 Registry 푸시). 이후 빌드: ~3-5분 (캐시 히트).
 #
 # 교대 실행 전략 (10GB WSL 제약):
 #   CI 모드: PG(Sonar) + SonarQube + GitLab Runner ~ 2.5 GB
@@ -288,7 +289,8 @@ trivy-fs:
 .build-kaniko: &build-kaniko
   stage: build
   <<: *local-runner
-  timeout: 20m
+  # 첫 빌드(캐시 미스): ~15-25분 (레이어 빌드+Registry 푸시), 이후: ~3-5분 (캐시 히트)
+  timeout: 30m
   image:
     name: gcr.io/kaniko-project/executor:v1.23.2-debug
     entrypoint: [""]
@@ -335,6 +337,7 @@ build-game-server:
         --label "org.opencontainers.image.ref.name=${CI_COMMIT_REF_NAME}"
         --snapshot-mode=redo
         --compressed-caching=false
+        --push-retry=3
 
 scan-game-server:
   <<: *trivy-scan
@@ -360,6 +363,7 @@ build-ai-adapter:
         --cache-repo "${KANIKO_CACHE_REPO}"
         --snapshot-mode=redo
         --compressed-caching=false
+        --push-retry=3
 
 scan-ai-adapter:
   <<: *trivy-scan
@@ -385,6 +389,7 @@ build-frontend:
         --cache-repo "${KANIKO_CACHE_REPO}"
         --snapshot-mode=redo
         --compressed-caching=false
+        --push-retry=3
 
 scan-frontend:
   <<: *trivy-scan
@@ -410,6 +415,7 @@ build-admin:
         --cache-repo "${KANIKO_CACHE_REPO}"
         --snapshot-mode=redo
         --compressed-caching=false
+        --push-retry=3
 
 scan-admin:
   <<: *trivy-scan
