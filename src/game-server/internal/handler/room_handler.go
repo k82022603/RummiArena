@@ -68,6 +68,10 @@ func (h *RoomHandler) CreateRoom(c *gin.Context) {
 		})
 	}
 
+	// admin 역할이면 AI 게임 쿨다운 bypass
+	role, _ := middleware.RoleFromContext(c)
+	isAdmin := role == "admin"
+
 	room, err := h.roomSvc.CreateRoom(&service.CreateRoomRequest{
 		Name:            req.Name,
 		PlayerCount:     req.PlayerCount,
@@ -75,6 +79,7 @@ func (h *RoomHandler) CreateRoom(c *gin.Context) {
 		HostUserID:      userID,
 		HostDisplayName: req.DisplayName,
 		AIPlayers:       aiPlayers,
+		IsAdmin:         isAdmin,
 	})
 	if err != nil {
 		handleServiceError(c, err)

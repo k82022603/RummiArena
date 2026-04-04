@@ -70,6 +70,7 @@ export class MoveService {
 
   /**
    * 비용 추적과 성능 메트릭을 병렬로 기록한다.
+   * 일일 전체 비용 + 게임별 시간당 비용 + 성능 메트릭을 동시에 기록한다.
    * 실패해도 서비스 응답에는 영향 없음.
    */
   private async recordCostAndMetrics(
@@ -79,12 +80,15 @@ export class MoveService {
   ): Promise<void> {
     const { metadata } = response;
 
+    const costRecord = {
+      modelType: metadata.modelType,
+      promptTokens: metadata.promptTokens,
+      completionTokens: metadata.completionTokens,
+    };
+
     await Promise.allSettled([
-      this.costTrackingService.recordCost({
-        modelType: metadata.modelType,
-        promptTokens: metadata.promptTokens,
-        completionTokens: metadata.completionTokens,
-      }),
+      this.costTrackingService.recordCost(costRecord),
+      this.costTrackingService.recordUserCost(gameId, costRecord),
       this.metricsService.recordMetric({
         modelType: metadata.modelType,
         modelName: metadata.modelName,

@@ -90,7 +90,9 @@ describe('MoveService', () => {
 
     costTrackingService = {
       recordCost: jest.fn().mockResolvedValue(undefined),
+      recordUserCost: jest.fn().mockResolvedValue(undefined),
       isDailyLimitExceeded: jest.fn().mockResolvedValue(false),
+      isUserHourlyLimitExceeded: jest.fn().mockResolvedValue(false),
       getDailySummary: jest.fn(),
     } as unknown as jest.Mocked<CostTrackingService>;
 
@@ -330,6 +332,36 @@ describe('MoveService', () => {
           parseSuccess: false,
         }),
       );
+    });
+
+    it('LLM 호출 후 사용자별 시간당 비용(recordUserCost)이 호출된다', async () => {
+      const response = makeDrawResponse('openai');
+      openAiAdapter.generateMove.mockResolvedValueOnce(response);
+
+      await service.generateMove('openai', makeMoveRequest());
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      expect(costTrackingService.recordUserCost).toHaveBeenCalledWith(
+        'svc-test-001', // gameId from makeMoveRequest()
+        {
+          modelType: 'openai',
+          promptTokens: 50,
+          completionTokens: 20,
+        },
+      );
+    });
+
+    it('recordUserCost 실패 시에도 응답은 정상 반환된다', async () => {
+      costTrackingService.recordUserCost.mockRejectedValueOnce(
+        new Error('Redis down'),
+      );
+      const response = makeDrawResponse('openai');
+      openAiAdapter.generateMove.mockResolvedValueOnce(response);
+
+      const result = await service.generateMove('openai', makeMoveRequest());
+
+      expect(result).toEqual(response);
     });
   });
 });

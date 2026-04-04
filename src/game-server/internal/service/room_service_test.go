@@ -281,3 +281,228 @@ func TestActiveRoom_U04_DoubleSet_Overwrite(t *testing.T) {
 	err = roomRepo.ClearActiveRoomForUser("user-dr-u04")
 	require.NoError(t, err, "덮어쓰기 후 Clear 정상 동작")
 }
+
+// ============================================================
+// SEC-RL-002: AI 게임 생성 쿨다운 테스트
+// ============================================================
+
+// mockCooldownChecker 테스트용 CooldownChecker 모킹 구현체
+type mockCooldownChecker struct {
+	cooldowns map[string]bool
+	failOpen  bool // true이면 IsOnCooldown이 항상 false 반환 (Redis 장애 시뮬레이션)
+}
+
+func newMockCooldown() *mockCooldownChecker {
+	return &mockCooldownChecker{cooldowns: make(map[string]bool)}
+}
+
+func (m *mockCooldownChecker) IsOnCooldown(userID string) bool {
+	if m.failOpen {
+		return false
+	}
+	return m.cooldowns[userID]
+}
+
+func (m *mockCooldownChecker) SetCooldown(userID string) {
+	if !m.failOpen {
+		m.cooldowns[userID] = true
+	}
+}
+
+func (m *mockCooldownChecker) clearCooldown(userID string) {
+	delete(m.cooldowns, userID)
+}
+
+func newRoomServiceWithCooldown(t *testing.T, checker CooldownChecker) RoomService {
+	t.Helper()
+	roomRepo := repository.NewMemoryRoomRepo()
+	gameRepo := repository.NewMemoryGameStateRepo()
+	svc := NewRoomService(roomRepo, gameRepo)
+	SetCooldownChecker(svc, checker)
+	return svc
+}
+
+func TestAICooldown_BlocksSecondAIGameWithin5Min(t *testing.T) {
+	mock := newMockCooldown()
+	svc := newRoomServiceWithCooldown(t, mock)
+
+	// 첫 번째 AI 게임 생성 — 성공
+	_, err := svc.CreateRoom(&CreateRoomRequest{
+		Name:           "AI 게임 1",
+		PlayerCount:    2,
+		TurnTimeoutSec: 60,
+		HostUserID:     "user-cooldown-1",
+		AIPlayers:      []AIPlayerRequest{{Type: "AI_OPENAI", Difficulty: "medium"}},
+	})
+	require.NoError(t, err)
+
+	// 이전 WAITING 방은 checkDuplicateRoom에서 자동 퇴장 처리됨
+	// 두 번째 AI 게임 생성 — 쿨다운으로 거부
+	_, err = svc.CreateRoom(&CreateRoomRequest{
+		Name:           "AI 게임 2",
+		PlayerCount:    2,
+		TurnTimeoutSec: 60,
+		HostUserID:     "user-cooldown-1",
+		AIPlayers:      []AIPlayerRequest{{Type: "AI_CLAUDE", Difficulty: "hard"}},
+	})
+	require.Error(t, err)
+	se, ok := IsServiceError(err)
+	require.True(t, ok, "ServiceError 타입이어야 한다")
+	assert.Equal(t, "AI_COOLDOWN", se.Code)
+	assert.Equal(t, 429, se.Status)
+	assert.Contains(t, se.Message, "5분")
+}
+
+func TestAICooldown_AllowsNonAIGames(t *testing.T) {
+	mock := newMockCooldown()
+	svc := newRoomServiceWithCooldown(t, mock)
+
+	// AI 게임 생성 — 쿨다운 설정됨
+	_, err := svc.CreateRoom(&CreateRoomRequest{
+		Name:           "AI 게임",
+		PlayerCount:    2,
+		TurnTimeoutSec: 60,
+		HostUserID:     "user-cooldown-2",
+		AIPlayers:      []AIPlayerRequest{{Type: "AI_OPENAI", Difficulty: "easy"}},
+	})
+	require.NoError(t, err)
+
+	// 비-AI 게임 생성 — 쿨다운 영향 없이 성공해야 함
+	_, err = svc.CreateRoom(&CreateRoomRequest{
+		Name:           "일반 게임",
+		PlayerCount:    2,
+		TurnTimeoutSec: 60,
+		HostUserID:     "user-cooldown-2",
+		AIPlayers:      nil, // AI 플레이어 없음
+	})
+	require.NoError(t, err, "AI가 없는 방 생성은 쿨다운에 영향받지 않아야 한다")
+}
+
+func TestAICooldown_AllowsAfterTTLExpires(t *testing.T) {
+	mock := newMockCooldown()
+	svc := newRoomServiceWithCooldown(t, mock)
+
+	// AI 게임 생성 — 쿨다운 설정됨
+	_, err := svc.CreateRoom(&CreateRoomRequest{
+		Name:           "AI 게임 1",
+		PlayerCount:    2,
+		TurnTimeoutSec: 60,
+		HostUserID:     "user-cooldown-3",
+		AIPlayers:      []AIPlayerRequest{{Type: "AI_OPENAI", Difficulty: "medium"}},
+	})
+	require.NoError(t, err)
+
+	// 쿨다운이 만료된 것을 시뮬레이션
+	mock.clearCooldown("user-cooldown-3")
+
+	// 두 번째 AI 게임 생성 — 쿨다운 만료 후 성공
+	_, err = svc.CreateRoom(&CreateRoomRequest{
+		Name:           "AI 게임 2",
+		PlayerCount:    2,
+		TurnTimeoutSec: 60,
+		HostUserID:     "user-cooldown-3",
+		AIPlayers:      []AIPlayerRequest{{Type: "AI_CLAUDE", Difficulty: "hard"}},
+	})
+	require.NoError(t, err, "쿨다운 만료 후에는 AI 게임 생성이 가능해야 한다")
+}
+
+func TestAICooldown_FailOpen_RedisFailure(t *testing.T) {
+	mock := newMockCooldown()
+	mock.failOpen = true // Redis 장애 시뮬레이션
+	svc := newRoomServiceWithCooldown(t, mock)
+
+	// AI 게임 생성 — Redis 장애 시에도 fail-open으로 허용
+	_, err := svc.CreateRoom(&CreateRoomRequest{
+		Name:           "AI 게임 1",
+		PlayerCount:    2,
+		TurnTimeoutSec: 60,
+		HostUserID:     "user-cooldown-4",
+		AIPlayers:      []AIPlayerRequest{{Type: "AI_OPENAI", Difficulty: "medium"}},
+	})
+	require.NoError(t, err)
+
+	// 두 번째 AI 게임 — Redis 장애로 쿨다운 체크 불가 → fail-open 허용
+	_, err = svc.CreateRoom(&CreateRoomRequest{
+		Name:           "AI 게임 2",
+		PlayerCount:    2,
+		TurnTimeoutSec: 60,
+		HostUserID:     "user-cooldown-4",
+		AIPlayers:      []AIPlayerRequest{{Type: "AI_CLAUDE", Difficulty: "hard"}},
+	})
+	require.NoError(t, err, "Redis 장애 시 fail-open으로 허용해야 한다")
+}
+
+func TestAICooldown_NilChecker_NoEffect(t *testing.T) {
+	// CooldownChecker가 nil이면 (Redis 없는 환경) 쿨다운 비활성
+	svc := newRoomService(t)
+
+	_, err := svc.CreateRoom(&CreateRoomRequest{
+		Name:           "AI 게임 1",
+		PlayerCount:    2,
+		TurnTimeoutSec: 60,
+		HostUserID:     "user-cooldown-5",
+		AIPlayers:      []AIPlayerRequest{{Type: "AI_OPENAI", Difficulty: "medium"}},
+	})
+	require.NoError(t, err)
+
+	_, err = svc.CreateRoom(&CreateRoomRequest{
+		Name:           "AI 게임 2",
+		PlayerCount:    2,
+		TurnTimeoutSec: 60,
+		HostUserID:     "user-cooldown-5",
+		AIPlayers:      []AIPlayerRequest{{Type: "AI_CLAUDE", Difficulty: "hard"}},
+	})
+	require.NoError(t, err, "CooldownChecker가 nil이면 쿨다운 없이 허용")
+}
+
+func TestAICooldown_AdminBypass(t *testing.T) {
+	mock := newMockCooldown()
+	svc := newRoomServiceWithCooldown(t, mock)
+
+	// admin으로 AI 게임 생성
+	_, err := svc.CreateRoom(&CreateRoomRequest{
+		Name:           "Admin AI 게임 1",
+		PlayerCount:    2,
+		TurnTimeoutSec: 60,
+		HostUserID:     "admin-user-1",
+		AIPlayers:      []AIPlayerRequest{{Type: "AI_OPENAI", Difficulty: "medium"}},
+		IsAdmin:        true,
+	})
+	require.NoError(t, err)
+
+	// admin은 쿨다운 bypass — 즉시 두 번째 AI 게임 생성 가능
+	_, err = svc.CreateRoom(&CreateRoomRequest{
+		Name:           "Admin AI 게임 2",
+		PlayerCount:    2,
+		TurnTimeoutSec: 60,
+		HostUserID:     "admin-user-1",
+		AIPlayers:      []AIPlayerRequest{{Type: "AI_CLAUDE", Difficulty: "hard"}},
+		IsAdmin:        true,
+	})
+	require.NoError(t, err, "admin 역할은 AI 게임 쿨다운을 bypass해야 한다")
+}
+
+func TestAICooldown_DifferentUsers_Independent(t *testing.T) {
+	mock := newMockCooldown()
+	svc := newRoomServiceWithCooldown(t, mock)
+
+	// user-A가 AI 게임 생성 — 쿨다운 설정됨
+	_, err := svc.CreateRoom(&CreateRoomRequest{
+		Name:           "User A AI 게임",
+		PlayerCount:    2,
+		TurnTimeoutSec: 60,
+		HostUserID:     "user-A",
+		AIPlayers:      []AIPlayerRequest{{Type: "AI_OPENAI", Difficulty: "medium"}},
+	})
+	require.NoError(t, err)
+
+	// user-B가 AI 게임 생성 — user-A의 쿨다운과 무관하게 성공
+	_, err = svc.CreateRoom(&CreateRoomRequest{
+		Name:           "User B AI 게임",
+		PlayerCount:    2,
+		TurnTimeoutSec: 60,
+		HostUserID:     "user-B",
+		AIPlayers:      []AIPlayerRequest{{Type: "AI_CLAUDE", Difficulty: "hard"}},
+	})
+	require.NoError(t, err, "다른 사용자의 쿨다운은 서로 독립적이어야 한다")
+}

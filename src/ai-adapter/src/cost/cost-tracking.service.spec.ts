@@ -23,13 +23,18 @@ const createMockRedis = () => ({
   pipeline: jest.fn(),
   hget: jest.fn(),
   hgetall: jest.fn(),
+  get: jest.fn(),
 });
 
 /** ConfigService 모킹 */
-const createMockConfigService = (limitUsd = 5) =>
+const createMockConfigService = (
+  dailyLimitUsd = 5,
+  hourlyUserLimitUsd = 5,
+) =>
   ({
     get: jest.fn((key: string, defaultValue: unknown) => {
-      if (key === 'DAILY_COST_LIMIT_USD') return limitUsd;
+      if (key === 'DAILY_COST_LIMIT_USD') return dailyLimitUsd;
+      if (key === 'HOURLY_USER_COST_LIMIT_USD') return hourlyUserLimitUsd;
       return defaultValue;
     }),
   }) as unknown as ConfigService;
@@ -308,6 +313,254 @@ describe('CostTrackingService', () => {
       const result = await service.getRecentDays();
 
       expect(result).toHaveLength(7);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // recordUserCost 검증
+  // -----------------------------------------------------------------------
+  describe('recordUserCost()', () => {
+    it('Redis pipeline으로 INCRBY + EXPIRE를 실행한다', async () => {
+      const incrbyMock = jest.fn().mockReturnThis();
+      const expireMock = jest.fn().mockReturnThis();
+      const execMock = jest.fn().mockResolvedValue([]);
+      mockRedis.pipeline.mockReturnValue({
+        incrby: incrbyMock,
+        expire: expireMock,
+        exec: execMock,
+      });
+
+      const record: CostRecord = {
+        modelType: 'openai',
+        promptTokens: 1000,
+        completionTokens: 500,
+      };
+
+      await service.recordUserCost('game-001', record);
+
+      expect(mockRedis.pipeline).toHaveBeenCalled();
+      expect(incrbyMock).toHaveBeenCalledTimes(1);
+      expect(expireMock).toHaveBeenCalledTimes(1);
+      expect(execMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('올바른 hourly Redis Key 형식을 사용한다', async () => {
+      const incrbyMock = jest.fn().mockReturnThis();
+      const expireMock = jest.fn().mockReturnThis();
+      const execMock = jest.fn().mockResolvedValue([]);
+      mockRedis.pipeline.mockReturnValue({
+        incrby: incrbyMock,
+        expire: expireMock,
+        exec: execMock,
+      });
+
+      const record: CostRecord = {
+        modelType: 'openai',
+        promptTokens: 1000,
+        completionTokens: 500,
+      };
+
+      await service.recordUserCost('game-001', record);
+
+      expect(incrbyMock).toHaveBeenCalledWith(
+        expect.stringMatching(/^quota:hourly:game-001:\d{4}-\d{2}-\d{2}-\d{2}$/),
+        expect.any(Number),
+      );
+    });
+
+    it('claude 모델 비용이 올바르게 계산된다', async () => {
+      const incrbyMock = jest.fn().mockReturnThis();
+      const expireMock = jest.fn().mockReturnThis();
+      const execMock = jest.fn().mockResolvedValue([]);
+      mockRedis.pipeline.mockReturnValue({
+        incrby: incrbyMock,
+        expire: expireMock,
+        exec: execMock,
+      });
+
+      const record: CostRecord = {
+        modelType: 'claude',
+        promptTokens: 1_000_000,
+        completionTokens: 1_000_000,
+      };
+
+      await service.recordUserCost('game-001', record);
+
+      // 비용: input $3.0 + output $15.0 = $18.0
+      // 스케일: $18.0 * 1e6 = 18,000,000
+      expect(incrbyMock).toHaveBeenCalledWith(
+        expect.stringContaining('quota:hourly:game-001:'),
+        18_000_000,
+      );
+    });
+
+    it('ollama 비용은 0으로 기록된다', async () => {
+      const incrbyMock = jest.fn().mockReturnThis();
+      const expireMock = jest.fn().mockReturnThis();
+      const execMock = jest.fn().mockResolvedValue([]);
+      mockRedis.pipeline.mockReturnValue({
+        incrby: incrbyMock,
+        expire: expireMock,
+        exec: execMock,
+      });
+
+      const record: CostRecord = {
+        modelType: 'ollama',
+        promptTokens: 500,
+        completionTokens: 200,
+      };
+
+      await service.recordUserCost('game-001', record);
+
+      expect(incrbyMock).toHaveBeenCalledWith(
+        expect.stringContaining('quota:hourly:game-001:'),
+        0,
+      );
+    });
+
+    it('TTL이 3600초로 설정된다', async () => {
+      const incrbyMock = jest.fn().mockReturnThis();
+      const expireMock = jest.fn().mockReturnThis();
+      const execMock = jest.fn().mockResolvedValue([]);
+      mockRedis.pipeline.mockReturnValue({
+        incrby: incrbyMock,
+        expire: expireMock,
+        exec: execMock,
+      });
+
+      await service.recordUserCost('game-001', {
+        modelType: 'openai',
+        promptTokens: 100,
+        completionTokens: 50,
+      });
+
+      expect(expireMock).toHaveBeenCalledWith(
+        expect.stringContaining('quota:hourly:game-001:'),
+        3600,
+        'NX',
+      );
+    });
+
+    it('Redis 오류 시 예외를 던지지 않는다 (fail-open)', async () => {
+      const incrbyMock = jest.fn().mockReturnThis();
+      const expireMock = jest.fn().mockReturnThis();
+      const execMock = jest.fn().mockRejectedValue(new Error('Redis down'));
+      mockRedis.pipeline.mockReturnValue({
+        incrby: incrbyMock,
+        expire: expireMock,
+        exec: execMock,
+      });
+
+      await expect(
+        service.recordUserCost('game-001', {
+          modelType: 'openai',
+          promptTokens: 100,
+          completionTokens: 50,
+        }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('서로 다른 userId는 서로 다른 Redis Key를 사용한다', async () => {
+      const incrbyMock = jest.fn().mockReturnThis();
+      const expireMock = jest.fn().mockReturnThis();
+      const execMock = jest.fn().mockResolvedValue([]);
+      mockRedis.pipeline.mockReturnValue({
+        incrby: incrbyMock,
+        expire: expireMock,
+        exec: execMock,
+      });
+
+      const record: CostRecord = {
+        modelType: 'openai',
+        promptTokens: 100,
+        completionTokens: 50,
+      };
+
+      await service.recordUserCost('game-001', record);
+      await service.recordUserCost('game-002', record);
+
+      const keys = incrbyMock.mock.calls.map((call: any[]) => call[0]);
+      expect(keys[0]).toContain('game-001');
+      expect(keys[1]).toContain('game-002');
+      expect(keys[0]).not.toBe(keys[1]);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // isUserHourlyLimitExceeded 검증
+  // -----------------------------------------------------------------------
+  describe('isUserHourlyLimitExceeded()', () => {
+    it('비용이 한도 미만이면 false를 반환한다', async () => {
+      // $4.99 = 4,990,000 (1e6 스케일)
+      mockRedis.get.mockResolvedValueOnce('4990000');
+
+      const result = await service.isUserHourlyLimitExceeded('game-001');
+
+      expect(result).toBe(false);
+    });
+
+    it('비용이 한도 이상이면 true를 반환한다', async () => {
+      // $5.00 = 5,000,000
+      mockRedis.get.mockResolvedValueOnce('5000000');
+
+      const result = await service.isUserHourlyLimitExceeded('game-001');
+
+      expect(result).toBe(true);
+    });
+
+    it('비용이 한도를 초과하면 true를 반환한다', async () => {
+      // $10.00 = 10,000,000
+      mockRedis.get.mockResolvedValueOnce('10000000');
+
+      const result = await service.isUserHourlyLimitExceeded('game-001');
+
+      expect(result).toBe(true);
+    });
+
+    it('데이터가 없으면 false를 반환한다', async () => {
+      mockRedis.get.mockResolvedValueOnce(null);
+
+      const result = await service.isUserHourlyLimitExceeded('game-001');
+
+      expect(result).toBe(false);
+    });
+
+    it('Redis 오류 시 false를 반환한다 (가용성 우선, fail-open)', async () => {
+      mockRedis.get.mockRejectedValueOnce(new Error('Redis down'));
+
+      const result = await service.isUserHourlyLimitExceeded('game-001');
+
+      expect(result).toBe(false);
+    });
+
+    it('올바른 hourly Redis Key로 조회한다', async () => {
+      mockRedis.get.mockResolvedValueOnce(null);
+
+      await service.isUserHourlyLimitExceeded('game-abc');
+
+      expect(mockRedis.get).toHaveBeenCalledWith(
+        expect.stringMatching(/^quota:hourly:game-abc:\d{4}-\d{2}-\d{2}-\d{2}$/),
+      );
+    });
+
+    it('커스텀 한도가 적용된다', async () => {
+      // 한도 $2로 설정된 서비스 생성
+      const customService = new CostTrackingService(
+        mockRedis as any,
+        createMockConfigService(5, 2),
+      );
+
+      // $1.99 < $2 한도 → false
+      mockRedis.get.mockResolvedValueOnce('1990000');
+      expect(await customService.isUserHourlyLimitExceeded('game-001')).toBe(
+        false,
+      );
+
+      // $2.00 >= $2 한도 → true
+      mockRedis.get.mockResolvedValueOnce('2000000');
+      expect(await customService.isUserHourlyLimitExceeded('game-001')).toBe(
+        true,
+      );
     });
   });
 });

@@ -98,6 +98,11 @@ func buildRouter(
 	roomRepo repository.MemoryRoomRepository,
 ) *gin.Engine {
 	roomSvc := service.NewRoomService(roomRepo, gameStateRepo)
+	// SEC-RL-002: Redis가 가용하면 AI 게임 생성 쿨다운 활성화
+	if infra.IsRedisAvailable(redisClient) {
+		service.SetCooldownChecker(roomSvc, service.NewRedisCooldownChecker(redisClient))
+		logger.Info("ai game cooldown enabled (5min per user)")
+	}
 	gameSvc := service.NewGameService(gameStateRepo)
 	turnSvc := service.NewTurnService(gameStateRepo, gameSvc)
 

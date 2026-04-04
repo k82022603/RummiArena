@@ -55,6 +55,9 @@ export interface DailyCostSummary {
 /** Redis Hash TTL: 30일 (초) */
 const DAILY_KEY_TTL_SECONDS = 30 * 24 * 60 * 60;
 
+/** Redis Key TTL for hourly per-user tracking: 1시간 (초) */
+const HOURLY_KEY_TTL_SECONDS = 3600;
+
 /**
  * LLM API 호출 비용을 Redis Hash에 추적하는 서비스.
  *
@@ -74,6 +77,7 @@ const DAILY_KEY_TTL_SECONDS = 30 * 24 * 60 * 60;
 export class CostTrackingService {
   private readonly logger = new Logger(CostTrackingService.name);
   private readonly dailyCostLimitUsd: number;
+  private readonly hourlyUserCostLimitUsd: number;
 
   /** 비용 정수 스케일 팩터 (소수점 6자리 정밀도) */
   private static readonly COST_SCALE = 1_000_000;
@@ -86,7 +90,13 @@ export class CostTrackingService {
       'DAILY_COST_LIMIT_USD',
       5,
     );
-    this.logger.log(`비용 추적 초기화: 일일 한도 $${this.dailyCostLimitUsd}`);
+    this.hourlyUserCostLimitUsd = this.configService.get<number>(
+      'HOURLY_USER_COST_LIMIT_USD',
+      5,
+    );
+    this.logger.log(
+      `비용 추적 초기화: 일일 한도 $${this.dailyCostLimitUsd}, 시간당 사용자 한도 $${this.hourlyUserCostLimitUsd}`,
+    );
   }
 
   /**
@@ -250,6 +260,90 @@ export class CostTrackingService {
     }
 
     return summaries;
+  }
+
+  /**
+   * 사용자(또는 게임)별 시간당 비용을 Redis에 기록한다.
+   *
+   * Redis Key: quota:hourly:{userId}:{YYYY-MM-DD-HH}
+   * 비용은 1e6 스케일 정수로 INCRBY 연산한다.
+   * TTL은 1시간으로 자동 만료된다.
+   *
+   * Redis 연결 실패 시에도 LLM 호출을 차단하지 않는다 (로그만 남김).
+   *
+   * @param userId 사용자 ID 또는 게임 ID (rate limit 키로 사용)
+   * @param record LLM 호출 비용 기록
+   */
+  async recordUserCost(userId: string, record: CostRecord): Promise<void> {
+    try {
+      const hourlyKey = this.hourlyUserKey(userId);
+      const pricing = MODEL_PRICING[record.modelType] ?? MODEL_PRICING.ollama;
+
+      const inputCost = (record.promptTokens / 1_000_000) * pricing.inputPer1M;
+      const outputCost =
+        (record.completionTokens / 1_000_000) * pricing.outputPer1M;
+      const totalCost = inputCost + outputCost;
+      const costScaled = Math.round(totalCost * CostTrackingService.COST_SCALE);
+
+      const pipeline = this.redis.pipeline();
+      pipeline.incrby(hourlyKey, costScaled);
+      pipeline.expire(hourlyKey, HOURLY_KEY_TTL_SECONDS, 'NX');
+      await pipeline.exec();
+
+      this.logger.debug(
+        `[CostTracking] 사용자 시간당 비용 기록: userId=${userId} cost=$${totalCost.toFixed(6)}`,
+      );
+    } catch (err) {
+      this.logger.warn(
+        `[CostTracking] 사용자 시간당 비용 기록 실패: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  /**
+   * 사용자(또는 게임)별 시간당 비용 한도 초과 여부를 확인한다.
+   *
+   * Redis 연결 실패 시에는 false를 반환하여 서비스를 차단하지 않는다 (가용성 우선).
+   *
+   * @param userId 사용자 ID 또는 게임 ID
+   * @returns true = 한도 초과, false = 정상 (또는 확인 불가)
+   */
+  async isUserHourlyLimitExceeded(userId: string): Promise<boolean> {
+    try {
+      const hourlyKey = this.hourlyUserKey(userId);
+      const costScaledStr = await this.redis.get(hourlyKey);
+
+      if (!costScaledStr) {
+        return false;
+      }
+
+      const costUsd =
+        parseInt(costScaledStr, 10) / CostTrackingService.COST_SCALE;
+
+      if (costUsd >= this.hourlyUserCostLimitUsd) {
+        this.logger.warn(
+          `[CostTracking] 사용자 시간당 한도 초과: userId=${userId} $${costUsd.toFixed(2)} >= $${this.hourlyUserCostLimitUsd}`,
+        );
+        return true;
+      }
+
+      return false;
+    } catch (err) {
+      this.logger.warn(
+        `[CostTracking] 사용자 시간당 한도 확인 실패 (허용으로 처리): ${(err as Error).message}`,
+      );
+      return false;
+    }
+  }
+
+  /**
+   * 사용자별 시간당 비용 Redis Key를 반환한다.
+   * 형식: quota:hourly:{userId}:{YYYY-MM-DD-HH}
+   */
+  private hourlyUserKey(userId: string): string {
+    const now = new Date();
+    const dateHour = `${this.formatDate(now)}-${String(now.getHours()).padStart(2, '0')}`;
+    return `quota:hourly:${userId}:${dateHour}`;
   }
 
   /**

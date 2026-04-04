@@ -43,12 +43,14 @@ type CreateRoomRequest struct {
 	HostUserID      string
 	HostDisplayName string
 	AIPlayers       []AIPlayerRequest
+	IsAdmin         bool // admin 역할이면 쿨다운 bypass
 }
 
 type roomService struct {
 	roomRepo  repository.MemoryRoomRepository
 	gameRepo  repository.MemoryGameStateRepository
-	gameState *gameService // 게임 시작 시 gameService 사용
+	gameState *gameService        // 게임 시작 시 gameService 사용
+	cooldown  CooldownChecker     // AI 게임 생성 쿨다운 (nil이면 비활성)
 }
 
 // NewRoomService RoomService 구현체 생성자
@@ -64,6 +66,14 @@ func NewRoomService(
 	}
 }
 
+// SetCooldownChecker AI 게임 생성 쿨다운 체커를 RoomService에 주입한다.
+// svc가 *roomService가 아니면 아무 동작도 하지 않는다.
+func SetCooldownChecker(svc RoomService, checker CooldownChecker) {
+	if rs, ok := svc.(*roomService); ok {
+		rs.cooldown = checker
+	}
+}
+
 // CreateRoom 새 방을 생성하고 호스트를 seat 0에 배정한다.
 // playerCount: 2~4, turnTimeoutSec: 30~120
 func (s *roomService) CreateRoom(req *CreateRoomRequest) (*model.RoomState, error) {
@@ -75,6 +85,18 @@ func (s *roomService) CreateRoom(req *CreateRoomRequest) (*model.RoomState, erro
 	}
 	if req.HostUserID == "" {
 		return nil, &ServiceError{Code: "UNAUTHORIZED", Message: "인증된 사용자만 방을 생성할 수 있습니다.", Status: 401}
+	}
+
+	// SEC-RL-002: AI 게임 생성 쿨다운 — LLM Cost Attack 방어
+	// admin 역할은 bypass, CooldownChecker가 nil이면 비활성
+	if len(req.AIPlayers) > 0 && !req.IsAdmin && s.cooldown != nil {
+		if s.cooldown.IsOnCooldown(req.HostUserID) {
+			return nil, &ServiceError{
+				Code:    "AI_COOLDOWN",
+				Message: "AI 게임은 5분에 1회만 생성할 수 있습니다.",
+				Status:  429,
+			}
+		}
 	}
 
 	// 중복 방 참가 검증: 이미 WAITING/PLAYING 방에 참가 중인지 확인
@@ -144,6 +166,11 @@ func (s *roomService) CreateRoom(req *CreateRoomRequest) (*model.RoomState, erro
 
 	// 사용자-방 매핑 설정
 	_ = s.roomRepo.SetActiveRoomForUser(req.HostUserID, roomID)
+
+	// AI 게임 생성 쿨다운 설정 (성공 후에만)
+	if len(req.AIPlayers) > 0 && s.cooldown != nil {
+		s.cooldown.SetCooldown(req.HostUserID)
+	}
 
 	return room, nil
 }
