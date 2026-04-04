@@ -103,3 +103,119 @@ ai-adapter, frontend 전체에서 `Math.random()` 미사용 확인. **안전.**
 | **P2-Medium** | SEC-ADD-001 | Google JWKS 서명 검증 구현 | Go Dev |
 | **P2-Medium** | SEC-ADD-002 | 보안 응답 헤더 추가 | Go Dev + DevOps |
 | **P3-Low** | SEC-PRNG-001/002 | `math/rand` → `crypto/rand` 선택적 마이그레이션 | Go Dev |
+
+---
+
+## 6. 수정 이력 (2026-04-04 당일 해결)
+
+### SEC-RL-002 (P0-Critical → FIXED) — LLM 비용 공격 차단
+
+**위협**: 인증된 사용자 1명이 Claude AI 3명($0.074/턴)으로 방을 연속 생성하면 ~5분에 $20 일일 한도를 소진할 수 있었다.
+
+**2중 방어로 해결:**
+
+| 계층 | 구현 | 파일 |
+|------|------|------|
+| game-server | AI 게임 생성 **5분 쿨다운** (Redis TTL, admin bypass, fail-open) | `cooldown.go`, `room_service.go`, `room_handler.go` |
+| ai-adapter | **시간당 사용자별 비용 한도 $5/h** (gameId 기반 Redis 추적) | `cost-tracking.service.ts`, `cost-limit.guard.ts`, `move.service.ts` |
+
+- 커밋: `0a619e9`
+- 테스트: Go 7건 + NestJS 23건 PASS
+
+### SEC-RL-001 (P1-High → FIXED) — Rate Limit 구현
+
+- game-server: Redis 기반 Fixed Window Counter middleware, 5정책 (커밋 `7baed23`)
+- ai-adapter: `@nestjs/throttler` guard, `/move` 20/min, 기본 30/min (커밋 `7baed23`)
+- frontend: RateLimitToast + API 자동 재시도 + WS throttle (커밋 `7baed23`)
+
+### SEC-RL-004 (P1-High → FIXED) — OAuth 콜백 제한
+
+- `LowFrequencyPolicy` (10 req/min) 적용 (커밋 `7baed23`)
+
+### SEC-SM-001 (P2-Medium → FIXED) — 소스맵 제거
+
+`ai-adapter/tsconfig.build.json`에서 `sourceMap: true → false` 변경 (커밋 `0a619e9`)
+
+상세 설명은 아래 부록 A 참조.
+
+### 미해결 잔여 항목
+
+| 우선순위 | ID | 내용 | 상태 |
+|---------|-----|------|------|
+| P1-High | SEC-RL-003 | WS 서버측 메시지 빈도 제한 (채팅 5/10초, 액션 20/분) | 미해결 (클라이언트 throttle만 있음) |
+| P2-Medium | SEC-ADD-001 | Google id_token JWKS 서명 검증 | 미해결 |
+| P2-Medium | SEC-ADD-002 | 보안 응답 헤더 (CSP, X-Frame-Options 등) | 미해결 |
+| P3-Low | SEC-PRNG-001/002 | `math/rand` → `crypto/rand` | 미해결 (수용 가능) |
+| P3-Low | SEC-ADD-003/004 | 채팅 새니타이징, WS Origin | 미해결 (수용 가능) |
+
+---
+
+## 부록 A. sourceMap 해설 — 왜 프로덕션에서 비활성화해야 하는가
+
+### 소스맵이란?
+
+소스맵(`.map` 파일)은 컴파일된 JavaScript 코드를 원본 TypeScript 소스로 역추적할 수 있게 해주는 매핑 파일이다.
+
+```
+원본 (TypeScript)              빌드 결과 (JavaScript)           소스맵 (.js.map)
+━━━━━━━━━━━━━━━━━━            ━━━━━━━━━━━━━━━━━━━━━           ━━━━━━━━━━━━━━━━━
+class CostGuard {         →   "use strict";var a=...     ←→   {"sources":["cost-limit.guard.ts"],
+  async canActivate() {                                         "mappings":"AAAA,OAAO..."}
+    ...
+  }
+}
+```
+
+### `sourceMap: true` 상태의 위험
+
+Docker 이미지에 `.map` 파일이 포함되면, 공격자가 컨테이너에 접근(또는 이미지를 pull)했을 때 **원본 TypeScript 소스 전체를 복원**할 수 있다.
+
+```mermaid
+flowchart LR
+    A["Docker 이미지\n(프로덕션)"] -->|"포함"| B[".js.map 파일"]
+    B -->|"역매핑"| C["원본 .ts 소스\n완전 복원"]
+    C -->|"분석"| D["내부 로직 노출\n- API 키 패턴\n- 인증 흐름\n- 비즈니스 규칙"]
+```
+
+**실제 사례 — Claude Code npm 소스맵 유출 (2026-03-31)**:
+
+- Anthropic이 npm 패키지에 소스맵을 포함한 채 배포
+- TypeScript 원본 **51만 줄** 전량 노출
+- `/buddy`, always-on agent 등 비공개 기능의 내부 로직이 전부 드러남
+- 난독화, 트리셰이킹을 거쳤더라도 소스맵 하나로 전부 무력화
+
+### `sourceMap: false`로 변경 시 효과
+
+| 항목 | `true` (변경 전) | `false` (변경 후) |
+|------|-----------------|------------------|
+| `.map` 파일 생성 | 빌드마다 생성 | **생성 안 됨** |
+| Docker 이미지 | `.map` 포함 → 소스 복원 가능 | **원본 매핑 정보 없음** |
+| 프로덕션 디버깅 | 소스맵으로 라인 매핑 가능 | 로그 기반 디버깅 (충분) |
+| 빌드 산출물 크기 | 더 큼 | **더 작음** |
+| 보안 | 소스 역공학 가능 | **역공학 원천 차단** |
+
+### 변경 내역
+
+```json
+// src/ai-adapter/tsconfig.build.json
+{
+  "compilerOptions": {
+-   "sourceMap": true,
++   "sourceMap": false,
+  }
+}
+```
+
+### 다른 서비스 현황
+
+| 서비스 | 소스맵 | 상태 |
+|--------|--------|------|
+| **ai-adapter** | `false` (수정됨) | **안전** |
+| frontend (Next.js) | `productionBrowserSourceMaps` 미설정 (기본 `false`) | 안전 |
+| admin (Next.js) | 동일 | 안전 |
+| game-server (Go) | `-trimpath -ldflags="-s -w"` 빌드 | 안전 (디버그 심볼 제거) |
+
+### 참고
+
+- 개발 환경(`tsconfig.json`)의 소스맵은 `true`로 유지해도 무방하다. 프로덕션 빌드 전용 설정(`tsconfig.build.json`)만 `false`이면 된다.
+- Next.js의 `productionBrowserSourceMaps`는 **브라우저에 노출되는** 소스맵만 제어한다. 서버 사이드 소스맵은 별도이나, Docker 이미지에 포함되지 않으면 문제없다.
