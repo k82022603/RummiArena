@@ -4,6 +4,7 @@ import { useEffect, useRef, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { useWSStore } from "@/store/wsStore";
 import { useGameStore } from "@/store/gameStore";
+import { useRateLimitStore } from "@/store/rateLimitStore";
 import { getGameToken } from "@/lib/authToken";
 import type { TileCode } from "@/types/tile";
 import type { Player } from "@/types/game";
@@ -33,6 +34,11 @@ import type {
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8080";
 const MAX_RECONNECT_ATTEMPTS = 5;
 const INITIAL_RECONNECT_DELAY_MS = 3000; // 3s, 6s, 12s, 24s, 48s (2x backoff)
+
+/** WS 발신 스로틀 간격 (ms). Rate limit 감지 시 메시지 간 최소 간격. */
+const WS_THROTTLE_INTERVAL_MS = 1000;
+/** WS 스로틀 해제까지 대기 시간(ms) — 마지막 rate limit 이벤트 후 */
+const WS_THROTTLE_COOLDOWN_MS = 10_000;
 
 /**
  * 서버 에러 코드 -> 한글 메시지 매핑 (errors.go 기반 전체 매핑)
@@ -87,6 +93,11 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
   const seqRef = useRef(0);
   // sendRef: handleMessage 콜백 안에서 send를 호출하기 위한 ref
   const sendRef = useRef<(<T>(type: C2SMessageType, payload: T) => void) | null>(null);
+
+  // WS 발신 스로틀 상태
+  const wsThrottledRef = useRef(false);
+  const wsLastSendRef = useRef(0);
+  const wsThrottleCooldownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { setStatus, setLastError, setReconnectNotice } = useWSStore();
   const {
@@ -366,6 +377,24 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
         }
         case "ERROR": {
           const payload = msg.payload as WSErrorPayload;
+          // Rate Limit 에러 감지: 연결 끊지 않고 스로틀링만 활성화
+          if (payload.code === "RATE_LIMIT" || payload.code === "ERR_RATE_LIMIT") {
+            const retryMatch = payload.message?.match(/(\d+)/);
+            const sec = retryMatch ? Number(retryMatch[1]) : 5;
+            useRateLimitStore
+              .getState()
+              .setMessage(`요청이 너무 많습니다. ${sec}초 후에 다시 시도해주세요.`);
+            // 스로틀 활성화
+            useRateLimitStore.getState().setWsThrottled(true);
+            wsThrottledRef.current = true;
+            if (wsThrottleCooldownRef.current) clearTimeout(wsThrottleCooldownRef.current);
+            wsThrottleCooldownRef.current = setTimeout(() => {
+              wsThrottledRef.current = false;
+              useRateLimitStore.getState().setWsThrottled(false);
+            }, WS_THROTTLE_COOLDOWN_MS);
+            console.warn("[WS] RATE_LIMIT: throttling outgoing messages for %dms", WS_THROTTLE_COOLDOWN_MS);
+            break;
+          }
           setLastError(payload.message);
           console.error("[WS] ERROR:", payload.code, payload.message);
           break;
@@ -463,6 +492,17 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
         console.warn("[WS] send called but not connected");
         return;
       }
+
+      // 스로틀 활성 시: 최소 간격 미만이면 무시 (AUTH, PONG 등 제어 메시지 제외)
+      if (wsThrottledRef.current && type !== "AUTH" && type !== "PONG") {
+        const now = Date.now();
+        if (now - wsLastSendRef.current < WS_THROTTLE_INTERVAL_MS) {
+          console.warn("[WS] send throttled: %s (interval %dms)", type, WS_THROTTLE_INTERVAL_MS);
+          return;
+        }
+        wsLastSendRef.current = now;
+      }
+
       seqRef.current += 1;
       const msg: WSEnvelope<T> = {
         type,
@@ -480,6 +520,8 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
 
   const disconnect = useCallback(() => {
     if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+    if (wsThrottleCooldownRef.current) clearTimeout(wsThrottleCooldownRef.current);
+    wsThrottledRef.current = false;
     wsRef.current?.close(1000, "client disconnect");
     wsRef.current = null;
     setStatus("idle");
@@ -492,6 +534,8 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
     return () => {
       isMounted.current = false;
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+      if (wsThrottleCooldownRef.current) clearTimeout(wsThrottleCooldownRef.current);
+      wsThrottledRef.current = false;
       wsRef.current?.close(1000, "component unmount");
     };
     // connect를 의존성에서 제외: 세션/roomId 변경 시만 재연결

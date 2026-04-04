@@ -7,6 +7,7 @@ import {
   HttpStatus,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { InternalTokenGuard } from '../common/guards/internal-token.guard';
 import { CostLimitGuard } from '../cost/cost-limit.guard';
 import {
@@ -168,6 +169,7 @@ export class MoveController {
    * POST /move
    */
   @Post()
+  @Throttle({ default: { ttl: 60000, limit: 20 } }) // 20 req/min (LLM 호출 비용 높음)
   @UseGuards(InternalTokenGuard, CostLimitGuard)
   @HttpCode(HttpStatus.OK)
   async generateMove(@Body() body: PostMoveBodyDto): Promise<MoveResponseDto> {

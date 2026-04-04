@@ -106,12 +106,32 @@ export interface RatingHistoryResponse {
 }
 
 // ------------------------------------------------------------------
-// 공통 fetch 래퍼
+// 공통 fetch 래퍼 (429 Rate Limit 자동 처리)
 // ------------------------------------------------------------------
+
+import { useRateLimitStore } from "@/store/rateLimitStore";
+
+/** 429 자동 재시도 최대 횟수 */
+const MAX_RATE_LIMIT_RETRIES = 2;
+const DEFAULT_RETRY_AFTER_SEC = 5;
+
+function parseRetryAfter(res: Response): number {
+  const raw = res.headers.get("Retry-After");
+  if (!raw) return DEFAULT_RETRY_AFTER_SEC;
+  const asNumber = Number(raw);
+  if (!Number.isNaN(asNumber) && asNumber > 0) return Math.ceil(asNumber);
+  const date = new Date(raw);
+  if (!Number.isNaN(date.getTime())) {
+    const diffSec = Math.ceil((date.getTime() - Date.now()) / 1000);
+    return diffSec > 0 ? diffSec : DEFAULT_RETRY_AFTER_SEC;
+  }
+  return DEFAULT_RETRY_AFTER_SEC;
+}
 
 async function apiFetch<T>(
   path: string,
-  options?: RequestInit & { token?: string }
+  options?: RequestInit & { token?: string },
+  _retryCount = 0,
 ): Promise<T> {
   const url = `${API_BASE}${path}`;
 
@@ -126,6 +146,23 @@ async function apiFetch<T>(
       ...options?.headers,
     },
   });
+
+  // ---- 429 Too Many Requests 처리 ----
+  if (res.status === 429) {
+    const retrySec = parseRetryAfter(res);
+    useRateLimitStore
+      .getState()
+      .setMessage(`요청이 너무 많습니다. ${retrySec}초 후에 다시 시도해주세요.`);
+
+    if (_retryCount < MAX_RATE_LIMIT_RETRIES) {
+      await new Promise((resolve) => setTimeout(resolve, retrySec * 1000));
+      return apiFetch<T>(path, options, _retryCount + 1);
+    }
+
+    throw new Error(
+      `요청이 너무 많습니다. ${retrySec}초 후에 다시 시도해주세요.`
+    );
+  }
 
   if (!res.ok) {
     throw new Error(`API 오류: ${res.status} ${res.statusText}`);

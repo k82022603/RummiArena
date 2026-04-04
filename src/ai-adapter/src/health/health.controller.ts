@@ -1,10 +1,12 @@
 import { Controller, Get } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { HealthService } from './health.service';
 
 /**
  * 헬스체크 컨트롤러.
  * Kubernetes liveness/readiness probe 및 외부 모니터링 용도.
  */
+@Throttle({ default: { ttl: 60000, limit: 60 } }) // 60 req/min (헬스체크용, 관대하게 설정)
 @Controller('health')
 export class HealthController {
   constructor(private readonly healthService: HealthService) {}

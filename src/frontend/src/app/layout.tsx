@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import AuthProvider from "@/components/providers/AuthProvider";
+import RateLimitToast from "@/components/game/RateLimitToast";
 
 export const metadata: Metadata = {
   title: "RummiArena - 루미큐브 AI 대전 플랫폼",
@@ -17,7 +18,10 @@ export default function RootLayout({
   return (
     <html lang="ko">
       <body>
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          {children}
+          <RateLimitToast />
+        </AuthProvider>
       </body>
     </html>
   );

@@ -5,6 +5,11 @@
 # 파이프라인 현황: **17/17 ALL GREEN** (Pipeline #96, 2026-04-03)
 #   lint(4) + test(2) + quality(2) + build(4 Kaniko + 4 Trivy scan) + update-gitops(1)
 #
+# Trivy 보안 스캔 (2026-04-04 강화):
+#   이미지 스캔: HIGH,CRITICAL 경고 + CRITICAL 게이트 + --ignore-unfixed + JSON 리포트
+#   파일시스템 스캔: HIGH,CRITICAL 게이트 + --ignore-unfixed
+#   Source map 검사: frontend/admin 이미지에 .map 파일 존재 여부 경고
+#
 # 빌드 전략: Kaniko (DinD 대체, 2026-04-03~)
 #   K8s Executor privileged=false → DinD 불가 → Kaniko userspace 빌드로 전환
 #   Kaniko: Docker daemon 없이 Dockerfile 빌드/푸시. 보안 우수, 메모리 효율적.
@@ -259,9 +264,11 @@ trivy-fs:
     entrypoint: [""]
   script:
     # 파일시스템 취약점 스캔 (HIGH/CRITICAL 발견 시 파이프라인 실패)
+    # --ignore-unfixed: 패치 없는 취약점 무시 (액션 가능한 것만 표시)
     - trivy fs
         --exit-code 1
         --severity HIGH,CRITICAL
+        --ignore-unfixed
         --no-progress
         --format table
         --cache-dir "$TRIVY_CACHE_DIR"
@@ -314,6 +321,11 @@ trivy-fs:
 # Trivy 이미지 스캔 공통 템플릿
 # Kaniko 빌드 후 Registry에서 직접 풀링하여 스캔 (Docker 소켓 불필요)
 # Trivy는 TRIVY_USERNAME + TRIVY_PASSWORD 환경변수로 레지스트리 인증
+#
+# 스캔 전략 (2026-04-04 강화):
+#   Pass 1: HIGH,CRITICAL → exit-code 0 (경고만, 파이프라인 중단 안 함) + JSON 리포트 저장
+#   Pass 2: CRITICAL → exit-code 1 (파이프라인 실패)
+#   --ignore-unfixed: 패치 없는 취약점 무시 (노이즈 감소)
 .trivy-scan: &trivy-scan
   stage: build
   <<: *local-runner
@@ -349,12 +361,39 @@ scan-game-server:
   <<: *trivy-scan
   needs: ["build-game-server"]
   script:
+    # Pass 1: HIGH+CRITICAL 경고 리포트 (파이프라인 중단 안 함)
+    - trivy image
+        --exit-code 0
+        --severity HIGH,CRITICAL
+        --ignore-unfixed
+        --no-progress
+        --format table
+        --cache-dir "$TRIVY_CACHE_DIR"
+        "${DOCKER_IMAGE}/game-server:${CI_COMMIT_SHA}"
+    # Pass 1b: JSON 리포트 저장 (대시보드/추적용)
+    - trivy image
+        --exit-code 0
+        --severity HIGH,CRITICAL
+        --ignore-unfixed
+        --no-progress
+        --format json
+        --output trivy-game-server.json
+        --cache-dir "$TRIVY_CACHE_DIR"
+        "${DOCKER_IMAGE}/game-server:${CI_COMMIT_SHA}"
+    # Pass 2: CRITICAL만 파이프라인 실패 게이트
     - trivy image
         --exit-code 1
         --severity CRITICAL
+        --ignore-unfixed
         --no-progress
+        --format table
         --cache-dir "$TRIVY_CACHE_DIR"
         "${DOCKER_IMAGE}/game-server:${CI_COMMIT_SHA}"
+  artifacts:
+    paths:
+      - trivy-game-server.json
+    expire_in: 30 days
+    when: always
 
 build-ai-adapter:
   <<: *build-kaniko
@@ -375,12 +414,39 @@ scan-ai-adapter:
   <<: *trivy-scan
   needs: ["build-ai-adapter"]
   script:
+    # Pass 1: HIGH+CRITICAL 경고 리포트
+    - trivy image
+        --exit-code 0
+        --severity HIGH,CRITICAL
+        --ignore-unfixed
+        --no-progress
+        --format table
+        --cache-dir "$TRIVY_CACHE_DIR"
+        "${DOCKER_IMAGE}/ai-adapter:${CI_COMMIT_SHA}"
+    # Pass 1b: JSON 리포트 저장
+    - trivy image
+        --exit-code 0
+        --severity HIGH,CRITICAL
+        --ignore-unfixed
+        --no-progress
+        --format json
+        --output trivy-ai-adapter.json
+        --cache-dir "$TRIVY_CACHE_DIR"
+        "${DOCKER_IMAGE}/ai-adapter:${CI_COMMIT_SHA}"
+    # Pass 2: CRITICAL만 파이프라인 실패 게이트
     - trivy image
         --exit-code 1
         --severity CRITICAL
+        --ignore-unfixed
         --no-progress
+        --format table
         --cache-dir "$TRIVY_CACHE_DIR"
         "${DOCKER_IMAGE}/ai-adapter:${CI_COMMIT_SHA}"
+  artifacts:
+    paths:
+      - trivy-ai-adapter.json
+    expire_in: 30 days
+    when: always
 
 build-frontend:
   <<: *build-kaniko
@@ -403,12 +469,57 @@ scan-frontend:
   <<: *trivy-scan
   needs: ["build-frontend"]
   script:
+    # Pass 1: HIGH+CRITICAL 경고 리포트
+    - trivy image
+        --exit-code 0
+        --severity HIGH,CRITICAL
+        --ignore-unfixed
+        --no-progress
+        --format table
+        --cache-dir "$TRIVY_CACHE_DIR"
+        "${DOCKER_IMAGE}/frontend:${CI_COMMIT_SHA}"
+    # Pass 1b: JSON 리포트 저장
+    - trivy image
+        --exit-code 0
+        --severity HIGH,CRITICAL
+        --ignore-unfixed
+        --no-progress
+        --format json
+        --output trivy-frontend.json
+        --cache-dir "$TRIVY_CACHE_DIR"
+        "${DOCKER_IMAGE}/frontend:${CI_COMMIT_SHA}"
+    # Source map 검사: 프로덕션 이미지에 .map 파일 존재 여부 확인 (정보 유출 방지)
+    # crane export로 이미지 파일시스템을 tar 스트림으로 받아 .map 파일 탐색
+    # crane은 Docker 없이 Registry에서 직접 이미지 레이어를 다운로드
+    - |
+      echo "=== Source Map Detection (frontend) ==="
+      apk add --no-cache crane 2>/dev/null || (
+        wget -qO /tmp/crane.tar.gz "https://github.com/google/go-containerregistry/releases/download/v0.20.3/go-containerregistry_Linux_x86_64.tar.gz" &&
+        tar -xzf /tmp/crane.tar.gz -C /usr/local/bin crane
+      )
+      crane auth login "${CI_REGISTRY}" -u "${CI_REGISTRY_USER}" -p "${CI_REGISTRY_PASSWORD}" 2>/dev/null || true
+      MAP_COUNT=$(crane export "${DOCKER_IMAGE}/frontend:${CI_COMMIT_SHA}" - 2>/dev/null | tar tf - 2>/dev/null | grep -c '\.map$' || echo "0")
+      if [ "$MAP_COUNT" -gt 0 ]; then
+        echo "WARNING: $MAP_COUNT .map source map file(s) found in frontend production image!"
+        echo "  Consider adding 'RUN find /app -name \"*.map\" -delete' to Dockerfile runner stage"
+        crane export "${DOCKER_IMAGE}/frontend:${CI_COMMIT_SHA}" - 2>/dev/null | tar tf - 2>/dev/null | grep '\.map$' | head -10
+      else
+        echo "OK: No .map source map files detected in frontend image"
+      fi
+    # Pass 2: CRITICAL만 파이프라인 실패 게이트
     - trivy image
         --exit-code 1
         --severity CRITICAL
+        --ignore-unfixed
         --no-progress
+        --format table
         --cache-dir "$TRIVY_CACHE_DIR"
         "${DOCKER_IMAGE}/frontend:${CI_COMMIT_SHA}"
+  artifacts:
+    paths:
+      - trivy-frontend.json
+    expire_in: 30 days
+    when: always
 
 build-admin:
   <<: *build-kaniko
@@ -431,12 +542,55 @@ scan-admin:
   <<: *trivy-scan
   needs: ["build-admin"]
   script:
+    # Pass 1: HIGH+CRITICAL 경고 리포트
+    - trivy image
+        --exit-code 0
+        --severity HIGH,CRITICAL
+        --ignore-unfixed
+        --no-progress
+        --format table
+        --cache-dir "$TRIVY_CACHE_DIR"
+        "${DOCKER_IMAGE}/admin:${CI_COMMIT_SHA}"
+    # Pass 1b: JSON 리포트 저장
+    - trivy image
+        --exit-code 0
+        --severity HIGH,CRITICAL
+        --ignore-unfixed
+        --no-progress
+        --format json
+        --output trivy-admin.json
+        --cache-dir "$TRIVY_CACHE_DIR"
+        "${DOCKER_IMAGE}/admin:${CI_COMMIT_SHA}"
+    # Source map 검사: 프로덕션 이미지에 .map 파일 존재 여부 확인 (정보 유출 방지)
+    - |
+      echo "=== Source Map Detection (admin) ==="
+      apk add --no-cache crane 2>/dev/null || (
+        wget -qO /tmp/crane.tar.gz "https://github.com/google/go-containerregistry/releases/download/v0.20.3/go-containerregistry_Linux_x86_64.tar.gz" &&
+        tar -xzf /tmp/crane.tar.gz -C /usr/local/bin crane
+      )
+      crane auth login "${CI_REGISTRY}" -u "${CI_REGISTRY_USER}" -p "${CI_REGISTRY_PASSWORD}" 2>/dev/null || true
+      MAP_COUNT=$(crane export "${DOCKER_IMAGE}/admin:${CI_COMMIT_SHA}" - 2>/dev/null | tar tf - 2>/dev/null | grep -c '\.map$' || echo "0")
+      if [ "$MAP_COUNT" -gt 0 ]; then
+        echo "WARNING: $MAP_COUNT .map source map file(s) found in admin production image!"
+        echo "  Consider adding 'RUN find /app -name \"*.map\" -delete' to Dockerfile runner stage"
+        crane export "${DOCKER_IMAGE}/admin:${CI_COMMIT_SHA}" - 2>/dev/null | tar tf - 2>/dev/null | grep '\.map$' | head -10
+      else
+        echo "OK: No .map source map files detected in admin image"
+      fi
+    # Pass 2: CRITICAL만 파이프라인 실패 게이트
     - trivy image
         --exit-code 1
         --severity CRITICAL
+        --ignore-unfixed
         --no-progress
+        --format table
         --cache-dir "$TRIVY_CACHE_DIR"
         "${DOCKER_IMAGE}/admin:${CI_COMMIT_SHA}"
+  artifacts:
+    paths:
+      - trivy-admin.json
+    expire_in: 30 days
+    when: always
 
 # =============================================================================
 # Update GitOps Stage — ArgoCD가 감시하는 dev-values.yaml 이미지 태그 업데이트

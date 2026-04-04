@@ -174,10 +174,17 @@ func buildRouter(
 		AllowCredentials: true,
 	}))
 
+	// Rate limiter: *redis.Client satisfies middleware.RedisClientInterface.
+	// When redisClient is nil, the limiter is fail-open (no rate limiting).
+	var rl middleware.RedisClientInterface
+	if redisClient != nil {
+		rl = redisClient
+	}
+
 	registerSystemRoutes(router, redisClient)
-	registerWSRoutes(router, wsHandler)
-	registerAPIRoutes(router, cfg, roomHandler, gameHandler, authHandler, practiceHandler, rankingHandler)
-	registerAdminRoutes(router, cfg, adminHandler)
+	registerWSRoutes(router, wsHandler, rl)
+	registerAPIRoutes(router, cfg, rl, roomHandler, gameHandler, authHandler, practiceHandler, rankingHandler)
+	registerAdminRoutes(router, cfg, rl, adminHandler)
 
 	return router
 }
@@ -197,16 +204,27 @@ func registerSystemRoutes(router *gin.Engine, redisClient *redis.Client) {
 }
 
 // registerWSRoutes WebSocket 엔드포인트를 등록한다.
-func registerWSRoutes(router *gin.Engine, wsHandler *handler.WSHandler) {
-	router.GET("/ws", wsHandler.HandleWS)
+// WebSocket 연결 시도에 대해 WSConnectionPolicy를 적용한다.
+func registerWSRoutes(router *gin.Engine, wsHandler *handler.WSHandler, rl middleware.RedisClientInterface) {
+	ws := router.Group("")
+	ws.Use(middleware.RateLimiter(rl, middleware.WSConnectionPolicy))
+	ws.GET("/ws", wsHandler.HandleWS)
 }
 
 // registerAPIRoutes REST API 라우트 그룹을 등록한다.
 // APP_ENV=dev 일 때는 /api/auth/dev-login 엔드포인트를 추가로 등록한다.
 // practiceHandler/rankingHandler가 nil이면 해당 라우트는 등록하지 않는다.
+//
+// Rate limit 정책:
+//   - auth: LowFrequencyPolicy (10 req/min) — 인증 시도 제한
+//   - rooms: LowFrequencyPolicy (10 req/min) — 방 생성/참가 빈도 제한
+//   - games: MediumFrequencyPolicy (30 req/min) — 게임 액션 제한
+//   - practice: MediumFrequencyPolicy (30 req/min)
+//   - rankings/users: HighFrequencyPolicy (60 req/min) — 공개 조회
 func registerAPIRoutes(
 	router *gin.Engine,
 	cfg *config.Config,
+	rl middleware.RedisClientInterface,
 	roomHandler *handler.RoomHandler,
 	gameHandler *handler.GameHandler,
 	authHandler *handler.AuthHandler,
@@ -215,8 +233,9 @@ func registerAPIRoutes(
 ) {
 	api := router.Group("/api")
 
-	// 인증 엔드포인트: JWT 없이 접근 가능
+	// 인증 엔드포인트: JWT 없이 접근 가능, LowFrequencyPolicy로 브루트포스 방어
 	auth := api.Group("/auth")
+	auth.Use(middleware.RateLimiter(rl, middleware.LowFrequencyPolicy))
 	// Google OAuth (authorization code 방식): 항상 등록
 	auth.POST("/google", authHandler.GoogleLogin)
 	// Google OAuth (id_token 방식, next-auth SSR 연동): 항상 등록
@@ -228,6 +247,7 @@ func registerAPIRoutes(
 
 	rooms := api.Group("/rooms")
 	rooms.Use(middleware.JWTAuth(cfg.JWT.Secret))
+	rooms.Use(middleware.RateLimiter(rl, middleware.LowFrequencyPolicy))
 	{
 		rooms.POST("", roomHandler.CreateRoom)
 		rooms.GET("", roomHandler.ListRooms)
@@ -240,6 +260,7 @@ func registerAPIRoutes(
 
 	games := api.Group("/games")
 	games.Use(middleware.JWTAuth(cfg.JWT.Secret))
+	games.Use(middleware.RateLimiter(rl, middleware.MediumFrequencyPolicy))
 	{
 		games.GET("/:id", gameHandler.GetGameState)
 		games.POST("/:id/place", gameHandler.PlaceTiles)
@@ -251,6 +272,7 @@ func registerAPIRoutes(
 	if practiceHandler != nil {
 		practice := api.Group("/practice")
 		practice.Use(middleware.JWTAuth(cfg.JWT.Secret))
+		practice.Use(middleware.RateLimiter(rl, middleware.MediumFrequencyPolicy))
 		{
 			practice.POST("/progress", practiceHandler.SaveProgress)
 			practice.GET("/progress", practiceHandler.GetProgress)
@@ -258,8 +280,9 @@ func registerAPIRoutes(
 	}
 
 	if rankingHandler != nil {
-		// 전체 랭킹 / 티어별 랭킹: 인증 불필요 (공개 API)
+		// 전체 랭킹 / 티어별 랭킹: 인증 불필요 (공개 API), HighFrequencyPolicy
 		rankings := api.Group("/rankings")
+		rankings.Use(middleware.RateLimiter(rl, middleware.HighFrequencyPolicy))
 		{
 			rankings.GET("", rankingHandler.ListRankings)
 			rankings.GET("/tier/:tier", rankingHandler.ListRankingsByTier)
@@ -267,6 +290,7 @@ func registerAPIRoutes(
 
 		// 개인 ELO 조회: 공개, 이력 조회: 인증 필요
 		users := api.Group("/users")
+		users.Use(middleware.RateLimiter(rl, middleware.HighFrequencyPolicy))
 		{
 			users.GET("/:id/rating", rankingHandler.GetUserRating)
 			usersAuth := users.Group("")
@@ -282,13 +306,15 @@ func registerAPIRoutes(
 // adminHandler가 nil이면 (DB 없음) 등록을 건너뛴다.
 // JWTAuth → RequireRole("admin") 순서로 미들웨어를 적용하여
 // 유효한 JWT를 가진 admin role 사용자만 접근할 수 있다.
-func registerAdminRoutes(router *gin.Engine, cfg *config.Config, adminHandler *handler.AdminHandler) {
+// AdminPolicy 적용 (30 req/min). admin role은 RateLimiter 내부에서 자동 bypass 된다.
+func registerAdminRoutes(router *gin.Engine, cfg *config.Config, rl middleware.RedisClientInterface, adminHandler *handler.AdminHandler) {
 	if adminHandler == nil {
 		return
 	}
 	admin := router.Group("/admin")
 	admin.Use(middleware.JWTAuth(cfg.JWT.Secret))
 	admin.Use(middleware.RequireRole("admin"))
+	admin.Use(middleware.RateLimiter(rl, middleware.AdminPolicy))
 	{
 		admin.GET("/dashboard", adminHandler.GetDashboard)
 		admin.GET("/games", adminHandler.ListGames)

@@ -17,7 +17,7 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 |-------|------|--------|-------------|------|
 | 1 | 기획 & 환경 구축 | Sprint 0 | 기획/설계 문서, K8s/ArgoCD/Traefik 환경 | **완료** |
 | 2 | 핵심 게임 개발 (MVP) | Sprint 1~3 | Game Engine (Go), Backend API, Frontend 기본 | **완료** (2026-03-23) |
-| 3 | AI 연동 & 멀티플레이 | Sprint 4~5 | AI Adapter (NestJS), 실시간 대전, 1인 연습 모드 | **Sprint 4 완료** (2026-04-01), Sprint 5 진행 중 |
+| 3 | AI 연동 & 멀티플레이 | Sprint 4~5 | AI Adapter (NestJS), 실시간 대전, 1인 연습 모드 | **Sprint 4 완료** (2026-04-01), **Sprint 5 Day 4** 진행 중 |
 | 4 | 플랫폼 기능 확장 | Sprint 6 | 관리자 대시보드, 카카오톡 알림, ELO, 게임 복기 | 일부 선행 완료 (ELO, 관리자) |
 | 5 | DevSecOps 고도화 | Sprint 7~9 | Observability, 보안 고도화, Istio Service Mesh | **Sprint 5에서 선행 착수** (CI/CD, SonarQube, Trivy) |
 | 6 | 운영 & 실험 | (Phase 6) | AI 토너먼트, 모델 비교 분석, OpenShift 검토 | 미착수 |
@@ -204,6 +204,17 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 - [x] CI/CD 문서 6개 업데이트 (배포 가이드 v2.0~v3.0) — 2026-04-03
 - [x] E2E 전량 PASS 보고서 (docs/04-testing/30) — 2026-04-03
 
+### Sprint 5 Day 4: P1 병렬 처리 + 기능 확장 (2026-04-04)
+- [ ] **Rate Limit 구현** — Architect 설계 + Go Dev 미들웨어 + Node Dev 가드 + Frontend 429 UI (진행 중)
+- [ ] **DeepSeek 프롬프트 최적화** — AI Engineer 설계 + Node Dev 구현, 무효율 55%→30% 목표 (진행 중)
+- [ ] **Trivy HIGH severity 확대** — DevOps, CRITICAL only → HIGH,CRITICAL 정책 (진행 중)
+- [ ] **플레이테스트 S2/S4/S5 스크립트** — QA, S2(4인)/S4(조커)/S5(장기전) (진행 중)
+- [ ] **AI 캐릭터 시각 아이덴티티 스펙** — Designer, P2 선행 설계 (진행 중)
+- [ ] Security: Rate Limit 보안 감사 + PRNG 감사 (진행 중)
+- [x] 프로젝트 분석: Claude Code Insights 리포트 (48세션/110커밋/96시간) — 2026-04-04
+- [x] 프로젝트 분석: 개발 방법론 종합 평가 (1인+10에이전트 실험) — 2026-04-04
+- [x] /buddy 스크럼 미팅 (11명 전원) — FSM/결정적 생성 패턴 토론 — 2026-04-04
+
 ### AI 연동 완료 기준
 - [ ] Human 1 + AI 3 (서로 다른 모델) 게임 정상 동작 — Sprint 5 이월
 - [x] AI 캐릭터 (하수/중수/고수) 차이 확인 — CharacterService + DIFFICULTY_TEMPERATURE 구현 (2026-03-21)
@@ -229,6 +240,8 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 ### 보안 & 품질
 - [x] SonarQube CI 파이프라인 연동 (Quality Gate) — 93초 PASS (2026-04-02)
 - [x] Trivy 이미지 스캔 자동화 — fs-scan 18초 + image-scan 4개 각 ~20초 PASS (2026-04-03)
+- [ ] **Rate Limit 구현** — API 보안 (game-server + ai-adapter + Frontend 429 UI) — Sprint 5 Day 4 진행 중
+- [ ] **Trivy severity HIGH,CRITICAL** — CRITICAL only → HIGH 확대 — Sprint 5 Day 4 진행 중
 - [ ] OWASP ZAP 동적 보안 테스트 (선택)
 - [ ] Sealed Secrets 도입
 
@@ -325,60 +338,37 @@ docs/
 
 ## 현재 진행 상황
 
-**Phase 2 완료 + Phase 3 (Sprint 4) 진행 중** — Sprint 1~3 완료 (2026-03-23)
+**Sprint 4 완료 + Sprint 5 Day 4 진행 중** (2026-04-04)
 
 ### 완료된 스프린트
 
 - **Sprint 1** 28/28 SP: Game Engine, REST API, WebSocket, K8s 5개 서비스 배포
 - **Sprint 2** 50/50 SP: AI 캐릭터, Turn Orchestrator, ELO, 관리자 대시보드, 연습 모드
 - **Sprint 3** 30/30 SP: OAuth K8s 패치, WS 재연결, gemma3 최적화, Redis Timer/Session
+- **Sprint 4** 완료 (2026-04-01): ISS-001~004, BUG 7건, E2E 338개, AI Adapter 324개, 보안 P0 4건
 
-### Sprint 4 진행 중 (2026-03-23 조기 착수)
+### Sprint 5 진행 중 (2026-04-01 시작)
 
-**완료된 작업**:
-- ISS-001~004 전부 FIXED (ai-adapter 400, AI userID, Ollama K8s, WS GAME_OVER)
-- BUG-S4-001, BUG-P-004, BUG-G-001, BUG-GR-001, BUG-UI-001~003 전부 FIXED
-- Go 유닛 346개 (329 PASS + 17 SKIP, 95.6%) + Playwright E2E 153개 + AI Adapter 324개
-- WS 통합 테스트 16/16 PASS + admin API 7개 엔드포인트 실 구현
-- Google OAuth K8s 구조적 해결 + 빌드 경고 0개
-- 설계 4건 구현 완료 (퇴장/기권 7SP, 중복방 3SP, 교착 5SP, beforeunload 2SP = 17SP)
-- LLM 비용/메트릭 추적 구현 (CostTrackingService + MetricsService + API 5개 = 12SP)
-- 보안 P0 5건 중 4건 완료 (git-filter-repo, securityContext, inject-secrets.sh)
-- [x] 비용 추적 Redis 연동 (BL-S4-005 완료)
-- [x] AI 호출 로그/메트릭 수집 (BL-S4-006 완료)
-- 사용자 플레이테스트 10건 버그 전량 수정+배포 (BUG-AI-001 CRITICAL 포함)
+**Day 1~3 완료 (품질 게이트 확보)**:
+- CI/CD 17/17 ALL GREEN (Pipeline #96)
+- E2E 362/362 전량 PASS
+- Go 611개 테스트 (engine 95.6%)
+- AI 대전 Round 2: GPT 28%, Claude 23%, DeepSeek 5% → Round 3: DeepSeek 12.5%
+- 플레이테스트 S1 11/13, S3 17/17 PASS
+- 게임 버그 24건 수정 + K8s 4서비스 배포 (191Mi)
 
-**미완료 (Sprint 4 잔여)**:
-- [x] LLM 4종 실 API 검증 (OpenAI gpt-5-mini, Claude, DeepSeek, Ollama qwen2.5:3b) — 전부 PASS (2026-03-31)
-- [x] 프롬프트 최적화 + 고도화 (30점 규칙, tableGroups 명확화, 전략 분석 절차) — (2026-03-31)
-- [x] ArgoCD ignoreDifferences 정비 (ai-adapter-secret, ConfigMap, Ollama, ResourceQuota) — (2026-03-31)
+**Day 4 진행 중 (P1 기능 확장, 10명 전원 투입)**:
+- [ ] Rate Limit 구현 — 4명 투입 (Architect/Go Dev/Node Dev/Frontend Dev)
+- [ ] DeepSeek 프롬프트 최적화 — 2명 투입 (AI Engineer/Node Dev), 무효율 55%→30%
+- [ ] Trivy HIGH severity 확대 — 1명 (DevOps)
+- [ ] 플레이테스트 S2/S4/S5 스크립트 — 1명 (QA)
+- [ ] AI 캐릭터 시각 아이덴티티 — 1명 (Designer, P2 선행)
+- [ ] Rate Limit 보안 감사 + PRNG 감사 — 1명 (Security)
+- [x] Claude Code Insights + 방법론 평가 리포트 — 2026-04-04
+- [x] /buddy 스크럼 미팅 (11명) — 2026-04-04
+
+**미완료 (Sprint 5 잔여)**:
 - [ ] Human 1 + AI 3 혼합 게임 GAME_OVER 완주 E2E
-- [ ] AI 대전 재테스트 (고도화된 프롬프트로 검증)
-- [ ] Sprint 4 종료 판정
-
-### All-Hands 종합 리뷰 결과 (2026-03-30)
-
-10개 전문 에이전트 병렬 리뷰 수행. 전체 등급 **B+**.
-
-| 카테고리 | 건수 | 핵심 |
-|----------|------|------|
-| CRITICAL | 8건 | Admin 무인증, 시크릿 Git 노출, Pod securityContext, id_token 미검증, Redis 무영속 |
-| WARN | 55건 | 보안 11, 아키텍처 7, 코드 20, 인프라 8, QA 6, PM 7, UX 7 |
-| OK | 53건 | Engine 95.6% 커버리지, LLM 3중 검증, GitOps, 계층 분리, 타일 디자인 |
-
-### 사용자 플레이테스트 (2026-03-30 오후)
-
-최초 수동 테스트 — 25장 스크린샷, 10건 버그 발견 및 전량 수정.
-- **BUG-AI-001 (CRITICAL)**: AI Adapter `@ArrayMaxSize(14)` → AI 15장 이상 시 무한 드로우
-- **BUG-WS-001 (CRITICAL)**: WS ping/pong heartbeat 미구현 → 끊김 반복
-- 상세: `docs/04-testing/23-user-playtest-bug-report-2026-03-30.md`
-
-### LLM 4종 실 API 검증 완료 (2026-03-31)
-
-- OpenAI gpt-5-mini (추론 모델), Claude claude-sonnet-4-20250514, DeepSeek deepseek-chat, Ollama qwen2.5:3b -- 전부 PASS
-- 프롬프트 최적화 + 고도화 (30점 규칙 명시, tableGroups 명확화, 전략 분석 절차 추가)
-- AI Adapter 테스트 324 PASS (thinking 파싱 6개 신규)
-- ArgoCD ignoreDifferences 정비 (ai-adapter-secret, ConfigMap, Ollama, ResourceQuota)
-- 문서 2건: LLM 검증 보고서 (04-testing/24), 시크릿 주입 가이드 (05-deployment/06~07)
-
-다음 단계: AI 대전 재테스트 (고도화된 프롬프트) + Human 1 + AI 3 E2E + Sprint 4 종료 판정
+- [ ] 3모델 Round 3 대전 (GPT/Claude/DeepSeek 비교)
+- [ ] DAILY_COST_LIMIT 이중 키 정리
+- [ ] Istio Service Mesh 프리뷰 설계

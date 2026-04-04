@@ -712,6 +712,7 @@ export default function GameClient({ roomId }: GameClientProps) {
     <>
       <ErrorToast />
       <ReconnectToast />
+      {/* RateLimitToast는 layout.tsx에서 전역 마운트 */}
     <DndContext
       sensors={sensors}
       collisionDetection={closestCenter}

@@ -724,4 +724,272 @@ describe('DeepSeekAdapter', () => {
       expect(response.metadata.isFallbackDraw).toBe(true);
     });
   });
+
+  // -----------------------------------------------------------------------
+  // DeepSeek 프롬프트 최적화 검증 (Round 3 -> Round 4)
+  //
+  // 목적:
+  //   - few-shot 예시가 시스템 프롬프트에 포함되는지 확인
+  //   - 타일 인코딩 테이블이 포함되는지 확인
+  //   - 자기 검증 체크리스트가 포함되는지 확인
+  //   - 유저 프롬프트에 검증 힌트가 포함되는지 확인
+  //   - 재시도 프롬프트에 공통 실수 목록이 포함되는지 확인
+  // -----------------------------------------------------------------------
+  describe('DeepSeek 프롬프트 최적화 (무효율 55%→30% 목표)', () => {
+    let reasonerAdapter: DeepSeekAdapter;
+
+    beforeEach(() => {
+      reasonerAdapter = makeReasonerAdapter();
+      jest.clearAllMocks();
+    });
+
+    describe('시스템 프롬프트 - few-shot 예시', () => {
+      it('시스템 프롬프트에 5개 이상의 few-shot 예시가 포함된다', async () => {
+        const content = JSON.stringify({ action: 'draw', reasoning: 'test' });
+        mockedAxios.post = jest
+          .fn()
+          .mockResolvedValueOnce(makeReasonerResponse(content, ''));
+
+        await reasonerAdapter.generateMove(makeMoveRequest());
+
+        const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
+        const systemContent: string = body.messages[0].content;
+
+        // few-shot 예시 섹션 존재
+        expect(systemContent).toContain('Few-Shot Examples');
+
+        // draw 예시
+        expect(systemContent).toContain('Example 1: Draw');
+
+        // place 예시 (single run)
+        expect(systemContent).toContain('Example 2: Place single run');
+
+        // place 예시 (group)
+        expect(systemContent).toContain('Example 3: Place group');
+
+        // extend 예시
+        expect(systemContent).toContain('Example 4: Extend existing');
+
+        // multiple sets 예시
+        expect(systemContent).toContain('Example 5: Multiple sets');
+      });
+
+      it('few-shot 예시에 유효한 RUN 예시가 포함된다', async () => {
+        const content = JSON.stringify({ action: 'draw', reasoning: 'test' });
+        mockedAxios.post = jest
+          .fn()
+          .mockResolvedValueOnce(makeReasonerResponse(content, ''));
+
+        await reasonerAdapter.generateMove(makeMoveRequest());
+
+        const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
+        const systemContent: string = body.messages[0].content;
+
+        // R10a, R11a, R12a 런 예시
+        expect(systemContent).toContain('R10a');
+        expect(systemContent).toContain('R11a');
+        expect(systemContent).toContain('R12a');
+      });
+
+      it('few-shot 예시에 유효한 GROUP 예시가 포함된다', async () => {
+        const content = JSON.stringify({ action: 'draw', reasoning: 'test' });
+        mockedAxios.post = jest
+          .fn()
+          .mockResolvedValueOnce(makeReasonerResponse(content, ''));
+
+        await reasonerAdapter.generateMove(makeMoveRequest());
+
+        const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
+        const systemContent: string = body.messages[0].content;
+
+        // Group 예시 (같은 숫자, 다른 색)
+        expect(systemContent).toContain('R7a, B7a, K7a');
+      });
+
+      it('few-shot 예시에 INVALID 케이스와 그 이유가 포함된다', async () => {
+        const content = JSON.stringify({ action: 'draw', reasoning: 'test' });
+        mockedAxios.post = jest
+          .fn()
+          .mockResolvedValueOnce(makeReasonerResponse(content, ''));
+
+        await reasonerAdapter.generateMove(makeMoveRequest());
+
+        const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
+        const systemContent: string = body.messages[0].content;
+
+        // INVALID 예시와 에러 코드
+        expect(systemContent).toContain('ERR_GROUP_COLOR_DUP');
+        expect(systemContent).toContain('ERR_GROUP_NUMBER');
+        expect(systemContent).toContain('ERR_SET_SIZE');
+      });
+    });
+
+    describe('시스템 프롬프트 - 타일 인코딩 강화', () => {
+      it('타일 인코딩이 테이블 형태로 제시된다', async () => {
+        const content = JSON.stringify({ action: 'draw', reasoning: 'test' });
+        mockedAxios.post = jest
+          .fn()
+          .mockResolvedValueOnce(makeReasonerResponse(content, ''));
+
+        await reasonerAdapter.generateMove(makeMoveRequest());
+
+        const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
+        const systemContent: string = body.messages[0].content;
+
+        // 테이블 형태의 인코딩 설명
+        expect(systemContent).toContain('Component');
+        expect(systemContent).toContain('Color');
+        expect(systemContent).toContain('R, B, Y, K');
+        expect(systemContent).toContain('Number');
+        expect(systemContent).toContain('1, 2, 3');
+        expect(systemContent).toContain('Set');
+        expect(systemContent).toContain('a, b');
+      });
+
+      it('106장 전체 타일 수가 명시된다', async () => {
+        const content = JSON.stringify({ action: 'draw', reasoning: 'test' });
+        mockedAxios.post = jest
+          .fn()
+          .mockResolvedValueOnce(makeReasonerResponse(content, ''));
+
+        await reasonerAdapter.generateMove(makeMoveRequest());
+
+        const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
+        const systemContent: string = body.messages[0].content;
+
+        expect(systemContent).toContain('106 tiles');
+      });
+    });
+
+    describe('시스템 프롬프트 - 자기 검증 체크리스트', () => {
+      it('Pre-Submission Validation Checklist가 포함된다', async () => {
+        const content = JSON.stringify({ action: 'draw', reasoning: 'test' });
+        mockedAxios.post = jest
+          .fn()
+          .mockResolvedValueOnce(makeReasonerResponse(content, ''));
+
+        await reasonerAdapter.generateMove(makeMoveRequest());
+
+        const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
+        const systemContent: string = body.messages[0].content;
+
+        expect(systemContent).toContain('Pre-Submission Validation Checklist');
+        expect(systemContent).toContain('>= 3 tiles');
+        expect(systemContent).toContain('SAME color');
+        expect(systemContent).toContain('CONSECUTIVE numbers');
+        expect(systemContent).toContain('DIFFERENT colors');
+      });
+    });
+
+    describe('유저 프롬프트 - 검증 힌트', () => {
+      it('유저 프롬프트에 Validation Reminders 섹션이 포함된다', async () => {
+        const content = JSON.stringify({ action: 'draw', reasoning: 'test' });
+        mockedAxios.post = jest
+          .fn()
+          .mockResolvedValueOnce(makeReasonerResponse(content, ''));
+
+        await reasonerAdapter.generateMove(makeMoveRequest());
+
+        const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
+        const userContent: string = body.messages[1].content;
+
+        expect(userContent).toContain('Validation Reminders');
+        expect(userContent).toContain('verify each set has 3+ tiles');
+        expect(userContent).toContain('runs are consecutive same-color');
+        expect(userContent).toContain('groups are same-number different-colors');
+      });
+
+      it('유저 프롬프트에 duplicate color 경고가 포함된다', async () => {
+        const content = JSON.stringify({ action: 'draw', reasoning: 'test' });
+        mockedAxios.post = jest
+          .fn()
+          .mockResolvedValueOnce(makeReasonerResponse(content, ''));
+
+        await reasonerAdapter.generateMove(makeMoveRequest());
+
+        const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
+        const userContent: string = body.messages[1].content;
+
+        expect(userContent).toContain('no duplicate colors in groups');
+      });
+    });
+
+    describe('재시도 프롬프트 - 공통 실수 목록', () => {
+      it('재시도 프롬프트에 공통 실수 방지 가이드가 포함된다', async () => {
+        // 첫 시도 실패 -> 두 번째 시도
+        const failResponse = makeReasonerResponse('invalid', 'bad');
+        const successResponse = makeReasonerResponse(
+          JSON.stringify({ action: 'draw', reasoning: 'retry' }),
+          'ok',
+        );
+
+        mockedAxios.post = jest
+          .fn()
+          .mockResolvedValueOnce(failResponse)
+          .mockResolvedValueOnce(successResponse);
+
+        await reasonerAdapter.generateMove(makeMoveRequest({ maxRetries: 3 }));
+
+        // 두 번째 호출의 유저 프롬프트에 공통 실수 목록이 있는지 확인
+        const [, retryBody] = (mockedAxios.post as jest.Mock).mock.calls[1];
+        const retryUserContent: string = retryBody.messages[1].content;
+
+        expect(retryUserContent).toContain('Common mistakes to avoid');
+        expect(retryUserContent).toContain('ALL DIFFERENT colors');
+        expect(retryUserContent).toContain('SAME color');
+        expect(retryUserContent).toContain('CONSECUTIVE numbers');
+        expect(retryUserContent).toContain('>= 3 tiles');
+      });
+    });
+
+    describe('시스템 프롬프트 - 그룹/런 규칙 명확화', () => {
+      it('그룹 규칙에 "no color can appear twice" 명시가 포함된다', async () => {
+        const content = JSON.stringify({ action: 'draw', reasoning: 'test' });
+        mockedAxios.post = jest
+          .fn()
+          .mockResolvedValueOnce(makeReasonerResponse(content, ''));
+
+        await reasonerAdapter.generateMove(makeMoveRequest());
+
+        const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
+        const systemContent: string = body.messages[0].content;
+
+        expect(systemContent).toContain(
+          'No color can appear twice in a group',
+        );
+      });
+
+      it('런 규칙에 "no wraparound" 명시가 포함된다', async () => {
+        const content = JSON.stringify({ action: 'draw', reasoning: 'test' });
+        mockedAxios.post = jest
+          .fn()
+          .mockResolvedValueOnce(makeReasonerResponse(content, ''));
+
+        await reasonerAdapter.generateMove(makeMoveRequest());
+
+        const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
+        const systemContent: string = body.messages[0].content;
+
+        expect(systemContent).toContain('No wraparound');
+        expect(systemContent).toContain('13-1 is NOT allowed');
+      });
+
+      it('Initial Meld 규칙에 점수 계산 예시가 포함된다', async () => {
+        const content = JSON.stringify({ action: 'draw', reasoning: 'test' });
+        mockedAxios.post = jest
+          .fn()
+          .mockResolvedValueOnce(makeReasonerResponse(content, ''));
+
+        await reasonerAdapter.generateMove(makeMoveRequest());
+
+        const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
+        const systemContent: string = body.messages[0].content;
+
+        // 30점 이상 예시
+        expect(systemContent).toContain('10+11+12 = 33');
+        // 30점 미만 예시
+        expect(systemContent).toContain('1+2+3 = 6');
+      });
+    });
+  });
 });

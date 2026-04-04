@@ -542,10 +542,10 @@ kubectl get configmap ai-adapter-config -n rummikub -o yaml | grep DAILY_COST
 | 시나리오 | 상태 | 소요 시간 | 발견 결함 | 비고 |
 |----------|------|-----------|-----------|------|
 | S1: 1v1 기본 대전 | PARTIAL (11/13) | 8분 | 1건 (m-10 미수정) | AI=Ollama TIMEOUT fallback 다수 |
-| S2: 4인 풀 대전 | 미수행 | - | - | 유료 API 미사용 (Sprint 5 예정) |
+| S2: 4인 풀 대전 | 미수행 (스크립트 준비 완료) | - | - | `scripts/playtest-s2.mjs` 자동화 완료, API 키 필요 |
 | S3: INVALID_MOVE 유도 | **PASS (17/17)** | 2분 | 0건 | 핵심 C-1 수정 **검증 완료** |
-| S4: 조커 교환 + 재배치 | 미수행 | - | - | 브라우저 수동 필요 |
-| S5: 장기전 50턴+ | 미수행 | - | - | S1에서 20턴 안정성 확인 |
+| S4: 조커 교환 + 재배치 | 미수행 (스크립트 준비 완료) | - | - | `scripts/playtest-s4.mjs` 자동화 완료 |
+| S5: 장기전 50턴+ | 미수행 (스크립트 준비 완료) | - | - | `scripts/playtest-s5.mjs` 자동화 완료, 80턴/30분 |
 | S6: 네트워크 장애 복원 | 미수행 | - | - | 브라우저 수동 필요 |
 | S7: 교착 상태 | 미수행 | - | - | S1에서 드로우파일 소진 미도달 |
 
@@ -556,11 +556,11 @@ kubectl get configmap ai-adapter-config -n rummikub -o yaml | grep DAILY_COST
 | C-1: INVALID_MOVE 후 RESET_TURN 미전송 | S3 | **미재현** | **FIX CONFIRMED** -- 3회 연속 INVALID_MOVE 후 RESET_TURN 전송, 매회 rack 14장 완벽 복원 |
 | C-2: TURN_END에서 myRack 미동기화 | S1 | **미재현** | **FIX CONFIRMED** -- 모든 Human TURN_END에 myRack 포함 (10/10) |
 | C-3: 클라이언트 세트 유효성 미검증 | S3 | **미재현** | **FIX CONFIRMED** -- ERR_SET_SIZE, ERR_GROUP_NUMBER 정상 반환 |
-| C-4: Universe Conservation 미검증 | S4 | 미수행 | 브라우저 수동 필요 |
-| C-5: V-06 타일 코드 비교 | S4 | 미수행 | 브라우저 수동 필요 |
-| C-6: PlaceTiles 타일 보전 미검증 | S4 | 미수행 | 브라우저 수동 필요 |
+| C-4: Universe Conservation 미검증 | S4, S5 | 미수행 | `playtest-s4.mjs`/`playtest-s5.mjs` 자동화 준비 완료 |
+| C-5: V-06 타일 코드 비교 | S4 | 미수행 | `playtest-s4.mjs` 자동화 준비 완료 |
+| C-6: PlaceTiles 타일 보전 미검증 | S4 | 미수행 | `playtest-s4.mjs` 자동화 준비 완료 |
 | C-7: graceSec vs graceDeadlineMs 불일치 | S6 | 미수행 | 브라우저 수동 필요 |
-| M-1: JokerReturnedCodes 미정의 | S4 | 미수행 | 브라우저 수동 필요 |
+| M-1: JokerReturnedCodes 미정의 | S4 | 미수행 | `playtest-s4.mjs` 자동화 준비 완료 |
 | M-4: pendingMyTiles null 방어 | S3 (E3) | 미수행 | 프론트엔드 로직 |
 | M-5: 에러 코드 매핑 누락 | S3 | **미재현** | **FIX CONFIRMED** -- 한글 에러 메시지 정상 표시 ("세트는 최소 3장 이상이어야 합니다.") |
 | M-6: INVALID_MOVE 후 턴 교착 | S3 | **미재현** | **FIX CONFIRMED** -- 3회 INVALID 후 정상 DRAW + AI 턴 전환 + 추가 2턴 안정 |
@@ -618,7 +618,125 @@ After 3x INVALID_MOVE:
 
 ---
 
-## 7. 부록: 서버 로그 확인 명령어
+## 7. 자동화 스크립트 (S2/S4/S5)
+
+### 7.1 개요
+
+2026-04-04에 S2, S4, S5 시나리오의 자동화 스크립트를 구현하였다. 기존 `playtest-s1-s3.mjs`와 동일한 패턴(REST + WebSocket 직접 호출)을 따른다.
+
+| 스크립트 | 시나리오 | 실행 명령 | 예상 소요 | 비용 |
+|----------|---------|-----------|-----------|------|
+| `scripts/playtest-s2.mjs` | S2: 4인 풀 대전 | `node scripts/playtest-s2.mjs` | 15~30분 | ~$2.00 |
+| `scripts/playtest-s4.mjs` | S4: 조커 교환 + 재배치 | `node scripts/playtest-s4.mjs` | 5~15분 | $0 (Ollama) |
+| `scripts/playtest-s5.mjs` | S5: 장기전 50턴+ | `node scripts/playtest-s5.mjs` | 10~30분 | $0 (Ollama) |
+
+### 7.2 사전 조건
+
+```bash
+# ws 모듈 설치 (scripts/ 디렉토리에서)
+cd scripts && npm install ws
+
+# 환경 변수 (선택)
+export BASE_URL=http://localhost:30080   # 기본값
+export MAX_TURNS=40                       # S2 기본값 40, S5 기본값 80
+```
+
+### 7.3 S2: 4인 풀 대전 (`playtest-s2.mjs`)
+
+```mermaid
+sequenceDiagram
+    participant Script as 테스트 스크립트
+    participant GS as Game Server
+    participant AI1 as OpenAI (shark/expert)
+    participant AI2 as Claude (fox/expert)
+    participant AI3 as DeepSeek (calculator/intermediate)
+
+    Script->>GS: POST /api/rooms (4인, AI 3종)
+    GS-->>Script: roomId, 4 players
+    Script->>GS: POST /api/rooms/:id/start
+    GS-->>Script: gameId, status=PLAYING
+    Script->>GS: WS AUTH
+    GS-->>Script: GAME_STATE (rack=14, drawPile=50)
+    
+    loop 40턴 순환 (seat 0->1->2->3)
+        alt Human 턴
+            Script->>GS: DRAW_TILE (auto-draw)
+            GS-->>Script: TILE_DRAWN + TURN_END
+        else AI 턴 (OpenAI/Claude/DeepSeek)
+            GS-->>Script: TURN_END (action, fallback 여부)
+        end
+    end
+    
+    Script->>GS: GET /api/games/:id (conservation check)
+    GS-->>Script: Universe = 106 확인
+```
+
+**검증 항목 (체크리스트)**:
+- `room_created`: 4인 방 생성 성공
+- `player_count_4`: 방에 정확히 4명
+- `seat1_is_openai` / `seat2_is_claude` / `seat3_is_deepseek`: AI 타입 매칭
+- `initial_rack_14`: 초기 14장 분배
+- `drawPile_50`: 106 - (14 x 4) = 50장 확인
+- `all_players_14_tiles`: 4인 모두 14장
+- `turn_order_cyclic`: seat 0 -> 1 -> 2 -> 3 -> 0 순환
+- `all_ai_responded`: 3종 AI 모두 1회 이상 턴 수행
+- `no_total_timeout`: AI 완전 타임아웃 0건
+- `universe_conservation_106`: 최종 타일 합 = 106
+
+### 7.4 S4: 조커 교환 + 테이블 재배치 (`playtest-s4.mjs`)
+
+5단계(Phase A~E)로 구성된 시나리오:
+
+| Phase | 내용 | 자동화 전략 |
+|-------|------|-------------|
+| A | 30점 이상 초기 등록 | 랙 분석 -> 유효 세트 탐색 -> CONFIRM_TURN |
+| B | 테이블 재배치 | 4장+ 세트에서 1장 분리 + 랙 타일로 새 그룹 구성 |
+| C | 조커 포함 세트 배치 | 랙에 조커 있을 때 2장+조커로 세트 구성 |
+| D | 조커 교환 | 테이블 조커를 실제 타일로 교체 + 반환 조커 즉시 사용 (V-07) |
+| E | 타일 보전 검증 | 매 단계 table + rack + drawPile = 106 확인 |
+
+**검증 항목**: `initial_meld_done`, `joker_set_placed`, `joker_exchange_valid`, `joker_reused_same_turn`, `invalid_joker_hold_rejected` (V-07), `rearrangement_valid`, `universe_conservation_106`
+
+**참고**: 조커 교환과 재배치는 랙 상태에 의존하므로, 무작위 초기 분배에 따라 일부 Phase가 수행되지 않을 수 있다. 이 경우 스크립트는 해당 Phase를 SKIP하고 가능한 Phase만 실행한다.
+
+### 7.5 S5: 장기전 50턴+ (`playtest-s5.mjs`)
+
+```mermaid
+flowchart TB
+    A["게임 시작\n(Human vs Ollama)"] --> B["Human: 매 턴 DRAW\n(장기전 유도)"]
+    B --> C{10턴 간격\n체크포인트?}
+    C -->|Yes| D["Conservation 검증\ntable + rack + drawPile = 106"]
+    D --> E["안정성 메트릭 수집\n(WS 메시지, 에러, 재연결)"]
+    E --> F{50턴 도달?}
+    C -->|No| F
+    F -->|No| B
+    F -->|Yes| G["최종 Conservation\n+ 안정성 리포트"]
+    G --> H["PASS/FAIL 판정"]
+```
+
+**10턴 간격 체크포인트**:
+- REST API로 `GET /api/games/:id` 호출하여 universe conservation 검증
+- WS 메시지 수, WS close 수, 재연결 수, 서버 에러 수 기록
+- TURN_END turnNumber=0 발생 횟수 추적 (m-10)
+
+**검증 항목**: `reached_50_turns`, `all_conservation_valid`, `ws_stable` (재연결 0회), `no_ws_errors`, `turn_log_accurate`, `no_excessive_turnEnd_zero`
+
+**설정값**:
+- `MAX_TURNS=80` (기본값, 환경변수로 조절 가능)
+- `CHECKPOINT_INTERVAL=10` (10턴마다 conservation check)
+- `AI_TIMEOUT_MS=90000` (Ollama 90초)
+- `SCENARIO_TIMEOUT_MS=1800000` (30분 전체 타임아웃)
+
+### 7.6 출력 형식
+
+모든 스크립트는 동일한 출력 형식을 따른다:
+1. 콘솔 로그: `[HH:MM:SS.mmm]` 형식 타임스탬프 + 상세 진행 상황
+2. JSON 리포트: 프로그래밍 파싱용 구조화 결과
+3. Exit code: 0=PASS, 1=FAIL, 2=TIMEOUT/ERROR
+
+---
+
+## 8. 부록: 서버 로그 확인 명령어
 
 테스트 중 문제 발생 시 서버 로그를 확인하는 명령어 모음.
 
@@ -642,7 +760,7 @@ kubectl exec -it deployment/redis -n rummikub -- redis-cli get "game:{gameId}:st
 
 ---
 
-## 8. 부록: 이전 플레이테스트 이력
+## 9. 부록: 이전 플레이테스트 이력
 
 | 일시 | 문서 | 발견 버그 | 비고 |
 |------|------|-----------|------|
