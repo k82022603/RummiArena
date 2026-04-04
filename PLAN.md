@@ -205,12 +205,13 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 - [x] E2E 전량 PASS 보고서 (docs/04-testing/30) — 2026-04-03
 
 ### Sprint 5 Day 4: P1 병렬 처리 + 기능 확장 (2026-04-04)
-- [ ] **Rate Limit 구현** — Architect 설계 + Go Dev 미들웨어 + Node Dev 가드 + Frontend 429 UI (진행 중)
-- [ ] **DeepSeek 프롬프트 최적화** — AI Engineer 설계 + Node Dev 구현, 무효율 55%→30% 목표 (진행 중)
-- [ ] **Trivy HIGH severity 확대** — DevOps, CRITICAL only → HIGH,CRITICAL 정책 (진행 중)
-- [ ] **플레이테스트 S2/S4/S5 스크립트** — QA, S2(4인)/S4(조커)/S5(장기전) (진행 중)
-- [ ] **AI 캐릭터 시각 아이덴티티 스펙** — Designer, P2 선행 설계 (진행 중)
-- [ ] Security: Rate Limit 보안 감사 + PRNG 감사 (진행 중)
+- [x] **Rate Limit 구현** — 설계(690줄) + Go middleware(15 tests) + NestJS guard + Frontend 429 Toast(6 E2E) — 2026-04-04
+- [x] **P0 SEC-RL-002 LLM 비용 공격 차단** — AI 게임 5분 쿨다운 + 시간당 $5 비용 한도 (2중 방어) — 2026-04-04
+- [x] **DeepSeek 프롬프트 최적화** — few-shot 5개 + 자기 검증 7항목, 324→395 tests — 2026-04-04
+- [x] **Trivy HIGH severity 확대** — 2-pass + .map 검출 + --ignore-unfixed — 2026-04-04
+- [x] **플레이테스트 S2/S4/S5 스크립트** — S2(618줄)/S4(1031줄)/S5(691줄) 완성 — 2026-04-04
+- [x] **AI 캐릭터 비주얼 스펙** — Designer, 1,238줄, 6종 전체 (P2 선행) — 2026-04-04
+- [x] **보안 감사** — P0~P3 13건 식별, P0+P1+P2 해결 5건, sourceMap 제거 — 2026-04-04
 - [x] 프로젝트 분석: Claude Code Insights 리포트 (48세션/110커밋/96시간) — 2026-04-04
 - [x] 프로젝트 분석: 개발 방법론 종합 평가 (1인+10에이전트 실험) — 2026-04-04
 - [x] /buddy 스크럼 미팅 (11명 전원) — FSM/결정적 생성 패턴 토론 — 2026-04-04
@@ -240,8 +241,10 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 ### 보안 & 품질
 - [x] SonarQube CI 파이프라인 연동 (Quality Gate) — 93초 PASS (2026-04-02)
 - [x] Trivy 이미지 스캔 자동화 — fs-scan 18초 + image-scan 4개 각 ~20초 PASS (2026-04-03)
-- [ ] **Rate Limit 구현** — API 보안 (game-server + ai-adapter + Frontend 429 UI) — Sprint 5 Day 4 진행 중
-- [ ] **Trivy severity HIGH,CRITICAL** — CRITICAL only → HIGH 확대 — Sprint 5 Day 4 진행 중
+- [x] **Rate Limit 구현** — Redis middleware + NestJS throttler + Frontend 429 — 2026-04-04
+- [x] **Trivy severity HIGH,CRITICAL** — 2-pass 전략 + .map 검출 — 2026-04-04
+- [x] **P0 SEC-RL-002** — AI 게임 쿨다운 + 시간당 비용 한도 — 2026-04-04
+- [x] **P2 SEC-SM-001** — ai-adapter sourceMap: false — 2026-04-04
 - [ ] OWASP ZAP 동적 보안 테스트 (선택)
 - [ ] Sealed Secrets 도입
 
@@ -357,18 +360,22 @@ docs/
 - 플레이테스트 S1 11/13, S3 17/17 PASS
 - 게임 버그 24건 수정 + K8s 4서비스 배포 (191Mi)
 
-**Day 4 진행 중 (P1 기능 확장, 10명 전원 투입)**:
-- [ ] Rate Limit 구현 — 4명 투입 (Architect/Go Dev/Node Dev/Frontend Dev)
-- [ ] DeepSeek 프롬프트 최적화 — 2명 투입 (AI Engineer/Node Dev), 무효율 55%→30%
-- [ ] Trivy HIGH severity 확대 — 1명 (DevOps)
-- [ ] 플레이테스트 S2/S4/S5 스크립트 — 1명 (QA)
-- [ ] AI 캐릭터 시각 아이덴티티 — 1명 (Designer, P2 선행)
-- [ ] Rate Limit 보안 감사 + PRNG 감사 — 1명 (Security)
+**Day 4 완료 (P1 기능 확장 + P0 보안, 10명 전원 투입)**:
+- [x] Rate Limit 구현 — 설계 + Go + NestJS + Frontend + 보안 감사 — 2026-04-04
+- [x] P0 SEC-RL-002 LLM 비용 공격 차단 — 쿨다운 + 시간당 한도 2중 방어 — 2026-04-04
+- [x] DeepSeek 프롬프트 최적화 — few-shot 5개, 자기 검증 7항목, 395 tests — 2026-04-04
+- [x] Trivy HIGH,CRITICAL 확대 + sourceMap 제거 — 2026-04-04
+- [x] 플레이테스트 S2/S4/S5 스크립트 (2,340줄) — 2026-04-04
+- [x] AI 캐릭터 비주얼 스펙 (1,238줄) — 2026-04-04
 - [x] Claude Code Insights + 방법론 평가 리포트 — 2026-04-04
-- [x] /buddy 스크럼 미팅 (11명) — 2026-04-04
+- [x] /buddy 스크럼 미팅 (11명) + 마감 스탠드업 (11명) — 2026-04-04
 
-**미완료 (Sprint 5 잔여)**:
+**미완료 (Sprint 5 Day 5~)**:
+- [ ] K8s 재배포 (Rate Limit + DeepSeek + 쿨다운)
+- [ ] DeepSeek Round 4 대전 (v1/v2 A/B 비교)
+- [ ] 플레이테스트 S2/S4/S5 실행 + 결과 보고서
+- [ ] SEC-RL-003 WS 서버측 메시지 빈도 제한
 - [ ] Human 1 + AI 3 혼합 게임 GAME_OVER 완주 E2E
-- [ ] 3모델 Round 3 대전 (GPT/Claude/DeepSeek 비교)
+- [ ] 3모델 Round 4 대전 (GPT/Claude/DeepSeek 비교)
 - [ ] DAILY_COST_LIMIT 이중 키 정리
 - [ ] Istio Service Mesh 프리뷰 설계
