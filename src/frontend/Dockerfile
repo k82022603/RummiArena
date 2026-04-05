@@ -67,6 +67,9 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static    ./.next/static
 # (public 디렉토리 추가 시 아래 줄 주석 해제)
 # COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
+# 소스맵 제거 — 프로덕션 이미지에서 소스 역공학 차단 (SEC-SM-001)
+RUN find /app -name "*.map" -delete
+
 USER nextjs
 
 EXPOSE 3000

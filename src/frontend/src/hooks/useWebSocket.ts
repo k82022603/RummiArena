@@ -493,8 +493,8 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
         return;
       }
 
-      // 스로틀 활성 시: 최소 간격 미만이면 무시 (AUTH, PONG 등 제어 메시지 제외)
-      if (wsThrottledRef.current && type !== "AUTH" && type !== "PONG") {
+      // 스로틀 활성 시: 최소 간격 미만이면 무시 (AUTH, PING 등 제어 메시지 제외)
+      if (wsThrottledRef.current && type !== "AUTH" && type !== "PING") {
         const now = Date.now();
         if (now - wsLastSendRef.current < WS_THROTTLE_INTERVAL_MS) {
           console.warn("[WS] send throttled: %s (interval %dms)", type, WS_THROTTLE_INTERVAL_MS);

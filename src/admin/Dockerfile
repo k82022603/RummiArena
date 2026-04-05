@@ -48,6 +48,9 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static    ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/public          ./public
 
+# 소스맵 제거 — 프로덕션 이미지에서 소스 역공학 차단 (SEC-SM-001)
+RUN find /app -name "*.map" -delete
+
 USER nextjs
 
 EXPOSE 3001
