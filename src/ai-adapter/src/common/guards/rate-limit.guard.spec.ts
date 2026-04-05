@@ -49,6 +49,7 @@ class TestableRateLimitGuard extends RateLimitGuard {
     | { error: Error } = { resolved: true };
 
   /** 부모의 canActivate()를 오버라이드하여 테스트에서 제어 가능하게 만든다 */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async canActivate(_context: ExecutionContext): Promise<boolean> {
     // RateLimitGuard의 canActivate 로직을 직접 복제하되
     // super.canActivate() 대신 mockSuperResult를 사용한다
