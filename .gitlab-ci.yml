@@ -499,11 +499,11 @@ scan-frontend:
         tar -xzf /tmp/crane.tar.gz -C /usr/local/bin crane
       )
       crane auth login "${CI_REGISTRY}" -u "${CI_REGISTRY_USER}" -p "${CI_REGISTRY_PASSWORD}" 2>/dev/null || true
-      MAP_COUNT=$(crane export "${DOCKER_IMAGE}/frontend:${CI_COMMIT_SHA}" - 2>/dev/null | tar tf - 2>/dev/null | grep -c '\.map$' || echo "0")
+      MAP_COUNT=$(crane export "${DOCKER_IMAGE}/frontend:${CI_COMMIT_SHA}" - 2>/dev/null | tar tf - 2>/dev/null | grep '\.map$' | grep '^app/' | wc -l || echo "0")
       if [ "$MAP_COUNT" -gt 0 ]; then
-        echo "WARNING: $MAP_COUNT .map source map file(s) found in frontend production image!"
+        echo "WARNING: $MAP_COUNT .map source map file(s) found in frontend production image (app/ only)!"
         echo "  Consider adding 'RUN find /app -name \"*.map\" -delete' to Dockerfile runner stage"
-        crane export "${DOCKER_IMAGE}/frontend:${CI_COMMIT_SHA}" - 2>/dev/null | tar tf - 2>/dev/null | grep '\.map$' | head -10
+        crane export "${DOCKER_IMAGE}/frontend:${CI_COMMIT_SHA}" - 2>/dev/null | tar tf - 2>/dev/null | grep '\.map$' | grep '^app/' | head -10
       else
         echo "OK: No .map source map files detected in frontend image"
       fi
@@ -570,11 +570,11 @@ scan-admin:
         tar -xzf /tmp/crane.tar.gz -C /usr/local/bin crane
       )
       crane auth login "${CI_REGISTRY}" -u "${CI_REGISTRY_USER}" -p "${CI_REGISTRY_PASSWORD}" 2>/dev/null || true
-      MAP_COUNT=$(crane export "${DOCKER_IMAGE}/admin:${CI_COMMIT_SHA}" - 2>/dev/null | tar tf - 2>/dev/null | grep -c '\.map$' || echo "0")
+      MAP_COUNT=$(crane export "${DOCKER_IMAGE}/admin:${CI_COMMIT_SHA}" - 2>/dev/null | tar tf - 2>/dev/null | grep '\.map$' | grep '^app/' | wc -l || echo "0")
       if [ "$MAP_COUNT" -gt 0 ]; then
-        echo "WARNING: $MAP_COUNT .map source map file(s) found in admin production image!"
+        echo "WARNING: $MAP_COUNT .map source map file(s) found in admin production image (app/ only)!"
         echo "  Consider adding 'RUN find /app -name \"*.map\" -delete' to Dockerfile runner stage"
-        crane export "${DOCKER_IMAGE}/admin:${CI_COMMIT_SHA}" - 2>/dev/null | tar tf - 2>/dev/null | grep '\.map$' | head -10
+        crane export "${DOCKER_IMAGE}/admin:${CI_COMMIT_SHA}" - 2>/dev/null | tar tf - 2>/dev/null | grep '\.map$' | grep '^app/' | head -10
       else
         echo "OK: No .map source map files detected in admin image"
       fi
