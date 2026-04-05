@@ -71,13 +71,14 @@ variables:
 lint-go:
   stage: lint
   <<: *local-runner
-  timeout: 15m
+  timeout: 20m
   image: golangci/golangci-lint:v2.1
   variables:
     GOFLAGS: "-buildvcs=false"
     GOGC: "50"
   script:
     - cd src/game-server
+    - go mod download
     - golangci-lint run ./... --timeout 14m --build-tags="" -j 1
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
