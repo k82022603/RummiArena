@@ -370,8 +370,15 @@ async function runS5(token) {
     const initCP = await checkConservation(client, token, 'turn_0');
     results.s5.checkpoints.push(initCP);
 
-    // 5. Wait for first TURN_START
-    await client.waitForMessage('TURN_START', 5000);
+    // 5. First turn: derive from GAME_STATE (server does not send TURN_START
+    //    for the initial turn -- it uses currentSeat from GAME_STATE).
+    try {
+      await client.waitForMessage('TURN_START', 3000);
+    } catch (_) {
+      // Expected: use GAME_STATE currentSeat
+      log(`First turn (from GAME_STATE): seat=${client.currentSeat}, turn=1`);
+      client.turnNumber = 1;
+    }
     results.s5.checks['first_turn_received'] = true;
 
     // 6. Game loop -- Human always draws to force a long game

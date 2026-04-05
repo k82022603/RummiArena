@@ -635,10 +635,12 @@ gantt
 
 | 파일 | 설명 |
 |------|------|
+| **`docs/02-design/18-model-prompt-policy.md`** | **모델별 프롬프트 정책 통합 문서 (최신, 2026-04-05)** |
 | `docs/02-design/04-ai-adapter-design.md` | AI Adapter 전체 설계 |
 | `docs/02-design/08-ai-prompt-templates.md` | 프롬프트 템플릿 상세 설계 |
 | `docs/04-testing/26-deepseek-optimization-report.md` | Round 2 -> Round 3 최적화 보고서 |
 | `docs/04-testing/29-deepseek-round3-battle-plan.md` | Round 3 대전 계획 + 결과 |
+| `docs/04-testing/32-deepseek-round4-ab-test-report.md` | Round 4 A/B 테스트 결과 (Place Rate 23.1%) |
 | `src/ai-adapter/src/adapter/deepseek.adapter.ts` | DeepSeek 어댑터 구현 |
 | `src/ai-adapter/src/prompt/prompt-builder.service.ts` | 공통 프롬프트 빌더 |
 | `src/ai-adapter/src/prompt/persona.templates.ts` | 공유 페르소나 템플릿 (레거시) |

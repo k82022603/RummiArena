@@ -17,7 +17,7 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 |-------|------|--------|-------------|------|
 | 1 | 기획 & 환경 구축 | Sprint 0 | 기획/설계 문서, K8s/ArgoCD/Traefik 환경 | **완료** |
 | 2 | 핵심 게임 개발 (MVP) | Sprint 1~3 | Game Engine (Go), Backend API, Frontend 기본 | **완료** (2026-03-23) |
-| 3 | AI 연동 & 멀티플레이 | Sprint 4~5 | AI Adapter (NestJS), 실시간 대전, 1인 연습 모드 | **Sprint 4 완료** (2026-04-01), **Sprint 5 Day 4** 진행 중 |
+| 3 | AI 연동 & 멀티플레이 | Sprint 4~5 | AI Adapter (NestJS), 실시간 대전, 1인 연습 모드 | **Sprint 4 완료** (2026-04-01), **Sprint 5 W1 완료** (2026-04-05) |
 | 4 | 플랫폼 기능 확장 | Sprint 6 | 관리자 대시보드, 카카오톡 알림, ELO, 게임 복기 | 일부 선행 완료 (ELO, 관리자) |
 | 5 | DevSecOps 고도화 | Sprint 7~9 | Observability, 보안 고도화, Istio Service Mesh | **Sprint 5에서 선행 착수** (CI/CD, SonarQube, Trivy) |
 | 6 | 운영 & 실험 | (Phase 6) | AI 토너먼트, 모델 비교 분석, OpenShift 검토 | 미착수 |
@@ -216,6 +216,15 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 - [x] 프로젝트 분석: 개발 방법론 종합 평가 (1인+10에이전트 실험) — 2026-04-04
 - [x] /buddy 스크럼 미팅 (11명 전원) — FSM/결정적 생성 패턴 토론 — 2026-04-04
 
+### Sprint 5 Day 5: 실전 검증 + CI/CD ALL GREEN (2026-04-05)
+- [x] **K8s 재배포** — 이미지 4개 빌드, 7 Pod Running, ConfigMap 정리 (DAILY_COST_LIMIT 이중 키 해소) — 2026-04-05
+- [x] **서비스 검증** — Go 624 tests + NestJS 395 tests = 1,019건 PASS, Rate Limit 429 + 쿨다운 실환경 확인 — 2026-04-05
+- [x] **DeepSeek Round 4** — 12.5%→**23.1%** Place Rate (A등급), max_tokens 8192→16384 버그 수정, $0.013/game — 2026-04-05
+- [x] **플레이테스트 S2/S4/S5** — 39/44 (88.6%), 서버 버그 2건 발견 (BUG-WS-001, BUG-AI-001), $1.18 — 2026-04-05
+- [x] **SEC-RL-003 설계** — 17-ws-rate-limit-design.md (837줄, Mermaid 6개, ADR-017) — 2026-04-05
+- [x] **모델별 프롬프트 정책** — 18-model-prompt-policy.md (8섹션, Mermaid 10개) — 2026-04-05
+- [x] **CI/CD Pipeline #113: 17/17 ALL GREEN** — lint 수정 3건 + go mod download + 소스맵 범위 한정 — 2026-04-05
+
 ### AI 연동 완료 기준
 - [ ] Human 1 + AI 3 (서로 다른 모델) 게임 정상 동작 — Sprint 5 이월
 - [x] AI 캐릭터 (하수/중수/고수) 차이 확인 — CharacterService + DIFFICULTY_TEMPERATURE 구현 (2026-03-21)
@@ -244,7 +253,9 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 - [x] **Rate Limit 구현** — Redis middleware + NestJS throttler + Frontend 429 — 2026-04-04
 - [x] **Trivy severity HIGH,CRITICAL** — 2-pass 전략 + .map 검출 — 2026-04-04
 - [x] **P0 SEC-RL-002** — AI 게임 쿨다운 + 시간당 비용 한도 — 2026-04-04
-- [x] **P2 SEC-SM-001** — ai-adapter sourceMap: false — 2026-04-04
+- [x] **P2 SEC-SM-001** — ai-adapter sourceMap: false + admin/frontend Dockerfile .map delete — 2026-04-04/05
+- [x] **SEC-RL-003 설계** — WS 서버측 메시지 빈도 제한 설계 완료 (구현 Sprint 5 W2) — 2026-04-05
+- [ ] **SEC-RL-003 구현** — WS 메시지 빈도 제한 (Sprint 5 W2)
 - [ ] OWASP ZAP 동적 보안 테스트 (선택)
 - [ ] Sealed Secrets 도입
 

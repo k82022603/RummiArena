@@ -242,8 +242,11 @@ Sprint 4 실 게임 데이터 축적 후 아래 항목을 실측치로 갱신한
 
 | 파일 | 설명 |
 |------|------|
+| **`docs/02-design/18-model-prompt-policy.md`** | **모델별 프롬프트 정책 (최신, 2026-04-05)** |
 | `docs/02-design/10-websocket-protocol.md` | WS 프로토콜 (AI 턴 처리 흐름) |
 | `docs/04-testing/11-sprint4-integration-test-report.md` | Sprint 4 E2E 테스트 결과 |
+| `docs/04-testing/26-deepseek-optimization-report.md` | DeepSeek Round 2->3 최적화 보고서 |
+| `docs/04-testing/32-deepseek-round4-ab-test-report.md` | DeepSeek Round 4 A/B 테스트 결과 |
 | `src/ai-adapter/src/adapter/base.adapter.ts` | 공통 재시도/fallback 로직 |
 | `src/ai-adapter/src/character/persona.templates.ts` | 6개 캐릭터 시스템 프롬프트 |
 | `helm/charts/ai-adapter/values.yaml` | Ollama 모델 설정 |

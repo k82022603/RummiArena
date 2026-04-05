@@ -470,8 +470,14 @@ async function runS4(token) {
     log(`Rack (${client.myRack.length}): ${client.myRack.join(', ')}`);
     results.s4.checks['initial_rack_14'] = client.myRack.length === 14;
 
-    // 5. Wait for TURN_START
-    await client.waitForMessage('TURN_START', 5000);
+    // 5. First turn: derive from GAME_STATE (server does not send TURN_START
+    //    for the initial turn).
+    try {
+      await client.waitForMessage('TURN_START', 3000);
+    } catch (_) {
+      log(`First turn (from GAME_STATE): seat=${client.currentSeat}, turn=1`);
+      client.turnNumber = 1;
+    }
 
     // If AI goes first, wait for AI turn
     if (client.currentSeat !== client.seat) {

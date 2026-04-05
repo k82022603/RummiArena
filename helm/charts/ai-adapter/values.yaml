@@ -16,9 +16,13 @@ env:
   OLLAMA_BASE_URL: "http://ollama:11434"
   OLLAMA_DEFAULT_MODEL: "qwen2.5:3b"
   OPENAI_DEFAULT_MODEL: "gpt-5-mini"
+  CLAUDE_DEFAULT_MODEL: "claude-sonnet-4-20250514"
+  CLAUDE_EXTENDED_THINKING: "true"
+  DEEPSEEK_DEFAULT_MODEL: "deepseek-reasoner"
   REDIS_HOST: "redis"
   REDIS_PORT: "6379"
-  DAILY_COST_LIMIT_USD: "5"
+  DAILY_COST_LIMIT_USD: "20"
+  HOURLY_USER_COST_LIMIT_USD: "5"
 
 secrets:
   # 실제 값은 kubectl patch 또는 inject-secrets.sh로 주입 (Git에 커밋하지 말 것)

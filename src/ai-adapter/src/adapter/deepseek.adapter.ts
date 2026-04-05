@@ -417,7 +417,7 @@ export class DeepSeekAdapter extends BaseAdapter {
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
-      max_tokens: isReasoner ? 8192 : 1024,
+      max_tokens: isReasoner ? 16384 : 1024,
     };
 
     if (isReasoner) {

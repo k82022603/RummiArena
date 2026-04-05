@@ -337,9 +337,19 @@ async function runS2(token) {
     }
     log(`Seat mapping: ${JSON.stringify(seatToType)}`);
 
-    // 6. Wait for first TURN_START
-    const firstTurn = await client.waitForMessage('TURN_START', 10000);
-    log(`First turn: seat=${firstTurn.payload.seat}, turn=${firstTurn.payload.turnNumber}`);
+    // 6. First turn: derive from GAME_STATE (server does not send a separate
+    //    TURN_START for the initial turn -- the frontend uses currentSeat from
+    //    GAME_STATE). Try waiting briefly in case the server sends it, but fall
+    //    back to GAME_STATE.currentSeat.
+    try {
+      const firstTurn = await client.waitForMessage('TURN_START', 3000);
+      log(`First TURN_START: seat=${firstTurn.payload.seat}, turn=${firstTurn.payload.turnNumber}`);
+    } catch (_) {
+      // Expected: server sends GAME_STATE but not TURN_START for the initial turn
+      client.currentSeat = gameState.payload.currentSeat;
+      client.turnNumber = 1;
+      log(`First turn (from GAME_STATE): seat=${client.currentSeat}, turn=1`);
+    }
     results.s2.checks['first_turn_received'] = true;
 
     // 7. Game loop: Human draws, all 3 AIs play

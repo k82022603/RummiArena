@@ -1,0 +1,71 @@
+{
+  "round": 4,
+  "version": "v2",
+  "timestamp": "2026-04-05 16:40:13",
+  "config": {
+    "model": "deepseek-reasoner",
+    "persona": "calculator",
+    "difficulty": "expert",
+    "psychologyLevel": 2,
+    "maxTurns": 80,
+    "wsTimeout": 180
+  },
+  "results": {
+    "totalTurns": 28,
+    "aiTurns": 13,
+    "aiPlace": 3,
+    "aiTilesPlaced": 14,
+    "aiDraw": 10,
+    "aiFallback": 8,
+    "placeRate": 23.1,
+    "elapsed": 941.9,
+    "estimatedCost": 0.013,
+    "result": "WS_TIMEOUT",
+    "grade": "A (Excellent)"
+  },
+  "responseTime": {
+    "avg": 58.6,
+    "p50": 63.9,
+    "min": 1.1,
+    "max": 120.2
+  },
+  "comparison": {
+    "baselineRound": 3,
+    "baselineVersion": "v1",
+    "baselinePlaceRate": 12.5,
+    "baselinePlaceCount": 5,
+    "deltaPlaceRate": 10.6,
+    "deltaPlaceCount": -2
+  },
+  "placeDetails": [
+    {
+      "turn": 4,
+      "tiles": 9,
+      "cumulative": 9,
+      "resp_time": 19.0
+    },
+    {
+      "turn": 14,
+      "tiles": 1,
+      "cumulative": 10,
+      "resp_time": 23.7
+    },
+    {
+      "turn": 22,
+      "tiles": 4,
+      "cumulative": 14,
+      "resp_time": 26.6
+    }
+  ],
+  "fallbackReasons": [
+    "INVALID_MOVE",
+    "AI_ERROR",
+    "AI_TIMEOUT",
+    "INVALID_MOVE",
+    "INVALID_MOVE",
+    "AI_TIMEOUT",
+    "INVALID_MOVE",
+    "INVALID_MOVE"
+  ],
+  "errors": []
+}
