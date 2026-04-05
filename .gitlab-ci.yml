@@ -78,7 +78,7 @@ lint-go:
     GOGC: "50"
   script:
     - cd src/game-server
-    - golangci-lint run ./... --timeout 10m --build-tags="" -j 1
+    - golangci-lint run ./... --timeout 14m --build-tags="" -j 1
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == "main"
