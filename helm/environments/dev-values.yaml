@@ -14,7 +14,7 @@ gameServer:
   replicas: 1
   image:
     repository: registry.gitlab.com/k82022603/rummiarena/game-server
-    tag: "d72d352fba27fd015ec392fe3431906419ab4b52"
+    tag: "4ffab3d96b042f4f34ea5664d234282b1ed82435"
   resources:
     requests:
       cpu: "100m"
@@ -31,7 +31,7 @@ aiAdapter:
   replicas: 1
   image:
     repository: registry.gitlab.com/k82022603/rummiarena/ai-adapter
-    tag: "d72d352fba27fd015ec392fe3431906419ab4b52"
+    tag: "4ffab3d96b042f4f34ea5664d234282b1ed82435"
   resources:
     requests:
       cpu: "100m"
@@ -45,7 +45,7 @@ frontend:
   replicas: 1
   image:
     repository: registry.gitlab.com/k82022603/rummiarena/frontend
-    tag: "d72d352fba27fd015ec392fe3431906419ab4b52"
+    tag: "4ffab3d96b042f4f34ea5664d234282b1ed82435"
   resources:
     requests:
       cpu: "50m"
@@ -59,7 +59,7 @@ admin:
   replicas: 1
   image:
     repository: registry.gitlab.com/k82022603/rummiarena/admin
-    tag: "d72d352fba27fd015ec392fe3431906419ab4b52"
+    tag: "4ffab3d96b042f4f34ea5664d234282b1ed82435"
   resources:
     requests:
       cpu: "50m"
