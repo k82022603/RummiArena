@@ -1752,6 +1752,90 @@ func (h *WSHandler) forfeitAndBroadcast(roomID, gameID string, seat int, userID,
 }
 
 // ============================================================
+// Game Start Notification (BUG-WS-001)
+// ============================================================
+
+// NotifyGameStarted 게임 시작 후 WebSocket 클라이언트에게 GAME_STATE와 TURN_START��� 전송한다.
+// RoomHandler.StartGame (REST) 이후 호출되어 첫 번째 턴의 TURN_START를 보장한다.
+// GameStartNotifier 인터페이스를 구현한다.
+func (h *WSHandler) NotifyGameStarted(roomID string, state *model.GameStateRedis) {
+	// 1. 각 연결에 gameID를 설정하고 개인화된 GAME_STATE를 전송
+	h.hub.ForEachInRoom(roomID, func(c *Connection) {
+		c.gameID = state.GameID
+
+		// 해당 플레이어의 1인칭 뷰를 구성하여 전송
+		view, err := h.gameSvc.GetGameState(state.GameID, c.seat)
+		if err != nil {
+			h.logger.Error("ws: NotifyGameStarted GetGameState failed",
+				zap.String("roomID", roomID),
+				zap.String("userID", c.userID),
+				zap.Error(err),
+			)
+			return
+		}
+
+		tableGroups := make([]WSTableGroup, len(view.Table))
+		for i, t := range view.Table {
+			groupType := "run"
+			numbers := map[int]bool{}
+			for _, code := range t.Tiles {
+				parsed, parseErr := engine.Parse(code)
+				if parseErr == nil && !parsed.IsJoker {
+					numbers[parsed.Number] = true
+				}
+			}
+			if len(numbers) == 1 {
+				groupType = "group"
+			}
+			tableGroups[i] = WSTableGroup{ID: t.ID, Tiles: t.Tiles, Type: groupType}
+		}
+
+		players := make([]WSPlayerInfo, len(view.Players))
+		for i, p := range view.Players {
+			isConnected := p.ConnectionStatus != string(model.PlayerStatusDisconnected) &&
+				p.ConnectionStatus != string(model.PlayerStatusForfeited)
+			players[i] = WSPlayerInfo{
+				Seat:             p.Seat,
+				UserID:           p.UserID,
+				DisplayName:      p.DisplayName,
+				PlayerType:       p.PlayerType,
+				TileCount:        p.TileCount,
+				HasInitialMeld:   p.HasInitialMeld,
+				IsConnected:      isConnected,
+				ConnectionStatus: p.ConnectionStatus,
+			}
+		}
+
+		c.Send(&WSMessage{
+			Type: S2CGameState,
+			Payload: GameStatePayload{
+				GameID:         view.GameID,
+				Status:         view.Status,
+				CurrentSeat:    view.CurrentSeat,
+				TableGroups:    tableGroups,
+				MyRack:         view.MyRack,
+				Players:        players,
+				DrawPileCount:  view.DrawPileCount,
+				TurnTimeoutSec: view.TurnTimeoutSec,
+				TurnStartedAt:  time.Unix(view.TurnStartAt, 0).UTC().Format(time.RFC3339),
+			},
+		})
+	})
+
+	// 2. TURN_START 브로드캐스트 (첫 턴)
+	h.broadcastTurnStart(roomID, state)
+
+	// 3. 턴 타이머 시작
+	h.startTurnTimer(roomID, state.GameID, state.CurrentSeat, state.TurnTimeoutSec)
+
+	h.logger.Info("ws: NotifyGameStarted",
+		zap.String("roomID", roomID),
+		zap.String("gameID", state.GameID),
+		zap.Int("firstSeat", state.CurrentSeat),
+	)
+}
+
+// ============================================================
 // Conversion Helpers
 // ============================================================
 

@@ -94,6 +94,11 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
   // sendRef: handleMessage 콜백 안에서 send를 호출하기 위한 ref
   const sendRef = useRef<(<T>(type: C2SMessageType, payload: T) => void) | null>(null);
 
+  // BUG-WS-001: TURN_START 미전송 방어용 — 마지막 TURN_END의 nextSeat 추적
+  // TURN_END 수신 후 TURN_START가 오지 않는 경우를 감지하기 위한 ref
+  const pendingTurnStartRef = useRef<{ nextSeat: number; timeoutSec: number } | null>(null);
+  const turnStartFallbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // WS 발신 스로틀 상태
   const wsThrottledRef = useRef(false);
   const wsLastSendRef = useRef(0);
@@ -177,6 +182,12 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
         }
         case "TURN_START": {
           const payload = msg.payload as TurnStartPayload;
+          // BUG-WS-001: 정상적으로 TURN_START가 왔으므로 fallback 타이머 해제
+          if (turnStartFallbackTimer.current) {
+            clearTimeout(turnStartFallbackTimer.current);
+            turnStartFallbackTimer.current = null;
+          }
+          pendingTurnStartRef.current = null;
           resetPending();
           setRemainingMs(payload.timeoutSec * 1000);
           if (payload.turnNumber != null) setTurnNumber(payload.turnNumber);
@@ -222,6 +233,30 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
           if (payload.drawPileCount === 0) {
             setIsDrawPileEmpty(true);
           }
+
+          // -----------------------------------------------------------------
+          // BUG-WS-001: TURN_START 미전송 방어
+          // TURN_END 후 2초 이내에 TURN_START가 오지 않으면
+          // 다음 턴 시작 상태를 클라이언트에서 자체 적용
+          // -----------------------------------------------------------------
+          const turnTimeout = useGameStore.getState().gameState?.turnTimeoutSec ?? 60;
+          pendingTurnStartRef.current = { nextSeat: payload.nextSeat, timeoutSec: turnTimeout };
+          if (turnStartFallbackTimer.current) clearTimeout(turnStartFallbackTimer.current);
+          turnStartFallbackTimer.current = setTimeout(() => {
+            // 2초 대기 후에도 TURN_START가 안 왔으면 직접 턴 시작 처리
+            if (pendingTurnStartRef.current?.nextSeat === payload.nextSeat) {
+              console.warn(
+                "[WS] BUG-WS-001: TURN_START not received for seat %d, applying fallback",
+                payload.nextSeat
+              );
+              resetPending();
+              setRemainingMs(turnTimeout * 1000);
+              setAIThinkingSeat(null);
+              pendingTurnStartRef.current = null;
+            }
+            turnStartFallbackTimer.current = null;
+          }, 2000);
+
           break;
         }
         case "TILE_PLACED": {
@@ -363,6 +398,22 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
         }
         case "AI_THINKING": {
           const payload = msg.payload as AIThinkingPayload;
+          // BUG-WS-001: TURN_START 없이 AI_THINKING이 먼저 온 경우
+          // pendingTurnStart가 해당 seat이면 즉시 fallback 적용 + 타이머 해제
+          if (pendingTurnStartRef.current?.nextSeat === payload.seat) {
+            console.warn(
+              "[WS] BUG-WS-001: AI_THINKING for seat %d received before TURN_START, applying fallback",
+              payload.seat
+            );
+            if (turnStartFallbackTimer.current) {
+              clearTimeout(turnStartFallbackTimer.current);
+              turnStartFallbackTimer.current = null;
+            }
+            resetPending();
+            const turnTimeout = pendingTurnStartRef.current.timeoutSec;
+            setRemainingMs(turnTimeout * 1000);
+            pendingTurnStartRef.current = null;
+          }
           setAIThinkingSeat(payload.seat);
           break;
         }
@@ -521,7 +572,10 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
   const disconnect = useCallback(() => {
     if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
     if (wsThrottleCooldownRef.current) clearTimeout(wsThrottleCooldownRef.current);
+    if (turnStartFallbackTimer.current) clearTimeout(turnStartFallbackTimer.current);
     wsThrottledRef.current = false;
+    pendingTurnStartRef.current = null;
+    turnStartFallbackTimer.current = null;
     wsRef.current?.close(1000, "client disconnect");
     wsRef.current = null;
     setStatus("idle");
@@ -535,7 +589,10 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
       isMounted.current = false;
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
       if (wsThrottleCooldownRef.current) clearTimeout(wsThrottleCooldownRef.current);
+      if (turnStartFallbackTimer.current) clearTimeout(turnStartFallbackTimer.current);
       wsThrottledRef.current = false;
+      pendingTurnStartRef.current = null;
+      turnStartFallbackTimer.current = null;
       wsRef.current?.close(1000, "component unmount");
     };
     // connect를 의존성에서 제외: 세션/roomId 변경 시만 재연결

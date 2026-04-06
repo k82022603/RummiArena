@@ -42,6 +42,7 @@ const (
 	CloseNoRoom      = 4002
 	CloseAuthTimeout = 4003
 	CloseDuplicate   = 4004
+	CloseRateLimited = 4005 // SEC-RL-003: 메시지 빈도 제한 초과
 )
 
 // WSEnvelope is the incoming WebSocket message envelope.

@@ -17,14 +17,26 @@ const (
 	errMsgGameIDRequired = "게임 ID가 없습니다."
 )
 
+// GameStartNotifier 게임 시작 시 WebSocket 클라이언트에게 알린다.
+// WSHandler가 이 인터페이스를 구현한다.
+type GameStartNotifier interface {
+	NotifyGameStarted(roomID string, state *model.GameStateRedis)
+}
+
 // RoomHandler Room 관련 HTTP 핸들러
 type RoomHandler struct {
-	roomSvc service.RoomService
+	roomSvc  service.RoomService
+	notifier GameStartNotifier // nil이면 알림 생략
 }
 
 // NewRoomHandler RoomHandler 생성자
 func NewRoomHandler(roomSvc service.RoomService) *RoomHandler {
 	return &RoomHandler{roomSvc: roomSvc}
+}
+
+// WithGameStartNotifier GameStartNotifier를 설정한다. BUG-WS-001 수정용.
+func (h *RoomHandler) WithGameStartNotifier(n GameStartNotifier) {
+	h.notifier = n
 }
 
 // aiPlayerReq AI 플레이어 설정
@@ -216,6 +228,11 @@ func (h *RoomHandler) StartGame(c *gin.Context) {
 	if err != nil {
 		handleServiceError(c, err)
 		return
+	}
+
+	// BUG-WS-001: 게임 시작 후 WebSocket 클라이언트에게 GAME_STATE + TURN_START 전송
+	if h.notifier != nil {
+		h.notifier.NotifyGameStarted(roomID, gameState)
 	}
 
 	c.JSON(http.StatusOK, gin.H{

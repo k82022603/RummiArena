@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"sync"
 	"time"
 
@@ -39,16 +40,20 @@ type Connection struct {
 
 	// Ensure Close is called only once
 	closeOnce sync.Once
+
+	// Rate limiter (per-connection, in-memory) -- SEC-RL-003
+	rateLimiter *wsRateLimiter
 }
 
 // NewConnection creates a new Connection (not yet authenticated).
 func NewConnection(ws *websocket.Conn, roomID string, hub *Hub, logger *zap.Logger) *Connection {
 	return &Connection{
-		conn:   ws,
-		send:   make(chan []byte, sendBufferSize),
-		hub:    hub,
-		logger: logger,
-		roomID: roomID,
+		conn:        ws,
+		send:        make(chan []byte, sendBufferSize),
+		hub:         hub,
+		logger:      logger,
+		roomID:      roomID,
+		rateLimiter: newWSRateLimiter(),
 	}
 }
 
@@ -189,6 +194,45 @@ func (c *Connection) ReadPump(handler func(*Connection, *WSEnvelope)) {
 			c.SendError("INVALID_MESSAGE", "메시지 형식이 올바르지 않습니다.")
 			continue
 		}
+
+		// ---- Rate Limit 검사 (SEC-RL-003) ----
+		if c.rateLimiter != nil {
+			result := c.rateLimiter.check(env.Type)
+			if !result.Allowed {
+				c.Send(&WSMessage{
+					Type: S2CError,
+					Payload: ErrorPayload{
+						Code: "RATE_LIMITED",
+						Message: fmt.Sprintf(
+							"메시지 전송 빈도 제한을 초과했습니다 (%s). %d초 후에 다시 시도하세요.",
+							result.Reason, result.RetryAfterMs/1000,
+						),
+					},
+				})
+
+				if c.logger != nil {
+					c.logger.Warn("ws: rate limit exceeded",
+						zap.String("user", c.userID),
+						zap.String("room", c.roomID),
+						zap.String("msgType", env.Type),
+						zap.String("reason", result.Reason),
+					)
+				}
+
+				if result.ShouldClose {
+					if c.logger != nil {
+						c.logger.Warn("ws: closing connection due to repeated violations",
+							zap.String("user", c.userID),
+							zap.String("room", c.roomID),
+						)
+					}
+					c.CloseWithReason(CloseRateLimited, "메시지 빈도 제한 초과")
+					return
+				}
+				continue
+			}
+		}
+		// ---- Rate Limit 검사 끝 ----
 
 		handler(c, &env)
 	}
