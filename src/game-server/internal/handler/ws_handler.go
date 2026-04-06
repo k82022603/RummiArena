@@ -820,6 +820,12 @@ func (h *WSHandler) broadcastGameOver(conn *Connection, state *model.GameStateRe
 // handleAITurn AI 플레이어의 턴을 비동기로 처리한다.
 // ai-adapter에 MoveRequest를 전송하고 응답에 따라 배치 또는 강제 드로우를 수행한다.
 func (h *WSHandler) handleAITurn(roomID, gameID string, player *model.PlayerState, state *model.GameStateRedis) {
+	// AI 턴에서는 handleAITurn 자체의 context timeout(200s)이 타임아웃을 관리하므로
+	// 서버 턴 타이머(120s)를 취소하여 경합 조건을 방지한다.
+	// 턴 타이머가 먼저 만료되면 HandleTimeout(강제 드로우+턴 진행)과
+	// AI goroutine이 동시에 게임 상태를 변경하려는 race condition이 발생한다.
+	h.cancelTurnTimer(gameID)
+
 	const aiTurnTimeout = 200 * time.Second
 
 	ctx, cancel := context.WithTimeout(context.Background(), aiTurnTimeout)

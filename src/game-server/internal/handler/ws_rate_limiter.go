@@ -102,16 +102,26 @@ func (rl *wsRateLimiter) check(msgType string) checkResult {
 	}
 
 	// 2. 타입별 상한 검사
-	if policy, exists := rl.policies[msgType]; exists {
-		rl.typeCount[msgType]++
-		if rl.typeCount[msgType] > policy.MaxRequests {
-			rl.violations++
-			return checkResult{
-				Allowed:      false,
-				Reason:       "type:" + msgType,
-				RetryAfterMs: retryAfterMs,
-				ShouldClose:  rl.violations >= 3,
-			}
+	policy, exists := rl.policies[msgType]
+	if !exists {
+		// SEC-REV-001: 미등록 메시지 타입은 즉시 거부 (글로벌 카운터 롤백)
+		rl.globalCount--
+		rl.violations++
+		return checkResult{
+			Allowed:      false,
+			Reason:       "unknown_type",
+			RetryAfterMs: retryAfterMs,
+			ShouldClose:  rl.violations >= 3,
+		}
+	}
+	rl.typeCount[msgType]++
+	if rl.typeCount[msgType] > policy.MaxRequests {
+		rl.violations++
+		return checkResult{
+			Allowed:      false,
+			Reason:       "type:" + msgType,
+			RetryAfterMs: retryAfterMs,
+			ShouldClose:  rl.violations >= 3,
 		}
 	}
 

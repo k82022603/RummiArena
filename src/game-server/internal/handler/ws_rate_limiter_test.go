@@ -263,20 +263,22 @@ func TestWSRateLimiter_ViolationDecay(t *testing.T) {
 	assert.Equal(t, 0, rl.violations)
 }
 
-// TestWSRateLimiter_UnknownType 정의되지 않은 메시지 타입은 글로벌 카운터만 적용된다.
+// TestWSRateLimiter_UnknownType 미등록 메시지 타입은 즉시 거부된다 (SEC-REV-001).
 func TestWSRateLimiter_UnknownType(t *testing.T) {
 	rl := newWSRateLimiter()
 
-	// 미정의 타입은 타입별 한도 없이 글로벌 카운터만 증가
-	for i := 0; i < 60; i++ {
-		result := rl.check("UNKNOWN_TYPE")
-		assert.True(t, result.Allowed, "unknown type %d should be allowed within global limit", i+1)
-	}
-
-	// 글로벌 한도 초과
+	// 미등록 타입은 첫 번째 요청부터 즉시 거부
 	result := rl.check("UNKNOWN_TYPE")
-	assert.False(t, result.Allowed)
-	assert.Equal(t, "global", result.Reason)
+	assert.False(t, result.Allowed, "unknown type should be rejected immediately")
+	assert.Equal(t, "unknown_type", result.Reason)
+
+	// 글로벌 카운터에 영향 없음 (롤백됨)
+	assert.Equal(t, 0, rl.globalCount)
+
+	// 3회 미등록 타입 전송 시 연결 종료
+	rl.check("UNKNOWN_TYPE") // violations=2
+	result = rl.check("UNKNOWN_TYPE") // violations=3
+	assert.True(t, result.ShouldClose, "3 unknown type violations should trigger close")
 }
 
 // TestWSRateLimiter_ConcurrentAccess goroutine 10개에서 동시에 check해도 race condition이 없다.

@@ -11,7 +11,7 @@ const securityHeaders = [
       "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https://lh3.googleusercontent.com",
-      "connect-src 'self' ws: wss: http://localhost:* https://localhost:*",
+      "connect-src 'self' ws://localhost:* wss://localhost:* http://localhost:* https://localhost:*",
       "font-src 'self'",
       "frame-ancestors 'none'",
     ].join("; "),
