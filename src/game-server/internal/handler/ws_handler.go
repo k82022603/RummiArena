@@ -875,9 +875,53 @@ func (h *WSHandler) handleAITurn(roomID, gameID string, player *model.PlayerStat
 
 	if resp.Action == "place" && len(resp.TilesFromRack) > 0 {
 		h.processAIPlace(roomID, gameID, player.SeatOrder, resp)
+	} else if resp.Action == "draw" {
+		// AI가 정상적으로 draw를 선택한 경우 (fallback 아님)
+		h.processAIDraw(roomID, gameID, player.SeatOrder)
 	} else {
 		h.forceAIDraw(roomID, gameID, player.SeatOrder, "AI_ERROR")
 	}
+}
+
+// processAIDraw AI가 자발적으로 드로우를 선택한 경우를 처리한다.
+// forceAIDraw와 달리 isFallbackDraw=false 로 기록한다.
+func (h *WSHandler) processAIDraw(roomID, gameID string, seat int) {
+	result, err := h.gameSvc.DrawTile(gameID, seat)
+	if err != nil {
+		h.logger.Error("ws: AI draw failed",
+			zap.String("gameId", gameID),
+			zap.Int("seat", seat),
+			zap.Error(err),
+		)
+		return
+	}
+
+	state := result.GameState
+	if result.GameEnded {
+		h.broadcastGameOverFromState(roomID, state)
+		return
+	}
+
+	// TILE_DRAWN: AI 드로우는 전원에게 nil 타일 코드로 브로드캐스트
+	playerIdx := findPlayerBySeatInState(state.Players, seat)
+	playerTileCount := 0
+	if playerIdx >= 0 {
+		playerTileCount = len(state.Players[playerIdx].Rack)
+	}
+	h.hub.BroadcastToRoom(roomID, &WSMessage{
+		Type: S2CTileDrawn,
+		Payload: TileDrawnPayload{
+			Seat:            seat,
+			DrawnTile:       nil,
+			DrawPileCount:   len(state.DrawPile),
+			PlayerTileCount: playerTileCount,
+		},
+	})
+
+	// fallback 정보 없이 TURN_END 전송 (정상 draw)
+	h.broadcastTurnEndFromState(roomID, seat, state, "DRAW_TILE", 0)
+	h.broadcastTurnStart(roomID, state)
+	h.startTurnTimer(roomID, gameID, state.CurrentSeat, state.TurnTimeoutSec)
 }
 
 // processAIPlace AI의 배치 응답을 검증하고 턴을 확정한다.

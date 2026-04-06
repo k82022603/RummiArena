@@ -491,6 +491,8 @@ def save_results(all_stats, filename):
 
 
 async def main():
+    global MAX_TURNS
+
     parser = argparse.ArgumentParser(
         description="AI Battle: 3 Model Round 4 Tournament"
     )
@@ -520,7 +522,6 @@ async def main():
     )
     args = parser.parse_args()
 
-    global MAX_TURNS
     MAX_TURNS = args.max_turns
 
     base_url = f"http://{args.host}:{args.port}"
