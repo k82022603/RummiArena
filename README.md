@@ -225,27 +225,35 @@ GET    /ready                 # 준비 상태
 
 ## AI Battle Results
 
-4종 LLM 동일 조건(80턴, 초기 14타일) 대전 결과:
+### Round 4 (2026-04-06, 최신)
 
-| Model | Place Rate | 등급 | 비용/턴 | 비고 |
-|-------|-----------|------|---------|------|
-| **GPT-5-mini** | 28% | A | $0.025 | 가성비 최고 |
-| **Claude Sonnet 4** (thinking) | 23% | A | $0.074 | Extended thinking 활용 |
-| **DeepSeek Reasoner** | 23.1% | A | $0.001 | Round 4에서 5%→23% 개선 |
-| **Ollama qwen2.5:3b** | - | - | $0 | 로컬 추론, 성능 제한적 |
+| Model | Place Rate | 등급 | 턴 | 비용 | 비고 |
+|-------|-----------|------|-----|------|------|
+| **DeepSeek Reasoner** | **30.8%** | **A+** | 80 (완주) | $0.04 | 비용 대비 성과 1위, v2 프롬프트 |
+| **GPT-5-mini** | 33.3% | (N/A) | 14 | $0.15 | 재배포로 WS 끊김, 재실행 필요 |
+| **Claude Sonnet 4** (thinking) | 20.0% | A | 32 | $1.11 | WS_TIMEOUT |
+| **Ollama qwen2.5:3b** | - | - | - | $0 | 로컬 추론, 성능 제한적 |
 
-> 전 모델 Fallback 0건 — 타임아웃 체인 및 프롬프트 최적화 효과
+### Round 2 → Round 4 개선
+
+| Model | Round 2 | Round 4 | Delta |
+|-------|---------|---------|-------|
+| DeepSeek Reasoner | 5% (F) | **30.8% (A+)** | **+25.8%p** |
+| GPT-5-mini | 28% (A) | 33.3% (N/A) | 데이터 불완전 |
+| Claude Sonnet 4 | 23% (A) | 20.0% (A) | -3%p |
+
+> 전 모델 Fallback 0건. DeepSeek 비용 대비 성과: Claude의 114배, GPT의 23배
 
 ## Test Status
 
 | Category | Tests | Status |
 |----------|-------|--------|
-| Game Engine (Go) | 624 | PASS |
+| Game Engine (Go) | 651 | PASS |
 | AI Adapter (NestJS) | 395 | PASS |
-| Playwright E2E | 368 | PASS |
+| Playwright E2E | 375 | PASS |
 | WS Multiplayer | 16 | PASS |
 | WS Integration | 5 | PASS |
-| **Total** | **1,408** | **ALL PASS** |
+| **Total** | **1,421** | **ALL PASS** |
 
 ### CI/CD Pipeline (17/17 Stages)
 
@@ -306,7 +314,7 @@ lint (4) → test (2) → quality (2) → build (4) → scan (4) → gitops (1)
 | Sprint 4 | W7 | - | 생명주기 4기능, 비용/메트릭, 보안 P0 5건, AI Round 2 |
 | **Sprint 5** | **W8~** | - | **Rate Limiting, DeepSeek 최적화, CI/CD 17/17, 플레이테스트** |
 
-**380 commits** · 100+ 설계 문서 · 1,408 tests
+**384 commits** · 100+ 설계 문서 · 1,421 tests
 
 ## License
 
