@@ -8,7 +8,7 @@ GPT-5-mini vs Claude Sonnet 4 vs DeepSeek Reasoner
   - 초기 14타일
   - 2인전 (Human AutoDraw vs AI)
   - persona=calculator, difficulty=expert, psychologyLevel=2
-  - WS_TIMEOUT: 모델별 차등 (DeepSeek 210s, 나머지 180s)
+  - WS_TIMEOUT: 전 모델 270s 통일 (210s adapter timeout + 60s buffer)
 
 이전 결과 (Round 2, 2026-03-31):
   GPT-5-mini:     28% place rate ($1.00)
@@ -61,7 +61,7 @@ MODELS = {
         "persona": "calculator",
         "difficulty": "expert",
         "psychologyLevel": 2,
-        "ws_timeout": 180,       # 120s adapter timeout + 60s buffer
+        "ws_timeout": 270,       # 210s adapter timeout + 60s buffer
         "cost_per_turn": 0.025,
     },
     "claude": {
@@ -71,7 +71,7 @@ MODELS = {
         "persona": "calculator",
         "difficulty": "expert",
         "psychologyLevel": 2,
-        "ws_timeout": 180,       # 120s adapter timeout + 60s buffer
+        "ws_timeout": 270,       # 210s adapter timeout + 60s buffer
         "cost_per_turn": 0.074,
     },
     "deepseek": {
@@ -81,7 +81,7 @@ MODELS = {
         "persona": "calculator",
         "difficulty": "expert",
         "psychologyLevel": 2,
-        "ws_timeout": 210,       # 150s adapter timeout + 60s buffer
+        "ws_timeout": 270,       # 210s adapter timeout + 60s buffer
         "cost_per_turn": 0.001,
     },
 }

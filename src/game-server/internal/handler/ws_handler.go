@@ -826,7 +826,7 @@ func (h *WSHandler) handleAITurn(roomID, gameID string, player *model.PlayerStat
 	// AI goroutine이 동시에 게임 상태를 변경하려는 race condition이 발생한다.
 	h.cancelTurnTimer(gameID)
 
-	const aiTurnTimeout = 200 * time.Second
+	const aiTurnTimeout = 240 * time.Second // 전 모델 210s adapter + 30s 버퍼
 
 	ctx, cancel := context.WithTimeout(context.Background(), aiTurnTimeout)
 	defer cancel()
@@ -844,7 +844,7 @@ func (h *WSHandler) handleAITurn(roomID, gameID string, player *model.PlayerStat
 		Difficulty:      normalizeDifficulty(player.AIDifficulty),
 		PsychologyLevel: player.AIPsychLevel,
 		MaxRetries:      3,
-		TimeoutMs:       30000,
+		TimeoutMs:       210000, // 전 모델 210s 통일 (adapter에서도 최소 210s 보장)
 		GameState: client.MoveGameState{
 			TableGroups:     tableGroups,
 			MyTiles:         player.Rack,

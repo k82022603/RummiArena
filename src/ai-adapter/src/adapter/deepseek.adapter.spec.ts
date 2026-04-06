@@ -459,7 +459,7 @@ describe('DeepSeekAdapter', () => {
       await reasonerAdapter.generateMove(makeMoveRequest({ timeoutMs: 10000 }));
 
       const [, , config] = (mockedAxios.post as jest.Mock).mock.calls[0];
-      expect(config.timeout).toBe(150_000);
+      expect(config.timeout).toBe(210_000);
     });
 
     it('reasoner 모드에서 영어 기반 시스템 프롬프트를 사용한다', async () => {

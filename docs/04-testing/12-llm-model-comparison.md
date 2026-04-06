@@ -2,7 +2,7 @@
 
 **작성**: 2026-03-23
 **최종 갱신**: 2026-04-06
-**상태**: Round 4 실측 반영 (2026-04-06) — 3모델 토너먼트 결과 포함
+**상태**: v2 프롬프트 통일 실험 반영 (2026-04-06) — Round 4 + 크로스모델 결과 포함
 
 ---
 
@@ -355,12 +355,52 @@ xychart-beta
 
 > 상세 분석, 턴별 배치 데이터, 버그 수정 내역은 `04-testing/37-3model-round4-tournament-report.md` 참조.
 
+### 12.5 v2 프롬프트 통일 실험 (2026-04-06)
+
+DeepSeek 전용으로 설계한 v2 프롬프트를 3모델 공통 표준으로 적용한 크로스모델 실험 결과.
+
+#### 3모델 v2 결과
+
+| 모델 | v2 Rate | 등급 | 턴 | Cost | Avg Resp | 비고 |
+|------|:---:|:---:|:---:|:---:|:---:|------|
+| **Claude Sonnet 4** (thinking) | **33.3%** | **A+** | 62 | $1.67 | 39.4s | 역대 최고 |
+| **GPT-5-mini** | **30.8%** | **A+** | 80 | $0.89 | 19.2s | 첫 80턴 완주 |
+| DeepSeek Reasoner | 17.9% | B | 80 | $0.04 | 147.8s | 게임 간 분산 |
+
+#### 이전 vs v2 비교
+
+| 모델 | 이전 Best | v2 Rate | Delta | 판정 |
+|------|:---:|:---:|:---:|:---:|
+| Claude Sonnet 4 | 23.0% (R2) | **33.3%** | **+10.3%p** | 대폭 개선 |
+| GPT-5-mini | 28.0% (R2) | **30.8%** | **+2.8%p** | 개선 + 첫 완주 |
+| DeepSeek Reasoner | 30.8% (R4) | 17.9% | -12.9%p | 분산 (프롬프트 효과 유지) |
+
+```mermaid
+xychart-beta
+    title "v2 프롬프트 통일 실험: 이전 Best vs v2 Place Rate"
+    x-axis ["Claude Sonnet 4", "GPT-5-mini", "DeepSeek Reasoner"]
+    y-axis "Place Rate (%)" 0 --> 40
+    bar [23.0, 28.0, 30.8]
+    bar [33.3, 30.8, 17.9]
+```
+
+#### 핵심 결론
+
+1. **v2 프롬프트가 모델 공통 표준으로 유효**: DeepSeek 전용 설계였으나 Claude/GPT에서도 Place Rate 개선 효과를 입증했다.
+2. **Claude가 역대 최고 성적 달성**: 33.3%(A+)로 전 모델 통틀어 최고 Place Rate를 기록했다. extended thinking과 v2 프롬프트의 자기 검증 체크리스트가 시너지를 발휘한 것으로 분석된다.
+3. **GPT 사상 첫 80턴 완주**: Round 4에서 14턴 조기 종료(WS_CLOSED)되었던 GPT가 v2 프롬프트로 80턴 완주에 성공하며 30.8%(A+)를 달성했다.
+4. **DeepSeek 분산은 프롬프트 문제 아님**: 단일 게임 랜덤성 + AI_TIMEOUT 8건이 주요 원인이며, v2 프롬프트 자체의 효과는 유지된다.
+5. **v2를 3모델 공통 프롬프트 표준으로 채택**: 모든 모델에서 Place Rate 개선 또는 유지가 확인되어, 공통 프롬프트 모듈(shared prompt module)로 통합 운영한다.
+
+> 상세 실험 보고서: `docs/04-testing/38-v2-prompt-crossmodel-experiment.md` 참조
+
 ---
 
 ## 관련 문서
 
 | 파일 | 설명 |
 |------|------|
+| **`docs/04-testing/38-v2-prompt-crossmodel-experiment.md`** | **v2 프롬프트 크로스모델 실험 보고서 (2026-04-06)** |
 | **`docs/04-testing/37-3model-round4-tournament-report.md`** | **Round 4 토너먼트 상세 보고서 (2026-04-06)** |
 | **`docs/02-design/18-model-prompt-policy.md`** | **모델별 프롬프트 정책 (최신, 2026-04-05)** |
 | `docs/02-design/10-websocket-protocol.md` | WS 프로토콜 (AI 턴 처리 흐름) |

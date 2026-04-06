@@ -257,9 +257,9 @@ describe('ClaudeAdapter', () => {
       await adapter.generateMove(makeMoveRequest({ timeoutMs: 25000 }));
 
       const calls = (mockedAxios.post as jest.Mock).mock.calls;
-      // extended thinking 기본 활성 → Math.max(25000, 120000) = 120000
+      // extended thinking 기본 활성 → Math.max(25000, 210000) = 210000
       const callLlmCall = calls.find(
-        ([, , cfg]) => cfg && cfg.timeout === 120000,
+        ([, , cfg]) => cfg && cfg.timeout === 210000,
       );
       expect(callLlmCall).toBeDefined();
     });

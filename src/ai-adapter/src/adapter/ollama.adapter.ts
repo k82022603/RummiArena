@@ -23,8 +23,8 @@ export class OllamaAdapter extends BaseAdapter {
   /** 소형 모델 JSON 오류율 대응: 최소 재시도 횟수 */
   static readonly MIN_RETRIES = 5;
 
-  /** CPU 추론 + thinking 모드 대응: 최소 타임아웃 (ms) */
-  static readonly MIN_TIMEOUT_MS = 120_000;
+  /** CPU 추론 + thinking 모드 대응: 최소 타임아웃 (ms) — 전 모델 210s 통일 */
+  static readonly MIN_TIMEOUT_MS = 210_000;
 
   private readonly baseUrl: string;
   private readonly defaultModel: string;

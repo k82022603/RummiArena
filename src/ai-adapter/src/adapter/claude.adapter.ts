@@ -204,7 +204,7 @@ export class ClaudeAdapter extends BaseAdapter {
         'anthropic-version': this.anthropicVersion,
         'Content-Type': 'application/json',
       },
-      timeout: useThinking ? Math.max(timeoutMs, 120_000) : timeoutMs,
+      timeout: useThinking ? Math.max(timeoutMs, 210_000) : timeoutMs,
     });
 
     // Extended thinking 응답: [{type:"thinking",...},{type:"text",...}]

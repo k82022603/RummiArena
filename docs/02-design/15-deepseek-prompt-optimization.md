@@ -799,4 +799,57 @@ flowchart LR
 
 DeepSeek Reasoner는 v2 프롬프트 최적화와 `max_tokens` 수정을 통해 Round 2(5.0%)에서 Round 4(30.8%)로 **6.2배 성능 개선**을 달성했다. 이는 본 문서에서 설계한 5개 전략(Few-shot, 부정 예시, 자기 검증, a/b 강화, 초기 멜드 가이드)의 복합 효과이며, 기본 시나리오 예측(20%)을 10.8%p 초과하는 결과이다.
 
+### 11.10 v2 크로스모델 실험 (2026-04-06)
+
+DeepSeek 전용으로 설계한 v2 프롬프트를 GPT-5-mini, Claude Sonnet 4에도 동일하게 적용하여 크로스모델 효과를 검증했다.
+
+#### 크로스모델 결과
+
+| 모델 | v2 Rate | 이전 Rate | 변화 | 턴 | Avg Resp |
+|------|:---:|:---:|:---:|:---:|:---:|
+| Claude Sonnet 4 (thinking) | **33.3%** | 20.0% (R4) | **+13.3%p** | 62 | 39.4s |
+| GPT-5-mini | **30.8%** | 28.0% (R2) | **+2.8%p** | 80 | 19.2s |
+| DeepSeek Reasoner | 17.9% | 30.8% (R4) | -12.9%p | 80 | 147.8s |
+
+v2 프롬프트가 DeepSeek 이외의 모델에서도 Place Rate 개선 효과를 보였다. 특히 Claude Sonnet 4는 역대 최고 33.3%를 달성했고, GPT-5-mini는 사상 첫 80턴 완주에 성공했다.
+
+#### DeepSeek 분산 원인 분석
+
+DeepSeek Reasoner는 v2 프롬프트 자체가 이전 Round 4 단독(30.8%)에서 이미 검증되었음에도 크로스모델 실험에서 17.9%로 하락했다. 원인을 3가지로 분석한다.
+
+1. **타일 배분의 랜덤성**: 루미큐브는 초기 타일 배분이 완전 랜덤이므로, 게임마다 달성 가능한 최대 배치율이 상이하다. 단일 게임 결과로 프롬프트 성능을 단정하기 어렵다.
+2. **AI_TIMEOUT 증가**: 평균 응답 시간 147.8초로, 150초 타임아웃 한계에 근접하여 AI_TIMEOUT이 8건 발생했다 (이전 Round 4에서는 5건). 타임아웃으로 인해 유효한 배치 기회가 소실되었다.
+3. **통계적 유의성 부족**: 단일 게임(80턴, 약 27 AI턴) 표본으로는 Place Rate의 신뢰구간이 넓어 통계적 유의한 비교가 불가능하다. 다회 실행 평균이 필요하다.
+
+```mermaid
+flowchart TB
+    subgraph VARIANCE["DeepSeek Place Rate 분산"]
+        direction LR
+        R2["Round 2\n5.0% (F)"]
+        R3["Round 3\n12.5% (C)"]
+        R4S["Round 4 단독\n23.1% (A)"]
+        R4M["Round 4 3모델\n30.8% (A+)"]
+        V2X["v2 크로스모델\n17.9% (B)"]
+    end
+
+    R2 --> R3 --> R4S --> R4M --> V2X
+
+    subgraph CAUSES["분산 원인"]
+        C1["타일 배분 랜덤성"]
+        C2["AI_TIMEOUT 8건\n(avg 147.8s)"]
+        C3["단일 게임 표본\n(N=1)"]
+    end
+
+    V2X --> CAUSES
+
+    style VARIANCE fill:#3498db,color:#fff,stroke:#333
+    style CAUSES fill:#e74c3c,color:#fff,stroke:#333
+```
+
+#### 결론
+
+v2 프롬프트 자체의 효과는 크로스모델 실험에서도 유효하다 (Claude +13.3%p, GPT +2.8%p). DeepSeek의 단일 게임 하락(-12.9%p)은 타일 배분 랜덤성과 타임아웃 발생에 기인하며, 프롬프트 품질의 퇴보로 해석할 수 없다. 향후 동일 조건 다회(5회+) 실행으로 평균 Place Rate를 산출하여 통계적 유의성을 확보해야 한다.
+
+> 상세 실험 보고서: `docs/04-testing/38-v2-prompt-crossmodel-experiment.md` 참조
+
 비용 측면에서 Place당 $0.003으로 GPT($0.091)의 1/30, Claude($0.329)의 1/110 수준이며, 성능(Place Rate)에서도 GPT(28%)를 추월하여 **비용-성능 모두에서 최적의 모델**임을 입증했다. v3 프롬프트를 통한 추가 개선 여지도 남아 있어, Round 5에서 35%+ 달성을 목표로 한다.

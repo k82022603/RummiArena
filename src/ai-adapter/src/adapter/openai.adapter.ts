@@ -28,8 +28,8 @@ import {
  */
 @Injectable()
 export class OpenAiAdapter extends BaseAdapter {
-  /** gpt-5 추론 모델 최소 타임아웃 (ms) */
-  static readonly REASONING_MIN_TIMEOUT_MS = 120_000;
+  /** 추론 모델 최소 타임아웃 (ms) — 전 모델 210s 통일 */
+  static readonly REASONING_MIN_TIMEOUT_MS = 210_000;
 
   private readonly apiKey: string;
   private readonly defaultModel: string;

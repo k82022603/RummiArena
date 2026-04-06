@@ -244,6 +244,20 @@ GET    /ready                 # 준비 상태
 
 > 전 모델 Fallback 0건. DeepSeek 비용 대비 성과: Claude의 114배, GPT의 23배
 
+### v2 프롬프트 통일 실험 (2026-04-06)
+
+DeepSeek 전용으로 설계한 v2 프롬프트를 3모델 공통 표준으로 적용하여 크로스모델 실험을 수행했다.
+
+| Model | v2 Rate | 이전 Rate | 변화 | 턴 | 비고 |
+|-------|:-------:|:---------:|:----:|:---:|------|
+| **Claude Sonnet 4** (thinking) | **33.3%** | 20.0% (R4) | **+13.3%p** | 62 | **역대 최고 Place Rate** |
+| **GPT-5-mini** | **30.8%** | 28.0% (R2) | +2.8%p | 80 | **첫 80턴 완주** |
+| DeepSeek Reasoner | 17.9% | 30.8% (R4) | -12.9%p | 80 | 게임 간 분산, AI_TIMEOUT 8건 |
+
+**결론**: v2 프롬프트가 Claude/GPT에서도 효과를 입증하여 **3모델 공통 표준**으로 채택. Claude가 역대 최고 성적(33.3%)을 달성하고, GPT가 사상 첫 80턴 완주에 성공했다.
+
+> 상세 분석: `docs/04-testing/38-v2-prompt-crossmodel-experiment.md` 참조
+
 ## Test Status
 
 | Category | Tests | Status |

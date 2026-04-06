@@ -445,7 +445,7 @@ describe('OllamaAdapter', () => {
           makeOllamaApiResponse(JSON.stringify({ action: 'draw' })),
         );
 
-      // timeoutMs=15000은 MIN_TIMEOUT_MS(120000)보다 작으므로 120000으로 보정됨
+      // timeoutMs=15000은 MIN_TIMEOUT_MS(210000)보다 작으므로 210000으로 보정됨
       await adapter.generateMove(makeMoveRequest({ timeoutMs: 15000 }));
 
       const [, , config] = (mockedAxios.post as jest.Mock).mock.calls[0];
@@ -459,10 +459,10 @@ describe('OllamaAdapter', () => {
           makeOllamaApiResponse(JSON.stringify({ action: 'draw' })),
         );
 
-      await adapter.generateMove(makeMoveRequest({ timeoutMs: 180000 }));
+      await adapter.generateMove(makeMoveRequest({ timeoutMs: 300000 }));
 
       const [, , config] = (mockedAxios.post as jest.Mock).mock.calls[0];
-      expect(config.timeout).toBe(180000);
+      expect(config.timeout).toBe(300000);
     });
   });
 
