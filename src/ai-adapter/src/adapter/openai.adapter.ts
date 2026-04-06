@@ -3,8 +3,15 @@ import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { BaseAdapter } from './base.adapter';
 import { ModelInfo } from '../common/interfaces/ai-adapter.interface';
+import { MoveRequestDto } from '../common/dto/move-request.dto';
+import { MoveResponseDto } from '../common/dto/move-response.dto';
 import { PromptBuilderService } from '../prompt/prompt-builder.service';
 import { ResponseParserService } from '../common/parser/response-parser.service';
+import {
+  V2_REASONING_SYSTEM_PROMPT,
+  buildV2UserPrompt,
+  buildV2RetryPrompt,
+} from '../prompt/v2-reasoning-prompt';
 
 /**
  * OpenAI GPT 어댑터.
@@ -16,6 +23,8 @@ import { ResponseParserService } from '../common/parser/response-parser.service'
  * - temperature 커스텀 미지원 (고정 1)
  * - 응답에 reasoning_tokens 포함
  * - 추론 시간이 길어 최소 타임아웃 60초 보장
+ *
+ * USE_V2_PROMPT=true 시 DeepSeek v2 영문 reasoning 프롬프트 사용.
  */
 @Injectable()
 export class OpenAiAdapter extends BaseAdapter {
@@ -25,6 +34,7 @@ export class OpenAiAdapter extends BaseAdapter {
   private readonly apiKey: string;
   private readonly defaultModel: string;
   private readonly baseUrl = 'https://api.openai.com/v1';
+  private readonly useV2Prompt: boolean;
 
   constructor(
     promptBuilder: PromptBuilderService,
@@ -37,6 +47,11 @@ export class OpenAiAdapter extends BaseAdapter {
       'OPENAI_DEFAULT_MODEL',
       'gpt-5-mini',
     );
+    this.useV2Prompt =
+      this.configService.get<string>('USE_V2_PROMPT', 'false') === 'true';
+    if (this.useV2Prompt) {
+      this.logger.log('[OpenAI] V2 Reasoning Prompt enabled');
+    }
   }
 
   getModelInfo(): ModelInfo {
@@ -57,6 +72,94 @@ export class OpenAiAdapter extends BaseAdapter {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * V2 프롬프트 활성화 시 generateMove를 오버라이드하여
+   * 영문 reasoning 프롬프트와 영문 유저 프롬프트를 사용한다.
+   */
+  async generateMove(request: MoveRequestDto): Promise<MoveResponseDto> {
+    if (!this.useV2Prompt) {
+      return super.generateMove(request);
+    }
+
+    // V2 프롬프트: DeepSeek Reasoner와 동일한 영문 프롬프트 사용
+    const modelInfo = this.getModelInfo();
+    const systemPrompt = V2_REASONING_SYSTEM_PROMPT;
+    const totalStartTime = Date.now();
+
+    let lastErrorReason = '';
+
+    for (let attempt = 0; attempt < request.maxRetries; attempt++) {
+      const attemptStartTime = Date.now();
+
+      const userPrompt =
+        attempt === 0
+          ? buildV2UserPrompt(request.gameState)
+          : buildV2RetryPrompt(
+              request.gameState,
+              lastErrorReason,
+              attempt,
+            );
+
+      this.logger.log(
+        `[OpenAI-V2] gameId=${request.gameId} attempt=${attempt + 1}/${request.maxRetries}`,
+      );
+
+      try {
+        const llmResult = await this.callLlm(
+          systemPrompt,
+          userPrompt,
+          request.timeoutMs,
+          0, // v2 프롬프트에서는 낮은 temperature 사용
+        );
+
+        const latencyMs = Date.now() - attemptStartTime;
+        const parseResult = this.responseParser.parse(
+          {
+            content: llmResult.content,
+            promptTokens: llmResult.promptTokens,
+            completionTokens: llmResult.completionTokens,
+            latencyMs,
+          },
+          {
+            modelType: modelInfo.modelType,
+            modelName: modelInfo.modelName,
+            isFallbackDraw: false,
+          },
+          attempt,
+        );
+
+        if (parseResult.success && parseResult.response) {
+          this.logger.log(
+            `[OpenAI-V2] 성공 action=${parseResult.response.action} latencyMs=${latencyMs}`,
+          );
+          return parseResult.response;
+        }
+
+        lastErrorReason = parseResult.errorReason ?? '알 수 없는 파싱 오류';
+        this.logger.warn(
+          `[OpenAI-V2] attempt=${attempt + 1} 파싱 실패: ${lastErrorReason}`,
+        );
+      } catch (err) {
+        lastErrorReason = (err as Error).message;
+        this.logger.error(
+          `[OpenAI-V2] attempt=${attempt + 1} LLM 호출 오류: ${lastErrorReason}`,
+        );
+      }
+    }
+
+    // maxRetries 모두 실패 -> 강제 드로우
+    const totalLatencyMs = Date.now() - totalStartTime;
+    return this.responseParser.buildFallbackDraw(
+      {
+        modelType: modelInfo.modelType,
+        modelName: modelInfo.modelName,
+        isFallbackDraw: true,
+      },
+      request.maxRetries,
+      totalLatencyMs,
+    );
   }
 
   protected async callLlm(

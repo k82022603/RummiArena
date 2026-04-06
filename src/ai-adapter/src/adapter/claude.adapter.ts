@@ -3,13 +3,23 @@ import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { BaseAdapter } from './base.adapter';
 import { ModelInfo } from '../common/interfaces/ai-adapter.interface';
+import { MoveRequestDto } from '../common/dto/move-request.dto';
+import { MoveResponseDto } from '../common/dto/move-response.dto';
 import { PromptBuilderService } from '../prompt/prompt-builder.service';
 import { ResponseParserService } from '../common/parser/response-parser.service';
+import {
+  V2_REASONING_SYSTEM_PROMPT,
+  buildV2UserPrompt,
+  buildV2RetryPrompt,
+} from '../prompt/v2-reasoning-prompt';
 
 /**
  * Anthropic Claude 어댑터.
  * Messages API를 사용하며, 긴 컨텍스트(게임 히스토리)를 효과적으로 활용한다.
  * 기본 모델: claude-sonnet-4-20250514 (expert)
+ *
+ * USE_V2_PROMPT=true 시 DeepSeek v2 영문 reasoning 프롬프트 사용.
+ * Extended thinking은 v2 프롬프트와 함께 유지된다.
  */
 @Injectable()
 export class ClaudeAdapter extends BaseAdapter {
@@ -17,6 +27,7 @@ export class ClaudeAdapter extends BaseAdapter {
   private readonly defaultModel: string;
   private readonly baseUrl = 'https://api.anthropic.com/v1';
   private readonly anthropicVersion = '2023-06-01';
+  private readonly useV2Prompt: boolean;
 
   constructor(
     promptBuilder: PromptBuilderService,
@@ -29,6 +40,11 @@ export class ClaudeAdapter extends BaseAdapter {
       'CLAUDE_DEFAULT_MODEL',
       'claude-sonnet-4-20250514',
     );
+    this.useV2Prompt =
+      this.configService.get<string>('USE_V2_PROMPT', 'false') === 'true';
+    if (this.useV2Prompt) {
+      this.logger.log('[Claude] V2 Reasoning Prompt enabled');
+    }
   }
 
   getModelInfo(): ModelInfo {
@@ -62,6 +78,95 @@ export class ClaudeAdapter extends BaseAdapter {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * V2 프롬프트 활성화 시 generateMove를 오버라이드하여
+   * 영문 reasoning 프롬프트와 영문 유저 프롬프트를 사용한다.
+   * Extended thinking은 v2 프롬프트와 함께 유지된다.
+   */
+  async generateMove(request: MoveRequestDto): Promise<MoveResponseDto> {
+    if (!this.useV2Prompt) {
+      return super.generateMove(request);
+    }
+
+    // V2 프롬프트: DeepSeek Reasoner와 동일한 영문 프롬프트 사용
+    const modelInfo = this.getModelInfo();
+    const systemPrompt = V2_REASONING_SYSTEM_PROMPT;
+    const totalStartTime = Date.now();
+
+    let lastErrorReason = '';
+
+    for (let attempt = 0; attempt < request.maxRetries; attempt++) {
+      const attemptStartTime = Date.now();
+
+      const userPrompt =
+        attempt === 0
+          ? buildV2UserPrompt(request.gameState)
+          : buildV2RetryPrompt(
+              request.gameState,
+              lastErrorReason,
+              attempt,
+            );
+
+      this.logger.log(
+        `[Claude-V2] gameId=${request.gameId} attempt=${attempt + 1}/${request.maxRetries}`,
+      );
+
+      try {
+        const llmResult = await this.callLlm(
+          systemPrompt,
+          userPrompt,
+          request.timeoutMs,
+          0, // v2 프롬프트에서는 낮은 temperature 사용
+        );
+
+        const latencyMs = Date.now() - attemptStartTime;
+        const parseResult = this.responseParser.parse(
+          {
+            content: llmResult.content,
+            promptTokens: llmResult.promptTokens,
+            completionTokens: llmResult.completionTokens,
+            latencyMs,
+          },
+          {
+            modelType: modelInfo.modelType,
+            modelName: modelInfo.modelName,
+            isFallbackDraw: false,
+          },
+          attempt,
+        );
+
+        if (parseResult.success && parseResult.response) {
+          this.logger.log(
+            `[Claude-V2] 성공 action=${parseResult.response.action} latencyMs=${latencyMs}`,
+          );
+          return parseResult.response;
+        }
+
+        lastErrorReason = parseResult.errorReason ?? '알 수 없는 파싱 오류';
+        this.logger.warn(
+          `[Claude-V2] attempt=${attempt + 1} 파싱 실패: ${lastErrorReason}`,
+        );
+      } catch (err) {
+        lastErrorReason = (err as Error).message;
+        this.logger.error(
+          `[Claude-V2] attempt=${attempt + 1} LLM 호출 오류: ${lastErrorReason}`,
+        );
+      }
+    }
+
+    // maxRetries 모두 실패 -> 강제 드로우
+    const totalLatencyMs = Date.now() - totalStartTime;
+    return this.responseParser.buildFallbackDraw(
+      {
+        modelType: modelInfo.modelType,
+        modelName: modelInfo.modelName,
+        isFallbackDraw: true,
+      },
+      request.maxRetries,
+      totalLatencyMs,
+    );
   }
 
   protected async callLlm(

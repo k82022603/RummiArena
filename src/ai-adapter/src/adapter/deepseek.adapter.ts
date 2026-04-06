@@ -7,6 +7,7 @@ import { MoveRequestDto } from '../common/dto/move-request.dto';
 import { MoveResponseDto } from '../common/dto/move-response.dto';
 import { PromptBuilderService } from '../prompt/prompt-builder.service';
 import { ResponseParserService } from '../common/parser/response-parser.service';
+import { V2_REASONING_SYSTEM_PROMPT } from '../prompt/v2-reasoning-prompt';
 
 /**
  * DeepSeek Reasoner 전용 간결한 시스템 프롬프트.
@@ -218,9 +219,9 @@ export class DeepSeekAdapter extends BaseAdapter {
       return super.generateMove(request);
     }
 
-    // Reasoner 전용 로직: 간결 프롬프트 + 향상된 JSON 추출
+    // Reasoner 전용 로직: V2 공유 프롬프트 + 향상된 JSON 추출
     const modelInfo = this.getModelInfo();
-    const systemPrompt = DEEPSEEK_REASONER_SYSTEM_PROMPT;
+    const systemPrompt = V2_REASONING_SYSTEM_PROMPT;
     const totalStartTime = Date.now();
 
     let lastErrorReason = '';
