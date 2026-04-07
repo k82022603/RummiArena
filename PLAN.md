@@ -17,9 +17,9 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 |-------|------|--------|-------------|------|
 | 1 | 기획 & 환경 구축 | Sprint 0 | 기획/설계 문서, K8s/ArgoCD/Traefik 환경 | **완료** |
 | 2 | 핵심 게임 개발 (MVP) | Sprint 1~3 | Game Engine (Go), Backend API, Frontend 기본 | **완료** (2026-03-23) |
-| 3 | AI 연동 & 멀티플레이 | Sprint 4~5 | AI Adapter (NestJS), 실시간 대전, 1인 연습 모드 | **Sprint 5 W2 진행 중** (2026-04-06) |
+| 3 | AI 연동 & 멀티플레이 | Sprint 4~5 | AI Adapter (NestJS), 실시간 대전, 1인 연습 모드 | **Sprint 5 W2 진행 중** (2026-04-07) |
 | 4 | 플랫폼 기능 확장 | Sprint 6 | 관리자 대시보드, 카카오톡 알림, ELO, 게임 복기 | 일부 선행 완료 (ELO, 관리자) |
-| 5 | DevSecOps 고도화 | Sprint 7~9 | Observability, 보안 고도화, Istio Service Mesh | **Sprint 5에서 선행 착수** (SEC-RL-003, SEC-ADD-002, Istio 설계) |
+| 5 | DevSecOps 고도화 | Sprint 7~9 | Observability, 보안 고도화, Istio Service Mesh | **Sprint 5에서 선행 착수** (SEC-RL-003, SEC-ADD-001/002, Istio 설계) |
 | 6 | 운영 & 실험 | (Phase 6) | AI 토너먼트, 모델 비교 분석, OpenShift 검토 | **일부 선행** (Round 4 토너먼트, v2 크로스모델 실험) |
 
 ---
@@ -255,7 +255,9 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 - [x] **P0 SEC-RL-002** — AI 게임 쿨다운 + 시간당 비용 한도 — 2026-04-04
 - [x] **P2 SEC-SM-001** — ai-adapter sourceMap: false + admin/frontend Dockerfile .map delete — 2026-04-04/05
 - [x] **SEC-RL-003 설계** — WS 서버측 메시지 빈도 제한 설계 완료 (구현 Sprint 5 W2) — 2026-04-05
-- [ ] **SEC-RL-003 구현** — WS 메시지 빈도 제한 (Sprint 5 W2)
+- [x] **SEC-RL-003 구현** — WS Rate Limit Fixed Window 60msg/min + Close 4005 — 2026-04-06
+- [x] **SEC-ADD-001 구현** — Google id_token JWKS RS256 서명 검증 (keyfunc/v3) — 2026-04-07
+- [x] **SEC-ADD-002 구현** — 보안 응답 헤더 6종 (CSP, X-Frame-Options 등) — 2026-04-06
 - [ ] OWASP ZAP 동적 보안 테스트 (선택)
 - [ ] Sealed Secrets 도입
 
@@ -279,11 +281,11 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 
 ## Phase 6: 운영 & 실험 (Sprint 8+)
 
-- [ ] AI vs AI 토너먼트 실행
+- [x] AI vs AI 토너먼트 실행 — Round 2~4 완료, 4모델 비교 (GPT/Claude/DeepSeek/Ollama) — 2026-04-07
 - [ ] 모델별 전략 비교 분석 리포트
 - [ ] 캐릭터 × 모델 조합별 승률 통계
 - [ ] 심리전 효과 검증 (유무 비교)
-- [x] 프롬프트 최적화 실험 — v1 고도화 완료 (30점 규칙, tableGroups, 전략 분석, 2026-03-31)
+- [x] 프롬프트 최적화 실험 — v2 공통 프롬프트 채택, 4모델 비교 확정 — 2026-04-07
 - [ ] 운영 가이드 문서 작성
 - [ ] OpenShift 이관 검토
 
@@ -352,7 +354,7 @@ docs/
 
 ## 현재 진행 상황
 
-**Sprint 4 완료 + Sprint 5 Day 4 진행 중** (2026-04-04)
+**Sprint 5 W2 Day 2 완료** (2026-04-07) — 진행률 ~85%
 
 ### 완료된 스프린트
 
@@ -361,32 +363,25 @@ docs/
 - **Sprint 3** 30/30 SP: OAuth K8s 패치, WS 재연결, gemma3 최적화, Redis Timer/Session
 - **Sprint 4** 완료 (2026-04-01): ISS-001~004, BUG 7건, E2E 338개, AI Adapter 324개, 보안 P0 4건
 
-### Sprint 5 진행 중 (2026-04-01 시작)
+### Sprint 5 진행 중 (2026-04-01~04-11)
 
-**Day 1~3 완료 (품질 게이트 확보)**:
-- CI/CD 17/17 ALL GREEN (Pipeline #96)
-- E2E 362/362 전량 PASS
-- Go 611개 테스트 (engine 95.6%)
-- AI 대전 Round 2: GPT 28%, Claude 23%, DeepSeek 5% → Round 3: DeepSeek 12.5%
-- 플레이테스트 S1 11/13, S3 17/17 PASS
-- 게임 버그 24건 수정 + K8s 4서비스 배포 (191Mi)
+**W1 완료**: Rate Limit 설계, DeepSeek 23.1%, CI/CD 17/17, 플레이테스트 88.6%
 
-**Day 4 완료 (P1 기능 확장 + P0 보안, 10명 전원 투입)**:
-- [x] Rate Limit 구현 — 설계 + Go + NestJS + Frontend + 보안 감사 — 2026-04-04
-- [x] P0 SEC-RL-002 LLM 비용 공격 차단 — 쿨다운 + 시간당 한도 2중 방어 — 2026-04-04
-- [x] DeepSeek 프롬프트 최적화 — few-shot 5개, 자기 검증 7항목, 395 tests — 2026-04-04
-- [x] Trivy HIGH,CRITICAL 확대 + sourceMap 제거 — 2026-04-04
-- [x] 플레이테스트 S2/S4/S5 스크립트 (2,340줄) — 2026-04-04
-- [x] AI 캐릭터 비주얼 스펙 (1,238줄) — 2026-04-04
-- [x] Claude Code Insights + 방법론 평가 리포트 — 2026-04-04
-- [x] /buddy 스크럼 미팅 (11명) + 마감 스탠드업 (11명) — 2026-04-04
+**W2 Day 1 완료 (2026-04-06)**: SEC-RL-003/SEC-ADD-002/BUG-WS-001 구현, Round 4 대전, v2 프롬프트 3모델 공통 채택, Istio 설계
 
-**미완료 (Sprint 5 Day 5~)**:
-- [ ] K8s 재배포 (Rate Limit + DeepSeek + 쿨다운)
-- [ ] DeepSeek Round 4 대전 (v1/v2 A/B 비교)
-- [ ] 플레이테스트 S2/S4/S5 실행 + 결과 보고서
-- [ ] SEC-RL-003 WS 서버측 메시지 빈도 제한
-- [ ] Human 1 + AI 3 혼합 게임 GAME_OVER 완주 E2E
-- [ ] 3모델 Round 4 대전 (GPT/Claude/DeepSeek 비교)
-- [ ] DAILY_COST_LIMIT 이중 키 정리
-- [ ] Istio Service Mesh 프리뷰 설계
+**W2 Day 2 완료 (2026-04-07)**:
+- [x] BUG-GS-004 processAIDraw K8s 배포 — 680 PASS / 0 FAIL / 0 SKIP
+- [x] SEC-ADD-001 JWKS 서명 검증 (설계→구현→테스트→배포 하루 완결) — 13 보안 테스트
+- [x] GPT-5-mini Round 4 재실행 — 30.8% Place Rate, 80턴 완주, Fallback 0
+- [x] Ollama qwen2.5:3b 베이스라인 — 0% Place Rate (비추론 한계 확인)
+- [x] Rate Limit UX 구현 — +344 lines (CooldownProgress, ThrottleBadge)
+- [x] 대시보드 와이어프레임 — 23번 문서 (894줄)
+- [x] v3 프롬프트 어댑터 영향도 분석 — 24번 문서
+- [x] 클라우드 로컬 LLM 연동 방안 — 25번 문서 (qwen3:4b CPU 한계 확인)
+- [x] 테스트 버그 3건 수정 (auth DisplayName + ranking UUID)
+
+**W2 Day 3~ 잔여**:
+- [ ] v2 다회 실행 통계 (GPT/DeepSeek 각 3회)
+- [ ] v3 프롬프트 초안
+- [ ] Istio Phase 5.0 착수 판단
+- [ ] SEC-REV Medium 4건 분류

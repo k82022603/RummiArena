@@ -1,6 +1,6 @@
 {
   "tournament": "3-model Round 4",
-  "timestamp": "2026-04-07 18:03:19",
+  "timestamp": "2026-04-07 20:12:03",
   "config": {
     "maxTurns": 80,
     "persona": "calculator",
@@ -9,110 +9,29 @@
   },
   "models": [
     {
-      "modelKey": "openai",
-      "modelName": "GPT-5-mini",
-      "totalTurns": 80,
-      "aiTurns": 39,
-      "aiPlace": 12,
-      "aiTilesPlaced": 33,
-      "aiDraw": 27,
+      "modelKey": "ollama",
+      "modelName": "Ollama qwen2.5:3b",
+      "totalTurns": 12,
+      "aiTurns": 5,
+      "aiPlace": 0,
+      "aiTilesPlaced": 0,
+      "aiDraw": 5,
       "aiFallback": 0,
-      "placeRate": 30.8,
-      "elapsed": 2524.2,
-      "estimatedCost": 0.975,
-      "result": "TIMEOUT",
+      "placeRate": 0.0,
+      "elapsed": 462.6,
+      "estimatedCost": 0.0,
+      "result": "WS_CLOSED",
       "responseTime": {
-        "avg": 64.7,
-        "p50": 65.9,
-        "min": 23.1,
-        "max": 166.2
+        "avg": 86.8,
+        "p50": 50.0,
+        "min": 47.8,
+        "max": 188.8
       },
-      "placeDetails": [
-        {
-          "turn": 2,
-          "tiles": 6,
-          "cumulative": 6,
-          "resp_time": 23.1
-        },
-        {
-          "turn": 18,
-          "tiles": 3,
-          "cumulative": 9,
-          "resp_time": 51.7
-        },
-        {
-          "turn": 22,
-          "tiles": 3,
-          "cumulative": 12,
-          "resp_time": 68.7
-        },
-        {
-          "turn": 26,
-          "tiles": 3,
-          "cumulative": 15,
-          "resp_time": 41.8
-        },
-        {
-          "turn": 32,
-          "tiles": 1,
-          "cumulative": 16,
-          "resp_time": 46.1
-        },
-        {
-          "turn": 38,
-          "tiles": 3,
-          "cumulative": 19,
-          "resp_time": 134.0
-        },
-        {
-          "turn": 52,
-          "tiles": 3,
-          "cumulative": 22,
-          "resp_time": 69.0
-        },
-        {
-          "turn": 56,
-          "tiles": 3,
-          "cumulative": 25,
-          "resp_time": 70.9
-        },
-        {
-          "turn": 60,
-          "tiles": 3,
-          "cumulative": 28,
-          "resp_time": 37.8
-        },
-        {
-          "turn": 64,
-          "tiles": 1,
-          "cumulative": 29,
-          "resp_time": 46.6
-        },
-        {
-          "turn": 66,
-          "tiles": 1,
-          "cumulative": 30,
-          "resp_time": 85.9
-        },
-        {
-          "turn": 78,
-          "tiles": 3,
-          "cumulative": 33,
-          "resp_time": 46.7
-        }
-      ],
+      "placeDetails": [],
       "fallbackReasons": [],
       "errors": [],
-      "round2Baseline": {
-        "place": 11,
-        "tiles": 27,
-        "draw": 29,
-        "rate": 28.0,
-        "elapsed": 1876,
-        "cost": 1.0,
-        "fallback": 0
-      },
-      "deltaPlaceRate": 2.8
+      "round2Baseline": {},
+      "deltaPlaceRate": 0.0
     }
   ]
 }
