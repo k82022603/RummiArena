@@ -26,6 +26,7 @@ import TurnTimer from "@/components/game/TurnTimer";
 import ConnectionStatus from "@/components/game/ConnectionStatus";
 import ErrorToast from "@/components/game/ErrorToast";
 import ReconnectToast from "@/components/game/ReconnectToast";
+import ThrottleBadge from "@/components/game/ThrottleBadge";
 import Tile from "@/components/tile/Tile";
 
 import type { TileCode, TileNumber, TableGroup, GroupType } from "@/types/tile";
@@ -724,12 +725,15 @@ export default function GameClient({ roomId }: GameClientProps) {
 
         {/* 게임 헤더 */}
         <header className="flex-shrink-0 flex items-center justify-between px-4 py-2 bg-panel-bg border-b border-border h-11">
-          <h1 className="text-tile-sm font-semibold">
-            Room{" "}
-            <span className="font-mono text-warning">
-              {roomId.length <= 8 ? roomId : roomId.slice(0, 8)}
-            </span>
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-tile-sm font-semibold">
+              Room{" "}
+              <span className="font-mono text-warning">
+                {roomId.length <= 8 ? roomId : roomId.slice(0, 8)}
+              </span>
+            </h1>
+            <ThrottleBadge />
+          </div>
 
           {gameState && (
             <TurnTimer

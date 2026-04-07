@@ -53,11 +53,11 @@ function parseRetryAfter(res: Response): number {
   return DEFAULT_RETRY_AFTER_SEC;
 }
 
-/** Rate Limit 토스트 메시지 표시 (Zustand store 직접 접근) */
+/** Rate Limit 토스트 + 쿨다운 시작 (Zustand store 직접 접근) */
 function showRateLimitToast(retrySec: number): void {
-  useRateLimitStore
-    .getState()
-    .setMessage(`요청이 너무 많습니다. ${retrySec}초 후에 다시 시도해주세요.`);
+  const store = useRateLimitStore.getState();
+  store.setMessage(`요청이 너무 빨랐습니다. ${retrySec}초 후 다시 시도합니다.`);
+  store.startCooldown(retrySec);
 }
 
 async function apiFetch<T>(
@@ -85,10 +85,14 @@ async function apiFetch<T>(
     showRateLimitToast(retrySec);
 
     if (_retryCount < MAX_RATE_LIMIT_RETRIES) {
+      useRateLimitStore.getState().setIsRetrying(true);
       await new Promise((resolve) => setTimeout(resolve, retrySec * 1000));
-      return apiFetch<T>(path, options, _retryCount + 1);
+      const result = await apiFetch<T>(path, options, _retryCount + 1);
+      useRateLimitStore.getState().setIsRetrying(false);
+      return result;
     }
 
+    useRateLimitStore.getState().setIsRetrying(false);
     throw new Error(
       `요청이 너무 많습니다. ${retrySec}초 후에 다시 시도해주세요.`
     );

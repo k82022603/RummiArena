@@ -429,21 +429,30 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
         case "ERROR": {
           const payload = msg.payload as WSErrorPayload;
           // Rate Limit 에러 감지: 연결 끊지 않고 스로틀링만 활성화
-          if (payload.code === "RATE_LIMIT" || payload.code === "ERR_RATE_LIMIT") {
+          if (payload.code === "RATE_LIMIT" || payload.code === "ERR_RATE_LIMIT" || payload.code === "RATE_LIMITED") {
             const retryMatch = payload.message?.match(/(\d+)/);
             const sec = retryMatch ? Number(retryMatch[1]) : 5;
-            useRateLimitStore
-              .getState()
-              .setMessage(`요청이 너무 많습니다. ${sec}초 후에 다시 시도해주세요.`);
+
+            // 위반 횟수 증가 + 단계별 메시지
+            const rlStore = useRateLimitStore.getState();
+            rlStore.incrementWsViolation();
+            const violationCount = useRateLimitStore.getState().wsViolationCount;
+
+            const stageMessages: Record<number, string> = {
+              1: "메시지 전송 속도가 제한되었습니다. 조금 천천히 진행해주세요.",
+              2: "주의: 계속 빠른 전송 시 연결이 끊어질 수 있습니다.",
+            };
+            rlStore.setMessage(stageMessages[violationCount] ?? `요청이 너무 많습니다. ${sec}초 후에 다시 시도해주세요.`);
+
             // 스로틀 활성화
-            useRateLimitStore.getState().setWsThrottled(true);
+            rlStore.setWsThrottled(true);
             wsThrottledRef.current = true;
             if (wsThrottleCooldownRef.current) clearTimeout(wsThrottleCooldownRef.current);
             wsThrottleCooldownRef.current = setTimeout(() => {
               wsThrottledRef.current = false;
               useRateLimitStore.getState().setWsThrottled(false);
             }, WS_THROTTLE_COOLDOWN_MS);
-            console.warn("[WS] RATE_LIMIT: throttling outgoing messages for %dms", WS_THROTTLE_COOLDOWN_MS);
+            console.warn("[WS] RATE_LIMIT (violation #%d): throttling outgoing messages for %dms", violationCount, WS_THROTTLE_COOLDOWN_MS);
             break;
           }
           setLastError(payload.message);
@@ -496,6 +505,14 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
         setStatus("connected");
         setLastError(null);
 
+        // 재연결 성공 시 상태 초기화
+        const wsStoreState = useWSStore.getState();
+        wsStoreState.setReconnectAttemptCount(0);
+        wsStoreState.setReconnectNextDelaySec(0);
+        wsStoreState.setLastCloseCode(null);
+        // WS 위반 횟수 초기화 (재연결 시 리셋)
+        useRateLimitStore.getState().resetWsViolation();
+
         // AUTH 메시지 전송
         seqRef.current = 1;
         const authMsg: WSEnvelope = {
@@ -513,16 +530,55 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
         if (!isMounted.current) return;
         console.warn("[WS] closed:", e.code, e.reason);
 
+        // Close Code별 사유 메시지 설정
+        const WS_CLOSE_MESSAGES: Record<number, string> = {
+          4001: "인증에 실패했습니다. 다시 로그인해주세요.",
+          4002: "게임 방을 찾을 수 없습니다.",
+          4003: "인증 시간이 초과되었습니다.",
+          4004: "다른 탭에서 같은 게임에 접속 중입니다.",
+          4005: "메시지를 너무 빠르게 보내서 연결이 제한되었습니다.",
+        };
+        const closeMessage = WS_CLOSE_MESSAGES[e.code];
+        const wsStore = useWSStore.getState();
+        wsStore.setLastCloseCode(e.code);
+        if (closeMessage) {
+          setLastError(closeMessage);
+        }
+
         if (reconnectAttempts.current < MAX_RECONNECT_ATTEMPTS) {
           setStatus("reconnecting");
           reconnectAttempts.current += 1;
           const delay = INITIAL_RECONNECT_DELAY_MS * Math.pow(2, reconnectAttempts.current - 1);
+          const delaySec = Math.round(delay / 1000);
+
+          // 재연결 카운트다운 추적
+          wsStore.setReconnectAttemptCount(reconnectAttempts.current);
+          wsStore.setReconnectNextDelaySec(delaySec);
+
+          // 카운트다운 타이머
+          let remaining = delaySec;
+          const countdownInterval = setInterval(() => {
+            remaining -= 1;
+            if (remaining <= 0) {
+              clearInterval(countdownInterval);
+              useWSStore.getState().setReconnectNextDelaySec(0);
+            } else {
+              useWSStore.getState().setReconnectNextDelaySec(remaining);
+            }
+          }, 1000);
+
           reconnectTimer.current = setTimeout(() => {
-            if (isMounted.current) connect();
+            clearInterval(countdownInterval);
+            if (isMounted.current) {
+              useWSStore.getState().setReconnectNextDelaySec(0);
+              connect();
+            }
           }, delay);
         } else {
           setStatus("disconnected");
-          setLastError("서버와의 연결이 끊어졌습니다. 페이지를 새로고침하세요.");
+          if (!closeMessage) {
+            setLastError("서버와의 연결이 끊어졌습니다. 페이지를 새로고침하세요.");
+          }
         }
       };
 
