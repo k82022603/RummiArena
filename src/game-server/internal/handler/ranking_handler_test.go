@@ -50,8 +50,8 @@ func testDBForRanking(t *testing.T) *gorm.DB {
 // cleanupRankingTestData 테스트 후 test- 접두사 데이터를 제거한다.
 func cleanupRankingTestData(t *testing.T, db *gorm.DB) {
 	t.Helper()
-	db.Exec("DELETE FROM elo_history WHERE user_id LIKE 'test-%'")
-	db.Exec("DELETE FROM elo_ratings WHERE user_id LIKE 'test-%'")
+	db.Exec("DELETE FROM elo_history WHERE user_id IN ('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000003')")
+	db.Exec("DELETE FROM elo_ratings WHERE user_id IN ('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000003')")
 }
 
 // --- 테스트 헬퍼 ---
@@ -74,9 +74,9 @@ func seedRankingData(t *testing.T, repo repository.EloRepository) {
 	t.Helper()
 	now := time.Now()
 	ratings := []model.EloRating{
-		{UserID: "test-user1", Rating: 1600, Tier: "PLATINUM", Wins: 30, GamesPlayed: 50, LastGameAt: &now},
-		{UserID: "test-user2", Rating: 1350, Tier: "GOLD", Wins: 20, GamesPlayed: 40},
-		{UserID: "test-user3", Rating: 1150, Tier: "SILVER", Wins: 15, GamesPlayed: 30},
+		{UserID: "00000000-0000-0000-0000-000000000001", Rating: 1600, Tier: "PLATINUM", Wins: 30, GamesPlayed: 50, LastGameAt: &now},
+		{UserID: "00000000-0000-0000-0000-000000000002", Rating: 1350, Tier: "GOLD", Wins: 20, GamesPlayed: 40},
+		{UserID: "00000000-0000-0000-0000-000000000003", Rating: 1150, Tier: "SILVER", Wins: 15, GamesPlayed: 30},
 	}
 	for _, r := range ratings {
 		require.NoError(t, repo.Upsert(t.Context(), &r))
@@ -161,13 +161,13 @@ func TestGetUserRating_OK(t *testing.T) {
 	router := newTestRankingRouter(repo)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/users/test-user1/rating", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/users/00000000-0000-0000-0000-000000000001/rating", nil)
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	var resp map[string]interface{}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	assert.Equal(t, "test-user1", resp["userId"])
+	assert.Equal(t, "00000000-0000-0000-0000-000000000001", resp["userId"])
 	assert.Equal(t, "PLATINUM", resp["tier"])
 }
 
@@ -179,7 +179,7 @@ func TestGetUserRating_NotFound(t *testing.T) {
 	router := newTestRankingRouter(repo)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/users/test-nonexistent/rating", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/users/00000000-0000-0000-0000-ffffffffffff/rating", nil)
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
@@ -193,8 +193,8 @@ func TestGetUserRatingHistory_OK(t *testing.T) {
 
 	// 이력 데이터 삽입
 	histories := []model.EloHistory{
-		{UserID: "test-user1", GameID: "test-game-1", RatingBefore: 1500, RatingAfter: 1512, RatingDelta: 12},
-		{UserID: "test-user1", GameID: "test-game-2", RatingBefore: 1490, RatingAfter: 1500, RatingDelta: 10},
+		{UserID: "00000000-0000-0000-0000-000000000001", GameID: "00000000-0000-0000-0000-0000000000a1", RatingBefore: 1500, RatingAfter: 1512, RatingDelta: 12},
+		{UserID: "00000000-0000-0000-0000-000000000001", GameID: "00000000-0000-0000-0000-0000000000a2", RatingBefore: 1490, RatingAfter: 1500, RatingDelta: 10},
 	}
 	for _, h := range histories {
 		require.NoError(t, repo.AddHistory(t.Context(), &h))
@@ -203,7 +203,7 @@ func TestGetUserRatingHistory_OK(t *testing.T) {
 	router := newTestRankingRouter(repo)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/users/test-user1/rating/history?limit=10", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/users/00000000-0000-0000-0000-000000000001/rating/history?limit=10", nil)
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -221,7 +221,7 @@ func TestGetUserRatingHistory_InvalidLimit(t *testing.T) {
 	router := newTestRankingRouter(repo)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/users/test-user1/rating/history?limit=-1", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/users/00000000-0000-0000-0000-000000000001/rating/history?limit=-1", nil)
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)

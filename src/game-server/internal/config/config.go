@@ -20,6 +20,7 @@ type Config struct {
 type GoogleOAuthConfig struct {
 	ClientID     string
 	ClientSecret string
+	JWKSURL      string // Google JWKS 공개키 엔드포인트 (기본: https://www.googleapis.com/oauth2/v3/certs)
 }
 
 // AIAdapterConfig ai-adapter 서비스 연결 설정
@@ -70,6 +71,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("AI_ADAPTER_TIMEOUT_SEC", 180)
 	viper.SetDefault("GOOGLE_CLIENT_ID", "")
 	viper.SetDefault("GOOGLE_CLIENT_SECRET", "")
+	viper.SetDefault("GOOGLE_JWKS_URL", "https://www.googleapis.com/oauth2/v3/certs")
 
 	viper.AutomaticEnv()
 
@@ -102,6 +104,7 @@ func Load() (*Config, error) {
 		GoogleOAuth: GoogleOAuthConfig{
 			ClientID:     viper.GetString("GOOGLE_CLIENT_ID"),
 			ClientSecret: viper.GetString("GOOGLE_CLIENT_SECRET"),
+			JWKSURL:      viper.GetString("GOOGLE_JWKS_URL"),
 		},
 	}
 

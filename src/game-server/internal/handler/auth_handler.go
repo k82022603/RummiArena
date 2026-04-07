@@ -7,11 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
+	"github.com/MicahParks/keyfunc/v3"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/k82022603/RummiArena/game-server/internal/middleware"
@@ -26,6 +28,7 @@ type AuthHandler struct {
 	googleClientID     string
 	googleClientSecret string
 	userRepo           repository.UserRepository // nil-safe: DB 없으면 nil
+	jwksKeyFunc        jwt.Keyfunc               // Google JWKS 공개키 함수 (nil이면 503 반환)
 }
 
 // NewAuthHandler AuthHandler 생성자
@@ -43,6 +46,28 @@ func (h *AuthHandler) WithGoogleOAuth(clientID, clientSecret string) *AuthHandle
 // WithUserRepo UserRepository를 주입한다. (DB 가용 시에만 호출)
 func (h *AuthHandler) WithUserRepo(repo repository.UserRepository) *AuthHandler {
 	h.userRepo = repo
+	return h
+}
+
+// WithJWKS Google JWKS 공개키 엔드포인트로 키를 초기화한다.
+// 초기화 실패 시 서버 시작을 차단하지 않고 경고만 출력한다. (요청 시 503 반환)
+func (h *AuthHandler) WithJWKS(jwksURL string) *AuthHandler {
+	if jwksURL == "" {
+		log.Println("[WARN] JWKS URL is empty — Google id_token signature verification disabled")
+		return h
+	}
+	k, err := keyfunc.NewDefault([]string{jwksURL})
+	if err != nil {
+		log.Printf("[WARN] failed to initialize JWKS from %s: %v — Google id_token verification will return 503\n", jwksURL, err)
+		return h
+	}
+	h.jwksKeyFunc = k.Keyfunc
+	return h
+}
+
+// WithJWKSKeyFunc 테스트용: jwt.Keyfunc를 직접 주입한다.
+func (h *AuthHandler) WithJWKSKeyFunc(kf jwt.Keyfunc) *AuthHandler {
+	h.jwksKeyFunc = kf
 	return h
 }
 
@@ -101,18 +126,66 @@ type googleTokenResponse struct {
 	AccessToken string `json:"access_token"`
 }
 
-// googleIDTokenClaims Google id_token의 페이로드 (검증 없이 파싱)
+// googleIDTokenClaims Google id_token의 페이로드.
+// jwt.RegisteredClaims를 임베딩하여 aud, exp, iss 등 표준 클레임을 자동 검증한다.
 type googleIDTokenClaims struct {
 	Sub   string `json:"sub"`
 	Email string `json:"email"`
 	Name  string `json:"name"`
+	jwt.RegisteredClaims
+}
+
+// verifyGoogleIDToken Google id_token을 JWKS 공개키로 서명 검증하고 클레임을 반환한다.
+// SEC-ADD-001: algorithm confusion 방어를 위해 RS256만 허용한다.
+func (h *AuthHandler) verifyGoogleIDToken(idToken string) (*googleIDTokenClaims, error) {
+	if h.jwksKeyFunc == nil {
+		return nil, errors.New("JWKS not initialized")
+	}
+
+	claims := &googleIDTokenClaims{}
+	_, err := jwt.ParseWithClaims(idToken, claims, h.jwksKeyFunc,
+		jwt.WithValidMethods([]string{"RS256"}), // SEC-REVIEW-1: algorithm confusion 방어
+	)
+	if err != nil {
+		return nil, fmt.Errorf("id_token verification failed: %w", err)
+	}
+
+	// iss 검증: Google 발급자만 허용
+	if claims.Issuer != "https://accounts.google.com" && claims.Issuer != "accounts.google.com" {
+		return nil, fmt.Errorf("invalid issuer: %s", claims.Issuer)
+	}
+
+	// aud 검증: 우리 클라이언트 ID와 일치하는지 확인
+	audValid := false
+	for _, aud := range claims.Audience {
+		if aud == h.googleClientID {
+			audValid = true
+			break
+		}
+	}
+	if !audValid {
+		return nil, fmt.Errorf("audience mismatch")
+	}
+
+	// sub 필수 확인
+	if claims.Sub == "" {
+		return nil, errors.New("missing sub claim")
+	}
+
+	return claims, nil
 }
 
 // GoogleLogin POST /api/auth/google — Google OAuth authorization code를 게임 서버 JWT로 교환한다.
 // GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET 환경변수 미설정 시 503을 반환한다.
+// SEC-ADD-001: JWKS 공개키로 id_token 서명을 검증한다.
 func (h *AuthHandler) GoogleLogin(c *gin.Context) {
 	if h.googleClientID == "" || h.googleClientSecret == "" {
 		respondError(c, http.StatusServiceUnavailable, "OAUTH_DISABLED", "Google OAuth가 설정되지 않았습니다.")
+		return
+	}
+
+	if h.jwksKeyFunc == nil {
+		respondError(c, http.StatusServiceUnavailable, "JWKS_UNAVAILABLE", "Google 인증 서비스를 사용할 수 없습니다.")
 		return
 	}
 
@@ -122,10 +195,11 @@ func (h *AuthHandler) GoogleLogin(c *gin.Context) {
 		return
 	}
 
-	// 1. Google Token Endpoint에서 id_token 교환
-	googleClaims, err := exchangeGoogleCode(c.Request.Context(), h.googleClientID, h.googleClientSecret, req.Code, req.RedirectURI)
+	// 1. Google Token Endpoint에서 id_token 교환 + JWKS 서명 검증
+	googleClaims, err := h.exchangeGoogleCode(c.Request.Context(), h.googleClientID, h.googleClientSecret, req.Code, req.RedirectURI)
 	if err != nil {
-		respondError(c, http.StatusBadRequest, "OAUTH_CODE_INVALID", fmt.Sprintf("Google 코드 교환 실패: %s", err.Error()))
+		log.Printf("[WARN] Google code exchange failed from %s: %v\n", c.ClientIP(), err)
+		respondError(c, http.StatusBadRequest, "OAUTH_CODE_INVALID", "Google 인증 토큰 검증에 실패했습니다")
 		return
 	}
 
@@ -167,9 +241,15 @@ type googleIDTokenRequest struct {
 // GoogleLoginByIDToken POST /api/auth/google/token — next-auth가 전달한 Google id_token을 게임 서버 JWT로 교환한다.
 // next-auth Google Provider는 SSR에서 code 교환을 완료한 후 id_token을 JWT callback에 노출한다.
 // GOOGLE_CLIENT_ID 미설정 시 503을 반환한다.
+// SEC-ADD-001: JWKS 공개키로 id_token 서명을 검증한다.
 func (h *AuthHandler) GoogleLoginByIDToken(c *gin.Context) {
 	if h.googleClientID == "" {
 		respondError(c, http.StatusServiceUnavailable, "OAUTH_DISABLED", "Google OAuth가 설정되지 않았습니다.")
+		return
+	}
+
+	if h.jwksKeyFunc == nil {
+		respondError(c, http.StatusServiceUnavailable, "JWKS_UNAVAILABLE", "Google 인증 서비스를 사용할 수 없습니다.")
 		return
 	}
 
@@ -179,10 +259,12 @@ func (h *AuthHandler) GoogleLoginByIDToken(c *gin.Context) {
 		return
 	}
 
-	// id_token 페이로드 파싱 (서명 검증 없이 — Google Token Endpoint를 통과한 토큰임)
-	googleClaims, err := parseIDTokenPayload(req.IDToken)
+	// SEC-ADD-001: JWKS 공개키로 id_token 서명 검증
+	googleClaims, err := h.verifyGoogleIDToken(req.IDToken)
 	if err != nil {
-		respondError(c, http.StatusBadRequest, "INVALID_ID_TOKEN", fmt.Sprintf("id_token 파싱 실패: %s", err.Error()))
+		// 보안: 내부 에러 상세는 로그에만, 클라이언트에는 고정 메시지 반환
+		log.Printf("[WARN] id_token verification failed from %s: %v\n", c.ClientIP(), err)
+		respondError(c, http.StatusUnauthorized, "INVALID_ID_TOKEN", "Google 인증 토큰 검증에 실패했습니다")
 		return
 	}
 
@@ -220,12 +302,13 @@ var googleTokenEndpoint = "https://oauth2.googleapis.com/token"
 
 // exchangeGoogleCode Google OAuth authorization code를 id_token으로 교환한다.
 // 내부적으로 googleTokenEndpoint 변수를 사용한다.
-func exchangeGoogleCode(ctx context.Context, clientID, clientSecret, code, redirectURI string) (*googleIDTokenClaims, error) {
-	return exchangeGoogleCodeWithEndpoint(ctx, googleTokenEndpoint, clientID, clientSecret, code, redirectURI)
+// SEC-ADD-001: AuthHandler 메서드로 변경하여 JWKS 서명 검증을 적용한다.
+func (h *AuthHandler) exchangeGoogleCode(ctx context.Context, clientID, clientSecret, code, redirectURI string) (*googleIDTokenClaims, error) {
+	return h.exchangeGoogleCodeWithEndpoint(ctx, googleTokenEndpoint, clientID, clientSecret, code, redirectURI)
 }
 
 // exchangeGoogleCodeWithEndpoint endpoint URL을 직접 받는 내부 함수 (테스트 주입용).
-func exchangeGoogleCodeWithEndpoint(ctx context.Context, endpoint, clientID, clientSecret, code, redirectURI string) (*googleIDTokenClaims, error) {
+func (h *AuthHandler) exchangeGoogleCodeWithEndpoint(ctx context.Context, endpoint, clientID, clientSecret, code, redirectURI string) (*googleIDTokenClaims, error) {
 	formData := url.Values{
 		"code":          {code},
 		"client_id":     {clientID},
@@ -268,16 +351,17 @@ func exchangeGoogleCodeWithEndpoint(ctx context.Context, endpoint, clientID, cli
 		return nil, errors.New("id_token not found in google response")
 	}
 
-	// id_token은 JWT이지만, Google Token Endpoint 인증 완료 후이므로 페이로드만 파싱한다.
-	// (JWKS 서명 검증은 Phase 5 이후 적용 예정)
-	claims, err := parseIDTokenPayload(tokenResp.IDToken)
+	// SEC-ADD-001: JWKS 공개키로 id_token 서명 검증
+	claims, err := h.verifyGoogleIDToken(tokenResp.IDToken)
 	if err != nil {
-		return nil, fmt.Errorf("parse id_token payload: %w", err)
+		return nil, fmt.Errorf("id_token verification: %w", err)
 	}
 
 	return claims, nil
 }
 
+// Deprecated: parseIDTokenPayload는 서명 검증 없이 페이로드만 파싱한다.
+// SEC-ADD-001 이후 verifyGoogleIDToken()을 사용해야 한다. 기존 테스트 호환을 위해 유지.
 // parseIDTokenPayload JWT id_token의 페이로드(2번 세그먼트)를 Base64 디코딩하여 클레임을 추출한다.
 func parseIDTokenPayload(idToken string) (*googleIDTokenClaims, error) {
 	parts := strings.Split(idToken, ".")

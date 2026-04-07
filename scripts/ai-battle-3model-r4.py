@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-AI Battle Test - 3 Model Round 4 Tournament
-GPT-5-mini vs Claude Sonnet 4 vs DeepSeek Reasoner
+AI Battle Test - Multi-Model Tournament
+GPT-5-mini vs Claude Sonnet 4 vs DeepSeek Reasoner vs Ollama (qwen2.5:3b)
 
 동일 조건 대전:
   - 80턴 제한
@@ -10,31 +10,24 @@ GPT-5-mini vs Claude Sonnet 4 vs DeepSeek Reasoner
   - persona=calculator, difficulty=expert, psychologyLevel=2
   - WS_TIMEOUT: 전 모델 270s 통일 (210s adapter timeout + 60s buffer)
 
-이전 결과 (Round 2, 2026-03-31):
-  GPT-5-mini:     28% place rate ($1.00)
-  Claude Sonnet4: 23% place rate ($2.96)
-  DeepSeek:       5%  place rate ($0.04)
+지원 모델:
+  openai   - GPT-5-mini (추론 모델, $0.025/턴)
+  claude   - Claude Sonnet 4 + Extended Thinking (추론 모델, $0.074/턴)
+  deepseek - DeepSeek Reasoner (추론 모델, $0.001/턴)
+  ollama   - qwen2.5:3b 로컬 LLM (비추론 모델, $0/턴, 베이스라인 비교용)
 
-DeepSeek 단독 최고치 (Round 4 Run 2, 2026-04-05):
-  DeepSeek:       23.1% place rate ($0.013) -- 28턴에서 WS_TIMEOUT
-
-목표:
-  - 3모델 동일 조건 비교 (Round 2 이후 첫 3자 대결)
-  - DeepSeek v2 프롬프트 개선 효과 확인 (5% -> 23.1%?)
-  - 80턴 완주 여부 (DeepSeek WS_TIMEOUT 해결 확인)
-
-예상 비용:
-  GPT-5-mini:     ~$1.00 (40턴 x $0.025/턴)
-  Claude Sonnet4: ~$2.96 (40턴 x $0.074/턴) -- 잔액 $9.11 주의!
-  DeepSeek:       ~$0.04 (40턴 x $0.001/턴)
-  합계:           ~$4.00
+이전 결과 (Round 4 v2, 2026-04-06):
+  GPT-5-mini:     30.8% place rate (A+, 첫 80턴 완주)
+  Claude Sonnet4: 33.3% place rate (A+, 역대 최고)
+  DeepSeek:       17.9~30.8% place rate (분산 큼)
+  Ollama:         미측정 (베이스라인 확보 예정)
 
 Usage:
-  python3 scripts/ai-battle-3model-r4.py
-  python3 scripts/ai-battle-3model-r4.py --port 18089
-  python3 scripts/ai-battle-3model-r4.py --models deepseek  # 단일 모델만
-  python3 scripts/ai-battle-3model-r4.py --models openai,deepseek  # 2모델
-  python3 scripts/ai-battle-3model-r4.py --dry-run  # 설정만 출력
+  python3 scripts/ai-battle-3model-r4.py                        # 클라우드 3모델
+  python3 scripts/ai-battle-3model-r4.py --models ollama         # Ollama 단독
+  python3 scripts/ai-battle-3model-r4.py --models openai,ollama  # 2모델 비교
+  python3 scripts/ai-battle-3model-r4.py --models openai,claude,deepseek,ollama  # 전체 4모델
+  python3 scripts/ai-battle-3model-r4.py --dry-run               # 설정만 출력
 """
 
 import asyncio
@@ -83,6 +76,16 @@ MODELS = {
         "psychologyLevel": 2,
         "ws_timeout": 270,       # 210s adapter timeout + 60s buffer
         "cost_per_turn": 0.001,
+    },
+    "ollama": {
+        "name": "qwen2.5:3b",
+        "label": "Ollama qwen2.5:3b",
+        "aiType": "AI_LLAMA",
+        "persona": "calculator",
+        "difficulty": "expert",
+        "psychologyLevel": 2,
+        "ws_timeout": 270,       # 210s adapter timeout + 60s buffer (CPU 추론)
+        "cost_per_turn": 0.0,    # 로컬 실행, 비용 없음
     },
 }
 

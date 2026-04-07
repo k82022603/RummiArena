@@ -3,6 +3,8 @@ package handler
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -10,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
@@ -191,11 +194,20 @@ func TestDevLogin_EmailFormat(t *testing.T) {
 
 // ---- GoogleLogin 테스트 ----
 
-// setupGoogleAuthRouter Google OAuth 핸들러를 포함한 테스트용 라우터를 생성한다.
+// setupGoogleAuthRouter Google OAuth 핸들러를 포함한 테스트용 라우터를 생성한다. (JWKS 없음)
 func setupGoogleAuthRouter(secret, clientID, clientSecret string) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	h := NewAuthHandler(secret).WithGoogleOAuth(clientID, clientSecret)
+	r.POST("/api/auth/google", h.GoogleLogin)
+	return r
+}
+
+// setupGoogleAuthRouterWithJWKS Google OAuth 핸들러 + JWKS keyfunc를 포함한 테스트용 라우터
+func setupGoogleAuthRouterWithJWKS(secret, clientID, clientSecret string, kf jwt.Keyfunc) *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	h := NewAuthHandler(secret).WithGoogleOAuth(clientID, clientSecret).WithJWKSKeyFunc(kf)
 	r.POST("/api/auth/google", h.GoogleLogin)
 	return r
 }
@@ -234,7 +246,9 @@ func TestGoogleLogin_OAuthDisabled_OnlyClientID(t *testing.T) {
 
 // TestGoogleLogin_InvalidRequest 요청 바디 누락 시 400 반환
 func TestGoogleLogin_InvalidRequest_MissingCode(t *testing.T) {
-	r := setupGoogleAuthRouter(testJWTSecret, "client-id", "client-secret")
+	privateKey := testRSAKeyPair(t)
+	kf := testJWKSKeyFunc(&privateKey.PublicKey)
+	r := setupGoogleAuthRouterWithJWKS(testJWTSecret, "client-id", "client-secret", kf)
 	body := `{"redirectUri":"http://localhost:3000/api/auth/callback/google"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/google", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -253,7 +267,9 @@ func TestGoogleLogin_InvalidRequest_MissingCode(t *testing.T) {
 
 // TestGoogleLogin_InvalidRequest_MissingRedirectUri redirectUri 누락 시 400 반환
 func TestGoogleLogin_InvalidRequest_MissingRedirectUri(t *testing.T) {
-	r := setupGoogleAuthRouter(testJWTSecret, "client-id", "client-secret")
+	privateKey := testRSAKeyPair(t)
+	kf := testJWKSKeyFunc(&privateKey.PublicKey)
+	r := setupGoogleAuthRouterWithJWKS(testJWTSecret, "client-id", "client-secret", kf)
 	body := `{"code":"test-code"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/google", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -262,6 +278,24 @@ func TestGoogleLogin_InvalidRequest_MissingRedirectUri(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+// TestGoogleLogin_JWKSUnavailable JWKS 미초기화 시 503 반환
+func TestGoogleLogin_JWKSUnavailable(t *testing.T) {
+	r := setupGoogleAuthRouter(testJWTSecret, "client-id", "client-secret")
+	body := `{"code":"test-code","redirectUri":"http://localhost:3000/api/auth/callback/google"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/google", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+	var resp map[string]interface{}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	errBody, ok := resp["error"].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "JWKS_UNAVAILABLE", errBody["code"])
 }
 
 // TestGoogleLogin_InvalidCode 모킹된 Google 서버가 400 응답 시 에러 반환 테스트
@@ -274,7 +308,8 @@ func TestGoogleLogin_InvalidCode(t *testing.T) {
 	defer mockServer.Close()
 
 	// exchangeGoogleCodeWithEndpoint를 직접 호출하여 mock 서버 URL을 사용
-	_, err := exchangeGoogleCodeWithEndpoint(context.Background(), mockServer.URL, "cid", "csecret", "bad-code", "http://localhost:3000")
+	h := NewAuthHandler(testJWTSecret).WithGoogleOAuth("cid", "csecret")
+	_, err := h.exchangeGoogleCodeWithEndpoint(context.Background(), mockServer.URL, "cid", "csecret", "bad-code", "http://localhost:3000")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "400")
 }
@@ -413,7 +448,8 @@ func TestUpsertUser_WithRealRepo_NewUser(t *testing.T) {
 	assert.Equal(t, "신규사용자", found.DisplayName)
 }
 
-// TestUpsertUser_WithRealRepo_ExistingUser 실제 DB를 사용한 기존 사용자 업데이트 테스트
+// TestUpsertUser_WithRealRepo_ExistingUser 실제 DB를 사용한 기존 사용자 로그인 테스트.
+// 설계 원칙: OAuth 핸들러에서 DisplayName을 절대 덮어쓰지 않는다 (인증/프로필 분리).
 func TestUpsertUser_WithRealRepo_ExistingUser(t *testing.T) {
 	db := testDBForAuth(t)
 	defer cleanupAuthTestData(t, db)
@@ -440,25 +476,82 @@ func TestUpsertUser_WithRealRepo_ExistingUser(t *testing.T) {
 
 	userID, displayName, email := h.upsertUser(context.Background(), gc)
 	assert.Equal(t, existingUser.ID, userID)
-	assert.Equal(t, "새이름", displayName)
+	// DisplayName은 덮어쓰지 않으므로 기존 이름 유지
+	assert.Equal(t, "이전이름", displayName)
 	assert.Equal(t, "test-new@gmail.com", email)
 
-	// DB에서 실제로 업데이트되었는지 확인
+	// DB에서 DisplayName이 변경되지 않았음을 확인
 	updated, err := userRepo.GetUserByGoogleID(context.Background(), "test-existing-google-sub")
 	require.NoError(t, err)
-	assert.Equal(t, "새이름", updated.DisplayName)
+	assert.Equal(t, "이전이름", updated.DisplayName, "OAuth 재로그인 시 DisplayName을 덮어쓰면 안 된다")
 	assert.Equal(t, "test-new@gmail.com", updated.Email)
 }
 
 // ---- GoogleLoginByIDToken 테스트 ----
 
-// setupIDTokenAuthRouter /api/auth/google/token 핸들러용 테스트 라우터
+// testRSAKeyPair 테스트용 RSA 키 쌍을 생성한다.
+func testRSAKeyPair(t *testing.T) *rsa.PrivateKey {
+	t.Helper()
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	return privateKey
+}
+
+// testJWKSKeyFunc 테스트용 RSA 공개키로 jwt.Keyfunc를 생성한다.
+func testJWKSKeyFunc(pubKey *rsa.PublicKey) jwt.Keyfunc {
+	return func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return pubKey, nil
+	}
+}
+
+// signTestIDToken 테스트용 Google id_token을 RS256으로 서명하여 반환한다.
+func signTestIDToken(t *testing.T, privateKey *rsa.PrivateKey, claims *googleIDTokenClaims) string {
+	t.Helper()
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+	tokenStr, err := token.SignedString(privateKey)
+	require.NoError(t, err)
+	return tokenStr
+}
+
+const testGoogleClientID = "test-google-client-id.apps.googleusercontent.com"
+
+// setupIDTokenAuthRouterWithJWKS JWKS 키를 주입한 /api/auth/google/token 핸들러 테스트 라우터
+func setupIDTokenAuthRouterWithJWKS(secret, clientID string, kf jwt.Keyfunc) *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	h := NewAuthHandler(secret).
+		WithGoogleOAuth(clientID, "any-secret").
+		WithJWKSKeyFunc(kf)
+	r.POST("/api/auth/google/token", h.GoogleLoginByIDToken)
+	return r
+}
+
+// setupIDTokenAuthRouter /api/auth/google/token 핸들러용 테스트 라우터 (JWKS 없음)
 func setupIDTokenAuthRouter(secret, clientID string) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	h := NewAuthHandler(secret).WithGoogleOAuth(clientID, "any-secret")
 	r.POST("/api/auth/google/token", h.GoogleLoginByIDToken)
 	return r
+}
+
+// validGoogleIDTokenClaims 유효한 테스트용 Google id_token 클레임을 반환한다.
+func validGoogleIDTokenClaims() *googleIDTokenClaims {
+	now := time.Now()
+	return &googleIDTokenClaims{
+		Sub:   "google-uid-xyz",
+		Email: "user@gmail.com",
+		Name:  "테스트",
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    "https://accounts.google.com",
+			Audience:  jwt.ClaimStrings{testGoogleClientID},
+			ExpiresAt: jwt.NewNumericDate(now.Add(1 * time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(now),
+		},
+	}
 }
 
 // TestGoogleLoginByIDToken_OAuthDisabled GOOGLE_CLIENT_ID 미설정 시 503 반환
@@ -483,9 +576,31 @@ func TestGoogleLoginByIDToken_OAuthDisabled(t *testing.T) {
 	assert.Equal(t, "OAUTH_DISABLED", errBody["code"])
 }
 
+// TestGoogleLoginByIDToken_JWKSUnavailable JWKS 미초기화 시 503 반환
+func TestGoogleLoginByIDToken_JWKSUnavailable(t *testing.T) {
+	// clientID는 설정되어 있지만 JWKS keyfunc는 nil
+	r := setupIDTokenAuthRouter(testJWTSecret, testGoogleClientID)
+
+	body := `{"idToken":"dummy.dummy.dummy"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/google/token", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+	var resp map[string]interface{}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	errBody, ok := resp["error"].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "JWKS_UNAVAILABLE", errBody["code"])
+}
+
 // TestGoogleLoginByIDToken_MissingIDToken idToken 필드 누락 시 400 반환
 func TestGoogleLoginByIDToken_MissingIDToken(t *testing.T) {
-	r := setupIDTokenAuthRouter(testJWTSecret, "some-client-id")
+	privateKey := testRSAKeyPair(t)
+	kf := testJWKSKeyFunc(&privateKey.PublicKey)
+	r := setupIDTokenAuthRouterWithJWKS(testJWTSecret, testGoogleClientID, kf)
 
 	body := `{}`
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/google/token", bytes.NewBufferString(body))
@@ -502,9 +617,11 @@ func TestGoogleLoginByIDToken_MissingIDToken(t *testing.T) {
 	assert.Equal(t, "INVALID_REQUEST", errBody["code"])
 }
 
-// TestGoogleLoginByIDToken_InvalidIDToken 잘못된 id_token 형식 시 400 반환
+// TestGoogleLoginByIDToken_InvalidIDToken 잘못된 id_token 형식 시 401 반환
 func TestGoogleLoginByIDToken_InvalidIDToken(t *testing.T) {
-	r := setupIDTokenAuthRouter(testJWTSecret, "some-client-id")
+	privateKey := testRSAKeyPair(t)
+	kf := testJWKSKeyFunc(&privateKey.PublicKey)
+	r := setupIDTokenAuthRouterWithJWKS(testJWTSecret, testGoogleClientID, kf)
 
 	body := `{"idToken":"not-a-valid-jwt"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/google/token", bytes.NewBufferString(body))
@@ -513,7 +630,7 @@ func TestGoogleLoginByIDToken_InvalidIDToken(t *testing.T) {
 
 	r.ServeHTTP(w, req)
 
-	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
 	var resp map[string]interface{}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	errBody, ok := resp["error"].(map[string]interface{})
@@ -521,24 +638,17 @@ func TestGoogleLoginByIDToken_InvalidIDToken(t *testing.T) {
 	assert.Equal(t, "INVALID_ID_TOKEN", errBody["code"])
 }
 
-// TestGoogleLoginByIDToken_Success 유효한 id_token으로 game-server JWT 발급
+// TestGoogleLoginByIDToken_Success 유효한 RS256 서명 id_token으로 game-server JWT 발급
 func TestGoogleLoginByIDToken_Success(t *testing.T) {
-	r := setupIDTokenAuthRouter(testJWTSecret, "some-client-id")
+	privateKey := testRSAKeyPair(t)
+	kf := testJWKSKeyFunc(&privateKey.PublicKey)
+	r := setupIDTokenAuthRouterWithJWKS(testJWTSecret, testGoogleClientID, kf)
 
-	// 유효한 id_token 생성
-	payload := map[string]string{
-		"sub":   "google-uid-xyz",
-		"email": "user@gmail.com",
-		"name":  "테스트",
-	}
-	payloadJSON, err := json.Marshal(payload)
-	require.NoError(t, err)
+	// RS256 서명된 유효한 id_token 생성
+	claims := validGoogleIDTokenClaims()
+	idToken := signTestIDToken(t, privateKey, claims)
 
-	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"RS256","typ":"JWT"}`))
-	payloadB64 := base64.RawURLEncoding.EncodeToString(payloadJSON)
-	fakeIDToken := fmt.Sprintf("%s.%s.fake-sig", header, payloadB64)
-
-	body := fmt.Sprintf(`{"idToken":"%s"}`, fakeIDToken)
+	body := fmt.Sprintf(`{"idToken":"%s"}`, idToken)
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/google/token", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -557,12 +667,211 @@ func TestGoogleLoginByIDToken_Success(t *testing.T) {
 	// 발급된 JWT가 올바른 claims를 가지는지 검증
 	tokenStr, ok := resp["token"].(string)
 	require.True(t, ok)
-	claims := &middleware.Claims{}
-	parsed, err := jwt.ParseWithClaims(tokenStr, claims, func(t *jwt.Token) (interface{}, error) {
+	jwtClaims := &middleware.Claims{}
+	parsed, err := jwt.ParseWithClaims(tokenStr, jwtClaims, func(t *jwt.Token) (interface{}, error) {
 		return []byte(testJWTSecret), nil
 	})
 	require.NoError(t, err)
 	assert.True(t, parsed.Valid)
-	assert.Equal(t, "google-uid-xyz", claims.UserID)
-	assert.Equal(t, "user@gmail.com", claims.Email)
+	assert.Equal(t, "google-uid-xyz", jwtClaims.UserID)
+	assert.Equal(t, "user@gmail.com", jwtClaims.Email)
+}
+
+// TestGoogleLoginByIDToken_ExpiredToken 만료 토큰 -> 401
+func TestGoogleLoginByIDToken_ExpiredToken(t *testing.T) {
+	privateKey := testRSAKeyPair(t)
+	kf := testJWKSKeyFunc(&privateKey.PublicKey)
+	r := setupIDTokenAuthRouterWithJWKS(testJWTSecret, testGoogleClientID, kf)
+
+	claims := validGoogleIDTokenClaims()
+	claims.ExpiresAt = jwt.NewNumericDate(time.Now().Add(-1 * time.Hour)) // 1시간 전 만료
+	idToken := signTestIDToken(t, privateKey, claims)
+
+	body := fmt.Sprintf(`{"idToken":"%s"}`, idToken)
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/google/token", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	var resp map[string]interface{}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	errBody := resp["error"].(map[string]interface{})
+	assert.Equal(t, "INVALID_ID_TOKEN", errBody["code"])
+}
+
+// TestGoogleLoginByIDToken_TamperedSignature 서명 변조 토큰 -> 401
+func TestGoogleLoginByIDToken_TamperedSignature(t *testing.T) {
+	privateKey := testRSAKeyPair(t)
+	// 다른 키로 JWKS keyfunc를 구성하여 서명 불일치를 유발
+	anotherKey := testRSAKeyPair(t)
+	kf := testJWKSKeyFunc(&anotherKey.PublicKey) // 의도적 불일치
+	r := setupIDTokenAuthRouterWithJWKS(testJWTSecret, testGoogleClientID, kf)
+
+	claims := validGoogleIDTokenClaims()
+	idToken := signTestIDToken(t, privateKey, claims) // 원래 키로 서명
+
+	body := fmt.Sprintf(`{"idToken":"%s"}`, idToken)
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/google/token", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+// TestGoogleLoginByIDToken_AlgNone alg=none 토큰 -> 401 (algorithm confusion 방어)
+func TestGoogleLoginByIDToken_AlgNone(t *testing.T) {
+	privateKey := testRSAKeyPair(t)
+	kf := testJWKSKeyFunc(&privateKey.PublicKey)
+	r := setupIDTokenAuthRouterWithJWKS(testJWTSecret, testGoogleClientID, kf)
+
+	// alg: "none" 토큰 수동 생성
+	claims := validGoogleIDTokenClaims()
+	unsafeToken := jwt.NewWithClaims(jwt.SigningMethodNone, claims)
+	idToken, err := unsafeToken.SignedString(jwt.UnsafeAllowNoneSignatureType)
+	require.NoError(t, err)
+
+	body := fmt.Sprintf(`{"idToken":"%s"}`, idToken)
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/google/token", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+// TestGoogleLoginByIDToken_AlgHS256 alg=HS256 토큰 -> 401 (key confusion 방어)
+func TestGoogleLoginByIDToken_AlgHS256(t *testing.T) {
+	privateKey := testRSAKeyPair(t)
+	kf := testJWKSKeyFunc(&privateKey.PublicKey)
+	r := setupIDTokenAuthRouterWithJWKS(testJWTSecret, testGoogleClientID, kf)
+
+	// HS256으로 서명된 토큰 생성 (key confusion 공격 시뮬레이션)
+	claims := validGoogleIDTokenClaims()
+	hmacToken := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	idToken, err := hmacToken.SignedString([]byte("any-secret"))
+	require.NoError(t, err)
+
+	body := fmt.Sprintf(`{"idToken":"%s"}`, idToken)
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/google/token", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+// TestGoogleLoginByIDToken_MissingSub sub 누락 토큰 -> 401
+func TestGoogleLoginByIDToken_MissingSub(t *testing.T) {
+	privateKey := testRSAKeyPair(t)
+	kf := testJWKSKeyFunc(&privateKey.PublicKey)
+	r := setupIDTokenAuthRouterWithJWKS(testJWTSecret, testGoogleClientID, kf)
+
+	claims := validGoogleIDTokenClaims()
+	claims.Sub = "" // sub 누락
+	idToken := signTestIDToken(t, privateKey, claims)
+
+	body := fmt.Sprintf(`{"idToken":"%s"}`, idToken)
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/google/token", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+// TestGoogleLoginByIDToken_InvalidIssuer iss 불일치 토큰 -> 401
+func TestGoogleLoginByIDToken_InvalidIssuer(t *testing.T) {
+	privateKey := testRSAKeyPair(t)
+	kf := testJWKSKeyFunc(&privateKey.PublicKey)
+	r := setupIDTokenAuthRouterWithJWKS(testJWTSecret, testGoogleClientID, kf)
+
+	claims := validGoogleIDTokenClaims()
+	claims.Issuer = "https://evil.com" // 잘못된 발급자
+	idToken := signTestIDToken(t, privateKey, claims)
+
+	body := fmt.Sprintf(`{"idToken":"%s"}`, idToken)
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/google/token", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+// TestGoogleLoginByIDToken_AudienceMismatch aud 불일치 토큰 -> 401
+func TestGoogleLoginByIDToken_AudienceMismatch(t *testing.T) {
+	privateKey := testRSAKeyPair(t)
+	kf := testJWKSKeyFunc(&privateKey.PublicKey)
+	r := setupIDTokenAuthRouterWithJWKS(testJWTSecret, testGoogleClientID, kf)
+
+	claims := validGoogleIDTokenClaims()
+	claims.Audience = jwt.ClaimStrings{"wrong-client-id"} // 클라이언트ID 불일치
+	idToken := signTestIDToken(t, privateKey, claims)
+
+	body := fmt.Sprintf(`{"idToken":"%s"}`, idToken)
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/google/token", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+// TestGoogleLoginByIDToken_AlternateIssuer accounts.google.com (https 없이) 도 허용
+func TestGoogleLoginByIDToken_AlternateIssuer(t *testing.T) {
+	privateKey := testRSAKeyPair(t)
+	kf := testJWKSKeyFunc(&privateKey.PublicKey)
+	r := setupIDTokenAuthRouterWithJWKS(testJWTSecret, testGoogleClientID, kf)
+
+	claims := validGoogleIDTokenClaims()
+	claims.Issuer = "accounts.google.com" // Google의 대체 issuer 형식
+	idToken := signTestIDToken(t, privateKey, claims)
+
+	body := fmt.Sprintf(`{"idToken":"%s"}`, idToken)
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/google/token", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+// ---- verifyGoogleIDToken 직접 테스트 ----
+
+// TestVerifyGoogleIDToken_ValidToken 유효한 RS256 서명 토큰 검증 성공
+func TestVerifyGoogleIDToken_ValidToken(t *testing.T) {
+	privateKey := testRSAKeyPair(t)
+	h := NewAuthHandler(testJWTSecret).
+		WithGoogleOAuth(testGoogleClientID, "secret").
+		WithJWKSKeyFunc(testJWKSKeyFunc(&privateKey.PublicKey))
+
+	claims := validGoogleIDTokenClaims()
+	idToken := signTestIDToken(t, privateKey, claims)
+
+	result, err := h.verifyGoogleIDToken(idToken)
+	require.NoError(t, err)
+	assert.Equal(t, "google-uid-xyz", result.Sub)
+	assert.Equal(t, "user@gmail.com", result.Email)
+	assert.Equal(t, "테스트", result.Name)
+}
+
+// TestVerifyGoogleIDToken_JWKSNotInitialized JWKS 미초기화 시 에러 반환
+func TestVerifyGoogleIDToken_JWKSNotInitialized(t *testing.T) {
+	h := NewAuthHandler(testJWTSecret).
+		WithGoogleOAuth(testGoogleClientID, "secret")
+	// jwksKeyFunc 미설정 (nil)
+
+	_, err := h.verifyGoogleIDToken("any-token")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "JWKS not initialized")
 }

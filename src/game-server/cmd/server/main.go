@@ -124,7 +124,8 @@ func buildRouter(
 	// BUG-WS-001: 게임 시작 시 WS 클라이언트에 TURN_START 전송
 	roomHandler.WithGameStartNotifier(wsHandler)
 	authHandler := handler.NewAuthHandler(cfg.JWT.Secret).
-		WithGoogleOAuth(cfg.GoogleOAuth.ClientID, cfg.GoogleOAuth.ClientSecret)
+		WithGoogleOAuth(cfg.GoogleOAuth.ClientID, cfg.GoogleOAuth.ClientSecret).
+		WithJWKS(cfg.GoogleOAuth.JWKSURL)
 
 	// DB가 nil이면 practiceHandler, rankingHandler, adminHandler를 nil로 두어 라우트 등록을 건너뛴다.
 	var practiceHandler *handler.PracticeHandler

@@ -1,6 +1,6 @@
 {
   "tournament": "3-model Round 4",
-  "timestamp": "2026-04-06 17:27:18",
+  "timestamp": "2026-04-07 18:03:19",
   "config": {
     "maxTurns": 80,
     "persona": "calculator",
@@ -9,119 +9,110 @@
   },
   "models": [
     {
-      "modelKey": "claude",
-      "modelName": "Claude Sonnet 4",
-      "totalTurns": 62,
-      "aiTurns": 30,
-      "aiPlace": 10,
-      "aiTilesPlaced": 26,
-      "aiDraw": 20,
-      "aiFallback": 20,
-      "placeRate": 33.3,
-      "elapsed": 2094.0,
-      "estimatedCost": 2.22,
-      "result": "WS_TIMEOUT",
+      "modelKey": "openai",
+      "modelName": "GPT-5-mini",
+      "totalTurns": 80,
+      "aiTurns": 39,
+      "aiPlace": 12,
+      "aiTilesPlaced": 33,
+      "aiDraw": 27,
+      "aiFallback": 0,
+      "placeRate": 30.8,
+      "elapsed": 2524.2,
+      "estimatedCost": 0.975,
+      "result": "TIMEOUT",
       "responseTime": {
-        "avg": 63.8,
-        "p50": 44.6,
-        "min": 14.4,
-        "max": 170.5
+        "avg": 64.7,
+        "p50": 65.9,
+        "min": 23.1,
+        "max": 166.2
       },
       "placeDetails": [
         {
-          "turn": 4,
+          "turn": 2,
+          "tiles": 6,
+          "cumulative": 6,
+          "resp_time": 23.1
+        },
+        {
+          "turn": 18,
           "tiles": 3,
-          "cumulative": 3,
-          "resp_time": 19.5
+          "cumulative": 9,
+          "resp_time": 51.7
         },
         {
           "turn": 22,
           "tiles": 3,
-          "cumulative": 6,
-          "resp_time": 27.0
+          "cumulative": 12,
+          "resp_time": 68.7
         },
         {
-          "turn": 28,
-          "tiles": 1,
-          "cumulative": 7,
-          "resp_time": 36.1
-        },
-        {
-          "turn": 34,
+          "turn": 26,
           "tiles": 3,
-          "cumulative": 10,
-          "resp_time": 27.6
+          "cumulative": 15,
+          "resp_time": 41.8
+        },
+        {
+          "turn": 32,
+          "tiles": 1,
+          "cumulative": 16,
+          "resp_time": 46.1
         },
         {
           "turn": 38,
           "tiles": 3,
-          "cumulative": 13,
-          "resp_time": 93.5
-        },
-        {
-          "turn": 44,
-          "tiles": 3,
-          "cumulative": 16,
-          "resp_time": 40.2
-        },
-        {
-          "turn": 50,
-          "tiles": 3,
           "cumulative": 19,
-          "resp_time": 95.6
+          "resp_time": 134.0
         },
         {
           "turn": 52,
-          "tiles": 1,
-          "cumulative": 20,
-          "resp_time": 44.6
+          "tiles": 3,
+          "cumulative": 22,
+          "resp_time": 69.0
         },
         {
-          "turn": 58,
+          "turn": 56,
           "tiles": 3,
-          "cumulative": 23,
-          "resp_time": 104.4
+          "cumulative": 25,
+          "resp_time": 70.9
         },
         {
           "turn": 60,
           "tiles": 3,
-          "cumulative": 26,
-          "resp_time": 167.5
+          "cumulative": 28,
+          "resp_time": 37.8
+        },
+        {
+          "turn": 64,
+          "tiles": 1,
+          "cumulative": 29,
+          "resp_time": 46.6
+        },
+        {
+          "turn": 66,
+          "tiles": 1,
+          "cumulative": 30,
+          "resp_time": 85.9
+        },
+        {
+          "turn": 78,
+          "tiles": 3,
+          "cumulative": 33,
+          "resp_time": 46.7
         }
       ],
-      "fallbackReasons": [
-        "AI_ERROR",
-        "AI_ERROR",
-        "AI_ERROR",
-        "AI_ERROR",
-        "AI_ERROR",
-        "AI_ERROR",
-        "AI_ERROR",
-        "AI_ERROR",
-        "AI_ERROR",
-        "AI_ERROR",
-        "AI_ERROR",
-        "AI_ERROR",
-        "AI_ERROR",
-        "AI_ERROR",
-        "AI_ERROR",
-        "AI_ERROR",
-        "AI_ERROR",
-        "AI_ERROR",
-        "AI_ERROR",
-        "AI_ERROR"
-      ],
+      "fallbackReasons": [],
       "errors": [],
       "round2Baseline": {
-        "place": 9,
-        "tiles": 29,
-        "draw": 31,
-        "rate": 23.0,
-        "elapsed": 2076,
-        "cost": 2.96,
+        "place": 11,
+        "tiles": 27,
+        "draw": 29,
+        "rate": 28.0,
+        "elapsed": 1876,
+        "cost": 1.0,
         "fallback": 0
       },
-      "deltaPlaceRate": 10.3
+      "deltaPlaceRate": 2.8
     }
   ]
 }
