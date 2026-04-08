@@ -1,0 +1,71 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e4]:
+      - button "로비로 돌아가기" [ref=e5] [cursor=pointer]: ←
+      - heading "새 게임 만들기" [level=1] [ref=e6]
+    - form "게임 방 생성 폼" [ref=e8]:
+      - region "플레이어 수" [ref=e9]:
+        - heading "플레이어 수" [level=2] [ref=e10]
+        - generic [ref=e11]:
+          - button "2인" [pressed] [ref=e12] [cursor=pointer]
+          - button "3인" [ref=e13] [cursor=pointer]
+          - button "4인" [ref=e14] [cursor=pointer]
+      - 'region "턴 제한 시간: 120초" [ref=e15]':
+        - 'heading "턴 제한 시간: 120초" [level=2] [ref=e16]':
+          - text: "턴 제한 시간:"
+          - generic [ref=e17]: 120초
+        - generic [ref=e18]:
+          - button "30초" [ref=e19] [cursor=pointer]
+          - button "60초" [ref=e20] [cursor=pointer]
+          - button "90초" [ref=e21] [cursor=pointer]
+          - button "120초" [pressed] [ref=e22] [cursor=pointer]
+        - slider "턴 제한 시간 설정 (30~120초)" [ref=e23]: "120"
+        - generic [ref=e24]:
+          - generic [ref=e25]: 30초
+          - generic [ref=e26]: 120초
+      - region "AI 플레이어 (1/1)" [ref=e27]:
+        - heading "AI 플레이어 (1/1)" [level=2] [ref=e29]
+        - generic "AI 슬롯 1" [ref=e31]:
+          - generic [ref=e32]:
+            - generic [ref=e33]: "AI #1 (Seat 1)"
+            - button "AI 1 제거" [ref=e34] [cursor=pointer]: 제거
+          - generic [ref=e35]:
+            - generic [ref=e36]:
+              - generic [ref=e37]: 모델
+              - combobox "AI 1 모델 선택" [ref=e38]:
+                - option "GPT (OpenAI)"
+                - option "Claude (Anthropic)"
+                - option "DeepSeek"
+                - option "LLaMA (Ollama)" [selected]
+            - generic [ref=e39]:
+              - generic [ref=e40]: 난이도
+              - combobox "AI 1 난이도 선택" [ref=e41]:
+                - option "하수"
+                - option "중수"
+                - option "고수" [selected]
+            - generic [ref=e42]:
+              - generic [ref=e43]: 캐릭터 (페르소나)
+              - generic [ref=e44]:
+                - 'button "루키: 초보 전략, 단순 배치" [pressed] [ref=e45] [cursor=pointer]': 루키
+                - 'button "계산기: 확률 기반 최적화" [ref=e46] [cursor=pointer]': 계산기
+                - 'button "샤크: 공격적, 빠른 소진 우선" [ref=e47] [cursor=pointer]': 샤크
+                - 'button "폭스: 상대 관찰, 블러핑" [ref=e48] [cursor=pointer]': 폭스
+                - 'button "벽: 수비적, 타일 보유 최소화" [ref=e49] [cursor=pointer]': 벽
+                - 'button "와일드카드: 무작위 혼합 전략" [ref=e50] [cursor=pointer]': 와일드카드
+            - generic [ref=e51]:
+              - generic [ref=e52]: "심리전 레벨: 2"
+              - slider "AI 1 심리전 레벨 (0~3)" [ref=e53]: "2"
+              - generic [ref=e54]:
+                - generic [ref=e55]: 없음
+                - generic [ref=e56]: 강함
+      - alert [ref=e57]: 요청이 너무 많습니다. 5초 후에 다시 시도해주세요.
+      - button "게임 방 만들기" [ref=e58] [cursor=pointer]
+  - alert [ref=e59]
+  - alert:
+    - img
+    - generic:
+      - generic: 요청이 너무 빨랐습니다. 5초 후 다시 시도합니다.
+```

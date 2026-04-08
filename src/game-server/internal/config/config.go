@@ -13,7 +13,20 @@ type Config struct {
 	JWT         JWTConfig
 	AIAdapter   AIAdapterConfig
 	GoogleOAuth GoogleOAuthConfig
+	RateLimit   RateLimitConfig
 	AppEnv      string // "dev" | "staging" | "production"
+}
+
+// RateLimitConfig holds configurable rate limit thresholds.
+// All policies share the same window duration (WindowSeconds).
+// Defaults match the original hardcoded values for backwards compatibility.
+type RateLimitConfig struct {
+	HighMax       int // max requests for high-frequency endpoints (default 60)
+	MediumMax     int // max requests for medium-frequency endpoints (default 30)
+	LowMax        int // max requests for low-frequency endpoints (default 10)
+	AdminMax      int // max requests for admin endpoints (default 30)
+	WSMax         int // max WebSocket connection attempts (default 5)
+	WindowSeconds int // shared window duration in seconds (default 60)
 }
 
 // GoogleOAuthConfig Google OAuth 2.0 클라이언트 설정
@@ -73,6 +86,14 @@ func Load() (*Config, error) {
 	viper.SetDefault("GOOGLE_CLIENT_SECRET", "")
 	viper.SetDefault("GOOGLE_JWKS_URL", "https://www.googleapis.com/oauth2/v3/certs")
 
+	// Rate limit defaults — identical to original hardcoded values
+	viper.SetDefault("RATE_LIMIT_HIGH_MAX", 60)
+	viper.SetDefault("RATE_LIMIT_MEDIUM_MAX", 30)
+	viper.SetDefault("RATE_LIMIT_LOW_MAX", 10)
+	viper.SetDefault("RATE_LIMIT_ADMIN_MAX", 30)
+	viper.SetDefault("RATE_LIMIT_WS_MAX", 5)
+	viper.SetDefault("RATE_LIMIT_WINDOW_SECONDS", 60)
+
 	viper.AutomaticEnv()
 
 	cfg := &Config{
@@ -105,6 +126,14 @@ func Load() (*Config, error) {
 			ClientID:     viper.GetString("GOOGLE_CLIENT_ID"),
 			ClientSecret: viper.GetString("GOOGLE_CLIENT_SECRET"),
 			JWKSURL:      viper.GetString("GOOGLE_JWKS_URL"),
+		},
+		RateLimit: RateLimitConfig{
+			HighMax:       viper.GetInt("RATE_LIMIT_HIGH_MAX"),
+			MediumMax:     viper.GetInt("RATE_LIMIT_MEDIUM_MAX"),
+			LowMax:        viper.GetInt("RATE_LIMIT_LOW_MAX"),
+			AdminMax:      viper.GetInt("RATE_LIMIT_ADMIN_MAX"),
+			WSMax:         viper.GetInt("RATE_LIMIT_WS_MAX"),
+			WindowSeconds: viper.GetInt("RATE_LIMIT_WINDOW_SECONDS"),
 		},
 	}
 

@@ -43,6 +43,9 @@ func main() {
 
 	gin.SetMode(cfg.Server.Mode)
 
+	// Initialize rate limit policies from environment config before building the router.
+	middleware.InitRateLimitPolicies(cfg.RateLimit)
+
 	router := buildRouter(cfg, logger, db, redisClient, gameStateRepo, roomRepo)
 
 	srv := &http.Server{

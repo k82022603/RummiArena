@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/k82022603/RummiArena/game-server/internal/config"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -55,6 +56,42 @@ var (
 		Name:        "ws",
 	}
 )
+
+// InitRateLimitPolicies overwrites the predefined rate limit policies with
+// values from the application config. This should be called once during server
+// startup, before the router is built. If cfg has zero values for any field,
+// the corresponding policy retains its compile-time default.
+func InitRateLimitPolicies(cfg config.RateLimitConfig) {
+	window := 1 * time.Minute
+	if cfg.WindowSeconds > 0 {
+		window = time.Duration(cfg.WindowSeconds) * time.Second
+	}
+
+	if cfg.HighMax > 0 {
+		HighFrequencyPolicy.MaxRequests = cfg.HighMax
+	}
+	HighFrequencyPolicy.Window = window
+
+	if cfg.MediumMax > 0 {
+		MediumFrequencyPolicy.MaxRequests = cfg.MediumMax
+	}
+	MediumFrequencyPolicy.Window = window
+
+	if cfg.LowMax > 0 {
+		LowFrequencyPolicy.MaxRequests = cfg.LowMax
+	}
+	LowFrequencyPolicy.Window = window
+
+	if cfg.AdminMax > 0 {
+		AdminPolicy.MaxRequests = cfg.AdminMax
+	}
+	AdminPolicy.Window = window
+
+	if cfg.WSMax > 0 {
+		WSConnectionPolicy.MaxRequests = cfg.WSMax
+	}
+	WSConnectionPolicy.Window = window
+}
 
 // RedisClientInterface abstracts the Redis commands needed by the rate limiter.
 // This allows easy mocking in tests.
