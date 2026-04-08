@@ -155,19 +155,100 @@ npx tsc --noEmit → 에러 0건, 경고 0건
 
 **PASS** -- TypeScript 컴파일 에러 없음.
 
-## 6. 발견 사항
+## 6. E2E 실행 결과 (K8s 배포 후)
 
-### 6.1 주의 사항
+### 6.1 1차 실행: RATE_LIMIT_LOW_MAX=10 (하드코딩 기본값)
+
+배포 후 최초 E2E 실행 시 30분+ 소요, 프로세스 kill로 중단.
+
+| 결과 | 건수 | 비고 |
+|------|------|------|
+| PASS | 127+ | 방 생성 불필요한 테스트 |
+| FAIL | 16+ | 전부 방 생성 rate limit (429) |
+| 중단 | 143/390 시점 kill | |
+
+### 6.2 2차 실행: RATE_LIMIT_LOW_MAX=60 (환경변수 외부화 후)
+
+| 결과 | 건수 | 소요 |
+|------|------|------|
+| PASS | 343 | 1.5h |
+| FAIL | 47 | |
+
+실패 47건 분류:
+
+| 카테고리 | 건수 | 원인 |
+|---------|------|------|
+| ai-battle (TC-AB, TC-GP) | 13 | 방 생성 rate limit |
+| game-lifecycle (TC-BU, TC-LF-E, TC-DL-E) | 17 | 방 생성 rate limit |
+| game-ui-state (CS-*) | 10 | 방 생성 rate limit |
+| game-ui-multiplayer (A-*) | 4 | 방 생성 rate limit |
+| rate-limit enhanced (TC-RL, TC-WS-RL) | 3 | 신규 테스트 자체 이슈 |
+
+### 6.3 3차 실행: RATE_LIMIT_LOW_MAX=200 (진행 중)
+
+2차 결과를 바탕으로 `RATE_LIMIT_LOW_MAX=200`으로 상향 후 재실행 중. 결과는 본 문서에 추가 업데이트 예정.
+
+### 6.4 근본 원인
+
+```mermaid
+sequenceDiagram
+    participant PW as Playwright E2E
+    participant FE as Frontend
+    participant GS as Game Server
+    participant RD as Redis
+
+    PW->>FE: 방 생성 클릭
+    FE->>GS: POST /api/rooms
+    GS->>RD: INCR ratelimit:ip:xxx:low
+    RD-->>GS: count > MaxRequests
+    GS-->>FE: 429 Too Many Requests
+    FE-->>PW: RateLimitToast 표시 (N초 후 재시도)
+    Note over PW: game-helpers 재시도 대기 1-2초<br/>쿨다운 48-60초 → 재시도 실패
+```
+
+- Rate Limit `LowFrequencyPolicy`가 Go 코드에 하드코딩 (10 req/min)
+- E2E 390건이 동일 유저(dev login)로 순차 실행
+- 방 생성 + cleanup + 페이지 네비게이션이 "low" 엔드포인트를 누적 소비
+- `game-helpers.ts`의 재시도 대기(1-2초)가 쿨다운(48-60초)에 비해 너무 짧음
+
+### 6.5 해결: Rate Limit 환경변수 외부화
+
+| 파일 | 변경 |
+|------|------|
+| `config.go` | `RateLimitConfig` 구조체 + 6개 환경변수 |
+| `rate_limiter.go` | `InitRateLimitPolicies(cfg)` 함수 추가 |
+| `main.go` | 서버 시작 시 초기화 호출 |
+
+환경별 설정:
+
+| 환경 | RATE_LIMIT_LOW_MAX | 근거 |
+|------|-------------------|------|
+| Production | 10 (기본값) | 보안 유지 |
+| Dev/K8s | 200 | 자동화 E2E 테스트 허용 |
+
+상세: `docs/04-testing/42-rate-limit-e2e-troubleshooting.md`
+
+## 7. 인사이트
+
+1. **보안 기능과 테스트는 같이 설계해야 한다** — Rate Limit 구현 시 "E2E가 방을 몇 번 생성하는가"를 사전에 계산하지 않았다. 보안 기능 도입 시 테스트 환경 영향도 분석이 누락된 것이 근본 원인.
+
+2. **하드코딩은 언젠가 발목을 잡는다** — 10 req/min이 코드에 박혀있으면 환경별 대응이 불가능. 설정은 외부화가 기본이어야 한다.
+
+3. **실패 패턴 분석이 진짜 가치다** — 47건이 실패했지만 실제로는 단 하나의 원인(방 생성 rate limit). 실패 건수에 놀라지 말고 패턴을 읽어야 한다. 실패 아티팩트를 열어보니 전부 같은 toast 메시지 — 그게 단서.
+
+4. **단일 테스트가 아니라 전체 스위트의 누적 부하 기준** — 60으로 올려도 부족했던 이유는 E2E 390건이 동일 유저로 실행되며 cleanup, 네비게이션 등이 모두 "low" 엔드포인트를 누적 소비하기 때문.
+
+5. **관찰 가능해야 판단할 수 있다** — `| tail -40` 파이프로 30분간 진행 상황을 전혀 볼 수 없었다. 실시간 관찰이 안 되면 판단도 늦어진다.
+
+## 8. 기존 발견 사항
+
+### 8.1 주의 사항
 
 1. **타이밍 의존 테스트**: TC-RL-E-002 (2.2초 대기), TC-RL-E-008 (3.5초 대기)은 `waitForTimeout`에 의존한다. CI 서버 부하가 높을 경우 간헐 실패(flaky) 가능성이 있다. 현재는 여유 마진이 충분하나 모니터링 필요.
 
 2. **WS 테스트 커버리지 갭**: 실제 WebSocket RATE_LIMITED 메시지 처리, ThrottleBadge 게임 내 렌더링, Close 4005 재연결 동작은 Mock-based로만 검증되어 있다. 상세 갭 분석은 `docs/04-testing/40-rate-limit-ux-e2e-test-strategy.md` 참조.
 
 3. **NestJS Suite 수 증가**: 19 suites에서 20 suites로 1개 증가 (prompt-builder.service.spec.ts에 v3 테스트 추가로 인한 카운트 변동).
-
-### 6.2 이슈 없음
-
-전체 테스트 스위트에서 FAIL 0건, 예상치 못한 동작 0건.
 
 ## 7. 테스트 수 누적 추이
 
@@ -177,7 +258,7 @@ npx tsc --noEmit → 에러 0건, 경고 0건
 | 04-07 (Day 2) | 663 | 395 | 375 | 1,433 | +12 |
 | **04-08 (Day 3)** | **663** | **428** | **390** | **1,481** | **+48** |
 
-## 8. 결론
+## 9. 결론
 
 | 항목 | 결과 |
 |------|------|

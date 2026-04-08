@@ -258,6 +258,8 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 - [x] **SEC-RL-003 구현** — WS Rate Limit Fixed Window 60msg/min + Close 4005 — 2026-04-06
 - [x] **SEC-ADD-001 구현** — Google id_token JWKS RS256 서명 검증 (keyfunc/v3) — 2026-04-07
 - [x] **SEC-ADD-002 구현** — 보안 응답 헤더 6종 (CSP, X-Frame-Options 등) — 2026-04-06
+- [x] **Rate Limit 환경변수 외부화** — config.go RateLimitConfig + InitRateLimitPolicies (하드코딩 → ConfigMap) — 2026-04-08
+- [x] **SEC-REV Medium 3건 사전 분석** — SEC-REV-002/008/009 영향도 + Sprint 6 수정 순서 — 2026-04-08
 - [ ] OWASP ZAP 동적 보안 테스트 (선택)
 - [ ] Sealed Secrets 도입
 
@@ -266,11 +268,14 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 - [ ] 커스텀 대시보드 (AI 메트릭, 게임 통계)
 
 ### Istio Service Mesh
-- [ ] Istio 설치 (istioctl or Helm)
-- [ ] Kiali + Jaeger 설치
-- [ ] AI Adapter 가중치 라우팅 (VirtualService)
-- [ ] Circuit Breaker (DestinationRule)
-- [ ] mTLS (PeerAuthentication)
+- [x] **Istio 선별 적용 설계** — ADR-020, game-server + ai-adapter만 sidecar, minimal profile — 2026-04-06
+- [x] **Istio Sprint 6 사전 점검** — 27번 문서 (781줄, 4 Phase 로드맵, 게이트 기반) — 2026-04-08
+- [x] **Istio 설치/롤백 스크립트** — istio-install.sh, namespace-label.sh, uninstall.sh — 2026-04-08
+- [x] **Istio CRD 매니페스트** — PeerAuth 2개, DestinationRule, VirtualService — 2026-04-08
+- [x] **Helm Istio values** — istio-values.yaml + deployment 조건부 annotations — 2026-04-08
+- [ ] Istio 실제 설치 + mTLS (Sprint 6 Phase 5.0~5.1)
+- [ ] Circuit Breaker + 재시도 정책 (Sprint 6 Phase 5.2)
+- [ ] Kiali 관측성 (Sprint 6 Phase 5.3, 조건부)
 
 ### 부하 테스트
 - [ ] k6 스크립트 작성
@@ -354,7 +359,7 @@ docs/
 
 ## 현재 진행 상황
 
-**Sprint 5 W2 Day 2 완료** (2026-04-07) — 진행률 ~85%
+**Sprint 5 W2 Day 3 완료** (2026-04-08) — 진행률 **~92%**
 
 ### 완료된 스프린트
 
@@ -380,8 +385,20 @@ docs/
 - [x] 클라우드 로컬 LLM 연동 방안 — 25번 문서 (qwen3:4b CPU 한계 확인)
 - [x] 테스트 버그 3건 수정 (auth DisplayName + ranking UUID)
 
-**W2 Day 3~ 잔여**:
-- [ ] v2 다회 실행 통계 (GPT/DeepSeek 각 3회)
-- [ ] v3 프롬프트 초안
-- [ ] Istio Phase 5.0 착수 판단
-- [ ] SEC-REV Medium 4건 분류
+**W2 Day 3 완료 (2026-04-08)**:
+- [x] v3 프롬프트 텍스트 초안 — 4개 개선안, NestJS 428/428 PASS (+33)
+- [x] DeepSeek dead code -246줄 정리 — 공유 v2 함수로 통일
+- [x] Rate Limit UX E2E 15건 추가 — E2E 390건 (375+15)
+- [x] ai-battle-multirun.py 생성 (766줄) — 다회 실행 통계 자동화
+- [x] Istio Sprint 6 사전 점검 + 스크립트 + CRD + Helm — 즉시 실행 가능
+- [x] SEC-REV Medium 3건 영향도 분석 — Sprint 6 수정 순서 확정
+- [x] v3 프롬프트 UX 리뷰 — Must 6건 (3.5 SP)
+- [x] Sprint 5 진행률 보고서 — 92%, 리스크 낮음
+- [x] Rate Limit 환경변수 외부화 — config.go + rate_limiter.go + main.go
+- [x] E2E 트러블슈팅 — 47건 실패 원인 추적 (프론트엔드 상태/E2E 구조 이슈로 재분류)
+
+**W2 Day 4~ 잔여**:
+- [ ] E2E 47건 실패 근본 원인 디버깅
+- [ ] v2 다회 실행 배틀 (GPT/DeepSeek 각 3회, Claude 1회)
+- [ ] Helm ConfigMap RATE_LIMIT_LOW_MAX 영구 반영
+- [ ] Sprint 5 회고 + 종료 보고 (4/11 마감)
