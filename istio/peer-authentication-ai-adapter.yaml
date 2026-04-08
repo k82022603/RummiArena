@@ -1,0 +1,16 @@
+# Istio PeerAuthentication -- ai-adapter 전용 STRICT mTLS
+# game-server(sidecar 있음)에서만 mTLS로 접근 가능
+# mesh 외부에서의 직접 접근 차단
+# 설계 근거: docs/02-design/20-istio-selective-mesh-design.md Section 4.4
+---
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: ai-adapter-strict
+  namespace: rummikub
+spec:
+  selector:
+    matchLabels:
+      app: ai-adapter
+  mtls:
+    mode: STRICT

@@ -58,3 +58,13 @@ initContainers:
     enabled: true
   waitForRedis:
     enabled: true
+
+# Istio sidecar injection (Phase 5)
+# istio-values.yaml로 오버라이드하거나 직접 true로 변경
+istio:
+  enabled: false
+  sidecar:
+    proxyCPU: "50m"
+    proxyCPULimit: "200m"
+    proxyMemory: "64Mi"
+    proxyMemoryLimit: "128Mi"

@@ -76,6 +76,26 @@ spec:
       namespace: rummikub
       jsonPointers:
         - /data/GOOGLE_CLIENT_ID
+    # Istio sidecar injection drift 무시 (Phase 5)
+    # istio-proxy 컨테이너가 자동 추가되므로 ArgoCD drift 감지에서 제외
+    - group: apps
+      kind: Deployment
+      name: game-server
+      namespace: rummikub
+      jsonPointers:
+        - /spec/template/metadata/annotations/sidecar.istio.io~1status
+        - /spec/template/spec/initContainers
+        - /spec/template/spec/containers/1
+        - /spec/template/spec/volumes
+    - group: apps
+      kind: Deployment
+      name: ai-adapter
+      namespace: rummikub
+      jsonPointers:
+        - /spec/template/metadata/annotations/sidecar.istio.io~1status
+        - /spec/template/spec/initContainers
+        - /spec/template/spec/containers/1
+        - /spec/template/spec/volumes
   syncPolicy:
     automated:
       prune: true       # Git에서 삭제된 리소스는 K8s에서도 삭제

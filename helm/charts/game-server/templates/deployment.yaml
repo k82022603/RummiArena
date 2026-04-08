@@ -19,6 +19,14 @@ spec:
       labels:
         app: game-server
         release: {{ .Release.Name }}
+      {{- if .Values.istio.enabled }}
+      annotations:
+        sidecar.istio.io/inject: "true"
+        sidecar.istio.io/proxyCPU: {{ .Values.istio.sidecar.proxyCPU | quote }}
+        sidecar.istio.io/proxyCPULimit: {{ .Values.istio.sidecar.proxyCPULimit | quote }}
+        sidecar.istio.io/proxyMemory: {{ .Values.istio.sidecar.proxyMemory | quote }}
+        sidecar.istio.io/proxyMemoryLimit: {{ .Values.istio.sidecar.proxyMemoryLimit | quote }}
+      {{- end }}
     spec:
       initContainers:
         {{- if .Values.initContainers.waitForPostgres.enabled }}

@@ -1,0 +1,62 @@
+# helm/istio-values.yaml
+# Istio minimal 프로파일 오버라이드 + sidecar injection 설정
+# 설계 문서: docs/02-design/20-istio-selective-mesh-design.md
+# ADR-020: Istio 선별 적용 (game-server + ai-adapter 2 Pod만)
+#
+# 사용법:
+#   helm upgrade rummikub ./helm -n rummikub -f helm/environments/dev-values.yaml -f helm/istio-values.yaml
+#
+# 또는 ArgoCD valueFiles에 추가:
+#   spec.source.helm.valueFiles:
+#     - environments/dev-values.yaml
+#     - istio-values.yaml
+#
+# 이 파일은 Istio Phase 5 활성화 시에만 사용한다.
+# 비활성화하려면 이 파일을 valueFiles에서 제거하면 된다.
+
+# ======================================================================
+# game-server: Istio sidecar 활성화
+# ======================================================================
+game-server:
+  # Istio sidecar injection (Phase 5)
+  istio:
+    enabled: true
+    sidecar:
+      proxyCPU: "50m"
+      proxyCPULimit: "200m"
+      proxyMemory: "64Mi"
+      proxyMemoryLimit: "128Mi"
+
+# ======================================================================
+# ai-adapter: Istio sidecar 활성화
+# ======================================================================
+ai-adapter:
+  # Istio sidecar injection (Phase 5)
+  istio:
+    enabled: true
+    sidecar:
+      proxyCPU: "50m"
+      proxyCPULimit: "200m"
+      proxyMemory: "64Mi"
+      proxyMemoryLimit: "128Mi"
+
+# ======================================================================
+# 제외 대상: 명시적 opt-out (sidecar injection 비활성화)
+# namespace-level injection이 disabled이므로 이론상 불필요하나,
+# 안전을 위해 명시적으로 설정한다.
+# ======================================================================
+frontend:
+  istio:
+    enabled: false
+
+admin:
+  istio:
+    enabled: false
+
+postgres:
+  istio:
+    enabled: false
+
+redis:
+  istio:
+    enabled: false

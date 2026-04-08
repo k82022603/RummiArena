@@ -1,0 +1,12 @@
+# Istio PeerAuthentication -- namespace 기본 mTLS 모드
+# PERMISSIVE: Traefik(mesh 외부)이 game-server에 평문 HTTP로 접근 가능
+# 설계 근거: docs/02-design/20-istio-selective-mesh-design.md Section 4.4
+---
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: rummikub
+spec:
+  mtls:
+    mode: PERMISSIVE
