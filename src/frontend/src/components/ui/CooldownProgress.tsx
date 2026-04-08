@@ -52,6 +52,7 @@ const CooldownProgress = memo(function CooldownProgress({
       aria-valuemin={0}
       aria-valuemax={totalSec}
       aria-label="쿨다운 잔여 시간"
+      data-testid="cooldown-progress"
     >
       <svg
         width={size}

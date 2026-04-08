@@ -41,6 +41,7 @@ const ThrottleBadge = memo(function ThrottleBadge() {
           role="status"
           aria-live="polite"
           aria-label="메시지 전송 속도가 제한되어 있습니다"
+          data-testid="throttle-badge"
         >
           {/* 시계 아이콘 */}
           <svg

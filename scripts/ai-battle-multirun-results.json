@@ -1,0 +1,447 @@
+{
+  "report": "v2 Prompt Multi-Run Statistics",
+  "timestamp": "2026-04-08 14:54:10",
+  "config": {
+    "max_turns": 80,
+    "include_historical": true,
+    "plan": "aggregate-only"
+  },
+  "models": {
+    "openai": {
+      "model_key": "openai",
+      "total_runs": 2,
+      "valid_runs": 2,
+      "completed_runs": 2,
+      "failed_runs": 0,
+      "place_rate": {
+        "n": 2,
+        "mean": 30.8,
+        "std": 0.0,
+        "min": 30.8,
+        "max": 30.8,
+        "median": 30.8,
+        "values": [
+          30.8,
+          30.8
+        ]
+      },
+      "ai_place": {
+        "n": 2,
+        "mean": 12.0,
+        "std": 0.0,
+        "min": 12.0,
+        "max": 12.0,
+        "median": 12.0,
+        "values": [
+          12.0,
+          12.0
+        ]
+      },
+      "ai_tiles_placed": {
+        "n": 2,
+        "mean": 30.5,
+        "std": 2.12,
+        "min": 29.0,
+        "max": 32.0,
+        "median": 30.5,
+        "values": [
+          29.0,
+          32.0
+        ]
+      },
+      "ai_draw": {
+        "n": 2,
+        "mean": 27.0,
+        "std": 0.0,
+        "min": 27.0,
+        "max": 27.0,
+        "median": 27.0,
+        "values": [
+          27.0,
+          27.0
+        ]
+      },
+      "ai_fallback": {
+        "n": 2,
+        "mean": 0.0,
+        "std": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "median": 0.0,
+        "values": [
+          0.0,
+          0.0
+        ]
+      },
+      "total_turns": {
+        "n": 2,
+        "mean": 80.0,
+        "std": 0.0,
+        "min": 80.0,
+        "max": 80.0,
+        "median": 80.0,
+        "values": [
+          80.0,
+          80.0
+        ]
+      },
+      "elapsed": {
+        "n": 2,
+        "mean": 2459.0,
+        "std": 83.44,
+        "min": 2400.0,
+        "max": 2518.0,
+        "median": 2459.0,
+        "values": [
+          2518.0,
+          2400.0
+        ]
+      },
+      "est_cost": {
+        "n": 2,
+        "mean": 0.97,
+        "std": 0.0,
+        "min": 0.97,
+        "max": 0.97,
+        "median": 0.97,
+        "values": [
+          0.97,
+          0.97
+        ]
+      },
+      "resp_avg": {
+        "n": 2,
+        "mean": 62.3,
+        "std": 3.25,
+        "min": 60.0,
+        "max": 64.6,
+        "median": 62.3,
+        "values": [
+          64.6,
+          60.0
+        ]
+      },
+      "resp_p50": {
+        "n": 2,
+        "mean": 56.4,
+        "std": 1.98,
+        "min": 55.0,
+        "max": 57.8,
+        "median": 56.4,
+        "values": [
+          57.8,
+          55.0
+        ]
+      },
+      "result_distribution": {
+        "TIMEOUT": 2
+      },
+      "runs": [
+        {
+          "run_id": "R4-v2-cross-gpt-20260406",
+          "date": "2026-04-06",
+          "place_rate": 30.8,
+          "total_turns": 80,
+          "elapsed": 2518.0,
+          "est_cost": 0.975,
+          "result": "TIMEOUT",
+          "source": "v2-prompt-crossmodel"
+        },
+        {
+          "run_id": "R4-gpt-rerun-20260407",
+          "date": "2026-04-07",
+          "place_rate": 30.8,
+          "total_turns": 80,
+          "elapsed": 2400.0,
+          "est_cost": 0.975,
+          "result": "TIMEOUT",
+          "source": "round4-rerun"
+        }
+      ]
+    },
+    "claude": {
+      "model_key": "claude",
+      "total_runs": 1,
+      "valid_runs": 1,
+      "completed_runs": 1,
+      "failed_runs": 0,
+      "place_rate": {
+        "n": 1,
+        "mean": 33.3,
+        "std": 0.0,
+        "min": 33.3,
+        "max": 33.3,
+        "median": 33.3,
+        "values": [
+          33.3
+        ]
+      },
+      "ai_place": {
+        "n": 1,
+        "mean": 10.0,
+        "std": 0.0,
+        "min": 10.0,
+        "max": 10.0,
+        "median": 10.0,
+        "values": [
+          10.0
+        ]
+      },
+      "ai_tiles_placed": {
+        "n": 1,
+        "mean": 26.0,
+        "std": 0.0,
+        "min": 26.0,
+        "max": 26.0,
+        "median": 26.0,
+        "values": [
+          26.0
+        ]
+      },
+      "ai_draw": {
+        "n": 1,
+        "mean": 20.0,
+        "std": 0.0,
+        "min": 20.0,
+        "max": 20.0,
+        "median": 20.0,
+        "values": [
+          20.0
+        ]
+      },
+      "ai_fallback": {
+        "n": 1,
+        "mean": 0.0,
+        "std": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "median": 0.0,
+        "values": [
+          0.0
+        ]
+      },
+      "total_turns": {
+        "n": 1,
+        "mean": 62.0,
+        "std": 0.0,
+        "min": 62.0,
+        "max": 62.0,
+        "median": 62.0,
+        "values": [
+          62.0
+        ]
+      },
+      "elapsed": {
+        "n": 1,
+        "mean": 2094.0,
+        "std": 0.0,
+        "min": 2094.0,
+        "max": 2094.0,
+        "median": 2094.0,
+        "values": [
+          2094.0
+        ]
+      },
+      "est_cost": {
+        "n": 1,
+        "mean": 2.22,
+        "std": 0.0,
+        "min": 2.22,
+        "max": 2.22,
+        "median": 2.22,
+        "values": [
+          2.22
+        ]
+      },
+      "resp_avg": {
+        "n": 1,
+        "mean": 63.8,
+        "std": 0.0,
+        "min": 63.8,
+        "max": 63.8,
+        "median": 63.8,
+        "values": [
+          63.8
+        ]
+      },
+      "resp_p50": {
+        "n": 1,
+        "mean": 44.6,
+        "std": 0.0,
+        "min": 44.6,
+        "max": 44.6,
+        "median": 44.6,
+        "values": [
+          44.6
+        ]
+      },
+      "result_distribution": {
+        "WS_TIMEOUT": 1
+      },
+      "runs": [
+        {
+          "run_id": "R4-v2-cross-claude-20260406",
+          "date": "2026-04-06",
+          "place_rate": 33.3,
+          "total_turns": 62,
+          "elapsed": 2094.0,
+          "est_cost": 2.22,
+          "result": "WS_TIMEOUT",
+          "source": "v2-prompt-crossmodel"
+        }
+      ]
+    },
+    "deepseek": {
+      "model_key": "deepseek",
+      "total_runs": 2,
+      "valid_runs": 2,
+      "completed_runs": 2,
+      "failed_runs": 0,
+      "place_rate": {
+        "n": 2,
+        "mean": 24.35,
+        "std": 9.12,
+        "min": 17.9,
+        "max": 30.8,
+        "median": 24.35,
+        "values": [
+          30.8,
+          17.9
+        ]
+      },
+      "ai_place": {
+        "n": 2,
+        "mean": 9.5,
+        "std": 3.54,
+        "min": 7.0,
+        "max": 12.0,
+        "median": 9.5,
+        "values": [
+          12.0,
+          7.0
+        ]
+      },
+      "ai_tiles_placed": {
+        "n": 2,
+        "mean": 30.5,
+        "std": 2.12,
+        "min": 29.0,
+        "max": 32.0,
+        "median": 30.5,
+        "values": [
+          32.0,
+          29.0
+        ]
+      },
+      "ai_draw": {
+        "n": 2,
+        "mean": 29.5,
+        "std": 3.54,
+        "min": 27.0,
+        "max": 32.0,
+        "median": 29.5,
+        "values": [
+          27.0,
+          32.0
+        ]
+      },
+      "ai_fallback": {
+        "n": 2,
+        "mean": 0.0,
+        "std": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "median": 0.0,
+        "values": [
+          0.0,
+          0.0
+        ]
+      },
+      "total_turns": {
+        "n": 2,
+        "mean": 80.0,
+        "std": 0.0,
+        "min": 80.0,
+        "max": 80.0,
+        "median": 80.0,
+        "values": [
+          80.0,
+          80.0
+        ]
+      },
+      "elapsed": {
+        "n": 2,
+        "mean": 5445.0,
+        "std": 449.72,
+        "min": 5127.0,
+        "max": 5763.0,
+        "median": 5445.0,
+        "values": [
+          5127.0,
+          5763.0
+        ]
+      },
+      "est_cost": {
+        "n": 2,
+        "mean": 0.04,
+        "std": 0.0,
+        "min": 0.04,
+        "max": 0.04,
+        "median": 0.04,
+        "values": [
+          0.04,
+          0.04
+        ]
+      },
+      "resp_avg": {
+        "n": 2,
+        "mean": 139.65,
+        "std": 11.53,
+        "min": 131.5,
+        "max": 147.8,
+        "median": 139.65,
+        "values": [
+          131.5,
+          147.8
+        ]
+      },
+      "resp_p50": {
+        "n": 2,
+        "mean": 145.55,
+        "std": 31.18,
+        "min": 123.5,
+        "max": 167.6,
+        "median": 145.55,
+        "values": [
+          123.5,
+          167.6
+        ]
+      },
+      "result_distribution": {
+        "TIMEOUT": 2
+      },
+      "runs": [
+        {
+          "run_id": "R4-3model-deepseek-20260406",
+          "date": "2026-04-06",
+          "place_rate": 30.8,
+          "total_turns": 80,
+          "elapsed": 5127.0,
+          "est_cost": 0.039,
+          "result": "TIMEOUT",
+          "source": "round4-3model"
+        },
+        {
+          "run_id": "R4-v2-cross-deepseek-20260406",
+          "date": "2026-04-06",
+          "place_rate": 17.9,
+          "total_turns": 80,
+          "elapsed": 5763.0,
+          "est_cost": 0.039,
+          "result": "TIMEOUT",
+          "source": "v2-prompt-crossmodel"
+        }
+      ]
+    }
+  }
+}

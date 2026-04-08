@@ -156,7 +156,7 @@ export default function RateLimitToast() {
           <div className="flex flex-col gap-0.5 min-w-0">
             <span>{message}</span>
             {isRetrying && (
-              <span className="text-tile-xs opacity-80">
+              <span className="text-tile-xs opacity-80" data-testid="rate-limit-retrying">
                 재시도 중...
               </span>
             )}
