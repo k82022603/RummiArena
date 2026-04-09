@@ -18,6 +18,7 @@ import { useGameLeaveGuard } from "@/hooks/useGameLeaveGuard";
 import { useGameStore } from "@/store/gameStore";
 import { useWSStore } from "@/store/wsStore";
 import { useRoomStore } from "@/store/roomStore";
+import { useRateLimitStore } from "@/store/rateLimitStore";
 import GameBoard from "@/components/game/GameBoard";
 import PlayerRack from "@/components/game/PlayerRack";
 import PlayerCard from "@/components/game/PlayerCard";
@@ -367,6 +368,20 @@ export default function GameClient({ roomId }: GameClientProps) {
     isPlaying,
     onLeaveConfirmed: handleLeaveConfirmed,
   });
+
+  // ------------------------------------------------------------------
+  // 언마운트 시 모든 Zustand store 초기화
+  // E2E 테스트에서 연속 테스트 시 이전 게임 상태가 잔존하는 문제 방지
+  // ------------------------------------------------------------------
+  useEffect(() => {
+    return () => {
+      resetGameStore();
+      useWSStore.getState().reset();
+      useRoomStore.getState().reset();
+      useRateLimitStore.getState().reset();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ------------------------------------------------------------------
   // Task 2: 연결 끊김 플레이어 카운트다운 (1초 갱신)

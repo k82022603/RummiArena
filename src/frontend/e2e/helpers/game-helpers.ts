@@ -16,7 +16,7 @@ export interface CreateRoomOpts {
   playerCount?: 2 | 3 | 4;
   aiCount?: number;
   turnTimeout?: number;
-  /** 방 생성 재시도 횟수 (기본 2) */
+  /** 방 생성 재시도 횟수 (기본 4) */
   maxRetries?: number;
 }
 
@@ -36,7 +36,7 @@ export async function createRoomAndStart(
     playerCount = 2,
     aiCount = 1,
     turnTimeout = 120,
-    maxRetries = 2,
+    maxRetries = 4,
   } = opts;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {

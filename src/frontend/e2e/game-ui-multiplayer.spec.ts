@@ -54,9 +54,9 @@ async function dragTileToBoard(page: Page, tileCode: string): Promise<void> {
   await page.mouse.move(sx + 3, sy, { steps: 2 });
   await page.mouse.move(sx + 9, sy, { steps: 2 });
   await page.mouse.move(dx, dy, { steps: 20 });
-  await page.waitForTimeout(60);
+  await page.waitForTimeout(200);
   await page.mouse.up();
-  await page.waitForTimeout(150);
+  await page.waitForTimeout(300);
 }
 
 // ==================================================================
@@ -64,6 +64,10 @@ async function dragTileToBoard(page: Page, tileCode: string): Promise<void> {
 // ==================================================================
 
 test.describe("A-1: 로비/방 생성/참여", () => {
+  test.afterEach(async ({ page }) => {
+    await cleanupViaPage(page);
+  });
+
   test("로그인 후 로비 진입 확인", async ({ page }) => {
     await goToLobby(page);
     await expect(page.getByText("안녕하세요")).toBeVisible({ timeout: 10_000 });
@@ -112,6 +116,10 @@ test.describe("A-1: 로비/방 생성/참여", () => {
 test.describe("멀티플레이 게임 UI", () => {
   // 테스트 시간이 오래 걸리므로 타임아웃을 넉넉하게
   test.setTimeout(180_000);
+
+  test.afterEach(async ({ page }) => {
+    await cleanupViaPage(page);
+  });
 
   let roomId: string;
 
@@ -229,6 +237,10 @@ test.describe("멀티플레이 게임 UI", () => {
 
 test.describe("멀티플레이 게임 턴 동작", () => {
   test.setTimeout(180_000);
+
+  test.afterEach(async ({ page }) => {
+    await cleanupViaPage(page);
+  });
 
   test("A-3 + A-7 + A-8: 타일 드래그/초기화/드로우 기본 플로우", async ({
     page,

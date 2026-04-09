@@ -22,21 +22,30 @@ interface WSStore {
   /** Close code (마지막 비정상 종료 사유 추적) */
   lastCloseCode: number | null;
   setLastCloseCode: (code: number | null) => void;
+
+  /** 전체 초기화 */
+  reset: () => void;
 }
 
+const wsInitialState = {
+  status: "idle" as WSConnectionStatus,
+  lastError: null as string | null,
+  reconnectNotice: null as { displayName: string; seat: number } | null,
+  reconnectAttemptCount: 0,
+  reconnectNextDelaySec: 0,
+  lastCloseCode: null as number | null,
+};
+
 export const useWSStore = create<WSStore>()((set) => ({
-  status: "idle",
+  ...wsInitialState,
   setStatus: (status) => set({ status }),
-  lastError: null,
   setLastError: (lastError) => set({ lastError }),
-  reconnectNotice: null,
   setReconnectNotice: (reconnectNotice) => set({ reconnectNotice }),
   clearReconnectNotice: () => set({ reconnectNotice: null }),
 
-  reconnectAttemptCount: 0,
   setReconnectAttemptCount: (reconnectAttemptCount) => set({ reconnectAttemptCount }),
-  reconnectNextDelaySec: 0,
   setReconnectNextDelaySec: (reconnectNextDelaySec) => set({ reconnectNextDelaySec }),
-  lastCloseCode: null,
   setLastCloseCode: (lastCloseCode) => set({ lastCloseCode }),
+
+  reset: () => set(wsInitialState),
 }));

@@ -397,8 +397,16 @@ docs/
 - [x] Rate Limit 환경변수 외부화 — config.go + rate_limiter.go + main.go
 - [x] E2E 트러블슈팅 — 47건 실패 원인 추적 (프론트엔드 상태/E2E 구조 이슈로 재분류)
 
-**W2 Day 4~ 잔여**:
-- [ ] E2E 47건 실패 근본 원인 디버깅
+**W2 Day 4 완료** (2026-04-09):
+- [x] E2E 47건→4건 해결 — 근본 원인: AI_COOLDOWN (SEC-RL-002, room_service.go 429)
+- [x] AI_COOLDOWN_SEC 환경변수 외부화 + cooldown.go TTL<=0 비활성화
+- [x] Helm ConfigMap 영구 반영 (RATE_LIMIT_LOW_MAX=1000, AI_COOLDOWN_SEC=0)
+- [x] api.ts AI_COOLDOWN vs RATE_LIMITED 분기 처리
+- [x] 에러코드 레지스트리 (29번, 38개 코드, CRITICAL 1건)
+- [x] DB 연결 수정 (postgres password sync)
+
+**W2 Day 5 잔여** (04-10):
+- [ ] 아키텍트 에러코드 소스코드 전수 검토 + P1 수정(AI_COOLDOWN 429→403)
 - [ ] v2 다회 실행 배틀 (GPT/DeepSeek 각 3회, Claude 1회)
-- [ ] Helm ConfigMap RATE_LIMIT_LOW_MAX 영구 반영
+- [ ] E2E 전체 390건 재실행 검증
 - [ ] Sprint 5 회고 + 종료 보고 (4/11 마감)

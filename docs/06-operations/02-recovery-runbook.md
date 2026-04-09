@@ -484,6 +484,122 @@ kubectl rollout restart deployment argocd-server -n argocd
 
 ---
 
+## 6. Rate Limit 설정 관리
+
+### 6-1. 환경변수 일람
+
+game-server의 Rate Limit은 Redis 기반 Fixed Window Counter 방식이다. 아래 환경변수로 정책별 한도를 조정한다.
+
+| 환경변수 | 기본값 | 적용 대상 | 설명 |
+|----------|--------|-----------|------|
+| `RATE_LIMIT_HIGH_MAX` | 60 | GET /api/games/:id, /api/rankings, /api/users | 조회 API (빈번 접근) |
+| `RATE_LIMIT_MEDIUM_MAX` | 30 | POST /api/games/:id/* (place, confirm, draw, reset) | 게임 액션 |
+| `RATE_LIMIT_LOW_MAX` | 10 | POST /api/rooms/*, /api/auth/* | 방 생성/가입, 인증 (저빈도) |
+| `RATE_LIMIT_ADMIN_MAX` | 30 | /admin/* | 관리자 대시보드 |
+| `RATE_LIMIT_WS_MAX` | 5 | WebSocket 연결 시도 | WS 핸드셰이크 |
+| `RATE_LIMIT_WINDOW_SECONDS` | 60 | 전체 정책 공통 | 윈도우 크기 (초) |
+| `AI_COOLDOWN_SEC` | 300 | AI 방 생성 | AI 게임 생성 쿨다운 (초). 0 = 비활성 |
+
+> **주의**: `RATE_LIMIT_LOW_MAX` 기본값 10은 **프로덕션 기준**. E2E 테스트 시 연쇄 방 생성으로 초과하므로, dev 환경에서는 100~200으로 상향한다.
+>
+> **주의**: `AI_COOLDOWN_SEC`는 Rate Limit과 **별도 경로**로 429를 반환한다. Redis 키 `cooldown:ai-game:{userId}` (vs Rate Limit의 `ratelimit:user:*`). dev 환경에서는 0으로 설정하여 E2E 연쇄 AI 방 생성을 허용한다.
+
+### 6-2. 현재 설정 확인
+
+```bash
+# ConfigMap에서 확인
+kubectl get configmap game-server-config -n rummikub -o yaml | grep RATE_LIMIT
+kubectl get configmap game-server-config -n rummikub -o yaml | grep AI_COOLDOWN
+
+# 실행 중인 Pod의 실제 환경변수 확인
+kubectl exec deployment/game-server -n rummikub -- env | grep RATE_LIMIT
+kubectl exec deployment/game-server -n rummikub -- env | grep AI_COOLDOWN
+
+# Redis에서 현재 카운터 확인
+kubectl exec deployment/redis -n rummikub -- redis-cli KEYS "ratelimit:*"
+
+# AI_COOLDOWN Redis 키 확인
+kubectl exec deployment/redis -n rummikub -- redis-cli KEYS "cooldown:ai-game:*"
+
+# 특정 키의 값과 TTL 확인
+kubectl exec deployment/redis -n rummikub -- redis-cli GET "ratelimit:user:<userId>:low"
+kubectl exec deployment/redis -n rummikub -- redis-cli TTL "ratelimit:user:<userId>:low"
+
+# AI_COOLDOWN 특정 사용자 TTL 확인 (-1 = 영구 키(버그), -2 = 없음, 양수 = 잔여 초)
+kubectl exec deployment/redis -n rummikub -- redis-cli TTL "cooldown:ai-game:<userId>"
+```
+
+### 6-3. 설정 변경 방법
+
+#### 방법 A: ConfigMap 직접 패치 (즉시 적용, Pod 재시작 필요)
+
+```bash
+# ConfigMap 패치
+kubectl patch configmap game-server-config -n rummikub \
+  --type='merge' \
+  -p='{"data":{"RATE_LIMIT_LOW_MAX":"200"}}'
+
+# Pod 재시작 (ConfigMap은 Pod 시작 시 읽으므로 재시작 필수)
+kubectl rollout restart deployment/game-server -n rummikub
+kubectl rollout status deployment/game-server -n rummikub --timeout=60s
+
+# 적용 확인
+kubectl exec deployment/game-server -n rummikub -- env | grep RATE_LIMIT_LOW_MAX
+```
+
+#### 방법 B: Helm values.yaml 수정 (영구 반영, GitOps 권장)
+
+```bash
+# helm/charts/game-server/values.yaml의 env 섹션에 추가
+#   RATE_LIMIT_LOW_MAX: "200"
+
+# ArgoCD Sync 또는 Helm 직접 적용
+helm upgrade rummikub ./helm -n rummikub -f helm/environments/dev-values.yaml
+```
+
+### 6-4. 언제 변경하는가
+
+| 상황 | 권장 조치 |
+|------|----------|
+| E2E 테스트 연쇄 실패 (429) | `RATE_LIMIT_LOW_MAX` 100~200 상향 |
+| E2E AI 방 생성 연쇄 실패 (429 AI_COOLDOWN) | `AI_COOLDOWN_SEC=0` (쿨다운 비활성) |
+| DDoS/남용 의심 | `RATE_LIMIT_LOW_MAX` 5~10으로 하향 |
+| LLM Cost Attack 의심 | `AI_COOLDOWN_SEC` 300~600으로 상향 |
+| AI 대전 배틀 스크립트 실행 | 기본값 유지 (스크립트는 WS 기반, HTTP rate limit 영향 적음) |
+| 부하 테스트 시 | 전체 정책 상향 또는 `RATE_LIMIT_WINDOW_SECONDS` 단축 |
+| 프로덕션 배포 시 | Rate Limit 기본값(10) + AI_COOLDOWN 기본값(300) 유지 — 보안 우선 |
+
+### 6-5. Rate Limit 카운터 긴급 초기화
+
+E2E 테스트 도중 Rate Limit에 걸려 전체 테스트가 블로킹될 때:
+
+```bash
+# 특정 사용자의 rate limit 카운터 삭제
+kubectl exec deployment/redis -n rummikub -- redis-cli DEL "ratelimit:user:<userId>:low"
+
+# 전체 rate limit 카운터 일괄 삭제 (주의: 모든 사용자 영향)
+kubectl exec deployment/redis -n rummikub -- redis-cli EVAL "return redis.call('del', unpack(redis.call('keys', 'ratelimit:*')))" 0
+```
+
+### 6-6. AI_COOLDOWN 키 긴급 초기화
+
+AI 방 생성 시 429 AI_COOLDOWN이 반환될 때:
+
+```bash
+# 특정 사용자의 쿨다운 키 삭제
+kubectl exec deployment/redis -n rummikub -- redis-cli DEL "cooldown:ai-game:<userId>"
+
+# 전체 쿨다운 키 일괄 삭제
+kubectl exec deployment/redis -n rummikub -- redis-cli EVAL "return redis.call('del', unpack(redis.call('keys', 'cooldown:ai-game:*')))" 0
+
+# 영구 키 감지 (TTL=-1이면 버그로 인한 영구 키)
+kubectl exec deployment/redis -n rummikub -- redis-cli TTL "cooldown:ai-game:<userId>"
+```
+
+> **참고**: `AI_COOLDOWN_SEC=0`이 정상 적용되어 있으면 쿨다운 키가 생성되지 않으므로, 이 절차가 필요하지 않다. 영구 키가 발견되면 `AI_COOLDOWN_SEC=0` 적용 전에 생성된 것이므로 수동 삭제하면 된다.
+
+---
+
 ## 부록: 유용한 명령어 모음
 
 ```bash

@@ -12,6 +12,7 @@
  */
 
 import { test, expect } from "@playwright/test";
+import { cleanupViaPage } from "./helpers/room-cleanup";
 
 // ====================================================================
 // 1. Lobby Page Core (TC-LB-001 ~ TC-LB-012)
@@ -384,6 +385,13 @@ test.describe("AI 플레이어 설정 (TC-AI)", () => {
 // ====================================================================
 
 test.describe("대기실 (TC-WR)", () => {
+  test.afterEach(async ({ page }) => {
+    // 방 생성 테스트에서 남은 활성 방 정리
+    await page.goto("/lobby");
+    await page.waitForLoadState("domcontentloaded");
+    await cleanupViaPage(page);
+  });
+
   test("TC-WR-001: /room/create에서 방 생성 폼 제출 시도 → 결과 UI 확인", async ({
     page,
   }) => {

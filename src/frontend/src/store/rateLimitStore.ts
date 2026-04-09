@@ -33,27 +33,33 @@ interface RateLimitStore {
 
   /** 쿨다운 타이머 ID (내부 관리용) */
   _cooldownTimerId: ReturnType<typeof setInterval> | null;
+
+  /** 전체 초기화 (쿨다운 타이머 포함) */
+  reset: () => void;
 }
 
-export const useRateLimitStore = create<RateLimitStore>()((set, get) => ({
-  message: null,
-  setMessage: (message) => set({ message }),
+const rateLimitInitialState = {
+  message: null as string | null,
   wsThrottled: false,
+  cooldownSec: 0,
+  cooldownTotalSec: 0,
+  isRetrying: false,
+  wsViolationCount: 0,
+  _cooldownTimerId: null as ReturnType<typeof setInterval> | null,
+};
+
+export const useRateLimitStore = create<RateLimitStore>()((set, get) => ({
+  ...rateLimitInitialState,
+  setMessage: (message) => set({ message }),
   setWsThrottled: (wsThrottled) => set({ wsThrottled }),
 
-  cooldownSec: 0,
   setCooldownSec: (cooldownSec) => set({ cooldownSec }),
-  cooldownTotalSec: 0,
   setCooldownTotalSec: (cooldownTotalSec) => set({ cooldownTotalSec }),
-  isRetrying: false,
   setIsRetrying: (isRetrying) => set({ isRetrying }),
 
-  wsViolationCount: 0,
   incrementWsViolation: () =>
     set((state) => ({ wsViolationCount: Math.min(state.wsViolationCount + 1, 2) })),
   resetWsViolation: () => set({ wsViolationCount: 0 }),
-
-  _cooldownTimerId: null,
 
   startCooldown: (totalSec: number) => {
     // 기존 타이머 정리
@@ -73,5 +79,12 @@ export const useRateLimitStore = create<RateLimitStore>()((set, get) => ({
     }, 1000);
 
     set({ _cooldownTimerId: timerId });
+  },
+
+  reset: () => {
+    // 기존 쿨다운 타이머 정리
+    const existing = get()._cooldownTimerId;
+    if (existing) clearInterval(existing);
+    set(rateLimitInitialState);
   },
 }));

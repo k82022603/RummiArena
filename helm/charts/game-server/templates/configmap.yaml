@@ -20,3 +20,7 @@ data:
   REDIS_HOST: {{ .Values.env.REDIS_HOST | quote }}
   REDIS_PORT: {{ .Values.env.REDIS_PORT | quote }}
   CORS_ALLOWED_ORIGINS: {{ .Values.env.CORS_ALLOWED_ORIGINS | quote }}
+  AI_ADAPTER_URL: {{ .Values.env.AI_ADAPTER_URL | quote }}
+  AI_ADAPTER_TIMEOUT_SEC: {{ .Values.env.AI_ADAPTER_TIMEOUT_SEC | quote }}
+  RATE_LIMIT_LOW_MAX: {{ .Values.env.RATE_LIMIT_LOW_MAX | quote }}
+  AI_COOLDOWN_SEC: {{ .Values.env.AI_COOLDOWN_SEC | quote }}

@@ -23,6 +23,60 @@ import { cleanupViaPage } from "./helpers/room-cleanup";
 // ------------------------------------------------------------------
 
 /**
+ * 활성 방을 정리한다. 브라우저 내부에서 page.request를 사용하여
+ * Next.js 프록시를 통해 game-server에 leave/delete 요청.
+ * page.request는 쿠키/세션이 자동 포함되므로 토큰 추출이 불필요하다.
+ */
+async function apiCleanup(page: Page): Promise<void> {
+  try {
+    await page.goto("/lobby");
+    await page.waitForLoadState("domcontentloaded");
+
+    // 브라우저 세션으로 토큰 확보 + rooms 조회 + leave/delete 한 번에
+    await page.evaluate(async () => {
+      try {
+        // 세션에서 토큰 추출
+        const sessionRes = await fetch("/api/auth/session");
+        if (!sessionRes.ok) return;
+        const session = (await sessionRes.json()) as { accessToken?: string };
+        const token = session.accessToken;
+        if (!token) return;
+
+        const headers = {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        };
+
+        // 활성 방 조회 (Next.js 프록시 경유)
+        const roomsRes = await fetch("/api/rooms", { headers });
+        if (!roomsRes.ok) return;
+        const data = (await roomsRes.json()) as {
+          rooms?: Array<{ id: string }>;
+        };
+        const rooms = data.rooms ?? [];
+
+        // leave + delete 시도
+        for (const room of rooms) {
+          await fetch(`/api/rooms/${room.id}/leave`, {
+            method: "POST",
+            headers,
+          }).catch(() => {});
+          await fetch(`/api/rooms/${room.id}`, {
+            method: "DELETE",
+            headers,
+          }).catch(() => {});
+        }
+      } catch {
+        // 무시
+      }
+    });
+    await page.waitForTimeout(300);
+  } catch {
+    // cleanup 실패는 치명적이지 않음
+  }
+}
+
+/**
  * 방 생성 → 대기실 → 게임 시작까지 진행.
  * 완료 후 page는 /game/{roomId}에 위치.
  */
@@ -45,9 +99,7 @@ async function createAIBattle(
   } = opts;
 
   // 이전 테스트 잔여 방 정리
-  await page.goto("/lobby");
-  await page.waitForLoadState("domcontentloaded");
-  await cleanupViaPage(page);
+  await apiCleanup(page);
 
   await page.goto("/room/create");
   await page.waitForLoadState("domcontentloaded");
@@ -189,8 +241,13 @@ async function waitForTurnGreaterThan(
 test.describe("TC-AB: AI 대전 기본 흐름 (Ollama)", () => {
   test.setTimeout(300_000); // 5분 — AI 응답 대기 필요
 
+  test.afterEach(async ({ page }) => {
+    await cleanupViaPage(page);
+  });
+
   test("TC-AB-001: Ollama AI와 2인 대전 — 방 생성부터 게임 화면 도달", async ({
     page,
+    request,
   }) => {
     await createAIBattle(page, {
       playerCount: 2,
@@ -610,8 +667,13 @@ test.describe("TC-MX: 다인전 AI 혼합 설정", () => {
 test.describe("TC-GP: AI 대전 게임 진행 (Ollama)", () => {
   test.setTimeout(600_000); // 10분 — 다중 턴 AI 응답 대기
 
+  test.afterEach(async ({ page }) => {
+    await cleanupViaPage(page);
+  });
+
   test("TC-GP-001: 2턴 이상 진행 — 드로우 → AI 턴 → 내 차례 복귀 반복", async ({
     page,
+    request,
   }) => {
     await createAIBattle(page, {
       playerCount: 2,
@@ -676,6 +738,7 @@ test.describe("TC-GP: AI 대전 게임 진행 (Ollama)", () => {
 
   test("TC-GP-004: 게임 종료 오버레이 — window.__gameStore로 게임 종료 시뮬레이션", async ({
     page,
+    request,
   }) => {
     await createAIBattle(page, {
       playerCount: 2,
@@ -730,6 +793,7 @@ test.describe("TC-GP: AI 대전 게임 진행 (Ollama)", () => {
 
   test("TC-GP-005: 교착 종료 오버레이 — STALEMATE endType 표시", async ({
     page,
+    request,
   }) => {
     await createAIBattle(page, {
       playerCount: 2,
@@ -774,6 +838,7 @@ test.describe("TC-GP: AI 대전 게임 진행 (Ollama)", () => {
 
   test("TC-GP-006: 게임 종료 후 로비로 돌아가기 클릭 → /lobby 이동", async ({
     page,
+    request,
   }) => {
     await createAIBattle(page, {
       playerCount: 2,

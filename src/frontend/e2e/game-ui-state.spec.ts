@@ -8,6 +8,7 @@
  */
 
 import { test, expect } from "@playwright/test";
+import { cleanupViaPage } from "./helpers/room-cleanup";
 import {
   createRoomAndStart,
   waitForGameReady,
@@ -20,6 +21,10 @@ import {
 
 test.describe("C-1: 플레이어 패널", () => {
   test.setTimeout(180_000);
+
+  test.afterEach(async ({ page }) => {
+    await cleanupViaPage(page);
+  });
 
   test("CS-01: 상대 플레이어 카드 표시", async ({ page }) => {
     await createRoomAndStart(page);
@@ -102,6 +107,10 @@ test.describe("C-1: 플레이어 패널", () => {
 test.describe("C-2: 드로우 파일 표시", () => {
   test.setTimeout(180_000);
 
+  test.afterEach(async ({ page }) => {
+    await cleanupViaPage(page);
+  });
+
   test("CS-07: 드로우 파일 수 표시", async ({ page }) => {
     await createRoomAndStart(page);
     await waitForGameReady(page);
@@ -130,6 +139,10 @@ test.describe("C-2: 드로우 파일 표시", () => {
 
 test.describe("C-3: 게임 화면 레이아웃", () => {
   test.setTimeout(180_000);
+
+  test.afterEach(async ({ page }) => {
+    await cleanupViaPage(page);
+  });
 
   test("CS-09: 전체 레이아웃 구조 확인 (헤더+상대+보드+랙)", async ({
     page,
@@ -200,6 +213,10 @@ test.describe("C-3: 게임 화면 레이아웃", () => {
 
 test.describe("C-4: 게임 액션 버튼 상태", () => {
   test.setTimeout(180_000);
+
+  test.afterEach(async ({ page }) => {
+    await cleanupViaPage(page);
+  });
 
   test("CS-13: 내 차례에 액션 버튼(드로우/초기화/확정) 표시", async ({
     page,

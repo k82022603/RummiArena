@@ -144,49 +144,41 @@ async function leaveOrDeleteRoom(roomId: string, token: string): Promise<void> {
  *
  * 개선: leave 실패 시 game-server 직접 호출 + DELETE 시도로
  * 이전 테스트의 stale room을 더 확실히 정리한다.
+ *
+ * 추가 개선: 정리 후 재조회하여 잔존 방이 없는지 확인 (최대 2회 재시도).
  */
 export async function cleanupViaPage(page: Page): Promise<void> {
   const gameServerUrl = process.env.GAME_SERVER_URL ?? "http://localhost:30080";
 
   await page.evaluate(async (gsUrl: string) => {
-    try {
-      // 세션에서 토큰 추출
-      const sessionRes = await fetch("/api/auth/session");
-      if (!sessionRes.ok) return;
-      const session = (await sessionRes.json()) as { accessToken?: string };
-      const token = session.accessToken;
-      if (!token) return;
+    /** 한 라운드의 정리를 수행하고 남은 방 수를 반환한다. */
+    async function cleanupOnce(): Promise<number> {
+      try {
+        // 세션에서 토큰 추출
+        const sessionRes = await fetch("/api/auth/session");
+        if (!sessionRes.ok) return 0;
+        const session = (await sessionRes.json()) as { accessToken?: string };
+        const token = session.accessToken;
+        if (!token) return 0;
 
-      // 활성 방 목록 조회 (Next.js 프록시)
-      const roomsRes = await fetch("/api/rooms", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!roomsRes.ok) return;
-      const data = (await roomsRes.json()) as {
-        rooms?: Array<{ id: string; status: string }>;
-      };
-      const rooms = data.rooms ?? [];
+        // 활성 방 목록 조회 (Next.js 프록시)
+        const roomsRes = await fetch("/api/rooms", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!roomsRes.ok) return 0;
+        const data = (await roomsRes.json()) as {
+          rooms?: Array<{ id: string; status: string }>;
+        };
+        const rooms = data.rooms ?? [];
+        if (rooms.length === 0) return 0;
 
-      // 각 방에서 퇴장 시도 (여러 전략 순차 적용)
-      for (const room of rooms) {
-        let left = false;
+        // 각 방에서 퇴장 시도 (여러 전략 순차 적용)
+        for (const room of rooms) {
+          let left = false;
 
-        // 전략 1: Next.js 프록시 통해 leave
-        try {
-          const r = await fetch(`/api/rooms/${room.id}/leave`, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-          });
-          if (r.ok) { left = true; continue; }
-        } catch { /* ignore */ }
-
-        // 전략 2: game-server 직접 leave
-        if (!left) {
+          // 전략 1: Next.js 프록시 통해 leave
           try {
-            const r = await fetch(`${gsUrl}/api/rooms/${room.id}/leave`, {
+            const r = await fetch(`/api/rooms/${room.id}/leave`, {
               method: "POST",
               headers: {
                 Authorization: `Bearer ${token}`,
@@ -195,23 +187,47 @@ export async function cleanupViaPage(page: Page): Promise<void> {
             });
             if (r.ok) { left = true; continue; }
           } catch { /* ignore */ }
+
+          // 전략 2: game-server 직접 leave
+          if (!left) {
+            try {
+              const r = await fetch(`${gsUrl}/api/rooms/${room.id}/leave`, {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  "Content-Type": "application/json",
+                },
+              });
+              if (r.ok) { left = true; continue; }
+            } catch { /* ignore */ }
+          }
+
+          // 전략 3: game-server 직접 DELETE (방장인 경우)
+          if (!left) {
+            try {
+              await fetch(`${gsUrl}/api/rooms/${room.id}`, {
+                method: "DELETE",
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  "Content-Type": "application/json",
+                },
+              });
+            } catch { /* ignore */ }
+          }
         }
 
-        // 전략 3: game-server 직접 DELETE (방장인 경우)
-        if (!left) {
-          try {
-            await fetch(`${gsUrl}/api/rooms/${room.id}`, {
-              method: "DELETE",
-              headers: {
-                Authorization: `Bearer ${token}`,
-                "Content-Type": "application/json",
-              },
-            });
-          } catch { /* ignore */ }
-        }
+        return rooms.length;
+      } catch {
+        return 0;
       }
-    } catch {
-      // 전체 클린업 실패는 무시
+    }
+
+    // 최대 3회 시도 (정리 후 재조회하여 잔존 방이 없는지 확인)
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const remaining = await cleanupOnce();
+      if (remaining === 0) break;
+      // 서버 상태 안정화 대기 후 재시도
+      await new Promise((r) => setTimeout(r, 500));
     }
   }, gameServerUrl);
 }

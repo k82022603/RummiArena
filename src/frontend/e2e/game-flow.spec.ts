@@ -14,12 +14,20 @@
  */
 
 import { test, expect } from "@playwright/test";
+import { cleanupViaPage } from "./helpers/room-cleanup";
 
 // ====================================================================
 // 1. Complete Game Creation Flow (TC-GF-001 ~ TC-GF-010)
 // ====================================================================
 
 test.describe("TC-GF: 게임 생성 전체 흐름", () => {
+  test.afterEach(async ({ page }) => {
+    // 방 생성 테스트에서 남은 활성 방 정리
+    await page.goto("/lobby");
+    await page.waitForLoadState("domcontentloaded");
+    await cleanupViaPage(page);
+  });
+
   test("TC-GF-001: 로비 → 방 만들기 → 방 생성 페이지 도달", async ({
     page,
   }) => {
@@ -547,6 +555,13 @@ test.describe("TC-FV: 방 생성 폼 유효성 검증", () => {
 // ====================================================================
 
 test.describe("TC-GU: 게임 UI 스모크 테스트", () => {
+  test.afterEach(async ({ page }) => {
+    // 방 생성/접속 테스트에서 남은 활성 방 정리
+    await page.goto("/lobby");
+    await page.waitForLoadState("domcontentloaded");
+    await cleanupViaPage(page);
+  });
+
   test("TC-GU-001: /game/test-room 직접 접근 → 적절한 처리 (에러 또는 리디렉트)", async ({
     page,
   }) => {

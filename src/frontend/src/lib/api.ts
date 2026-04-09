@@ -81,6 +81,34 @@ async function apiFetch<T>(
 
   // ---- 429 Too Many Requests 처리 ----
   if (res.status === 429) {
+    // body에서 에러 코드 확인 (AI_COOLDOWN vs RATE_LIMITED)
+    let errorCode = "RATE_LIMITED";
+    let errorMessage = "";
+    try {
+      const body = (await res.clone().json()) as {
+        error?: string;
+        code?: string;
+        message?: string;
+      };
+      errorCode = body.code ?? body.error ?? "RATE_LIMITED";
+      errorMessage = body.message ?? "";
+    } catch {
+      // JSON 파싱 실패 시 기본 Rate Limit 처리
+    }
+
+    if (errorCode === "AI_COOLDOWN") {
+      // AI 쿨다운은 Rate Limit 재시도 대상이 아님 — 즉시 에러 표시
+      const store = useRateLimitStore.getState();
+      store.setMessage(
+        errorMessage || "AI 게임은 5분에 1회만 생성할 수 있습니다."
+      );
+      store.startCooldown(300);
+      throw new Error(
+        errorMessage || "AI 게임은 5분에 1회만 생성할 수 있습니다."
+      );
+    }
+
+    // 일반 Rate Limit 처리
     const retrySec = parseRetryAfter(res);
     showRateLimitToast(retrySec);
 

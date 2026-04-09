@@ -34,6 +34,10 @@ import {
 test.describe("TC-BU: 브라우저 이탈 경고 (beforeunload)", () => {
   test.setTimeout(180_000);
 
+  test.afterEach(async ({ page }) => {
+    await cleanupViaPage(page);
+  });
+
   // ------------------------------------------------------------------
   // TC-BU-001: 게임 중 beforeunload -> 경고 발생
   // ------------------------------------------------------------------
@@ -247,6 +251,10 @@ test.describe("TC-BU: 브라우저 이탈 경고 (beforeunload)", () => {
 test.describe("TC-DL-E: 교착 처리 UI", () => {
   test.setTimeout(180_000);
 
+  test.afterEach(async ({ page }) => {
+    await cleanupViaPage(page);
+  });
+
   // ------------------------------------------------------------------
   // TC-DL-E01: 드로우 파일 소진 시 드로우 -> 패스 버튼 전환
   // ------------------------------------------------------------------
@@ -411,6 +419,10 @@ test.describe("TC-DL-E: 교착 처리 UI", () => {
 
 test.describe("TC-LF-E: 퇴장/기권 UI", () => {
   test.setTimeout(180_000);
+
+  test.afterEach(async ({ page }) => {
+    await cleanupViaPage(page);
+  });
 
   // ------------------------------------------------------------------
   // TC-LF-E01: 기권 플레이어 회색 처리 + "기권" 배지 표시

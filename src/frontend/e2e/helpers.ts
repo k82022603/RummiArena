@@ -37,9 +37,9 @@ export async function dndDrag(
   await page.mouse.move(sx + 9, sy, { steps: 2 });
   // 목적지로 이동
   await page.mouse.move(dx, dy, { steps: 20 });
-  await page.waitForTimeout(60);
+  await page.waitForTimeout(200);
   await page.mouse.up();
-  await page.waitForTimeout(150);
+  await page.waitForTimeout(300);
 }
 
 // ------------------------------------------------------------------
@@ -87,6 +87,8 @@ export async function dragTilesToBoard(
 ): Promise<void> {
   for (const code of tileCodes) {
     await dragTileToBoard(page, code);
+    // 각 타일 드래그 사이 안정화 대기 (React 렌더링 + dnd-kit 상태 반영)
+    await page.waitForTimeout(150);
   }
 }
 
