@@ -349,7 +349,7 @@ func TestAICooldown_BlocksSecondAIGameWithin5Min(t *testing.T) {
 	se, ok := IsServiceError(err)
 	require.True(t, ok, "ServiceError 타입이어야 한다")
 	assert.Equal(t, "AI_COOLDOWN", se.Code)
-	assert.Equal(t, 429, se.Status)
+	assert.Equal(t, 403, se.Status)
 	assert.Contains(t, se.Message, "5분")
 }
 

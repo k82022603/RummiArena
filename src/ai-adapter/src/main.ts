@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
+import { GlobalHttpExceptionFilter } from './common/filters/http-exception.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -19,6 +20,9 @@ async function bootstrap() {
       },
     }),
   );
+
+  // 글로벌 예외 필터: 모든 에러 응답을 통일된 형식으로 변환
+  app.useGlobalFilters(new GlobalHttpExceptionFilter());
 
   // CORS 설정 (Game Server에서 호출하므로 내부 서비스간 통신)
   app.enableCors({

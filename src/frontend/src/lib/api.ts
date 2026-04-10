@@ -60,7 +60,7 @@ function showRateLimitToast(retrySec: number): void {
   store.startCooldown(retrySec);
 }
 
-async function apiFetch<T>(
+export async function apiFetch<T>(
   path: string,
   options?: RequestInit & { token?: string },
   _retryCount = 0,
@@ -79,33 +79,54 @@ async function apiFetch<T>(
     },
   });
 
-  // ---- 429 Too Many Requests 처리 ----
-  if (res.status === 429) {
-    // body에서 에러 코드 확인 (AI_COOLDOWN vs RATE_LIMITED)
-    let errorCode = "RATE_LIMITED";
+  // ---- 403 Forbidden 처리 (비즈니스 차단: AI_COOLDOWN, COST_LIMIT) ----
+  if (res.status === 403) {
+    let errorCode = "";
     let errorMessage = "";
     try {
-      const body = (await res.clone().json()) as {
-        error?: string;
-        code?: string;
-        message?: string;
-      };
-      errorCode = body.code ?? body.error ?? "RATE_LIMITED";
-      errorMessage = body.message ?? "";
+      const body = await res.clone().json();
+      // 표준 형식: {error: {code, message}} (ServiceError / ExceptionFilter)
+      if (body?.error && typeof body.error === "object") {
+        errorCode = body.error.code ?? "";
+        errorMessage = body.error.message ?? "";
+      } else {
+        // 레거시 flat 형식: {code, error, message}
+        errorCode = body?.code ?? body?.error ?? "";
+        errorMessage = body?.message ?? "";
+      }
     } catch {
-      // JSON 파싱 실패 시 기본 Rate Limit 처리
+      /* JSON 파싱 실패 무시 */
     }
 
     if (errorCode === "AI_COOLDOWN") {
-      // AI 쿨다운은 Rate Limit 재시도 대상이 아님 — 즉시 에러 표시
       const store = useRateLimitStore.getState();
-      store.setMessage(
-        errorMessage || "AI 게임은 5분에 1회만 생성할 수 있습니다."
-      );
+      store.setMessage(errorMessage || "AI 게임은 5분에 1회만 생성할 수 있습니다.");
       store.startCooldown(300);
-      throw new Error(
-        errorMessage || "AI 게임은 5분에 1회만 생성할 수 있습니다."
-      );
+      throw new Error(errorMessage || "AI 게임은 5분에 1회만 생성할 수 있습니다.");
+    }
+
+    if (errorCode === "COST_LIMIT" || errorCode === "Daily Cost Limit Exceeded") {
+      throw new Error(errorMessage || "일일 LLM API 비용 한도를 초과했습니다.");
+    }
+
+    // 기타 403은 일반 에러로 처리
+    throw new Error(errorMessage || "접근이 거부되었습니다.");
+  }
+
+  // ---- 429 Too Many Requests 처리 ----
+  if (res.status === 429) {
+    let errorMessage = "";
+    try {
+      const body = await res.clone().json();
+      // 표준 형식: {error: {code, message}} (ServiceError / ExceptionFilter)
+      if (body?.error && typeof body.error === "object") {
+        errorMessage = body.error.message ?? "";
+      } else {
+        // 레거시 flat 형식: {code, error, message}
+        errorMessage = body?.message ?? "";
+      }
+    } catch {
+      // JSON 파싱 실패 시 기본 Rate Limit 처리
     }
 
     // 일반 Rate Limit 처리
@@ -122,11 +143,19 @@ async function apiFetch<T>(
 
     useRateLimitStore.getState().setIsRetrying(false);
     throw new Error(
-      `요청이 너무 많습니다. ${retrySec}초 후에 다시 시도해주세요.`
+      errorMessage || `요청이 너무 많습니다. ${retrySec}초 후에 다시 시도해주세요.`
     );
   }
 
   if (!res.ok) {
+    const ERROR_MESSAGES: Record<number, string> = {
+      400: "잘못된 요청입니다.",
+      401: "로그인이 필요합니다.",
+      404: "요청한 리소스를 찾을 수 없습니다.",
+      500: "서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
+      503: "서버가 일시적으로 사용할 수 없습니다.",
+    };
+
     let errorBody: ApiError | undefined;
     try {
       errorBody = (await res.json()) as ApiError;
@@ -134,7 +163,7 @@ async function apiFetch<T>(
       // JSON 파싱 실패 무시
     }
     throw new Error(
-      errorBody?.error?.message ?? `API 오류: ${res.status} ${res.statusText}`
+      errorBody?.error?.message ?? ERROR_MESSAGES[res.status] ?? `서버 요청에 실패했습니다. (${res.status})`
     );
   }
 

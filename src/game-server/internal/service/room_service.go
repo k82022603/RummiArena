@@ -94,7 +94,7 @@ func (s *roomService) CreateRoom(req *CreateRoomRequest) (*model.RoomState, erro
 			return nil, &ServiceError{
 				Code:    "AI_COOLDOWN",
 				Message: "AI 게임은 5분에 1회만 생성할 수 있습니다.",
-				Status:  429,
+				Status:  403,
 			}
 		}
 	}

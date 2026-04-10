@@ -99,6 +99,10 @@ describe('OllamaAdapter', () => {
 
     // 각 테스트 전 mock 초기화
     jest.clearAllMocks();
+
+    // 재시도 지수 백오프를 무효화하여 테스트 타임아웃 방지
+    // clearAllMocks 이후에 설정해야 spy가 유지된다
+    jest.spyOn(adapter as any, 'backoff').mockResolvedValue(undefined);
   });
 
   // -----------------------------------------------------------------------

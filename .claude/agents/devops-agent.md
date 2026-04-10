@@ -29,5 +29,8 @@ model: opus  # 2026-03-30 sonnet → opus 변경
 4. 멀티스테이지 빌드로 이미지 최소화
 5. Health/Readiness Probe 필수
 6. Trivy 이미지 스캔, Secret은 K8s Secret
+7. **코드/설정 수정 시 `.claude/skills/code-modification/SKILL.md` 절차를 따른다**
 
-## 참조: `docs/05-deployment/`, `docs/01-planning/04-tool-chain.md`, `docs/00-tools/`
+## 참조
+- `docs/05-deployment/`, `docs/01-planning/04-tool-chain.md`, `docs/00-tools/`
+- `.claude/skills/code-modification/SKILL.md` — 코드 수정 표준 절차

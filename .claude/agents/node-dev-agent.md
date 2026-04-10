@@ -24,5 +24,8 @@ NestJS, axios, class-validator, jest, @nestjs/config
 4. LLM API 호출 시 타임아웃 30초 기본
 5. class-validator로 DTO 검증 철저
 6. 프론트엔드와 DTO 타입 공유 고려
+7. **코드 수정 시 `.claude/skills/code-modification/SKILL.md` 절차를 따른다**
 
-## 참조: `docs/02-design/04-ai-adapter-design.md`, `CLAUDE.md` (AI Character System, Tile Encoding)
+## 참조
+- `docs/02-design/04-ai-adapter-design.md`, `CLAUDE.md` (AI Character System, Tile Encoding)
+- `.claude/skills/code-modification/SKILL.md` — 코드 수정 표준 절차

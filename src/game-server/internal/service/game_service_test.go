@@ -2,7 +2,6 @@ package service
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 	"time"
 
@@ -158,17 +157,15 @@ func TestPlaceTiles_InvalidSet_ValidationOnConfirm(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, result.Success, "PlaceTiles는 유효성 검증 없이 성공해야 한다")
 
-	// ConfirmTurn에서 ValidationError 발생
+	// 규칙 S6.1: ConfirmTurn 검증 실패 → 패널티 드로우 + 에러 코드 in result
 	confirmResult, err := svc.ConfirmTurn("game-invalid-set", &ConfirmRequest{
 		Seat:        0,
 		TableGroups: tableGroups,
 	})
-	require.Error(t, err, "유효하지 않은 세트로 ConfirmTurn하면 에러가 발생해야 한다")
-	assert.False(t, confirmResult.Success)
-
-	se, ok := IsServiceError(err)
-	require.True(t, ok)
-	assert.Equal(t, engine.ErrSetSize, se.Code, "세트 크기 규칙 위반 에러 코드")
+	require.NoError(t, err, "패널티 드로우로 처리되므로 에러 없이 반환")
+	assert.True(t, confirmResult.Success)
+	assert.Equal(t, engine.ErrSetSize, confirmResult.ErrorCode, "세트 크기 규칙 위반 에러 코드")
+	assert.Greater(t, confirmResult.PenaltyDrawCount, 0)
 }
 
 func TestPlaceTiles_TableStateSnapshot(t *testing.T) {
@@ -313,13 +310,13 @@ func TestConfirmTurn_HappyPath_ValidGroup(t *testing.T) {
 }
 
 func TestConfirmTurn_InvalidMove_BelowThirty(t *testing.T) {
-	// 최초 등록 미완료 상태에서 29점 이하 배치 → 실패
+	// 최초 등록 미완료 상태에서 29점 이하 배치 → 패널티 드로우 3장 + 턴 종료
 	// R1a+R2a+R3a = 6점 → 30점 미달
 	rack0 := []string{"R1a", "R2a", "R3a", "B1a"}
 	rack1 := []string{"K1a"}
-	state := newTestGameState("game-20", twoPlayerState(rack0, rack1), []string{"Y1a"})
+	state := newTestGameState("game-20", twoPlayerState(rack0, rack1), []string{"Y1a", "Y2a", "Y3a"})
 	// HasInitialMeld = false (기본값)
-	svc, _ := seedRepo(t, state)
+	svc, repo := seedRepo(t, state)
 
 	tilesFromRack := []string{"R1a", "R2a", "R3a"}
 	tableGroups := []TilePlacement{{ID: "run-1", Tiles: tilesFromRack}}
@@ -335,28 +332,29 @@ func TestConfirmTurn_InvalidMove_BelowThirty(t *testing.T) {
 		Seat:        0,
 		TableGroups: tableGroups,
 	})
-	// ConfirmTurn은 에러와 함께 실패 결과를 반환한다
-	require.Error(t, err)
-	assert.False(t, result.Success)
-	assert.NotEmpty(t, result.ErrorCode)
+	// 규칙 S6.1: 검증 실패 → 패널티 3장 + 턴 종료 (에러 없이 성공 결과 반환)
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+	assert.Equal(t, engine.ErrInitialMeldScore, result.ErrorCode)
+	assert.Equal(t, 3, result.PenaltyDrawCount)
 
-	se, ok := IsServiceError(err)
-	require.True(t, ok)
-	// V-04: 30점 미달 → ERR_INITIAL_MELD_SCORE
-	assert.Equal(t, engine.ErrInitialMeldScore, se.Code)
-	assert.True(t, strings.Contains(err.Error(), "30"), "에러 메시지에 30점 관련 내용이 포함되어야 한다")
+	// 턴이 다음 플레이어로 넘어갔는지 확인
+	assert.Equal(t, 1, result.NextSeat)
+
+	// 랙에 패널티 타일이 추가되었는지 확인 (원래 4장 + 패널티 3장 = 7장)
+	afterState, _ := repo.GetGameState("game-20")
+	assert.Len(t, afterState.Players[0].Rack, 7, "패널티 3장이 랙에 추가되어야 한다")
+	assert.Empty(t, afterState.DrawPile, "드로우 파일에서 3장 모두 뽑아야 한다")
 }
 
 func TestConfirmTurn_InvalidMove_InvalidSet_DuplicateColor(t *testing.T) {
-	// 그룹 내 동일 색상 중복 (R7a, R7b, B7a) → 유효하지 않은 세트
+	// 그룹 내 동일 색상 중복 (R7a, R7b, B7a) → 패널티 드로우 + 턴 종료
 	rack0 := []string{"R7a", "R7b", "B7a", "K1a"}
 	rack1 := []string{"K1b"}
-	state := newTestGameState("game-21", twoPlayerState(rack0, rack1), nil)
-	svc, _ := seedRepo(t, state)
+	drawPile := []string{"Y1a", "Y2a", "Y3a"}
 
-	// HasInitialMeld=true 로 설정: 30점 규칙을 피하고 세트 유효성만 테스트
 	st, _ := seedRepo(t, func() *model.GameStateRedis {
-		s := newTestGameState("game-21b", twoPlayerState(rack0, rack1), nil)
+		s := newTestGameState("game-21b", twoPlayerState(rack0, rack1), drawPile)
 		s.Players[0].HasInitialMeld = true
 		return s
 	}())
@@ -375,21 +373,20 @@ func TestConfirmTurn_InvalidMove_InvalidSet_DuplicateColor(t *testing.T) {
 		Seat:        0,
 		TableGroups: tableGroups,
 	})
-	require.Error(t, err)
-	assert.False(t, result.Success)
-
-	se, ok := IsServiceError(err)
-	require.True(t, ok)
-	// V-14: 그룹 내 동일 색상 중복 → ERR_GROUP_COLOR_DUP
-	assert.Equal(t, engine.ErrGroupColorDup, se.Code)
-	_ = svc // 미사용 경고 방지
+	// 규칙 S6.1: 패널티 드로우 + 턴 종료
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+	assert.Equal(t, engine.ErrGroupColorDup, result.ErrorCode)
+	assert.Equal(t, 3, result.PenaltyDrawCount)
+	assert.Equal(t, 1, result.NextSeat)
 }
 
 func TestConfirmTurn_InvalidMove_NonConsecutiveRun(t *testing.T) {
-	// 숫자 불연속 런 (R3a, R5a, R7a) → 갭이 너무 커서 유효하지 않음
+	// 숫자 불연속 런 (R3a, R5a, R7a) → 패널티 드로우 + 턴 종료
 	rack0 := []string{"R3a", "R5a", "R7a", "K1a"}
 	rack1 := []string{"K2a"}
-	state := newTestGameState("game-22", twoPlayerState(rack0, rack1), nil)
+	drawPile := []string{"Y1a", "Y2a", "Y3a"}
+	state := newTestGameState("game-22", twoPlayerState(rack0, rack1), drawPile)
 	state.Players[0].HasInitialMeld = true
 	svc, _ := seedRepo(t, state)
 
@@ -407,24 +404,20 @@ func TestConfirmTurn_InvalidMove_NonConsecutiveRun(t *testing.T) {
 		Seat:        0,
 		TableGroups: tableGroups,
 	})
-	require.Error(t, err)
-	assert.False(t, result.Success)
-
-	se, ok := IsServiceError(err)
-	require.True(t, ok)
+	// 규칙 S6.1: 패널티 드로우 + 턴 종료
+	require.NoError(t, err)
+	assert.True(t, result.Success)
 	// R3a,R5a,R7a: 같은 색상이지만 숫자가 달라 그룹도 불가 → ERR_GROUP_NUMBER
-	// (ValidateTileSet은 groupErr를 우선 반환)
-	assert.Equal(t, engine.ErrGroupNumberMismatch, se.Code)
+	assert.Equal(t, engine.ErrGroupNumberMismatch, result.ErrorCode)
+	assert.Equal(t, 3, result.PenaltyDrawCount)
+	assert.Equal(t, 1, result.NextSeat)
 }
 
 func TestConfirmTurn_InvalidMove_TableTileLost(t *testing.T) {
-	// V-06: 테이블 기존 타일이 Confirm 후 사라진 경우
-	// 초기 테이블에 세트 하나가 있고, HasInitialMeld=true 인 플레이어가
-	// 테이블 타일 수를 줄이는(테이블 타일 제거) 요청을 보낸다.
+	// V-06: 테이블 기존 타일이 Confirm 후 사라진 경우 → 패널티 드로우 + 턴 종료
 	rack0 := []string{"R5a", "R6a", "R7a"}
 	rack1 := []string{"K1a"}
 
-	// 테이블에 B8a-B9a-B10a 세트가 이미 존재하는 상태
 	existingTable := []*model.SetOnTable{
 		{ID: "existing-1", Tiles: []*model.Tile{
 			{Code: "B8a"}, {Code: "B9a"}, {Code: "B10a"},
@@ -435,7 +428,7 @@ func TestConfirmTurn_InvalidMove_TableTileLost(t *testing.T) {
 		GameID:      "game-23",
 		Status:      model.GameStatusPlaying,
 		CurrentSeat: 0,
-		DrawPile:    []string{"Y1a"},
+		DrawPile:    []string{"Y1a", "Y2a", "Y3a"},
 		Table:       existingTable,
 		Players: []model.PlayerState{
 			{SeatOrder: 0, UserID: "user-A", HasInitialMeld: true, Rack: rack0},
@@ -445,11 +438,8 @@ func TestConfirmTurn_InvalidMove_TableTileLost(t *testing.T) {
 	}
 	svc, _ := seedRepo(t, state)
 
-	// place: 기존 테이블 세트를 제외하고 랙 타일만 새 세트로 추가
-	// 이때 기존 B8a-B9a-B10a 세트는 tableGroups에 포함하지 않음 → 테이블 타일 유실
 	newTableGroups := []TilePlacement{
 		{ID: "new-run", Tiles: []string{"R5a", "R6a", "R7a"}},
-		// existing-1 세트를 의도적으로 누락
 	}
 
 	_, err := svc.PlaceTiles("game-23", &PlaceRequest{
@@ -463,14 +453,12 @@ func TestConfirmTurn_InvalidMove_TableTileLost(t *testing.T) {
 		Seat:        0,
 		TableGroups: newTableGroups,
 	})
-	require.Error(t, err)
-	assert.False(t, result.Success)
-
-	se, ok := IsServiceError(err)
-	require.True(t, ok)
-	// V-03: 테이블 before/after 타일 수 동일(0 증가) → ERR_NO_RACK_TILE
-	// (기존 테이블 타일을 누락하여 새 타일로 대체하면 순증가=0이므로 V-03이 먼저 발동)
-	assert.Equal(t, engine.ErrNoRackTile, se.Code)
+	// 규칙 S6.1: 패널티 드로우 + 턴 종료
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+	assert.Equal(t, engine.ErrNoRackTile, result.ErrorCode)
+	assert.Equal(t, 3, result.PenaltyDrawCount)
+	assert.Equal(t, 1, result.NextSeat)
 }
 
 func TestConfirmTurn_NotYourTurn(t *testing.T) {
@@ -1373,10 +1361,11 @@ func TestDrawTile_U03_PassNotReachDeadlock(t *testing.T) {
 
 func TestConfirmTurn_InvalidMove_AutoRollback_RackRestored(t *testing.T) {
 	// PlaceTiles로 랙에서 타일 제거 후 ConfirmTurn 실패 시,
-	// 서버가 자동으로 스냅샷 복원하여 랙이 원래대로 돌아와야 한다.
+	// 서버가 자동으로 스냅샷 복원 + 패널티 3장 추가해야 한다.
 	rack0 := []string{"R5a", "R6a", "B1a"}
 	rack1 := []string{"K1a"}
-	state := newTestGameState("auto-rollback-1", twoPlayerState(rack0, rack1), []string{"Y1a"})
+	drawPile := []string{"Y1a", "Y2a", "Y3a"}
+	state := newTestGameState("auto-rollback-1", twoPlayerState(rack0, rack1), drawPile)
 	state.Players[0].HasInitialMeld = true
 	svc, repo := seedRepo(t, state)
 
@@ -1396,26 +1385,28 @@ func TestConfirmTurn_InvalidMove_AutoRollback_RackRestored(t *testing.T) {
 	afterPlace, _ := repo.GetGameState("auto-rollback-1")
 	assert.Equal(t, []string{"B1a"}, afterPlace.Players[0].Rack, "PlaceTiles 후 랙에서 타일 제거됨")
 
-	// ConfirmTurn 실패: 유효하지 않은 세트
-	_, err = svc.ConfirmTurn("auto-rollback-1", &ConfirmRequest{
+	// ConfirmTurn 실패: 유효하지 않은 세트 → 패널티 3장 + 턴 종료
+	result, err := svc.ConfirmTurn("auto-rollback-1", &ConfirmRequest{
 		Seat:        0,
 		TableGroups: tableGroups,
 	})
-	require.Error(t, err)
+	require.NoError(t, err)
+	assert.Equal(t, 3, result.PenaltyDrawCount)
 
-	// 자동 롤백 검증: 랙이 원래대로 복원되어야 함
+	// 자동 롤백 + 패널티 검증: 랙이 복원된 후 패널티 3장 추가
 	afterRollback, _ := repo.GetGameState("auto-rollback-1")
-	assert.ElementsMatch(t, rack0, afterRollback.Players[0].Rack,
-		"ConfirmTurn 실패 후 서버가 자동으로 랙을 복원해야 한다")
+	assert.Len(t, afterRollback.Players[0].Rack, len(rack0)+3,
+		"ConfirmTurn 실패 후 랙 복원 + 패널티 3장 추가")
 	assert.Empty(t, afterRollback.Table,
 		"ConfirmTurn 실패 후 서버가 자동으로 테이블을 복원해야 한다")
 }
 
 func TestConfirmTurn_InvalidMove_AutoRollback_TableRestored(t *testing.T) {
 	// 기존 테이블 세트가 있는 상태에서 PlaceTiles + ConfirmTurn 실패 시,
-	// 기존 테이블 세트도 복원되어야 한다.
+	// 기존 테이블 세트 복원 + 패널티 3장 추가 + 턴 종료.
 	rack0 := []string{"R3a", "R5a", "R7a", "K1a"}
 	rack1 := []string{"K2a"}
+	drawPile := []string{"Y1a", "Y2a", "Y3a"}
 
 	existingTable := []*model.SetOnTable{
 		{ID: "existing-run", Tiles: []*model.Tile{
@@ -1427,7 +1418,7 @@ func TestConfirmTurn_InvalidMove_AutoRollback_TableRestored(t *testing.T) {
 		GameID:      "auto-rollback-2",
 		Status:      model.GameStatusPlaying,
 		CurrentSeat: 0,
-		DrawPile:    []string{"Y1a"},
+		DrawPile:    drawPile,
 		Table:       existingTable,
 		Players:     twoPlayerState(rack0, rack1),
 		TurnStartAt: time.Now().Unix(),
@@ -1435,7 +1426,6 @@ func TestConfirmTurn_InvalidMove_AutoRollback_TableRestored(t *testing.T) {
 	state.Players[0].HasInitialMeld = true
 	svc, repo := seedRepo(t, state)
 
-	// 불연속 런 배치 (R3a, R5a, R7a) - 유효하지 않은 세트
 	tilesFromRack := []string{"R3a", "R5a", "R7a"}
 	tableGroups := []TilePlacement{
 		{ID: "existing-run", Tiles: []string{"B8a", "B9a", "B10a"}},
@@ -1449,18 +1439,19 @@ func TestConfirmTurn_InvalidMove_AutoRollback_TableRestored(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// ConfirmTurn 실패
-	_, err = svc.ConfirmTurn("auto-rollback-2", &ConfirmRequest{
+	// ConfirmTurn 실패 → 패널티 + 턴 종료
+	result, err := svc.ConfirmTurn("auto-rollback-2", &ConfirmRequest{
 		Seat:          0,
 		TableGroups:   tableGroups,
 		TilesFromRack: tilesFromRack,
 	})
-	require.Error(t, err)
+	require.NoError(t, err)
+	assert.Equal(t, 3, result.PenaltyDrawCount)
 
-	// 자동 롤백 검증
+	// 자동 롤백 + 패널티 검증
 	afterRollback, _ := repo.GetGameState("auto-rollback-2")
-	assert.ElementsMatch(t, rack0, afterRollback.Players[0].Rack,
-		"랙이 원래대로 복원되어야 한다")
+	assert.Len(t, afterRollback.Players[0].Rack, len(rack0)+3,
+		"랙 복원 + 패널티 3장 추가")
 	require.Len(t, afterRollback.Table, 1, "테이블에 기존 세트 1개만 있어야 한다")
 	assert.Equal(t, "existing-run", afterRollback.Table[0].ID,
 		"기존 테이블 세트가 복원되어야 한다")
@@ -1468,42 +1459,42 @@ func TestConfirmTurn_InvalidMove_AutoRollback_TableRestored(t *testing.T) {
 
 func TestConfirmTurn_InvalidMove_AutoRollback_NoSnapshot(t *testing.T) {
 	// PlaceTiles 없이 직접 ConfirmTurn 호출 시 (스냅샷 없음),
-	// 자동 롤백이 안전하게 no-op으로 동작해야 한다.
+	// 자동 롤백 + 패널티 드로우가 적용되어야 한다.
 	rack0 := []string{"R1a", "R2a", "R3a"}
 	rack1 := []string{"K1a"}
-	state := newTestGameState("auto-rollback-3", twoPlayerState(rack0, rack1), []string{"Y1a"})
+	drawPile := []string{"Y1a", "Y2a", "Y3a"}
+	state := newTestGameState("auto-rollback-3", twoPlayerState(rack0, rack1), drawPile)
 	// HasInitialMeld = false → 30점 미달로 실패할 것
 	svc, repo := seedRepo(t, state)
 
-	// PlaceTiles 없이 바로 ConfirmTurn (스냅샷 미생성 상태)
 	tilesFromRack := []string{"R1a", "R2a", "R3a"}
 	tableGroups := []TilePlacement{{ID: "run-1", Tiles: tilesFromRack}}
 
-	_, err := svc.ConfirmTurn("auto-rollback-3", &ConfirmRequest{
+	result, err := svc.ConfirmTurn("auto-rollback-3", &ConfirmRequest{
 		Seat:          0,
 		TableGroups:   tableGroups,
 		TilesFromRack: tilesFromRack,
 	})
-	require.Error(t, err)
+	// 규칙 S6.1: 패널티 + 턴 종료
+	require.NoError(t, err)
+	assert.Equal(t, 3, result.PenaltyDrawCount)
 
-	// 스냅샷 없는 경우: getOrCreateSnapshot이 현재 상태를 스냅샷으로 사용.
-	// ConfirmTurn에서 resolveRackAfter가 rackBefore에서 tilesFromRack을 제거하므로
-	// 스냅샷 복원으로 원래 랙이 복원되어야 한다.
+	// 스냅샷 없는 경우에도 랙 복원 + 패널티 3장 추가
 	afterRollback, _ := repo.GetGameState("auto-rollback-3")
-	assert.ElementsMatch(t, rack0, afterRollback.Players[0].Rack,
-		"스냅샷 없는 경우에도 랙이 원래대로 유지되어야 한다")
+	assert.Len(t, afterRollback.Players[0].Rack, len(rack0)+3,
+		"스냅샷 없는 경우에도 랙 복원 + 패널티 3장 추가")
 }
 
 func TestConfirmTurn_InvalidMove_AutoRollback_SnapshotConsumed(t *testing.T) {
-	// 자동 롤백 후 스냅샷이 소비되어야 한다.
-	// 이후 ResetTurn 호출 시 "이미 롤백됨" (스냅샷 없음) 상태로 안전하게 동작.
+	// 자동 롤백 + 패널티 드로우 후 스냅샷이 소비되고 턴이 종료되어야 한다.
 	rack0 := []string{"R5a", "R6a", "B1a"}
 	rack1 := []string{"K1a"}
-	state := newTestGameState("auto-rollback-4", twoPlayerState(rack0, rack1), []string{"Y1a"})
+	drawPile := []string{"Y1a", "Y2a", "Y3a"}
+	state := newTestGameState("auto-rollback-4", twoPlayerState(rack0, rack1), drawPile)
 	state.Players[0].HasInitialMeld = true
-	svc, _ := seedRepo(t, state)
+	svc, repo := seedRepo(t, state)
 
-	// PlaceTiles → ConfirmTurn 실패 (자동 롤백)
+	// PlaceTiles → ConfirmTurn 실패 (자동 롤백 + 패널티)
 	tilesFromRack := []string{"R5a", "R6a"}
 	tableGroups := []TilePlacement{{ID: "bad-set", Tiles: tilesFromRack}}
 
@@ -1513,15 +1504,146 @@ func TestConfirmTurn_InvalidMove_AutoRollback_SnapshotConsumed(t *testing.T) {
 		TilesFromRack: tilesFromRack,
 	})
 
-	_, err := svc.ConfirmTurn("auto-rollback-4", &ConfirmRequest{
+	result, err := svc.ConfirmTurn("auto-rollback-4", &ConfirmRequest{
 		Seat:        0,
 		TableGroups: tableGroups,
 	})
-	require.Error(t, err)
-
-	// 자동 롤백 후 ResetTurn 호출: 스냅샷이 없으므로 현재 상태 그대로 반환
-	resetResult, err := svc.ResetTurn("auto-rollback-4", 0)
 	require.NoError(t, err)
-	assert.True(t, resetResult.Success,
-		"자동 롤백 후 ResetTurn은 no-op으로 성공해야 한다")
+	assert.Equal(t, 3, result.PenaltyDrawCount)
+
+	// 턴이 다음 플레이어로 넘어갔는지 확인
+	afterState, _ := repo.GetGameState("auto-rollback-4")
+	assert.Equal(t, 1, afterState.CurrentSeat,
+		"패널티 후 턴이 다음 플레이어로 넘어가야 한다")
+}
+
+// ============================================================================
+// 규칙 S6.1 신규 테스트: 패널티 드로우 엣지 케이스
+// ============================================================================
+
+func TestConfirmTurn_InvalidMove_PenaltyDraw_DrawPileLessThanThree(t *testing.T) {
+	// 드로우 파일에 2장만 남은 경우 → 패널티 2장만 뽑음
+	rack0 := []string{"R1a", "R2a", "R3a", "B1a"}
+	rack1 := []string{"K1a"}
+	state := newTestGameState("penalty-less-3", twoPlayerState(rack0, rack1), []string{"Y1a", "Y2a"})
+	svc, repo := seedRepo(t, state)
+
+	tilesFromRack := []string{"R1a", "R2a", "R3a"}
+	tableGroups := []TilePlacement{{ID: "run-1", Tiles: tilesFromRack}}
+
+	_, err := svc.PlaceTiles("penalty-less-3", &PlaceRequest{
+		Seat:          0,
+		TableGroups:   tableGroups,
+		TilesFromRack: tilesFromRack,
+	})
+	require.NoError(t, err)
+
+	result, err := svc.ConfirmTurn("penalty-less-3", &ConfirmRequest{
+		Seat:        0,
+		TableGroups: tableGroups,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 2, result.PenaltyDrawCount, "드로우 파일 2장 → 패널티 2장만")
+
+	afterState, _ := repo.GetGameState("penalty-less-3")
+	assert.Len(t, afterState.Players[0].Rack, len(rack0)+2)
+	assert.Empty(t, afterState.DrawPile, "드로우 파일이 소진되어야 한다")
+}
+
+func TestConfirmTurn_InvalidMove_PenaltyDraw_DrawPileEmpty(t *testing.T) {
+	// 드로우 파일 0장 → 패널티 0장 (패스 처리와 유사, 턴은 종료)
+	rack0 := []string{"R1a", "R2a", "R3a", "B1a"}
+	rack1 := []string{"K1a"}
+	state := newTestGameState("penalty-empty", twoPlayerState(rack0, rack1), nil)
+	svc, repo := seedRepo(t, state)
+
+	tilesFromRack := []string{"R1a", "R2a", "R3a"}
+	tableGroups := []TilePlacement{{ID: "run-1", Tiles: tilesFromRack}}
+
+	_, err := svc.PlaceTiles("penalty-empty", &PlaceRequest{
+		Seat:          0,
+		TableGroups:   tableGroups,
+		TilesFromRack: tilesFromRack,
+	})
+	require.NoError(t, err)
+
+	result, err := svc.ConfirmTurn("penalty-empty", &ConfirmRequest{
+		Seat:        0,
+		TableGroups: tableGroups,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 0, result.PenaltyDrawCount, "드로우 파일 0장 → 패널티 0장")
+	assert.Equal(t, 1, result.NextSeat, "턴은 여전히 종료되어 다음 플레이어로")
+
+	afterState, _ := repo.GetGameState("penalty-empty")
+	assert.Len(t, afterState.Players[0].Rack, len(rack0), "랙 변동 없음 (패널티 0장)")
+}
+
+func TestConfirmTurn_InvalidMove_PenaltyDraw_ResetsConsecutivePassCount(t *testing.T) {
+	// 패널티 드로우 후 교착 카운터가 리셋되는지 확인
+	rack0 := []string{"R1a", "R2a", "R3a", "B1a"}
+	rack1 := []string{"K1a"}
+	state := newTestGameState("penalty-pass-reset", twoPlayerState(rack0, rack1), []string{"Y1a", "Y2a", "Y3a"})
+	state.ConsecutivePassCount = 1 // 이전에 패스가 있었음
+	svc, repo := seedRepo(t, state)
+
+	tilesFromRack := []string{"R1a", "R2a", "R3a"}
+	tableGroups := []TilePlacement{{ID: "run-1", Tiles: tilesFromRack}}
+
+	_, err := svc.PlaceTiles("penalty-pass-reset", &PlaceRequest{
+		Seat: 0, TableGroups: tableGroups, TilesFromRack: tilesFromRack,
+	})
+	require.NoError(t, err)
+
+	_, err = svc.ConfirmTurn("penalty-pass-reset", &ConfirmRequest{
+		Seat: 0, TableGroups: tableGroups,
+	})
+	require.NoError(t, err)
+
+	afterState, _ := repo.GetGameState("penalty-pass-reset")
+	assert.Equal(t, 0, afterState.ConsecutivePassCount, "패널티 드로우 후 교착 카운터 리셋")
+}
+
+// ============================================================================
+// 규칙 S8.1 신규 테스트: ConsecutiveForceDrawCount (service 레벨)
+// ============================================================================
+
+func TestPlayerState_ConsecutiveForceDrawCount_ZeroDefault(t *testing.T) {
+	// 새 게임에서 카운터가 0인지 확인
+	rack0 := []string{"R1a"}
+	rack1 := []string{"K1a"}
+	state := newTestGameState("force-draw-default", twoPlayerState(rack0, rack1), nil)
+	assert.Equal(t, 0, state.Players[0].ConsecutiveForceDrawCount)
+	assert.Equal(t, 0, state.Players[1].ConsecutiveForceDrawCount)
+}
+
+// ============================================================================
+// 규칙 S8.2 신규 테스트: ConsecutiveAbsentTurns + SetPlayerStatus 리셋
+// ============================================================================
+
+func TestSetPlayerStatus_Active_ResetsAbsentTurns(t *testing.T) {
+	// DISCONNECTED → ACTIVE 전환 시 ConsecutiveAbsentTurns 리셋
+	rack0 := []string{"R1a"}
+	rack1 := []string{"K1a"}
+	state := newTestGameState("absent-reset", twoPlayerState(rack0, rack1), nil)
+	state.Players[0].Status = model.PlayerStatusDisconnected
+	state.Players[0].ConsecutiveAbsentTurns = 2
+	svc, repo := seedRepo(t, state)
+
+	err := svc.SetPlayerStatus("absent-reset", 0, model.PlayerStatusActive)
+	require.NoError(t, err)
+
+	saved, _ := repo.GetGameState("absent-reset")
+	assert.Equal(t, model.PlayerStatusActive, saved.Players[0].Status)
+	assert.Equal(t, 0, saved.Players[0].ConsecutiveAbsentTurns,
+		"ACTIVE 전환 시 부재 카운터 리셋")
+}
+
+func TestPlayerState_ConsecutiveAbsentTurns_ZeroDefault(t *testing.T) {
+	// 새 게임에서 부재 카운터가 0인지 확인
+	rack0 := []string{"R1a"}
+	rack1 := []string{"K1a"}
+	state := newTestGameState("absent-default", twoPlayerState(rack0, rack1), nil)
+	assert.Equal(t, 0, state.Players[0].ConsecutiveAbsentTurns)
+	assert.Equal(t, 0, state.Players[1].ConsecutiveAbsentTurns)
 }

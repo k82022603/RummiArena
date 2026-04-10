@@ -68,6 +68,11 @@ type PlayerState struct {
 	Rack           []string               `json:"rack"`
 	Status         PlayerConnectionStatus `json:"status"`         // ACTIVE, DISCONNECTED, FORFEITED
 	DisconnectedAt int64                  `json:"disconnectedAt"` // Unix timestamp (ms), DISCONNECTED 전환 시각
+	// 규칙 S8.1: AI 연속 강제 드로우 카운터 (5회 도달 시 비활성화)
+	ConsecutiveForceDrawCount int `json:"consecutiveForceDrawCount"`
+	// 규칙 S8.2: 끊김 상태에서 연속 부재 턴 카운터 (3회 도달 시 기권)
+	ConsecutiveAbsentTurns int `json:"consecutiveAbsentTurns"`
+
 	// AI 플레이어 설정 (PlayerType이 AI_* 인 경우에만 사용)
 	AIModel      string `json:"aiModel,omitempty"`
 	AIPersona    string `json:"aiPersona,omitempty"`

@@ -37,8 +37,9 @@ export class RateLimitGuard extends ThrottlerGuard {
 
         throw new HttpException(
           {
-            error: 'RATE_LIMITED',
-            message: 'Too many requests',
+            code: 'RATE_LIMITED',
+            error: 'Rate Limit Exceeded',
+            message: '요청이 너무 많습니다. 잠시 후 다시 시도해주세요.',
             retryAfter: 30,
           },
           HttpStatus.TOO_MANY_REQUESTS,

@@ -14,6 +14,18 @@ model: opus
 - E2E 테스트 (게임 시나리오)
 - 게임 규칙 검증 (V-01~V-15, 15개 규칙)
 - SonarQube Quality Gate 관리
+- **코드 수정 후 검증 게이트** (code-fix 워크플로우 Phase 3 담당)
+
+## 코드 수정 검증 책임 (Phase 3)
+Dev 에이전트의 코드 수정 완료 후 **마지막에** 실행되어 다음을 수행한다:
+1. `git diff` 확인 — 아키텍트 계획서와 실제 변경이 일치하는지 대조
+2. 빌드 확인 — 전체 서비스 빌드 통과 여부
+3. 관련 테스트 실행 — 수정 관련 단위 테스트 + 회귀 테스트
+4. 누락 확인 — 계획서에 있지만 구현되지 않은 항목 식별
+5. 의도치 않은 변경 — 계획 범위 밖 수정이 있는지 확인
+6. **PASS/FAIL 판정** — FAIL 시 구체적 수정 요청을 Dev에게 전달
+
+검증 절차는 `.claude/skills/code-fix/SKILL.md` Phase 3 참조.
 
 ## 테스트 비율
 | Unit (testify/jest) 70% | Integration (httptest/supertest) 20% | E2E (Playwright/k6) 10% |

@@ -30,6 +30,7 @@ const (
 	S2CPlayerDisconnected = "PLAYER_DISCONNECTED"
 	S2CPlayerForfeited    = "PLAYER_FORFEITED"
 	S2CDrawPileEmpty      = "DRAW_PILE_EMPTY"
+	S2CAIDeactivated      = "AI_DEACTIVATED" // 규칙 S8.1: AI 5턴 연속 강제 드로우 비활성화
 	S2CError              = "ERROR"
 	S2CPong               = "PONG"
 	S2CChatBroadcast      = "CHAT_BROADCAST"
@@ -160,6 +161,7 @@ type TurnEndPayload struct {
 	MyRack           []string       `json:"myRack,omitempty"`
 	IsFallbackDraw   bool           `json:"isFallbackDraw,omitempty"`
 	FallbackReason   string         `json:"fallbackReason,omitempty"` // "AI_TIMEOUT", "INVALID_MOVE", "AI_ERROR"
+	PenaltyDrawCount int            `json:"penaltyDrawCount,omitempty"` // 규칙 S6.1: 패널티 드로우 장수
 }
 
 // TilePlacedPayload TILE_PLACED 페이로드 (실시간 피드백)
@@ -261,4 +263,11 @@ type PlayerForfeitedPayload struct {
 // DrawPileEmptyPayload DRAW_PILE_EMPTY 페이로드
 type DrawPileEmptyPayload struct {
 	Message string `json:"message"`
+}
+
+// AIDeactivatedPayload AI_DEACTIVATED 페이로드 (규칙 S8.1)
+type AIDeactivatedPayload struct {
+	Seat        int    `json:"seat"`
+	DisplayName string `json:"displayName"`
+	Reason      string `json:"reason"` // "AI_FORCE_DRAW_LIMIT"
 }

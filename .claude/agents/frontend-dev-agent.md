@@ -24,5 +24,8 @@ Next.js (App Router), TailwindCSS, Framer Motion, dnd-kit, Zustand, next-auth
 3. 타일 렌더링 성능 최적화 (메모이제이션)
 4. WebSocket 끊김 시 자동 재연결
 5. 접근성(a11y) 기본 준수
+6. **코드 수정 시 `.claude/skills/code-modification/SKILL.md` 절차를 따른다**
 
-## 참조: `docs/02-design/03-api-design.md`, `docs/02-design/05-game-session-design.md`, `docs/simulation/`
+## 참조
+- `docs/02-design/03-api-design.md`, `docs/02-design/05-game-session-design.md`, `docs/simulation/`
+- `.claude/skills/code-modification/SKILL.md` — 코드 수정 표준 절차

@@ -39,12 +39,13 @@ type ConfirmRequest struct {
 
 // GameActionResult 게임 액션 처리 결과 DTO
 type GameActionResult struct {
-	Success   bool                  `json:"success"`
-	NextSeat  int                   `json:"nextSeat"`
-	GameEnded bool                  `json:"gameEnded,omitempty"`
-	WinnerID  string                `json:"winnerId,omitempty"`
-	GameState *model.GameStateRedis `json:"gameState,omitempty"`
-	ErrorCode string                `json:"errorCode,omitempty"`
+	Success          bool                  `json:"success"`
+	NextSeat         int                   `json:"nextSeat"`
+	GameEnded        bool                  `json:"gameEnded,omitempty"`
+	WinnerID         string                `json:"winnerId,omitempty"`
+	GameState        *model.GameStateRedis `json:"gameState,omitempty"`
+	ErrorCode        string                `json:"errorCode,omitempty"`
+	PenaltyDrawCount int                   `json:"penaltyDrawCount,omitempty"` // 규칙 S6.1: 패널티 드로우 장수
 }
 
 // GameService 게임 생명주기 비즈니스 로직
@@ -56,6 +57,10 @@ type GameService interface {
 	ResetTurn(gameID string, seat int) (*GameActionResult, error)
 	ForfeitPlayer(gameID string, seat int, reason string) (*GameActionResult, error)
 	SetPlayerStatus(gameID string, seat int, status model.PlayerConnectionStatus) error
+	// SaveGameState 게임 상태를 직접 영속화한다 (handler에서 카운터 업데이트 후 사용).
+	SaveGameState(state *model.GameStateRedis) error
+	// GetRawGameState 원시 GameStateRedis를 반환한다 (handler에서 부재/카운터 판정 시 사용).
+	GetRawGameState(gameID string) (*model.GameStateRedis, error)
 }
 
 // GameStateView 1인칭 뷰 게임 상태.
@@ -319,12 +324,9 @@ func (s *gameService) ConfirmTurn(gameID string, req *ConfirmRequest) (*GameActi
 	}
 
 	if err := engine.ValidateTurnConfirm(validateReq); err != nil {
-		// Stateless 서버 원칙: 검증 실패 시 서버가 자동으로 스냅샷 복원 (클라이언트 롤백 의존 제거)
-		if s.restoreSnapshot(state, gameID, req.Seat, playerIdx) {
-			// best-effort 저장: 복원된 상태를 영속화한다. 저장 실패 시에도 원래 검증 에러를 반환한다.
-			_ = s.gameRepo.SaveGameState(state)
-		}
-		return s.buildValidationFailResult(state, err), &ServiceError{Code: extractErrCode(err), Message: err.Error(), Status: 422}
+		// 규칙 S6.1/S6.4: 검증 실패 시 스냅샷 복원 + 패널티 드로우 3장 + 턴 종료
+		s.restoreSnapshot(state, gameID, req.Seat, playerIdx)
+		return s.penaltyDrawAndAdvance(state, gameID, req.Seat, playerIdx, 3, extractErrCode(err))
 	}
 
 	// 검증 통과: 테이블 + 랙 확정
@@ -501,6 +503,48 @@ func (s *gameService) advanceToNextTurn(state *model.GameStateRedis) (*GameActio
 		return nil, fmt.Errorf("game_service: save after confirm: %w", err)
 	}
 	return &GameActionResult{Success: true, NextSeat: nextSeat, GameState: state}, nil
+}
+
+// penaltyDrawAndAdvance 패널티 드로우를 수행하고 다음 턴으로 전환한다.
+// 규칙 S6.1/S6.4: ConfirmTurn 검증 실패 시 스냅샷 복원 후 패널티 타일을 뽑아 랙에 추가하고 턴을 종료한다.
+// count: 뽑을 타일 수 (보통 3장), 드로우 파일이 부족하면 min(count, len(DrawPile))장만 뽑는다.
+func (s *gameService) penaltyDrawAndAdvance(state *model.GameStateRedis, gameID string, seat, playerIdx, count int, errorCode string) (*GameActionResult, error) {
+	drawCount := count
+	if drawCount > len(state.DrawPile) {
+		drawCount = len(state.DrawPile)
+	}
+
+	for i := 0; i < drawCount; i++ {
+		state.Players[playerIdx].Rack = append(state.Players[playerIdx].Rack, state.DrawPile[0])
+		state.DrawPile = state.DrawPile[1:]
+	}
+
+	// 패널티 드로우도 게임 진행으로 간주 → 교착 카운터 리셋
+	state.ConsecutivePassCount = 0
+
+	// 스냅샷 삭제 (턴 종료)
+	snapKey := snapshotKey(gameID, seat)
+	s.snapshotMu.Lock()
+	delete(s.snapshots, snapKey)
+	s.snapshotMu.Unlock()
+
+	// 다음 턴으로 전환
+	nextSeat := advanceTurn(state)
+	state.CurrentSeat = nextSeat
+	state.TurnStartAt = time.Now().Unix()
+	state.TurnCount++
+
+	if err := s.gameRepo.SaveGameState(state); err != nil {
+		return nil, fmt.Errorf("game_service: save after penalty draw: %w", err)
+	}
+
+	return &GameActionResult{
+		Success:          true,
+		NextSeat:         nextSeat,
+		GameState:        state,
+		ErrorCode:        errorCode,
+		PenaltyDrawCount: drawCount,
+	}, nil
 }
 
 // DrawTile 드로우 파일에서 1장을 뽑아 플레이어 랙에 추가하고 다음 턴으로 넘긴다.
@@ -700,9 +744,25 @@ func (s *gameService) SetPlayerStatus(gameID string, seat int, status model.Play
 		state.Players[playerIdx].DisconnectedAt = time.Now().UnixMilli()
 	case model.PlayerStatusActive:
 		state.Players[playerIdx].DisconnectedAt = 0
+		// 규칙 S8.2: 재연결 시 부재 턴 카운터 리셋
+		state.Players[playerIdx].ConsecutiveAbsentTurns = 0
 	}
 
 	return s.gameRepo.SaveGameState(state)
+}
+
+// SaveGameState 게임 상태를 직접 영속화한다.
+func (s *gameService) SaveGameState(state *model.GameStateRedis) error {
+	return s.gameRepo.SaveGameState(state)
+}
+
+// GetRawGameState 원시 GameStateRedis를 반환한다.
+func (s *gameService) GetRawGameState(gameID string) (*model.GameStateRedis, error) {
+	state, err := s.gameRepo.GetGameState(gameID)
+	if err != nil {
+		return nil, &ServiceError{Code: "NOT_FOUND", Message: errMsgGameNotFound, Status: 404}
+	}
+	return state, nil
 }
 
 // --- 내부 헬퍼 함수 ---

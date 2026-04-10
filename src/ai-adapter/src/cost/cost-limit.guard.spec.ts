@@ -88,7 +88,7 @@ describe('CostLimitGuard', () => {
   // 일일 한도 초과
   // -----------------------------------------------------------------------
   describe('일일 한도 초과', () => {
-    it('openai 요청이 일일 한도 초과 시 429 에러를 던진다', async () => {
+    it('openai 요청이 일일 한도 초과 시 403 에러를 던진다', async () => {
       costTrackingService.isDailyLimitExceeded.mockResolvedValueOnce(true);
       const context = createMockExecutionContext('openai');
 
@@ -99,11 +99,12 @@ describe('CostLimitGuard', () => {
         await guard.canActivate(context);
       } catch (err) {
         expect((err as HttpException).getStatus()).toBe(
-          HttpStatus.TOO_MANY_REQUESTS,
+          HttpStatus.FORBIDDEN,
         );
         const response = (err as HttpException).getResponse() as any;
         expect(response.allowedModels).toContain('ollama');
         expect(response.error).toBe('Daily Cost Limit Exceeded');
+        expect(response.code).toBe('DAILY_COST_LIMIT_EXCEEDED');
       }
     });
 
@@ -126,7 +127,7 @@ describe('CostLimitGuard', () => {
   // 시간당 사용자/게임 비용 한도 초과 (SEC-RL-002)
   // -----------------------------------------------------------------------
   describe('시간당 사용자 비용 한도 초과', () => {
-    it('시간당 한도 초과 시 429 에러를 던진다', async () => {
+    it('시간당 한도 초과 시 403 에러를 던진다', async () => {
       costTrackingService.isDailyLimitExceeded.mockResolvedValueOnce(false);
       costTrackingService.isUserHourlyLimitExceeded.mockResolvedValueOnce(true);
       const context = createMockExecutionContext('openai', 'game-001');
@@ -139,10 +140,11 @@ describe('CostLimitGuard', () => {
         await guard.canActivate(context);
       } catch (err) {
         expect((err as HttpException).getStatus()).toBe(
-          HttpStatus.TOO_MANY_REQUESTS,
+          HttpStatus.FORBIDDEN,
         );
         const response = (err as HttpException).getResponse() as any;
         expect(response.error).toBe('Hourly User Cost Limit Exceeded');
+        expect(response.code).toBe('HOURLY_COST_LIMIT_EXCEEDED');
         expect(response.message).toBe(
           '시간당 사용자 비용 한도를 초과했습니다. 잠시 후 다시 시도해주세요.',
         );

@@ -58,7 +58,8 @@ func countAllTiles(state *model.GameStateRedis) int {
 func TestRegression_InvalidMove_ServerAutoRestore_Rack(t *testing.T) {
 	originalRack := []string{"R1a", "R2a", "R3a", "B5a", "Y8a"}
 	rack1 := []string{"K1a"}
-	state := newTestGameState("reg-restore-1", twoPlayerState(originalRack, rack1), []string{"Y1a"})
+	drawPile := []string{"Y1a", "Y2a", "Y3a"}
+	state := newTestGameState("reg-restore-1", twoPlayerState(originalRack, rack1), drawPile)
 	state.Players[0].HasInitialMeld = true
 	svc, repo := seedRepo(t, state)
 
@@ -74,18 +75,19 @@ func TestRegression_InvalidMove_ServerAutoRestore_Rack(t *testing.T) {
 	mid, _ := repo.GetGameState("reg-restore-1")
 	assert.Len(t, mid.Players[0].Rack, 3, "PlaceTiles 후 랙은 3장이어야 한다")
 
-	// ConfirmTurn: 검증 실패 (2장 세트는 ErrSetSize)
+	// ConfirmTurn: 검증 실패 → 패널티 3장 + 턴 종료 (규칙 S6.1)
 	result, err := svc.ConfirmTurn("reg-restore-1", &ConfirmRequest{
 		Seat:        0,
 		TableGroups: []TilePlacement{{ID: "bad", Tiles: []string{"R1a", "R2a"}}},
 	})
-	require.Error(t, err)
-	assert.False(t, result.Success)
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+	assert.Equal(t, 3, result.PenaltyDrawCount)
 
-	// 핵심 검증: 서버 자동 복원으로 랙이 원래 상태로 돌아가야 한다
+	// 핵심 검증: 서버 자동 복원 후 패널티 3장 추가
 	restored, _ := repo.GetGameState("reg-restore-1")
-	assert.ElementsMatch(t, originalRack, restored.Players[0].Rack,
-		"INVALID_MOVE 후 랙이 원래 상태로 자동 복원되어야 한다")
+	assert.Len(t, restored.Players[0].Rack, len(originalRack)+3,
+		"INVALID_MOVE 후 랙이 복원 + 패널티 3장 추가되어야 한다")
 
 	// 테이블도 빈 상태(원래)로 복원
 	assert.Empty(t, restored.Table, "INVALID_MOVE 후 테이블도 원래 상태로 복원되어야 한다")
@@ -107,7 +109,7 @@ func TestRegression_InvalidMove_ServerAutoRestore_WithExistingTable(t *testing.T
 		GameID:      "reg-restore-2",
 		Status:      model.GameStatusPlaying,
 		CurrentSeat: 0,
-		DrawPile:    []string{"Y1a"},
+		DrawPile:    []string{"Y1a", "Y2a", "Y3a"},
 		Table:       existingTable,
 		Players:     twoPlayerState(rack0, rack1),
 		TurnStartAt: time.Now().Unix(),
@@ -131,8 +133,10 @@ func TestRegression_InvalidMove_ServerAutoRestore_WithExistingTable(t *testing.T
 		Seat:        0,
 		TableGroups: tableGroups,
 	})
-	require.Error(t, err)
-	assert.False(t, result.Success)
+	// 규칙 S6.1: 패널티 드로우 + 턴 종료
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+	assert.Equal(t, 3, result.PenaltyDrawCount)
 
 	// 복원 검증: 테이블은 기존 1개 세트만 남아야 한다
 	restored, _ := repo.GetGameState("reg-restore-2")
@@ -140,16 +144,17 @@ func TestRegression_InvalidMove_ServerAutoRestore_WithExistingTable(t *testing.T
 	assert.Equal(t, "existing-run", restored.Table[0].ID)
 	assert.Len(t, restored.Table[0].Tiles, 3)
 
-	// 랙도 원래대로
-	assert.ElementsMatch(t, rack0, restored.Players[0].Rack)
+	// 랙: 원래 5장 + 패널티 3장
+	assert.Len(t, restored.Players[0].Rack, len(rack0)+3)
 }
 
-// TestRegression_InvalidMove_DoesNotAdvanceTurn
-// INVALID_MOVE 후에는 턴이 넘어가지 않아야 한다.
-func TestRegression_InvalidMove_DoesNotAdvanceTurn(t *testing.T) {
+// TestRegression_InvalidMove_AdvancesTurnWithPenalty
+// 규칙 S6.1: INVALID_MOVE 후 패널티 드로우 + 턴이 넘어가야 한다.
+func TestRegression_InvalidMove_AdvancesTurnWithPenalty(t *testing.T) {
 	rack0 := []string{"R1a", "R2a", "R3a", "B1a"}
 	rack1 := []string{"K1a"}
-	state := newTestGameState("reg-no-advance", twoPlayerState(rack0, rack1), []string{"Y1a"})
+	drawPile := []string{"Y1a", "Y2a", "Y3a"}
+	state := newTestGameState("reg-no-advance", twoPlayerState(rack0, rack1), drawPile)
 	svc, repo := seedRepo(t, state)
 
 	tilesFromRack := []string{"R1a", "R2a", "R3a"}
@@ -162,18 +167,19 @@ func TestRegression_InvalidMove_DoesNotAdvanceTurn(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// ConfirmTurn: 30점 미달 (1+2+3=6점)
+	// ConfirmTurn: 30점 미달 (1+2+3=6점) → 패널티 3장 + 턴 종료
 	result, err := svc.ConfirmTurn("reg-no-advance", &ConfirmRequest{
 		Seat:        0,
 		TableGroups: tableGroups,
 	})
-	require.Error(t, err)
-	assert.False(t, result.Success)
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+	assert.Equal(t, 3, result.PenaltyDrawCount)
 
-	// 턴은 여전히 seat 0
+	// 턴이 다음 플레이어(seat 1)로 넘어가야 한다
 	saved, _ := repo.GetGameState("reg-no-advance")
-	assert.Equal(t, 0, saved.CurrentSeat,
-		"INVALID_MOVE 후 턴이 넘어가지 않아야 한다")
+	assert.Equal(t, 1, saved.CurrentSeat,
+		"패널티 드로우 후 턴이 다음 플레이어로 넘어가야 한다")
 }
 
 // ============================================================================
@@ -375,17 +381,18 @@ func TestRegression_Conservation_AfterInvalidMove_Restore(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// ConfirmTurn 실패 -> 자동 복원
-	_, err = svc.ConfirmTurn("reg-cons-invalid", &ConfirmRequest{
+	// ConfirmTurn 실패 → 자동 복원 + 패널티 드로우 (규칙 S6.1)
+	result, err := svc.ConfirmTurn("reg-cons-invalid", &ConfirmRequest{
 		Seat:        0,
 		TableGroups: []TilePlacement{{ID: "bad", Tiles: []string{"R1a", "R2a"}}},
 	})
-	require.Error(t, err)
+	require.NoError(t, err)
+	assert.Equal(t, 3, result.PenaltyDrawCount)
 
 	saved, _ := repo.GetGameState("reg-cons-invalid")
 	totalAfter := countAllTiles(saved)
 	assert.Equal(t, totalBefore, totalAfter,
-		"INVALID_MOVE 자동 복원 후 총합이 불변이어야 한다: before=%d, after=%d", totalBefore, totalAfter)
+		"패널티 드로우 후 총합이 불변이어야 한다 (드로우 파일→랙 이동): before=%d, after=%d", totalBefore, totalAfter)
 }
 
 // ============================================================================
@@ -530,7 +537,7 @@ func TestRegression_ConfirmTurn_ErrorCodes_Correct(t *testing.T) {
 				s := newTestGameState("reg-err-size", twoPlayerState(
 					[]string{"R5a", "R6a", "K1a"},
 					[]string{"B1a"},
-				), []string{"Y1a"})
+				), []string{"Y1a", "Y2a", "Y3a"})
 				s.Players[0].HasInitialMeld = true
 				return s
 			},
@@ -544,7 +551,7 @@ func TestRegression_ConfirmTurn_ErrorCodes_Correct(t *testing.T) {
 				return newTestGameState("reg-err-meld", twoPlayerState(
 					[]string{"R1a", "R2a", "R3a", "K1a"},
 					[]string{"B1a"},
-				), []string{"Y1a"})
+				), []string{"Y1a", "Y2a", "Y3a"})
 			},
 			tableGroups:   []TilePlacement{{ID: "run-1", Tiles: []string{"R1a", "R2a", "R3a"}}},
 			tilesFromRack: []string{"R1a", "R2a", "R3a"},
@@ -556,7 +563,7 @@ func TestRegression_ConfirmTurn_ErrorCodes_Correct(t *testing.T) {
 				s := newTestGameState("reg-err-color-dup", twoPlayerState(
 					[]string{"R7a", "R7b", "B7a", "K1a"},
 					[]string{"B1a"},
-				), []string{"Y1a"})
+				), []string{"Y1a", "Y2a", "Y3a"})
 				s.Players[0].HasInitialMeld = true
 				return s
 			},
@@ -579,17 +586,16 @@ func TestRegression_ConfirmTurn_ErrorCodes_Correct(t *testing.T) {
 			})
 			require.NoError(t, err)
 
+			// 규칙 S6.1: 검증 실패 → 패널티 드로우 + 에러 코드 in result
 			result, err := svc.ConfirmTurn(gameID, &ConfirmRequest{
 				Seat:        0,
 				TableGroups: tc.tableGroups,
 			})
-			require.Error(t, err)
-			assert.False(t, result.Success)
-
-			se, ok := IsServiceError(err)
-			require.True(t, ok, "에러가 ServiceError 타입이어야 한다")
-			assert.Equal(t, tc.expectedCode, se.Code,
-				"에러 코드가 %q이어야 한다, 실제: %q", tc.expectedCode, se.Code)
+			require.NoError(t, err)
+			assert.True(t, result.Success)
+			assert.Greater(t, result.PenaltyDrawCount, 0)
+			assert.Equal(t, tc.expectedCode, result.ErrorCode,
+				"에러 코드가 %q이어야 한다, 실제: %q", tc.expectedCode, result.ErrorCode)
 		})
 	}
 }
@@ -726,13 +732,14 @@ func TestRegression_NewGame_Conservation_AllPlayerCounts(t *testing.T) {
 // 10. INVALID_MOVE -> 자동복원 -> ResetTurn noop 검증
 // ============================================================================
 
-// TestRegression_InvalidMove_AutoRestore_ThenResetIsNoop
-// ConfirmTurn 실패 시 서버가 자동 복원하면, 이후 ResetTurn은 no-op이어야 한다
-// (스냅샷이 이미 사용+삭제되었으므로).
-func TestRegression_InvalidMove_AutoRestore_ThenResetIsNoop(t *testing.T) {
+// TestRegression_InvalidMove_AutoRestore_TurnAdvancesAndSnapshotConsumed
+// 규칙 S6.1: ConfirmTurn 실패 시 자동 복원 + 패널티 + 턴 종료.
+// 턴이 다음 플레이어로 넘어가므로 seat 0의 ResetTurn은 NOT_YOUR_TURN 에러.
+func TestRegression_InvalidMove_AutoRestore_TurnAdvancesAndSnapshotConsumed(t *testing.T) {
 	rack0 := []string{"R1a", "R2a", "R3a", "B5a"}
 	rack1 := []string{"K1a"}
-	state := newTestGameState("reg-restore-reset", twoPlayerState(rack0, rack1), []string{"Y1a"})
+	drawPile := []string{"Y1a", "Y2a", "Y3a"}
+	state := newTestGameState("reg-restore-reset", twoPlayerState(rack0, rack1), drawPile)
 	state.Players[0].HasInitialMeld = true
 	svc, repo := seedRepo(t, state)
 
@@ -744,24 +751,22 @@ func TestRegression_InvalidMove_AutoRestore_ThenResetIsNoop(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// ConfirmTurn 실패 -> 자동 복원
-	_, err = svc.ConfirmTurn("reg-restore-reset", &ConfirmRequest{
+	// ConfirmTurn 실패 → 패널티 3장 + 턴 종료
+	result, err := svc.ConfirmTurn("reg-restore-reset", &ConfirmRequest{
 		Seat:        0,
 		TableGroups: []TilePlacement{{ID: "bad", Tiles: []string{"R1a", "R2a"}}},
 	})
-	require.Error(t, err)
-
-	// 자동 복원 후 상태
-	afterRestore, _ := repo.GetGameState("reg-restore-reset")
-	assert.ElementsMatch(t, rack0, afterRestore.Players[0].Rack)
-
-	// ResetTurn: 스냅샷이 이미 삭제되었으므로 no-op
-	result, err := svc.ResetTurn("reg-restore-reset", 0)
 	require.NoError(t, err)
-	assert.True(t, result.Success)
+	assert.Equal(t, 3, result.PenaltyDrawCount)
 
-	// 상태 변화 없음
-	afterReset, _ := repo.GetGameState("reg-restore-reset")
-	assert.ElementsMatch(t, rack0, afterReset.Players[0].Rack,
-		"ResetTurn 후 랙은 자동 복원된 상태 그대로여야 한다")
+	// 자동 복원 + 패널티 후 상태
+	afterRestore, _ := repo.GetGameState("reg-restore-reset")
+	assert.Len(t, afterRestore.Players[0].Rack, len(rack0)+3,
+		"랙 복원 + 패널티 3장 추가")
+	assert.Equal(t, 1, afterRestore.CurrentSeat,
+		"턴이 다음 플레이어로 넘어가야 한다")
+
+	// seat 0의 ResetTurn은 NOT_YOUR_TURN (이미 턴이 넘어감)
+	_, err = svc.ResetTurn("reg-restore-reset", 0)
+	require.Error(t, err)
 }

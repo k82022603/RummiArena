@@ -411,7 +411,7 @@ func TestConfirmTurn_JokerSwap_NotReplaced(t *testing.T) {
 		GameID:      "joker-swap-2",
 		Status:      model.GameStatusPlaying,
 		CurrentSeat: 0,
-		DrawPile:    []string{"Y1a"},
+		DrawPile:    []string{"Y1a", "Y2a", "Y3a"},
 		Table:       existingTable,
 		Players: []model.PlayerState{
 			{SeatOrder: 0, UserID: "u0", PlayerType: "HUMAN", HasInitialMeld: true, Rack: rack0},
@@ -442,12 +442,11 @@ func TestConfirmTurn_JokerSwap_NotReplaced(t *testing.T) {
 		TilesFromRack:      tilesFromRack,
 		JokerReturnedCodes: []string{"JK1"},
 	})
-	require.Error(t, err)
-	assert.False(t, result.Success)
-
-	se, ok := IsServiceError(err)
-	require.True(t, ok)
-	assert.Equal(t, engine.ErrJokerNotUsed, se.Code)
+	// 규칙 S6.1: 검증 실패 → 패널티 드로우 + 턴 종료
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+	assert.Equal(t, engine.ErrJokerNotUsed, result.ErrorCode)
+	assert.Greater(t, result.PenaltyDrawCount, 0)
 }
 
 func TestConfirmTurn_InitialMeld_ExactlyThirty(t *testing.T) {
@@ -515,7 +514,7 @@ func TestConfirmTurn_InitialMeld_ModifyExistingSet(t *testing.T) {
 		GameID:      "initial-modify-1",
 		Status:      model.GameStatusPlaying,
 		CurrentSeat: 0,
-		DrawPile:    []string{"Y1a"},
+		DrawPile:    []string{"Y1a", "Y2a", "Y3a"},
 		Table:       existingTable,
 		Players: []model.PlayerState{
 			{SeatOrder: 0, UserID: "u0", PlayerType: "HUMAN", HasInitialMeld: false, Rack: rack0},
@@ -548,13 +547,11 @@ func TestConfirmTurn_InitialMeld_ModifyExistingSet(t *testing.T) {
 		TableGroups:   tableAfter,
 		TilesFromRack: tilesFromRack,
 	})
-	require.Error(t, err)
-	assert.False(t, result.Success)
-
-	se, ok := IsServiceError(err)
-	require.True(t, ok)
-	// V-05: 최초 등록 전 기존 테이블 타일 재배치(제거) -> ERR_INITIAL_MELD_SOURCE
-	assert.Equal(t, engine.ErrInitialMeldSource, se.Code)
+	// 규칙 S6.1: 검증 실패 → 패널티 드로우 + 턴 종료
+	require.NoError(t, err)
+	assert.True(t, result.Success)
+	assert.Equal(t, engine.ErrInitialMeldSource, result.ErrorCode)
+	assert.Greater(t, result.PenaltyDrawCount, 0)
 }
 
 func TestConfirmTurn_MultipleValidSets(t *testing.T) {

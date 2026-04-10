@@ -434,20 +434,7 @@ func (h *WSHandler) handleConfirmTurn(conn *Connection, env *WSEnvelope) {
 
 	result, err := h.gameSvc.ConfirmTurn(conn.gameID, req)
 	if err != nil {
-		// 검증 실패 → INVALID_MOVE
-		if result != nil && !result.Success {
-			conn.Send(&WSMessage{
-				Type: S2CInvalidMove,
-				Payload: InvalidMovePayload{
-					Errors: []WSValidationError{{
-						Code:    result.ErrorCode,
-						Message: err.Error(),
-					}},
-				},
-			})
-			return
-		}
-		// 기타 에러
+		// 기타 에러 (NOT_FOUND, NOT_YOUR_TURN 등)
 		if svcErr, ok := service.IsServiceError(err); ok {
 			conn.SendError(svcErr.Code, svcErr.Message)
 			return
@@ -465,7 +452,15 @@ func (h *WSHandler) handleConfirmTurn(conn *Connection, env *WSEnvelope) {
 		return
 	}
 
-	// TURN_END 브로드캐스트
+	// 규칙 S6.1: 패널티 드로우가 적용된 경우 (검증 실패 → 패널티 3장 + 턴 종료)
+	if result.PenaltyDrawCount > 0 {
+		h.broadcastTurnEndWithPenalty(conn, state, result.PenaltyDrawCount, result.ErrorCode)
+		h.broadcastTurnStart(conn.roomID, state)
+		h.startTurnTimer(conn.roomID, conn.gameID, state.CurrentSeat, state.TurnTimeoutSec)
+		return
+	}
+
+	// TURN_END 브로드캐스트 (정상 배치)
 	playerIdx := findPlayerBySeatInState(state.Players, conn.seat)
 	tilesPlaced := 0
 	if playerIdx >= 0 {
@@ -736,6 +731,45 @@ func (h *WSHandler) broadcastTurnEnd(conn *Connection, state *model.GameStateRed
 	})
 }
 
+// broadcastTurnEndWithPenalty 패널티 드로우 적용 시 TURN_END를 브로드캐스트한다 (Human ConfirmTurn 실패 시).
+func (h *WSHandler) broadcastTurnEndWithPenalty(conn *Connection, state *model.GameStateRedis, penaltyCount int, errorCode string) {
+	playerIdx := findPlayerBySeatInState(state.Players, conn.seat)
+	playerTileCount := 0
+	hasInitialMeld := false
+	if playerIdx >= 0 {
+		playerTileCount = len(state.Players[playerIdx].Rack)
+		hasInitialMeld = state.Players[playerIdx].HasInitialMeld
+	}
+
+	tableGroups := stateTableToWSGroups(state.Table)
+
+	h.hub.ForEachInRoom(conn.roomID, func(c *Connection) {
+		payload := TurnEndPayload{
+			Seat:             conn.seat,
+			TurnNumber:       state.TurnCount,
+			Action:           "PENALTY_DRAW",
+			TableGroups:      tableGroups,
+			TilesPlacedCount: 0,
+			PlayerTileCount:  playerTileCount,
+			HasInitialMeld:   hasInitialMeld,
+			DrawPileCount:    len(state.DrawPile),
+			NextSeat:         state.CurrentSeat,
+			NextTurnNumber:   state.TurnCount + 1,
+			PenaltyDrawCount: penaltyCount,
+		}
+		recvIdx := findPlayerBySeatInState(state.Players, c.seat)
+		if recvIdx >= 0 {
+			rack := make([]string, len(state.Players[recvIdx].Rack))
+			copy(rack, state.Players[recvIdx].Rack)
+			payload.MyRack = rack
+		}
+		c.Send(&WSMessage{
+			Type:    S2CTurnEnd,
+			Payload: payload,
+		})
+	})
+}
+
 func (h *WSHandler) broadcastTurnStart(roomID string, state *model.GameStateRedis) {
 	playerIdx := findPlayerBySeatInState(state.Players, state.CurrentSeat)
 	playerType := "HUMAN"
@@ -864,12 +898,21 @@ func (h *WSHandler) handleAITurn(roomID, gameID string, player *model.PlayerStat
 
 	resp, err := h.aiClient.GenerateMove(ctx, req)
 	if err != nil {
+		reason := "AI_ERROR"
+		if strings.Contains(err.Error(), "status 429") {
+			reason = "AI_RATE_LIMITED"
+		} else if strings.Contains(err.Error(), "status 403") {
+			reason = "AI_COST_LIMIT"
+		} else if strings.Contains(err.Error(), "context deadline") || strings.Contains(err.Error(), "timeout") {
+			reason = "AI_TIMEOUT"
+		}
 		h.logger.Error("ws: AI move failed, forcing draw",
 			zap.String("gameId", gameID),
+			zap.String("reason", reason),
 			zap.Int("seat", player.SeatOrder),
 			zap.Error(err),
 		)
-		h.forceAIDraw(roomID, gameID, player.SeatOrder, "AI_TIMEOUT")
+		h.forceAIDraw(roomID, gameID, player.SeatOrder, reason)
 		return
 	}
 
@@ -918,6 +961,9 @@ func (h *WSHandler) processAIDraw(roomID, gameID string, seat int) {
 		},
 	})
 
+	// AI 정상 draw: 강제 드로우 카운터 리셋
+	h.resetForceDrawCounter(state, gameID, seat)
+
 	// fallback 정보 없이 TURN_END 전송 (정상 draw)
 	h.broadcastTurnEndFromState(roomID, seat, state, "DRAW_TILE", 0)
 	h.broadcastTurnStart(roomID, state)
@@ -939,15 +985,11 @@ func (h *WSHandler) processAIPlace(roomID, gameID string, seat int, resp *client
 	}
 
 	result, err := h.gameSvc.ConfirmTurn(gameID, req)
-	if err != nil || (result != nil && !result.Success) {
-		errCode := ""
-		if result != nil {
-			errCode = result.ErrorCode
-		}
-		h.logger.Warn("ws: AI place invalid, falling back to draw",
+	if err != nil {
+		h.logger.Warn("ws: AI place error, falling back to force draw",
 			zap.String("gameId", gameID),
 			zap.Int("seat", seat),
-			zap.String("errorCode", errCode),
+			zap.Error(err),
 		)
 		h.forceAIDraw(roomID, gameID, seat, "INVALID_MOVE")
 		return
@@ -958,6 +1000,28 @@ func (h *WSHandler) processAIPlace(roomID, gameID string, seat int, resp *client
 		h.broadcastGameOverFromState(roomID, state)
 		return
 	}
+
+	// 규칙 S6.1: AI 배치 검증 실패 → 패널티 3장 + 턴 종료 (강제 행동으로 카운트)
+	if result.PenaltyDrawCount > 0 {
+		h.logger.Warn("ws: AI place invalid, penalty draw applied",
+			zap.String("gameId", gameID),
+			zap.Int("seat", seat),
+			zap.String("errorCode", result.ErrorCode),
+			zap.Int("penaltyDrawCount", result.PenaltyDrawCount),
+		)
+		// 규칙 S8.1: 패널티도 강제 행동 → 카운터 증가
+		h.incrementForceDrawCounter(state, gameID, roomID, seat)
+		h.broadcastTurnEndFromState(roomID, seat, state, "PENALTY_DRAW", 0, &FallbackInfo{
+			IsFallbackDraw: true,
+			FallbackReason: "INVALID_MOVE",
+		})
+		h.broadcastTurnStart(roomID, state)
+		h.startTurnTimer(roomID, gameID, state.CurrentSeat, state.TurnTimeoutSec)
+		return
+	}
+
+	// AI 배치 성공: 강제 드로우 카운터 리셋
+	h.resetForceDrawCounter(state, gameID, seat)
 
 	h.broadcastTurnEndFromState(roomID, seat, state, "PLACE_TILES", len(resp.TilesFromRack))
 	h.broadcastTurnStart(roomID, state)
@@ -984,6 +1048,11 @@ func (h *WSHandler) forceAIDraw(roomID, gameID string, seat int, reason string) 
 		return
 	}
 
+	// 규칙 S8.1: 강제 드로우 카운터 증가 + 5회 도달 시 AI 비활성화
+	if h.incrementForceDrawCounter(state, gameID, roomID, seat) {
+		return // forfeit 처리 완료 (incrementForceDrawCounter 내부에서 처리)
+	}
+
 	// TILE_DRAWN: AI 드로우는 전원에게 nil 타일 코드로 브로드캐스트
 	playerIdx := findPlayerBySeatInState(state.Players, seat)
 	playerTileCount := 0
@@ -1006,6 +1075,54 @@ func (h *WSHandler) forceAIDraw(roomID, gameID string, seat int, reason string) 
 	})
 	h.broadcastTurnStart(roomID, state)
 	h.startTurnTimer(roomID, gameID, state.CurrentSeat, state.TurnTimeoutSec)
+}
+
+// incrementForceDrawCounter AI 강제 드로우 카운터를 증가시키고, 5회 도달 시 비활성화(기권) 처리한다.
+// 비활성화가 발생하면 true를 반환한다 (호출자는 이후 로직 스킵).
+func (h *WSHandler) incrementForceDrawCounter(state *model.GameStateRedis, gameID, roomID string, seat int) bool {
+	playerIdx := findPlayerBySeatInState(state.Players, seat)
+	if playerIdx < 0 {
+		return false
+	}
+
+	state.Players[playerIdx].ConsecutiveForceDrawCount++
+	_ = h.gameSvc.SaveGameState(state)
+
+	if state.Players[playerIdx].ConsecutiveForceDrawCount >= 5 {
+		displayName := state.Players[playerIdx].DisplayName
+		userID := state.Players[playerIdx].UserID
+
+		h.logger.Warn("ws: AI deactivated — 5 consecutive force draws",
+			zap.String("gameId", gameID),
+			zap.Int("seat", seat),
+			zap.String("displayName", displayName),
+		)
+
+		// AI_DEACTIVATED 브로드캐스트
+		h.hub.BroadcastToRoom(roomID, &WSMessage{
+			Type: S2CAIDeactivated,
+			Payload: AIDeactivatedPayload{
+				Seat:        seat,
+				DisplayName: displayName,
+				Reason:      "AI_FORCE_DRAW_LIMIT",
+			},
+		})
+
+		h.forfeitAndBroadcast(roomID, gameID, seat, userID, displayName, "AI_FORCE_DRAW_LIMIT")
+		return true
+	}
+
+	return false
+}
+
+// resetForceDrawCounter AI 정상 행동(배치 성공 또는 자발적 드로우) 시 강제 드로우 카운터를 리셋한다.
+func (h *WSHandler) resetForceDrawCounter(state *model.GameStateRedis, gameID string, seat int) {
+	playerIdx := findPlayerBySeatInState(state.Players, seat)
+	if playerIdx < 0 || state.Players[playerIdx].ConsecutiveForceDrawCount == 0 {
+		return
+	}
+	state.Players[playerIdx].ConsecutiveForceDrawCount = 0
+	_ = h.gameSvc.SaveGameState(state)
 }
 
 // ============================================================
@@ -1041,6 +1158,15 @@ func (h *WSHandler) startTurnTimer(roomID, gameID string, seat, timeoutSec int) 
 			zap.String("gameId", gameID),
 			zap.Int("seat", seat),
 		)
+
+		// 규칙 S8.2: DISCONNECTED 플레이어의 부재 턴 판정
+		if h.checkAbsentTurnAndForfeit(roomID, gameID, seat) {
+			h.timersMu.Lock()
+			delete(h.timers, gameID)
+			h.timersMu.Unlock()
+			h.deleteTimerFromRedis(gameID)
+			return // 기권 처리 완료
+		}
 
 		result, err := h.turnSvc.HandleTimeout(gameID, seat)
 		if err != nil {
@@ -1088,6 +1214,56 @@ func (h *WSHandler) startTurnTimer(roomID, gameID string, seat, timeoutSec int) 
 		h.broadcastTurnStart(roomID, state)
 		h.startTurnTimer(roomID, gameID, state.CurrentSeat, state.TurnTimeoutSec)
 	}()
+}
+
+// checkAbsentTurnAndForfeit 타임아웃 발생 시 DISCONNECTED 플레이어의 부재 턴을 카운트한다.
+// 규칙 S8.2: 3턴 연속 부재 시 게임에서 제외(기권)한다.
+// 기권이 발생하면 true를 반환한다 (호출자는 HandleTimeout을 스킵).
+func (h *WSHandler) checkAbsentTurnAndForfeit(roomID, gameID string, seat int) bool {
+	if h.gameSvc == nil {
+		return false
+	}
+
+	state, err := h.gameSvc.GetRawGameState(gameID)
+	if err != nil {
+		return false
+	}
+
+	playerIdx := findPlayerBySeatInState(state.Players, seat)
+	if playerIdx < 0 {
+		return false
+	}
+
+	// 해당 플레이어가 DISCONNECTED 상태인지 확인
+	if state.Players[playerIdx].Status != model.PlayerStatusDisconnected {
+		return false
+	}
+
+	// DISCONNECTED 상태에서 타임아웃 → 부재 턴 카운터 증가
+	state.Players[playerIdx].ConsecutiveAbsentTurns++
+	absentCount := state.Players[playerIdx].ConsecutiveAbsentTurns
+	_ = h.gameSvc.SaveGameState(state)
+
+	h.logger.Info("ws: disconnected player absent turn",
+		zap.String("gameId", gameID),
+		zap.Int("seat", seat),
+		zap.Int("absentTurns", absentCount),
+	)
+
+	if absentCount >= 3 {
+		displayName := state.Players[playerIdx].DisplayName
+		userID := state.Players[playerIdx].UserID
+
+		h.logger.Warn("ws: player excluded — 3 consecutive absent turns",
+			zap.String("gameId", gameID),
+			zap.Int("seat", seat),
+			zap.String("displayName", displayName),
+		)
+		h.forfeitAndBroadcast(roomID, gameID, seat, userID, displayName, "ABSENT_3_TURNS")
+		return true
+	}
+
+	return false
 }
 
 // cancelTurnTimer 특정 게임의 턴 타이머를 취소한다.

@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 )
@@ -129,7 +130,17 @@ func (c *AIClient) GenerateMove(ctx context.Context, req *MoveRequest) (*MoveRes
 	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("ai_client: unexpected status %d from POST /move", resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		// 구조화된 에러 응답 파싱 시도
+		var errResp struct {
+			Error   string `json:"error"`
+			Message string `json:"message"`
+			Code    string `json:"code"`
+		}
+		if json.Unmarshal(body, &errResp) == nil && errResp.Error != "" {
+			return nil, fmt.Errorf("ai_client: status %d, error=%s, message=%s", resp.StatusCode, errResp.Error, errResp.Message)
+		}
+		return nil, fmt.Errorf("ai_client: unexpected status %d from POST /move: %s", resp.StatusCode, string(body))
 	}
 
 	var moveResp MoveResponse

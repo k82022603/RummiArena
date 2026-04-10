@@ -46,13 +46,14 @@ export class CostLimitGuard implements CanActivate {
       );
       throw new HttpException(
         {
-          statusCode: HttpStatus.TOO_MANY_REQUESTS,
+          code: 'DAILY_COST_LIMIT_EXCEEDED',
+          statusCode: HttpStatus.FORBIDDEN,
           error: 'Daily Cost Limit Exceeded',
           message:
             '일일 LLM API 비용 한도를 초과했습니다. Ollama(로컬) 모델만 사용 가능합니다.',
           allowedModels: ['ollama'],
         },
-        HttpStatus.TOO_MANY_REQUESTS,
+        HttpStatus.FORBIDDEN,
       );
     }
 
@@ -71,13 +72,14 @@ export class CostLimitGuard implements CanActivate {
         );
         throw new HttpException(
           {
-            statusCode: HttpStatus.TOO_MANY_REQUESTS,
+            code: 'HOURLY_COST_LIMIT_EXCEEDED',
+            statusCode: HttpStatus.FORBIDDEN,
             error: 'Hourly User Cost Limit Exceeded',
             message:
               '시간당 사용자 비용 한도를 초과했습니다. 잠시 후 다시 시도해주세요.',
             allowedModels: ['ollama'],
           },
-          HttpStatus.TOO_MANY_REQUESTS,
+          HttpStatus.FORBIDDEN,
         );
       }
     }

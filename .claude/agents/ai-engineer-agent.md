@@ -29,5 +29,8 @@ model: opus
 4. 캐릭터 전략 성향을 프롬프트로 구현
 5. 모델 간 응답 시간/품질/비용 정량 비교
 6. Prompt Injection 방어 고려
+7. **코드 수정 시 `.claude/skills/code-modification/SKILL.md` 절차를 따른다**
 
-## 참조: `docs/02-design/04-ai-adapter-design.md`, `CLAUDE.md` (AI Character System, Tile Encoding)
+## 참조
+- `docs/02-design/04-ai-adapter-design.md`, `CLAUDE.md` (AI Character System, Tile Encoding)
+- `.claude/skills/code-modification/SKILL.md` — 코드 수정 표준 절차

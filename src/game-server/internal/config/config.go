@@ -81,7 +81,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("JWT_SECRET", "")
 	viper.SetDefault("AI_ADAPTER_URL", "http://ai-adapter:3000")
 	viper.SetDefault("AI_ADAPTER_INTERNAL_TOKEN", "")
-	viper.SetDefault("AI_ADAPTER_TIMEOUT_SEC", 180)
+	viper.SetDefault("AI_ADAPTER_TIMEOUT_SEC", 240)
 	viper.SetDefault("GOOGLE_CLIENT_ID", "")
 	viper.SetDefault("GOOGLE_CLIENT_SECRET", "")
 	viper.SetDefault("GOOGLE_JWKS_URL", "https://www.googleapis.com/oauth2/v3/certs")

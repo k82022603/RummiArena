@@ -57,6 +57,16 @@ export abstract class BaseAdapter implements AiAdapterInterface {
   abstract healthCheck(): Promise<boolean>;
 
   /**
+   * 재시도 전 지수 백오프 대기.
+   * 테스트에서 오버라이드하여 대기 시간을 제거할 수 있도록 protected로 분리.
+   * @param attempt 현재 재시도 횟수 (0부터 시작, 1 이상에서만 호출됨)
+   */
+  protected async backoff(attempt: number): Promise<void> {
+    const backoffMs = Math.min(1000 * Math.pow(2, attempt), 10000);
+    await new Promise((resolve) => setTimeout(resolve, backoffMs));
+  }
+
+  /**
    * 재시도 로직이 포함된 generateMove 구현.
    * 파싱 실패 또는 유효하지 않은 수 → 최대 maxRetries까지 재시도.
    * 모두 실패하면 강제 드로우를 반환한다.
@@ -70,6 +80,14 @@ export abstract class BaseAdapter implements AiAdapterInterface {
     let lastErrorReason = '';
 
     for (let attempt = 0; attempt < request.maxRetries; attempt++) {
+      // 재시도 전 지수 백오프 (첫 시도 제외)
+      if (attempt > 0) {
+        this.logger.log(
+          `[${modelInfo.modelType}] 재시도 대기 (attempt=${attempt + 1})`,
+        );
+        await this.backoff(attempt);
+      }
+
       const attemptStartTime = Date.now();
 
       // 재시도 시에는 에러 피드백을 포함한 프롬프트를 사용한다

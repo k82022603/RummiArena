@@ -20,7 +20,11 @@ export default function LoginClient({ hasGoogleProvider }: LoginClientProps) {
 
   const handleGoogleLogin = async () => {
     setLoading(true);
-    await signIn("google", { callbackUrl: "/lobby" });
+    try {
+      await signIn("google", { callbackUrl: "/lobby" });
+    } catch {
+      setLoading(false);
+    }
   };
 
   const handleGuestLogin = async () => {

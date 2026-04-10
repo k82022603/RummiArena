@@ -62,8 +62,9 @@ class TestableRateLimitGuard extends RateLimitGuard {
       if (err instanceof ThrottlerException) {
         throw new HttpException(
           {
-            error: 'RATE_LIMITED',
-            message: 'Too many requests',
+            code: 'RATE_LIMITED',
+            error: 'Rate Limit Exceeded',
+            message: '요청이 너무 많습니다. 잠시 후 다시 시도해주세요.',
             retryAfter: 30,
           },
           HttpStatus.TOO_MANY_REQUESTS,
@@ -124,7 +125,7 @@ describe('RateLimitGuard', () => {
       }
     });
 
-    it('응답 바디에 error="RATE_LIMITED"가 포함된다', async () => {
+    it('응답 바디에 code="RATE_LIMITED"가 포함된다', async () => {
       try {
         await guard.canActivate(createMockContext());
         fail('HttpException이 발생해야 합니다');
@@ -133,11 +134,11 @@ describe('RateLimitGuard', () => {
           string,
           unknown
         >;
-        expect(body.error).toBe('RATE_LIMITED');
+        expect(body.code).toBe('RATE_LIMITED');
       }
     });
 
-    it('응답 바디에 message="Too many requests"가 포함된다', async () => {
+    it('응답 바디에 error="Rate Limit Exceeded"가 포함된다', async () => {
       try {
         await guard.canActivate(createMockContext());
         fail('HttpException이 발생해야 합니다');
@@ -146,7 +147,20 @@ describe('RateLimitGuard', () => {
           string,
           unknown
         >;
-        expect(body.message).toBe('Too many requests');
+        expect(body.error).toBe('Rate Limit Exceeded');
+      }
+    });
+
+    it('응답 바디에 한글 메시지가 포함된다', async () => {
+      try {
+        await guard.canActivate(createMockContext());
+        fail('HttpException이 발생해야 합니다');
+      } catch (err) {
+        const body = (err as HttpException).getResponse() as Record<
+          string,
+          unknown
+        >;
+        expect(body.message).toBe('요청이 너무 많습니다. 잠시 후 다시 시도해주세요.');
       }
     });
 
@@ -174,8 +188,9 @@ describe('RateLimitGuard', () => {
           unknown
         >;
         expect(body).toEqual({
-          error: 'RATE_LIMITED',
-          message: 'Too many requests',
+          code: 'RATE_LIMITED',
+          error: 'Rate Limit Exceeded',
+          message: '요청이 너무 많습니다. 잠시 후 다시 시도해주세요.',
           retryAfter: 30,
         });
       }

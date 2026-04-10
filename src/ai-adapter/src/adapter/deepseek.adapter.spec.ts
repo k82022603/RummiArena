@@ -167,6 +167,9 @@ describe('DeepSeekAdapter', () => {
 
     adapter = new DeepSeekAdapter(promptBuilder, responseParser, configService);
     jest.clearAllMocks();
+
+    // 재시도 지수 백오프를 무효화하여 테스트 타임아웃 방지
+    jest.spyOn(adapter as any, 'backoff').mockResolvedValue(undefined);
   });
 
   // -----------------------------------------------------------------------
@@ -424,6 +427,7 @@ describe('DeepSeekAdapter', () => {
     beforeEach(() => {
       reasonerAdapter = makeReasonerAdapter();
       jest.clearAllMocks();
+      jest.spyOn(reasonerAdapter as any, 'backoff').mockResolvedValue(undefined);
     });
 
     it('reasoner 모드에서 요청 바디에 temperature가 포함되지 않는다', async () => {
@@ -557,6 +561,7 @@ describe('DeepSeekAdapter', () => {
     beforeEach(() => {
       reasonerAdapter = makeReasonerAdapter();
       jest.clearAllMocks();
+      jest.spyOn(reasonerAdapter as any, 'backoff').mockResolvedValue(undefined);
     });
 
     it('content가 순수 JSON이면 그대로 사용한다', () => {
@@ -674,6 +679,7 @@ describe('DeepSeekAdapter', () => {
     beforeEach(() => {
       reasonerAdapter = makeReasonerAdapter();
       jest.clearAllMocks();
+      jest.spyOn(reasonerAdapter as any, 'backoff').mockResolvedValue(undefined);
     });
 
     it('reasoner 모드에서 모든 재시도 실패 시 fallback draw를 반환한다', async () => {
@@ -741,6 +747,7 @@ describe('DeepSeekAdapter', () => {
     beforeEach(() => {
       reasonerAdapter = makeReasonerAdapter();
       jest.clearAllMocks();
+      jest.spyOn(reasonerAdapter as any, 'backoff').mockResolvedValue(undefined);
     });
 
     describe('시스템 프롬프트 - few-shot 예시', () => {

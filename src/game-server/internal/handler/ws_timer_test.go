@@ -25,6 +25,7 @@ func newTimerTestEnv() (*WSHandler, repository.MemoryGameStateRepository) {
 	turnSvc := service.NewTurnService(gameRepo, gameSvc)
 	h := &WSHandler{
 		hub:     NewHub(zap.NewNop()),
+		gameSvc: gameSvc,
 		turnSvc: turnSvc,
 		logger:  zap.NewNop(),
 		timers:  make(map[string]*turnTimer),

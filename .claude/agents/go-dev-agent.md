@@ -24,5 +24,8 @@ gin, gorilla/websocket, GORM, go-redis, golang-jwt, zap, viper, testify
 4. handler → service → repository 계층 분리 엄수
 5. goroutine 사용 시 graceful shutdown 고려
 6. 테스트 커버리지 80% 이상
+7. **코드 수정 시 `.claude/skills/code-modification/SKILL.md` 절차를 따른다**
 
-## 참조: `docs/02-design/01-architecture.md` §9, `docs/02-design/03-api-design.md`, `docs/02-design/06-game-rules.md`
+## 참조
+- `docs/02-design/01-architecture.md` §9, `docs/02-design/03-api-design.md`, `docs/02-design/06-game-rules.md`
+- `.claude/skills/code-modification/SKILL.md` — 코드 수정 표준 절차

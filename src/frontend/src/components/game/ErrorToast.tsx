@@ -43,7 +43,7 @@ export default function ErrorToast() {
           exit={{ opacity: 0, y: -12 }}
           transition={{ type: "spring", stiffness: 400, damping: 30 }}
           className={[
-            "fixed top-4 left-1/2 -translate-x-1/2 z-50",
+            "fixed top-16 left-1/2 -translate-x-1/2 z-50",
             "flex items-center gap-2",
             "bg-danger text-white",
             "rounded-xl shadow-lg",

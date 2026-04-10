@@ -134,12 +134,12 @@ export default function UserRatingClient({ userId }: UserRatingClientProps) {
     const load = async () => {
       setIsLoading(true);
       try {
-        const [ratingData, historyData] = await Promise.all([
+        const results = await Promise.allSettled([
           getUserRating(userId),
           getRatingHistory(userId, token),
         ]);
-        setRating(ratingData);
-        setHistory(historyData.data);
+        if (results[0].status === "fulfilled") setRating(results[0].value);
+        if (results[1].status === "fulfilled") setHistory(results[1].value.data);
       } finally {
         setIsLoading(false);
       }

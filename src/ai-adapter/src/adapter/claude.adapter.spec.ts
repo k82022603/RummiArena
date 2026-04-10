@@ -90,6 +90,9 @@ describe('ClaudeAdapter', () => {
 
     adapter = new ClaudeAdapter(promptBuilder, responseParser, configService);
     jest.clearAllMocks();
+
+    // 재시도 지수 백오프를 무효화하여 테스트 타임아웃 방지
+    jest.spyOn(adapter as any, 'backoff').mockResolvedValue(undefined);
   });
 
   // -----------------------------------------------------------------------

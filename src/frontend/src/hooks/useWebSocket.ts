@@ -429,7 +429,7 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
         case "ERROR": {
           const payload = msg.payload as WSErrorPayload;
           // Rate Limit 에러 감지: 연결 끊지 않고 스로틀링만 활성화
-          if (payload.code === "RATE_LIMIT" || payload.code === "ERR_RATE_LIMIT" || payload.code === "RATE_LIMITED") {
+          if (payload.code === "RATE_LIMITED") {
             const retryMatch = payload.message?.match(/(\d+)/);
             const sec = retryMatch ? Number(retryMatch[1]) : 5;
 
@@ -545,7 +545,10 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
           setLastError(closeMessage);
         }
 
-        if (reconnectAttempts.current < MAX_RECONNECT_ATTEMPTS) {
+        // 재연결 불가능한 close code — 재시도 없이 즉시 disconnected
+        const NON_TRANSIENT_CODES = new Set([4001, 4002, 4004]);
+
+        if (!NON_TRANSIENT_CODES.has(e.code) && reconnectAttempts.current < MAX_RECONNECT_ATTEMPTS) {
           setStatus("reconnecting");
           reconnectAttempts.current += 1;
           const delay = INITIAL_RECONNECT_DELAY_MS * Math.pow(2, reconnectAttempts.current - 1);
