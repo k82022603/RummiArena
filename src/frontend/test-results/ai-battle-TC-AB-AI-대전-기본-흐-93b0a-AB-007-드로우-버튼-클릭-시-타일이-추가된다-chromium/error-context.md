@@ -11,9 +11,9 @@
       - generic [ref=e5]:
         - generic [ref=e7]: 재연결 시도 중...
         - generic [ref=e8]: (3/5)
-      - generic [ref=e9]: 다음 시도까지 11초...
+      - generic [ref=e9]: 다음 시도까지 10초...
     - banner [ref=e10]:
-      - heading "Room e1402a2e" [level=1] [ref=e12]
+      - heading "Room 76b74f50" [level=1] [ref=e12]
       - generic [ref=e13]: "턴 #1"
     - generic "상대 플레이어" [ref=e14]:
       - paragraph [ref=e15]: 상대 플레이어 없음

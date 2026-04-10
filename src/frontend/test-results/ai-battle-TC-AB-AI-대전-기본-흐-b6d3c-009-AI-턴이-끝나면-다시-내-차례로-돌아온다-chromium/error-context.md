@@ -5,7 +5,7 @@
   - alert [ref=e2]
   - generic [ref=e3]:
     - banner [ref=e4]:
-      - heading "Room 0dd41ccf" [level=1] [ref=e6]
+      - heading "Room ebc7db4a" [level=1] [ref=e6]
       - timer "남은 시간 0초" [ref=e7]:
         - generic [ref=e9]: 0s
       - generic [ref=e10]: "턴 #2"
@@ -61,65 +61,65 @@
               - text: 내 타일
               - generic [ref=e96]: (15개)
             - generic [ref=e97]:
-              - button "R5a 타일 (드래그 가능)" [disabled] [ref=e98] [cursor=pointer]:
-                - img "R5a 타일 (드래그 가능)" [ref=e99]:
-                  - generic [ref=e100]: "5"
-                  - generic [ref=e101]: ◆
-              - button "Y12a 타일 (드래그 가능)" [disabled] [ref=e102] [cursor=pointer]:
-                - img "Y12a 타일 (드래그 가능)" [ref=e103]:
-                  - generic [ref=e104]: "12"
-                  - generic [ref=e105]: ▲
-              - button "K3a 타일 (드래그 가능)" [disabled] [ref=e106] [cursor=pointer]:
-                - img "K3a 타일 (드래그 가능)" [ref=e107]:
-                  - generic [ref=e108]: "3"
-                  - generic [ref=e109]: ■
-              - button "R9a 타일 (드래그 가능)" [disabled] [ref=e110] [cursor=pointer]:
-                - img "R9a 타일 (드래그 가능)" [ref=e111]:
-                  - generic [ref=e112]: "9"
-                  - generic [ref=e113]: ◆
-              - button "Y5b 타일 (드래그 가능)" [disabled] [ref=e114] [cursor=pointer]:
-                - img "Y5b 타일 (드래그 가능)" [ref=e115]:
-                  - generic [ref=e116]: "5"
-                  - generic [ref=e117]: ▲
-              - button "B6b 타일 (드래그 가능)" [disabled] [ref=e119] [cursor=pointer]:
-                - img "B6b 타일 (드래그 가능)" [ref=e120]:
-                  - generic [ref=e121]: "6"
-                  - generic [ref=e122]: ●
-              - button "B11a 타일 (드래그 가능)" [disabled] [ref=e124] [cursor=pointer]:
-                - img "B11a 타일 (드래그 가능)" [ref=e125]:
-                  - generic [ref=e126]: "11"
-                  - generic [ref=e127]: ●
-              - button "B9a 타일 (드래그 가능)" [disabled] [ref=e128] [cursor=pointer]:
-                - img "B9a 타일 (드래그 가능)" [ref=e129]:
-                  - generic [ref=e130]: "9"
-                  - generic [ref=e131]: ●
-              - button "R11b 타일 (드래그 가능)" [disabled] [ref=e132] [cursor=pointer]:
-                - img "R11b 타일 (드래그 가능)" [ref=e133]:
-                  - generic [ref=e134]: "11"
+              - button "Y6a 타일 (드래그 가능)" [disabled] [ref=e98] [cursor=pointer]:
+                - img "Y6a 타일 (드래그 가능)" [ref=e99]:
+                  - generic [ref=e100]: "6"
+                  - generic [ref=e101]: ▲
+              - button "B5b 타일 (드래그 가능)" [disabled] [ref=e102] [cursor=pointer]:
+                - img "B5b 타일 (드래그 가능)" [ref=e103]:
+                  - generic [ref=e104]: "5"
+                  - generic [ref=e105]: ●
+              - button "R8a 타일 (드래그 가능)" [disabled] [ref=e107] [cursor=pointer]:
+                - img "R8a 타일 (드래그 가능)" [ref=e108]:
+                  - generic [ref=e109]: "8"
+                  - generic [ref=e110]: ◆
+              - button "Y13a 타일 (드래그 가능)" [disabled] [ref=e111] [cursor=pointer]:
+                - img "Y13a 타일 (드래그 가능)" [ref=e112]:
+                  - generic [ref=e113]: "13"
+                  - generic [ref=e114]: ▲
+              - button "B4a 타일 (드래그 가능)" [disabled] [ref=e115] [cursor=pointer]:
+                - img "B4a 타일 (드래그 가능)" [ref=e116]:
+                  - generic [ref=e117]: "4"
+                  - generic [ref=e118]: ●
+              - button "R1a 타일 (드래그 가능)" [disabled] [ref=e119] [cursor=pointer]:
+                - img "R1a 타일 (드래그 가능)" [ref=e120]:
+                  - generic [ref=e121]: "1"
+                  - generic [ref=e122]: ◆
+              - button "Y2b 타일 (드래그 가능)" [disabled] [ref=e123] [cursor=pointer]:
+                - img "Y2b 타일 (드래그 가능)" [ref=e124]:
+                  - generic [ref=e125]: "2"
+                  - generic [ref=e126]: ▲
+              - button "K12a 타일 (드래그 가능)" [disabled] [ref=e128] [cursor=pointer]:
+                - img "K12a 타일 (드래그 가능)" [ref=e129]:
+                  - generic [ref=e130]: "12"
+                  - generic [ref=e131]: ■
+              - button "R8b 타일 (드래그 가능)" [disabled] [ref=e132] [cursor=pointer]:
+                - img "R8b 타일 (드래그 가능)" [ref=e133]:
+                  - generic [ref=e134]: "8"
                   - generic [ref=e135]: ◆
-              - button "B7a 타일 (드래그 가능)" [disabled] [ref=e137] [cursor=pointer]:
-                - img "B7a 타일 (드래그 가능)" [ref=e138]:
-                  - generic [ref=e139]: "7"
-                  - generic [ref=e140]: ●
-              - button "Y4b 타일 (드래그 가능)" [disabled] [ref=e141] [cursor=pointer]:
-                - img "Y4b 타일 (드래그 가능)" [ref=e142]:
-                  - generic [ref=e143]: "4"
-                  - generic [ref=e144]: ▲
-              - button "B2a 타일 (드래그 가능)" [disabled] [ref=e146] [cursor=pointer]:
-                - img "B2a 타일 (드래그 가능)" [ref=e147]:
-                  - generic [ref=e148]: "2"
-                  - generic [ref=e149]: ●
-              - button "R13a 타일 (드래그 가능)" [disabled] [ref=e150] [cursor=pointer]:
-                - img "R13a 타일 (드래그 가능)" [ref=e151]:
-                  - generic [ref=e152]: "13"
+              - button "Y3a 타일 (드래그 가능)" [disabled] [ref=e137] [cursor=pointer]:
+                - img "Y3a 타일 (드래그 가능)" [ref=e138]:
+                  - generic [ref=e139]: "3"
+                  - generic [ref=e140]: ▲
+              - button "B12b 타일 (드래그 가능)" [disabled] [ref=e141] [cursor=pointer]:
+                - img "B12b 타일 (드래그 가능)" [ref=e142]:
+                  - generic [ref=e143]: "12"
+                  - generic [ref=e144]: ●
+              - button "K7a 타일 (드래그 가능)" [disabled] [ref=e146] [cursor=pointer]:
+                - img "K7a 타일 (드래그 가능)" [ref=e147]:
+                  - generic [ref=e148]: "7"
+                  - generic [ref=e149]: ■
+              - button "R2b 타일 (드래그 가능)" [disabled] [ref=e150] [cursor=pointer]:
+                - img "R2b 타일 (드래그 가능)" [ref=e151]:
+                  - generic [ref=e152]: "2"
                   - generic [ref=e153]: ◆
-              - button "Y2b 타일 (드래그 가능)" [disabled] [ref=e154] [cursor=pointer]:
-                - img "Y2b 타일 (드래그 가능)" [ref=e155]:
-                  - generic [ref=e156]: "2"
-                  - generic [ref=e157]: ▲
-              - button "B11b 타일 (드래그 가능)" [disabled] [ref=e159] [cursor=pointer]:
-                - img "B11b 타일 (드래그 가능)" [ref=e160]:
-                  - generic [ref=e161]: "11"
-                  - generic [ref=e162]: ●
+              - button "Y5a 타일 (드래그 가능)" [disabled] [ref=e155] [cursor=pointer]:
+                - img "Y5a 타일 (드래그 가능)" [ref=e156]:
+                  - generic [ref=e157]: "5"
+                  - generic [ref=e158]: ▲
+              - button "Y9b 타일 (드래그 가능)" [disabled] [ref=e159] [cursor=pointer]:
+                - img "Y9b 타일 (드래그 가능)" [ref=e160]:
+                  - generic [ref=e161]: "9"
+                  - generic [ref=e162]: ▲
   - status [ref=e164]
 ```

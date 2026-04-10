@@ -132,15 +132,17 @@ sequenceDiagram
 
 ---
 
-## 4. 타임아웃 구간별 관리 (향후 과제)
+## 4. 타임아웃 구간별 관리
 
-현재 4단계 타임아웃 체인이 있으며, 로컬 추론 모델 지원을 위해 구간별 정리가 필요하다.
+### 4.1 타임아웃 체인 (2026-04-10 갱신, 500초 기준)
+
+4단계 타임아웃 체인. **ConfigMap AI_ADAPTER_TIMEOUT_SEC 하나로 전 구간이 연동**된다.
 
 ```mermaid
 flowchart LR
-    A["WS Script\n(클라이언트)"] -->|270s| B["Game Server\n(AI Turn Timer)"]
-    B -->|240s| C["AI Adapter\n(HTTP 호출)"]
-    C -->|210s / 600s| D["LLM API\n(Ollama / Cloud)"]
+    A["WS Script\n(클라이언트)\n570s"] -->|ws_timeout| B["Game Server\nhandleAITurn context\n560s"]
+    B -->|timeoutMs| C["AI Adapter\naxios timeout\n500s"]
+    C -->|HTTP| D["LLM API\n(DeepSeek / OpenAI\n/ Claude / Ollama)"]
 
     style A fill:#e8f4fd,stroke:#3498db
     style B fill:#fdf2e8,stroke:#e67e22
@@ -148,14 +150,32 @@ flowchart LR
     style D fill:#fde8e8,stroke:#e74c3c
 ```
 
-| 구간 | 현재 값 | 클라우드 모델 | 로컬 추론 (CPU) |
-|------|:---:|:---:|:---:|
-| WS Script | 270s | 270s (유지) | 모델별 동적 |
-| Game Server AI Turn | 240s | 240s (유지) | 모델별 동적 |
-| AI Adapter LLM 호출 | 210s (최소) | 210s (유지) | 600s (qwen3:4b) |
-| DTO timeoutMs 상한 | 600000 | 300000 복원 가능 | 600000 유지 |
+| 구간 | 이전 값 | 현재 값 | 설정 위치 | 비고 |
+|------|:------:|:------:|----------|------|
+| WS Script | 270s | **570s** | `scripts/ai-battle-3model-r4.py` deepseek ws_timeout | 500+70 버퍼 |
+| Game Server context | 240s (하드코딩) | **560s** (ConfigMap 연동) | `ws_handler.go` handleAITurn | AI_ADAPTER_TIMEOUT_SEC+60 |
+| Game Server → AI Adapter | 210s (하드코딩) | **500s** (ConfigMap 연동) | `ws_handler.go` TimeoutMs | AI_ADAPTER_TIMEOUT_SEC×1000 |
+| AI Adapter → DeepSeek | min 210s | **min 500s** | `deepseek.adapter.ts` | `Math.max(timeoutMs, 500_000)` |
+| AI Adapter → OpenAI | min 210s | min 210s (유지) | `openai.adapter.ts` | 추론 모델 최소값 |
+| AI Adapter → Ollama | min 210s | min 210s (유지) | `ollama.adapter.ts` | 로컬 모델 최소값 |
+| ConfigMap | 240 | **500** | `game-server-config` | 전 구간 기준값 |
+| Helm values | 240 | **500** | `helm/charts/game-server/values.yaml` | GitOps 반영 |
+| config.go 기본값 | 240 | **500** | `internal/config/config.go` | 코드 기본값 |
 
-**개선 방향:** 모델 유형(cloud/local)에 따라 타임아웃을 동적으로 설정하는 구조 필요.
+### 4.2 변경 이유 (2026-04-10)
+
+DeepSeek Reasoner의 후반부 추론 토큰이 12K~15K까지 증가하며 턴당 최대 349초 소요 관측.
+이전 200~240초 타임아웃으로 인해 Round 4에서 **fallback 27/39건(69%)** 발생.
+500초로 상향하여 추론 완료까지 대기, fallback 0건 목표.
+
+### 4.3 모델별 실측 레이턴시 (참고)
+
+| 모델 | 초반 | 중반 | 후반 | 최대 관측 |
+|------|------|------|------|----------|
+| DeepSeek Reasoner | 49~78s | 120~169s | 200~349s | **349s** |
+| GPT-5-mini | 15~35s | 40~85s | 60~175s | ~175s |
+| Claude Sonnet 4 | 14~45s | 40~65s | 50~170s | ~170s |
+| Ollama qwen2.5:3b | 30~40s | 35~45s | 38~42s | ~42s |
 
 ---
 

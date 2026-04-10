@@ -1,0 +1,104 @@
+{
+  "tournament": "3-model Round 4",
+  "timestamp": "2026-04-10 16:43:22",
+  "config": {
+    "maxTurns": 80,
+    "persona": "calculator",
+    "difficulty": "expert",
+    "psychologyLevel": 2
+  },
+  "models": [
+    {
+      "modelKey": "deepseek",
+      "modelName": "DeepSeek Reasoner",
+      "totalTurns": 80,
+      "aiTurns": 39,
+      "aiPlace": 7,
+      "aiTilesPlaced": 25,
+      "aiDraw": 32,
+      "aiFallback": 15,
+      "placeRate": 17.9,
+      "elapsed": 7578.1,
+      "estimatedCost": 0.039,
+      "result": "TIMEOUT",
+      "responseTime": {
+        "avg": 194.3,
+        "p50": 190.6,
+        "min": 68.7,
+        "max": 240.2
+      },
+      "placeDetails": [
+        {
+          "turn": 8,
+          "tiles": 9,
+          "cumulative": 9,
+          "resp_time": 160.2
+        },
+        {
+          "turn": 26,
+          "tiles": 3,
+          "cumulative": 12,
+          "resp_time": 177.6
+        },
+        {
+          "turn": 30,
+          "tiles": 1,
+          "cumulative": 13,
+          "resp_time": 176.2
+        },
+        {
+          "turn": 34,
+          "tiles": 2,
+          "cumulative": 15,
+          "resp_time": 184.4
+        },
+        {
+          "turn": 44,
+          "tiles": 6,
+          "cumulative": 21,
+          "resp_time": 155.4
+        },
+        {
+          "turn": 58,
+          "tiles": 3,
+          "cumulative": 24,
+          "resp_time": 207.0
+        },
+        {
+          "turn": 72,
+          "tiles": 1,
+          "cumulative": 25,
+          "resp_time": 210.4
+        }
+      ],
+      "fallbackReasons": [
+        "AI_TIMEOUT",
+        "AI_TIMEOUT",
+        "AI_TIMEOUT",
+        "AI_TIMEOUT",
+        "AI_TIMEOUT",
+        "AI_TIMEOUT",
+        "AI_TIMEOUT",
+        "AI_TIMEOUT",
+        "AI_TIMEOUT",
+        "AI_TIMEOUT",
+        "AI_TIMEOUT",
+        "AI_TIMEOUT",
+        "AI_TIMEOUT",
+        "AI_TIMEOUT",
+        "AI_TIMEOUT"
+      ],
+      "errors": [],
+      "round2Baseline": {
+        "place": 2,
+        "tiles": 14,
+        "draw": 38,
+        "rate": 5.0,
+        "elapsed": 1995,
+        "cost": 0.04,
+        "fallback": 0
+      },
+      "deltaPlaceRate": 12.9
+    }
+  ]
+}

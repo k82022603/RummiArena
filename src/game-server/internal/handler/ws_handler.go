@@ -91,8 +91,9 @@ type WSHandler struct {
 	logger        *zap.Logger
 	timers        map[string]*turnTimer  // key: gameID
 	timersMu      sync.Mutex
-	graceTimers   map[string]*graceTimer // key: "roomID:userID"
-	graceTimersMu sync.Mutex
+	graceTimers         map[string]*graceTimer // key: "roomID:userID"
+	graceTimersMu       sync.Mutex
+	aiAdapterTimeoutSec int // ConfigMap AI_ADAPTER_TIMEOUT_SEC
 }
 
 // NewWSHandler WSHandler 생성자.
@@ -106,17 +107,19 @@ func NewWSHandler(
 	aiClient client.AIClientInterface,
 	jwtSecret string,
 	logger *zap.Logger,
+	aiAdapterTimeoutSec int,
 ) *WSHandler {
 	return &WSHandler{
-		hub:         hub,
-		roomSvc:     roomSvc,
-		gameSvc:     gameSvc,
-		turnSvc:     turnSvc,
-		aiClient:    aiClient,
-		jwtSecret:   jwtSecret,
-		logger:      logger,
-		timers:      make(map[string]*turnTimer),
-		graceTimers: make(map[string]*graceTimer),
+		hub:                 hub,
+		roomSvc:             roomSvc,
+		gameSvc:             gameSvc,
+		turnSvc:             turnSvc,
+		aiClient:            aiClient,
+		jwtSecret:           jwtSecret,
+		logger:              logger,
+		timers:              make(map[string]*turnTimer),
+		graceTimers:         make(map[string]*graceTimer),
+		aiAdapterTimeoutSec: aiAdapterTimeoutSec,
 	}
 }
 
@@ -860,7 +863,11 @@ func (h *WSHandler) handleAITurn(roomID, gameID string, player *model.PlayerStat
 	// AI goroutine이 동시에 게임 상태를 변경하려는 race condition이 발생한다.
 	h.cancelTurnTimer(gameID)
 
-	const aiTurnTimeout = 240 * time.Second // 전 모델 210s adapter + 30s 버퍼
+	aiTimeoutSec := h.aiAdapterTimeoutSec
+	if aiTimeoutSec < 240 {
+		aiTimeoutSec = 240
+	}
+	aiTurnTimeout := time.Duration(aiTimeoutSec+60) * time.Second // ConfigMap AI_ADAPTER_TIMEOUT_SEC + 60s 버퍼
 
 	ctx, cancel := context.WithTimeout(context.Background(), aiTurnTimeout)
 	defer cancel()
@@ -878,7 +885,7 @@ func (h *WSHandler) handleAITurn(roomID, gameID string, player *model.PlayerStat
 		Difficulty:      normalizeDifficulty(player.AIDifficulty),
 		PsychologyLevel: player.AIPsychLevel,
 		MaxRetries:      3,
-		TimeoutMs:       210000, // 전 모델 210s 통일 (adapter에서도 최소 210s 보장)
+		TimeoutMs:       h.aiAdapterTimeoutSec * 1000, // ConfigMap AI_ADAPTER_TIMEOUT_SEC (ms 단위로 전달)
 		GameState: client.MoveGameState{
 			TableGroups:     tableGroups,
 			MyTiles:         player.Rack,

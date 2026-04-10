@@ -123,7 +123,7 @@ func buildRouter(
 
 	roomHandler := handler.NewRoomHandler(roomSvc)
 	gameHandler := handler.NewGameHandler(gameSvc)
-	wsHandler := handler.NewWSHandler(wsHub, roomSvc, gameSvc, turnSvc, aiClient, cfg.JWT.Secret, logger)
+	wsHandler := handler.NewWSHandler(wsHub, roomSvc, gameSvc, turnSvc, aiClient, cfg.JWT.Secret, logger, cfg.AIAdapter.TimeoutSec)
 	// BUG-WS-001: 게임 시작 시 WS 클라이언트에 TURN_START 전송
 	roomHandler.WithGameStartNotifier(wsHandler)
 	authHandler := handler.NewAuthHandler(cfg.JWT.Secret).

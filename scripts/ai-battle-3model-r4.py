@@ -74,7 +74,7 @@ MODELS = {
         "persona": "calculator",
         "difficulty": "expert",
         "psychologyLevel": 2,
-        "ws_timeout": 270,       # 210s adapter timeout + 60s buffer
+        "ws_timeout": 570,       # 500s adapter timeout + 70s buffer
         "cost_per_turn": 0.001,
     },
     "ollama": {

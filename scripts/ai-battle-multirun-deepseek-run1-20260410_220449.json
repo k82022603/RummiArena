@@ -1,0 +1,96 @@
+{
+  "run_id": "multirun-deepseek-run1-20260410_220449",
+  "run_number": 1,
+  "date": "2026-04-11",
+  "model_key": "deepseek",
+  "place_rate": 30.8,
+  "ai_place": 12,
+  "ai_tiles_placed": 33,
+  "ai_draw": 27,
+  "ai_fallback": 0,
+  "total_turns": 80,
+  "elapsed": 8236.9,
+  "est_cost": 0.039,
+  "result": "TIMEOUT",
+  "resp_avg": 211.2,
+  "resp_p50": 210.4,
+  "resp_min": 108.2,
+  "resp_max": 356.5,
+  "place_details": [
+    {
+      "turn": 2,
+      "tiles": 3,
+      "cumulative": 3,
+      "resp_time": 157.8
+    },
+    {
+      "turn": 10,
+      "tiles": 3,
+      "cumulative": 6,
+      "resp_time": 108.3
+    },
+    {
+      "turn": 16,
+      "tiles": 3,
+      "cumulative": 9,
+      "resp_time": 207.7
+    },
+    {
+      "turn": 22,
+      "tiles": 1,
+      "cumulative": 10,
+      "resp_time": 141.0
+    },
+    {
+      "turn": 32,
+      "tiles": 4,
+      "cumulative": 14,
+      "resp_time": 260.5
+    },
+    {
+      "turn": 36,
+      "tiles": 3,
+      "cumulative": 17,
+      "resp_time": 221.8
+    },
+    {
+      "turn": 46,
+      "tiles": 3,
+      "cumulative": 20,
+      "resp_time": 271.5
+    },
+    {
+      "turn": 50,
+      "tiles": 3,
+      "cumulative": 23,
+      "resp_time": 158.7
+    },
+    {
+      "turn": 58,
+      "tiles": 3,
+      "cumulative": 26,
+      "resp_time": 288.2
+    },
+    {
+      "turn": 64,
+      "tiles": 3,
+      "cumulative": 29,
+      "resp_time": 226.6
+    },
+    {
+      "turn": 70,
+      "tiles": 1,
+      "cumulative": 30,
+      "resp_time": 185.4
+    },
+    {
+      "turn": 76,
+      "tiles": 3,
+      "cumulative": 33,
+      "resp_time": 231.7
+    }
+  ],
+  "fallback_reasons": [],
+  "errors": [],
+  "source": "multirun"
+}

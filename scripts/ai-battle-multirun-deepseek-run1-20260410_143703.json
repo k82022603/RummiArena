@@ -1,0 +1,82 @@
+{
+  "run_id": "multirun-deepseek-run1-20260410_143703",
+  "run_number": 1,
+  "date": "2026-04-10",
+  "model_key": "deepseek",
+  "place_rate": 17.9,
+  "ai_place": 7,
+  "ai_tiles_placed": 25,
+  "ai_draw": 32,
+  "ai_fallback": 15,
+  "total_turns": 80,
+  "elapsed": 7578.1,
+  "est_cost": 0.039,
+  "result": "TIMEOUT",
+  "resp_avg": 194.3,
+  "resp_p50": 190.6,
+  "resp_min": 68.7,
+  "resp_max": 240.2,
+  "place_details": [
+    {
+      "turn": 8,
+      "tiles": 9,
+      "cumulative": 9,
+      "resp_time": 160.2
+    },
+    {
+      "turn": 26,
+      "tiles": 3,
+      "cumulative": 12,
+      "resp_time": 177.6
+    },
+    {
+      "turn": 30,
+      "tiles": 1,
+      "cumulative": 13,
+      "resp_time": 176.2
+    },
+    {
+      "turn": 34,
+      "tiles": 2,
+      "cumulative": 15,
+      "resp_time": 184.4
+    },
+    {
+      "turn": 44,
+      "tiles": 6,
+      "cumulative": 21,
+      "resp_time": 155.4
+    },
+    {
+      "turn": 58,
+      "tiles": 3,
+      "cumulative": 24,
+      "resp_time": 207.0
+    },
+    {
+      "turn": 72,
+      "tiles": 1,
+      "cumulative": 25,
+      "resp_time": 210.4
+    }
+  ],
+  "fallback_reasons": [
+    "AI_TIMEOUT",
+    "AI_TIMEOUT",
+    "AI_TIMEOUT",
+    "AI_TIMEOUT",
+    "AI_TIMEOUT",
+    "AI_TIMEOUT",
+    "AI_TIMEOUT",
+    "AI_TIMEOUT",
+    "AI_TIMEOUT",
+    "AI_TIMEOUT",
+    "AI_TIMEOUT",
+    "AI_TIMEOUT",
+    "AI_TIMEOUT",
+    "AI_TIMEOUT",
+    "AI_TIMEOUT"
+  ],
+  "errors": [],
+  "source": "multirun"
+}

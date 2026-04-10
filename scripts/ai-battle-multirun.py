@@ -677,6 +677,19 @@ async def main():
 
                 for run_num in range(1, num_runs + 1):
                     if run_num > 1:
+                        # Run 간 Redis 게임 키 정리
+                        print(f"\n  Cleaning up Redis game keys before next run...")
+                        cleanup_proc = await asyncio.create_subprocess_exec(
+                            "kubectl", "exec", "-n", "rummikub", "deploy/redis", "--",
+                            "redis-cli", "eval",
+                            "local k=redis.call('keys','game:*') for i,v in ipairs(k) do redis.call('del',v) end return #k",
+                            "0",
+                            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                        )
+                        cleanup_out, _ = await cleanup_proc.communicate()
+                        cleaned = cleanup_out.decode().strip()
+                        if cleaned and cleaned != "0":
+                            print(f"  Cleaned {cleaned} Redis game key(s)")
                         print(f"\n  Waiting {args.delay}s before next run...")
                         await asyncio.sleep(args.delay)
 
