@@ -1,0 +1,93 @@
+{
+  "tournament": "3-model Round 4",
+  "timestamp": "2026-04-11 03:40:22",
+  "config": {
+    "maxTurns": 80,
+    "persona": "calculator",
+    "difficulty": "expert",
+    "psychologyLevel": 2
+  },
+  "models": [
+    {
+      "modelKey": "openai",
+      "modelName": "GPT-5-mini",
+      "totalTurns": 66,
+      "aiTurns": 32,
+      "aiPlace": 7,
+      "aiTilesPlaced": 24,
+      "aiDraw": 25,
+      "aiFallback": 4,
+      "placeRate": 21.9,
+      "elapsed": 1801.6,
+      "estimatedCost": 0.8,
+      "result": "FORFEIT",
+      "responseTime": {
+        "avg": 56.3,
+        "p50": 62.2,
+        "min": 0.0,
+        "max": 160.9
+      },
+      "placeDetails": [
+        {
+          "turn": 2,
+          "tiles": 7,
+          "cumulative": 7,
+          "resp_time": 25.5
+        },
+        {
+          "turn": 8,
+          "tiles": 3,
+          "cumulative": 10,
+          "resp_time": 20.2
+        },
+        {
+          "turn": 16,
+          "tiles": 2,
+          "cumulative": 12,
+          "resp_time": 65.4
+        },
+        {
+          "turn": 26,
+          "tiles": 3,
+          "cumulative": 15,
+          "resp_time": 59.9
+        },
+        {
+          "turn": 38,
+          "tiles": 4,
+          "cumulative": 19,
+          "resp_time": 54.5
+        },
+        {
+          "turn": 44,
+          "tiles": 2,
+          "cumulative": 21,
+          "resp_time": 69.3
+        },
+        {
+          "turn": 50,
+          "tiles": 3,
+          "cumulative": 24,
+          "resp_time": 46.8
+        }
+      ],
+      "fallbackReasons": [
+        "AI_COST_LIMIT",
+        "AI_COST_LIMIT",
+        "AI_COST_LIMIT",
+        "AI_COST_LIMIT"
+      ],
+      "errors": [],
+      "round2Baseline": {
+        "place": 11,
+        "tiles": 27,
+        "draw": 29,
+        "rate": 28.0,
+        "elapsed": 1876,
+        "cost": 1.0,
+        "fallback": 0
+      },
+      "deltaPlaceRate": -6.1
+    }
+  ]
+}

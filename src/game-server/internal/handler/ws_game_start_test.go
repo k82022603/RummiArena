@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 	"time"
@@ -32,8 +33,9 @@ func TestNotifyGameStarted_SendsGameStateAndTurnStart(t *testing.T) {
 		turnSvc:     turnSvc,
 		jwtSecret:   "test-secret",
 		logger:      logger,
-		timers:      make(map[string]*turnTimer),
-		graceTimers: make(map[string]*graceTimer),
+		timers:        make(map[string]*turnTimer),
+		graceTimers:   make(map[string]*graceTimer),
+		aiTurnCancels: make(map[string]context.CancelFunc),
 	}
 
 	// 2인 게임 상태 생성
@@ -130,8 +132,9 @@ func TestNotifyGameStarted_SetsConnectionGameID(t *testing.T) {
 		turnSvc:     turnSvc,
 		jwtSecret:   "test-secret",
 		logger:      logger,
-		timers:      make(map[string]*turnTimer),
-		graceTimers: make(map[string]*graceTimer),
+		timers:        make(map[string]*turnTimer),
+		graceTimers:   make(map[string]*graceTimer),
+		aiTurnCancels: make(map[string]context.CancelFunc),
 	}
 
 	state := &model.GameStateRedis{
@@ -182,8 +185,9 @@ func TestNotifyGameStarted_TurnStartHasCorrectSeat(t *testing.T) {
 		turnSvc:     turnSvc,
 		jwtSecret:   "test-secret",
 		logger:      logger,
-		timers:      make(map[string]*turnTimer),
-		graceTimers: make(map[string]*graceTimer),
+		timers:        make(map[string]*turnTimer),
+		graceTimers:   make(map[string]*graceTimer),
+		aiTurnCancels: make(map[string]context.CancelFunc),
 	}
 
 	// 첫 턴이 seat 1 (두 번째 플레이어)인 경우

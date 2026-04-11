@@ -1,0 +1,90 @@
+{
+  "run_id": "multirun-claude-run1-20260411_090038",
+  "run_number": 1,
+  "date": "2026-04-11",
+  "model_key": "claude",
+  "place_rate": 28.2,
+  "ai_place": 11,
+  "ai_tiles_placed": 32,
+  "ai_draw": 28,
+  "ai_fallback": 0,
+  "total_turns": 80,
+  "elapsed": 3056.2,
+  "est_cost": 2.886,
+  "result": "TIMEOUT",
+  "resp_avg": 78.4,
+  "resp_p50": 76.4,
+  "resp_min": 26.8,
+  "resp_max": 202.8,
+  "place_details": [
+    {
+      "turn": 14,
+      "tiles": 7,
+      "cumulative": 7,
+      "resp_time": 31.3
+    },
+    {
+      "turn": 18,
+      "tiles": 3,
+      "cumulative": 10,
+      "resp_time": 45.0
+    },
+    {
+      "turn": 22,
+      "tiles": 1,
+      "cumulative": 11,
+      "resp_time": 76.4
+    },
+    {
+      "turn": 28,
+      "tiles": 3,
+      "cumulative": 14,
+      "resp_time": 30.1
+    },
+    {
+      "turn": 32,
+      "tiles": 3,
+      "cumulative": 17,
+      "resp_time": 31.6
+    },
+    {
+      "turn": 38,
+      "tiles": 2,
+      "cumulative": 19,
+      "resp_time": 102.8
+    },
+    {
+      "turn": 46,
+      "tiles": 3,
+      "cumulative": 22,
+      "resp_time": 46.7
+    },
+    {
+      "turn": 52,
+      "tiles": 3,
+      "cumulative": 25,
+      "resp_time": 35.4
+    },
+    {
+      "turn": 62,
+      "tiles": 3,
+      "cumulative": 28,
+      "resp_time": 67.0
+    },
+    {
+      "turn": 66,
+      "tiles": 1,
+      "cumulative": 29,
+      "resp_time": 44.4
+    },
+    {
+      "turn": 76,
+      "tiles": 3,
+      "cumulative": 32,
+      "resp_time": 64.7
+    }
+  ],
+  "fallback_reasons": [],
+  "errors": [],
+  "source": "multirun"
+}

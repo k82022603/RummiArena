@@ -1,0 +1,70 @@
+{
+  "tournament": "3-model Round 4",
+  "timestamp": "2026-04-11 10:21:15",
+  "config": {
+    "maxTurns": 80,
+    "persona": "calculator",
+    "difficulty": "expert",
+    "psychologyLevel": 2
+  },
+  "models": [
+    {
+      "modelKey": "claude",
+      "modelName": "Claude Sonnet 4",
+      "totalTurns": 44,
+      "aiTurns": 21,
+      "aiPlace": 4,
+      "aiTilesPlaced": 15,
+      "aiDraw": 17,
+      "aiFallback": 0,
+      "placeRate": 19.0,
+      "elapsed": 1764.2,
+      "estimatedCost": 1.554,
+      "result": "WS_TIMEOUT",
+      "responseTime": {
+        "avg": 71.1,
+        "p50": 64.6,
+        "min": 30.9,
+        "max": 156.5
+      },
+      "placeDetails": [
+        {
+          "turn": 10,
+          "tiles": 6,
+          "cumulative": 6,
+          "resp_time": 32.5
+        },
+        {
+          "turn": 32,
+          "tiles": 3,
+          "cumulative": 9,
+          "resp_time": 105.2
+        },
+        {
+          "turn": 38,
+          "tiles": 3,
+          "cumulative": 12,
+          "resp_time": 57.1
+        },
+        {
+          "turn": 42,
+          "tiles": 3,
+          "cumulative": 15,
+          "resp_time": 89.7
+        }
+      ],
+      "fallbackReasons": [],
+      "errors": [],
+      "round2Baseline": {
+        "place": 9,
+        "tiles": 29,
+        "draw": 31,
+        "rate": 23.0,
+        "elapsed": 2076,
+        "cost": 2.96,
+        "fallback": 0
+      },
+      "deltaPlaceRate": -4.0
+    }
+  ]
+}

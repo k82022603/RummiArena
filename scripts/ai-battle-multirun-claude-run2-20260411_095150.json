@@ -1,0 +1,48 @@
+{
+  "run_id": "multirun-claude-run2-20260411_095150",
+  "run_number": 2,
+  "date": "2026-04-11",
+  "model_key": "claude",
+  "place_rate": 19.0,
+  "ai_place": 4,
+  "ai_tiles_placed": 15,
+  "ai_draw": 17,
+  "ai_fallback": 0,
+  "total_turns": 44,
+  "elapsed": 1764.2,
+  "est_cost": 1.554,
+  "result": "WS_TIMEOUT",
+  "resp_avg": 71.1,
+  "resp_p50": 64.6,
+  "resp_min": 30.9,
+  "resp_max": 156.5,
+  "place_details": [
+    {
+      "turn": 10,
+      "tiles": 6,
+      "cumulative": 6,
+      "resp_time": 32.5
+    },
+    {
+      "turn": 32,
+      "tiles": 3,
+      "cumulative": 9,
+      "resp_time": 105.2
+    },
+    {
+      "turn": 38,
+      "tiles": 3,
+      "cumulative": 12,
+      "resp_time": 57.1
+    },
+    {
+      "turn": 42,
+      "tiles": 3,
+      "cumulative": 15,
+      "resp_time": 89.7
+    }
+  ],
+  "fallback_reasons": [],
+  "errors": [],
+  "source": "multirun"
+}

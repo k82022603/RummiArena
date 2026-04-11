@@ -47,14 +47,15 @@ func newAITestHandler(aiClient client.AIClientInterface, gameSvc service.GameSer
 	turnSvc := service.NewTurnService(gameStateRepo, gameSvc)
 
 	return &WSHandler{
-		hub:       hub,
-		roomSvc:   roomSvc,
-		gameSvc:   gameSvc,
-		turnSvc:   turnSvc,
-		aiClient:  aiClient,
-		jwtSecret: "test-secret",
-		logger:    zap.NewNop(),
-		timers:    make(map[string]*turnTimer),
+		hub:           hub,
+		roomSvc:       roomSvc,
+		gameSvc:       gameSvc,
+		turnSvc:       turnSvc,
+		aiClient:      aiClient,
+		jwtSecret:     "test-secret",
+		logger:        zap.NewNop(),
+		timers:        make(map[string]*turnTimer),
+		aiTurnCancels: make(map[string]context.CancelFunc),
 	}
 }
 

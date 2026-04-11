@@ -93,6 +93,8 @@ type WSHandler struct {
 	timersMu      sync.Mutex
 	graceTimers         map[string]*graceTimer // key: "roomID:userID"
 	graceTimersMu       sync.Mutex
+	aiTurnCancels       map[string]context.CancelFunc // key: gameID — AI goroutine 취소용
+	aiTurnCancelsMu     sync.Mutex
 	aiAdapterTimeoutSec int // ConfigMap AI_ADAPTER_TIMEOUT_SEC
 }
 
@@ -119,6 +121,7 @@ func NewWSHandler(
 		logger:              logger,
 		timers:              make(map[string]*turnTimer),
 		graceTimers:         make(map[string]*graceTimer),
+		aiTurnCancels:       make(map[string]context.CancelFunc),
 		aiAdapterTimeoutSec: aiAdapterTimeoutSec,
 	}
 }
@@ -800,8 +803,9 @@ func (h *WSHandler) broadcastTurnStart(roomID string, state *model.GameStateRedi
 }
 
 func (h *WSHandler) broadcastGameOver(conn *Connection, state *model.GameStateRedis) {
-	// 게임 종료 시 진행 중인 타이머 취소
+	// 게임 종료 시 진행 중인 타이머 취소 + AI goroutine 취소 + Redis 정리
 	h.cancelTurnTimer(conn.gameID)
+	h.cleanupGame(conn.gameID)
 
 	results := make([]WSPlayerResult, len(state.Players))
 	for i, p := range state.Players {
@@ -872,6 +876,16 @@ func (h *WSHandler) handleAITurn(roomID, gameID string, player *model.PlayerStat
 	ctx, cancel := context.WithTimeout(context.Background(), aiTurnTimeout)
 	defer cancel()
 
+	// BUG-GS-005: cancel 함수를 등록하여 게임 종료 시 goroutine을 취소할 수 있게 한다.
+	h.aiTurnCancelsMu.Lock()
+	h.aiTurnCancels[gameID] = cancel
+	h.aiTurnCancelsMu.Unlock()
+	defer func() {
+		h.aiTurnCancelsMu.Lock()
+		delete(h.aiTurnCancels, gameID)
+		h.aiTurnCancelsMu.Unlock()
+	}()
+
 	aiModel := playerTypeToModel(player.PlayerType)
 
 	opponents := buildOpponentInfo(state.Players, player.SeatOrder)
@@ -905,6 +919,14 @@ func (h *WSHandler) handleAITurn(roomID, gameID string, player *model.PlayerStat
 
 	resp, err := h.aiClient.GenerateMove(ctx, req)
 	if err != nil {
+		// BUG-GS-005: context 취소(게임 종료)로 인한 에러는 무시한다.
+		if ctx.Err() != nil {
+			h.logger.Info("ws: AI turn cancelled — game ended during AI thinking",
+				zap.String("gameId", gameID),
+				zap.Int("seat", player.SeatOrder),
+			)
+			return
+		}
 		reason := "AI_ERROR"
 		if strings.Contains(err.Error(), "status 429") {
 			reason = "AI_RATE_LIMITED"
@@ -920,6 +942,17 @@ func (h *WSHandler) handleAITurn(roomID, gameID string, player *model.PlayerStat
 			zap.Error(err),
 		)
 		h.forceAIDraw(roomID, gameID, player.SeatOrder, reason)
+		return
+	}
+
+	// BUG-GS-005: AI 응답 수신 후 게임이 이미 종료됐는지 확인한다.
+	// AI 어댑터 응답이 느린 동안 Human 기권 등으로 게임이 끝날 수 있다.
+	currentState, gsErr := h.gameSvc.GetRawGameState(gameID)
+	if gsErr != nil || currentState.Status == model.GameStatusFinished {
+		h.logger.Info("ws: AI turn skipped — game already finished",
+			zap.String("gameId", gameID),
+			zap.Int("seat", player.SeatOrder),
+		)
 		return
 	}
 
@@ -1284,6 +1317,29 @@ func (h *WSHandler) cancelTurnTimer(gameID string) {
 	h.deleteTimerFromRedis(gameID)
 }
 
+// cancelAITurn 진행 중인 AI 턴 goroutine을 취소한다.
+// 게임 종료(기권, 정상 종료) 시 호출하여 좀비 goroutine을 방지한다.
+func (h *WSHandler) cancelAITurn(gameID string) {
+	h.aiTurnCancelsMu.Lock()
+	if cancel, ok := h.aiTurnCancels[gameID]; ok {
+		cancel()
+		delete(h.aiTurnCancels, gameID)
+	}
+	h.aiTurnCancelsMu.Unlock()
+}
+
+// cleanupGame 게임 종료 시 AI goroutine 취소 + Redis GameState 삭제를 수행한다.
+// broadcastGameOverFromState, broadcastGameOver, forfeitAndBroadcast에서 공통 호출.
+func (h *WSHandler) cleanupGame(gameID string) {
+	h.cancelAITurn(gameID)
+	if err := h.gameSvc.DeleteGameState(gameID); err != nil {
+		h.logger.Warn("ws: cleanupGame DeleteGameState failed",
+			zap.String("gameID", gameID),
+			zap.Error(err),
+		)
+	}
+}
+
 // ============================================================
 // Redis Timer Storage (B2)
 // ============================================================
@@ -1503,8 +1559,9 @@ func (h *WSHandler) broadcastTurnEndFromState(roomID string, seat int, state *mo
 // broadcastGameOverFromState Connection 없이 roomID 기반으로 GAME_OVER를 브로드캐스트한다.
 // AI 턴에서 게임이 종료될 때 사용한다.
 func (h *WSHandler) broadcastGameOverFromState(roomID string, state *model.GameStateRedis) {
-	// 게임 종료 시 진행 중인 타이머 취소
+	// 게임 종료 시 진행 중인 타이머 취소 + AI goroutine 취소 + Redis 정리
 	h.cancelTurnTimer(state.GameID)
+	h.cleanupGame(state.GameID)
 
 	results := make([]WSPlayerResult, len(state.Players))
 	for i, p := range state.Players {
@@ -1937,6 +1994,7 @@ func (h *WSHandler) forfeitAndBroadcast(roomID, gameID string, seat int, userID,
 
 	if isGameOver {
 		h.cancelTurnTimer(gameID)
+		h.cleanupGame(gameID)
 
 		endType := "FORFEIT"
 		winnerSeat := -1

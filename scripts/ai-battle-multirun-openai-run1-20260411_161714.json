@@ -1,0 +1,90 @@
+{
+  "run_id": "multirun-openai-run1-20260411_161714",
+  "run_number": 1,
+  "date": "2026-04-11",
+  "model_key": "openai",
+  "place_rate": 28.2,
+  "ai_place": 11,
+  "ai_tiles_placed": 29,
+  "ai_draw": 28,
+  "ai_fallback": 0,
+  "total_turns": 80,
+  "elapsed": 2872.2,
+  "est_cost": 0.975,
+  "result": "TIMEOUT",
+  "resp_avg": 73.6,
+  "resp_p50": 63.5,
+  "resp_min": 19.9,
+  "resp_max": 209.9,
+  "place_details": [
+    {
+      "turn": 2,
+      "tiles": 3,
+      "cumulative": 3,
+      "resp_time": 19.9
+    },
+    {
+      "turn": 12,
+      "tiles": 3,
+      "cumulative": 6,
+      "resp_time": 25.6
+    },
+    {
+      "turn": 16,
+      "tiles": 3,
+      "cumulative": 9,
+      "resp_time": 49.4
+    },
+    {
+      "turn": 24,
+      "tiles": 3,
+      "cumulative": 12,
+      "resp_time": 56.5
+    },
+    {
+      "turn": 34,
+      "tiles": 3,
+      "cumulative": 15,
+      "resp_time": 167.9
+    },
+    {
+      "turn": 38,
+      "tiles": 3,
+      "cumulative": 18,
+      "resp_time": 56.9
+    },
+    {
+      "turn": 48,
+      "tiles": 3,
+      "cumulative": 21,
+      "resp_time": 53.2
+    },
+    {
+      "turn": 56,
+      "tiles": 3,
+      "cumulative": 24,
+      "resp_time": 83.2
+    },
+    {
+      "turn": 58,
+      "tiles": 2,
+      "cumulative": 26,
+      "resp_time": 209.9
+    },
+    {
+      "turn": 62,
+      "tiles": 2,
+      "cumulative": 28,
+      "resp_time": 63.5
+    },
+    {
+      "turn": 68,
+      "tiles": 1,
+      "cumulative": 29,
+      "resp_time": 74.4
+    }
+  ],
+  "fallback_reasons": [],
+  "errors": [],
+  "source": "multirun"
+}

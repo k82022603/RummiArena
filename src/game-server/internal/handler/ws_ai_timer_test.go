@@ -53,13 +53,14 @@ func newAITimerTestEnv(aiClient client.AIClientInterface) (*WSHandler, repositor
 	gameSvc := service.NewGameService(gameRepo)
 	turnSvc := service.NewTurnService(gameRepo, gameSvc)
 	h := &WSHandler{
-		hub:      NewHub(zap.NewNop()),
-		roomSvc:  service.NewRoomService(repository.NewMemoryRoomRepo(), repository.NewMemoryGameStateRepoAdapter()),
-		gameSvc:  gameSvc,
-		turnSvc:  turnSvc,
-		aiClient: aiClient,
-		logger:   zap.NewNop(),
-		timers:   make(map[string]*turnTimer),
+		hub:           NewHub(zap.NewNop()),
+		roomSvc:       service.NewRoomService(repository.NewMemoryRoomRepo(), repository.NewMemoryGameStateRepoAdapter()),
+		gameSvc:       gameSvc,
+		turnSvc:       turnSvc,
+		aiClient:      aiClient,
+		logger:        zap.NewNop(),
+		timers:        make(map[string]*turnTimer),
+		aiTurnCancels: make(map[string]context.CancelFunc),
 	}
 	return h, gameRepo
 }

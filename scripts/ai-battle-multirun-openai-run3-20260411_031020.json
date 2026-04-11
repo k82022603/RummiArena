@@ -1,0 +1,71 @@
+{
+  "run_id": "multirun-openai-run3-20260411_031020",
+  "run_number": 3,
+  "date": "2026-04-11",
+  "model_key": "openai",
+  "place_rate": 21.9,
+  "ai_place": 7,
+  "ai_tiles_placed": 24,
+  "ai_draw": 25,
+  "ai_fallback": 4,
+  "total_turns": 66,
+  "elapsed": 1801.6,
+  "est_cost": 0.8,
+  "result": "FORFEIT",
+  "resp_avg": 56.3,
+  "resp_p50": 62.2,
+  "resp_min": 0.0,
+  "resp_max": 160.9,
+  "place_details": [
+    {
+      "turn": 2,
+      "tiles": 7,
+      "cumulative": 7,
+      "resp_time": 25.5
+    },
+    {
+      "turn": 8,
+      "tiles": 3,
+      "cumulative": 10,
+      "resp_time": 20.2
+    },
+    {
+      "turn": 16,
+      "tiles": 2,
+      "cumulative": 12,
+      "resp_time": 65.4
+    },
+    {
+      "turn": 26,
+      "tiles": 3,
+      "cumulative": 15,
+      "resp_time": 59.9
+    },
+    {
+      "turn": 38,
+      "tiles": 4,
+      "cumulative": 19,
+      "resp_time": 54.5
+    },
+    {
+      "turn": 44,
+      "tiles": 2,
+      "cumulative": 21,
+      "resp_time": 69.3
+    },
+    {
+      "turn": 50,
+      "tiles": 3,
+      "cumulative": 24,
+      "resp_time": 46.8
+    }
+  ],
+  "fallback_reasons": [
+    "AI_COST_LIMIT",
+    "AI_COST_LIMIT",
+    "AI_COST_LIMIT",
+    "AI_COST_LIMIT"
+  ],
+  "errors": [],
+  "source": "multirun"
+}

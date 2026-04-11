@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"sync"
 	"testing"
 	"time"
@@ -24,11 +25,12 @@ func newTimerTestEnv() (*WSHandler, repository.MemoryGameStateRepository) {
 	gameSvc := service.NewGameService(gameRepo)
 	turnSvc := service.NewTurnService(gameRepo, gameSvc)
 	h := &WSHandler{
-		hub:     NewHub(zap.NewNop()),
-		gameSvc: gameSvc,
-		turnSvc: turnSvc,
-		logger:  zap.NewNop(),
-		timers:  make(map[string]*turnTimer),
+		hub:           NewHub(zap.NewNop()),
+		gameSvc:       gameSvc,
+		turnSvc:       turnSvc,
+		logger:        zap.NewNop(),
+		timers:        make(map[string]*turnTimer),
+		aiTurnCancels: make(map[string]context.CancelFunc),
 	}
 	return h, gameRepo
 }

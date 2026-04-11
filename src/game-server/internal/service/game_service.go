@@ -61,6 +61,8 @@ type GameService interface {
 	SaveGameState(state *model.GameStateRedis) error
 	// GetRawGameState 원시 GameStateRedis를 반환한다 (handler에서 부재/카운터 판정 시 사용).
 	GetRawGameState(gameID string) (*model.GameStateRedis, error)
+	// DeleteGameState 게임 상태를 삭제한다 (게임 종료 시 Redis 정리).
+	DeleteGameState(gameID string) error
 }
 
 // GameStateView 1인칭 뷰 게임 상태.
@@ -763,6 +765,11 @@ func (s *gameService) GetRawGameState(gameID string) (*model.GameStateRedis, err
 		return nil, &ServiceError{Code: "NOT_FOUND", Message: errMsgGameNotFound, Status: 404}
 	}
 	return state, nil
+}
+
+// DeleteGameState 게임 상태를 삭제한다.
+func (s *gameService) DeleteGameState(gameID string) error {
+	return s.gameRepo.DeleteGameState(gameID)
 }
 
 // --- 내부 헬퍼 함수 ---

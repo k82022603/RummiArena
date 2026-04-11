@@ -1,142 +1,183 @@
 {
   "report": "v2 Prompt Multi-Run Statistics",
-  "timestamp": "2026-04-11 00:22:07",
+  "timestamp": "2026-04-11 18:04:07",
   "config": {
     "max_turns": 80,
     "include_historical": true,
     "plan": {
-      "deepseek": 1
+      "claude": 1
     }
   },
   "models": {
     "openai": {
       "model_key": "openai",
-      "total_runs": 2,
-      "valid_runs": 2,
-      "completed_runs": 2,
+      "total_runs": 6,
+      "valid_runs": 6,
+      "completed_runs": 6,
       "failed_runs": 0,
       "place_rate": {
-        "n": 2,
-        "mean": 30.8,
-        "std": 0.0,
-        "min": 30.8,
-        "max": 30.8,
+        "n": 6,
+        "mean": 29.3,
+        "std": 3.97,
+        "min": 21.9,
+        "max": 33.3,
         "median": 30.8,
         "values": [
           30.8,
-          30.8
+          30.8,
+          33.3,
+          28.2,
+          30.8,
+          21.9
         ]
       },
       "ai_place": {
-        "n": 2,
-        "mean": 12.0,
-        "std": 0.0,
-        "min": 12.0,
-        "max": 12.0,
+        "n": 6,
+        "mean": 11.17,
+        "std": 2.14,
+        "min": 7.0,
+        "max": 13.0,
         "median": 12.0,
         "values": [
           12.0,
-          12.0
+          12.0,
+          13.0,
+          11.0,
+          12.0,
+          7.0
         ]
       },
       "ai_tiles_placed": {
-        "n": 2,
-        "mean": 30.5,
-        "std": 2.12,
-        "min": 29.0,
+        "n": 6,
+        "mean": 28.5,
+        "std": 2.74,
+        "min": 24.0,
         "max": 32.0,
-        "median": 30.5,
+        "median": 29.0,
         "values": [
           29.0,
-          32.0
+          32.0,
+          30.0,
+          29.0,
+          27.0,
+          24.0
         ]
       },
       "ai_draw": {
-        "n": 2,
-        "mean": 27.0,
-        "std": 0.0,
-        "min": 27.0,
-        "max": 27.0,
+        "n": 6,
+        "mean": 26.67,
+        "std": 1.03,
+        "min": 25.0,
+        "max": 28.0,
         "median": 27.0,
         "values": [
           27.0,
-          27.0
+          27.0,
+          26.0,
+          28.0,
+          27.0,
+          25.0
         ]
       },
       "ai_fallback": {
-        "n": 2,
-        "mean": 0.0,
-        "std": 0.0,
+        "n": 6,
+        "mean": 0.67,
+        "std": 1.63,
         "min": 0.0,
-        "max": 0.0,
+        "max": 4.0,
         "median": 0.0,
         "values": [
           0.0,
-          0.0
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          4.0
         ]
       },
       "total_turns": {
-        "n": 2,
-        "mean": 80.0,
-        "std": 0.0,
-        "min": 80.0,
+        "n": 6,
+        "mean": 77.67,
+        "std": 5.72,
+        "min": 66.0,
         "max": 80.0,
         "median": 80.0,
         "values": [
           80.0,
-          80.0
+          80.0,
+          80.0,
+          80.0,
+          80.0,
+          66.0
         ]
       },
       "elapsed": {
-        "n": 2,
-        "mean": 2459.0,
-        "std": 83.44,
-        "min": 2400.0,
-        "max": 2518.0,
-        "median": 2459.0,
+        "n": 6,
+        "mean": 2471.02,
+        "std": 373.2,
+        "min": 1801.6,
+        "max": 2872.2,
+        "median": 2499.25,
         "values": [
           2518.0,
-          2400.0
+          2400.0,
+          2480.5,
+          2872.2,
+          2753.8,
+          1801.6
         ]
       },
       "est_cost": {
-        "n": 2,
-        "mean": 0.97,
-        "std": 0.0,
-        "min": 0.97,
+        "n": 6,
+        "mean": 0.95,
+        "std": 0.07,
+        "min": 0.8,
         "max": 0.97,
         "median": 0.97,
         "values": [
           0.97,
-          0.97
+          0.97,
+          0.97,
+          0.97,
+          0.97,
+          0.8
         ]
       },
       "resp_avg": {
-        "n": 2,
-        "mean": 62.3,
-        "std": 3.25,
-        "min": 60.0,
-        "max": 64.6,
-        "median": 62.3,
+        "n": 6,
+        "mean": 64.78,
+        "std": 6.45,
+        "min": 56.3,
+        "max": 73.6,
+        "median": 64.1,
         "values": [
           64.6,
-          60.0
+          60.0,
+          63.6,
+          73.6,
+          70.6,
+          56.3
         ]
       },
       "resp_p50": {
-        "n": 2,
-        "mean": 56.4,
-        "std": 1.98,
+        "n": 6,
+        "mean": 60.48,
+        "std": 4.18,
         "min": 55.0,
-        "max": 57.8,
-        "median": 56.4,
+        "max": 66.2,
+        "median": 60.2,
         "values": [
           57.8,
-          55.0
+          55.0,
+          58.2,
+          63.5,
+          66.2,
+          62.2
         ]
       },
       "result_distribution": {
-        "TIMEOUT": 2
+        "TIMEOUT": 5,
+        "FORFEIT": 1
       },
       "runs": [
         {
@@ -158,127 +199,208 @@
           "est_cost": 0.975,
           "result": "TIMEOUT",
           "source": "round4-rerun"
+        },
+        {
+          "run_id": "multirun-openai-run1-20260411_014235",
+          "date": "2026-04-11",
+          "place_rate": 33.3,
+          "total_turns": 80,
+          "elapsed": 2480.5,
+          "est_cost": 0.975,
+          "result": "TIMEOUT",
+          "source": "multirun"
+        },
+        {
+          "run_id": "multirun-openai-run1-20260411_161714",
+          "date": "2026-04-11",
+          "place_rate": 28.2,
+          "total_turns": 80,
+          "elapsed": 2872.2,
+          "est_cost": 0.975,
+          "result": "TIMEOUT",
+          "source": "multirun"
+        },
+        {
+          "run_id": "multirun-openai-run2-20260411_022411",
+          "date": "2026-04-11",
+          "place_rate": 30.8,
+          "total_turns": 80,
+          "elapsed": 2753.8,
+          "est_cost": 0.975,
+          "result": "TIMEOUT",
+          "source": "multirun"
+        },
+        {
+          "run_id": "multirun-openai-run3-20260411_031020",
+          "date": "2026-04-11",
+          "place_rate": 21.9,
+          "total_turns": 66,
+          "elapsed": 1801.6,
+          "est_cost": 0.8,
+          "result": "FORFEIT",
+          "source": "multirun"
         }
       ]
     },
     "claude": {
       "model_key": "claude",
-      "total_runs": 1,
-      "valid_runs": 1,
-      "completed_runs": 1,
+      "total_runs": 5,
+      "valid_runs": 5,
+      "completed_runs": 4,
       "failed_runs": 0,
       "place_rate": {
-        "n": 1,
-        "mean": 33.3,
-        "std": 0.0,
-        "min": 33.3,
+        "n": 5,
+        "mean": 27.88,
+        "std": 5.98,
+        "min": 19.0,
         "max": 33.3,
-        "median": 33.3,
+        "median": 28.2,
         "values": [
+          33.3,
+          28.2,
+          25.6,
+          19.0,
           33.3
         ]
       },
       "ai_place": {
-        "n": 1,
-        "mean": 10.0,
-        "std": 0.0,
-        "min": 10.0,
-        "max": 10.0,
+        "n": 5,
+        "mean": 9.6,
+        "std": 3.36,
+        "min": 4.0,
+        "max": 13.0,
         "median": 10.0,
         "values": [
-          10.0
+          10.0,
+          11.0,
+          10.0,
+          4.0,
+          13.0
         ]
       },
       "ai_tiles_placed": {
-        "n": 1,
-        "mean": 26.0,
-        "std": 0.0,
-        "min": 26.0,
-        "max": 26.0,
-        "median": 26.0,
+        "n": 5,
+        "mean": 27.2,
+        "std": 7.33,
+        "min": 15.0,
+        "max": 33.0,
+        "median": 30.0,
         "values": [
-          26.0
+          26.0,
+          32.0,
+          33.0,
+          15.0,
+          30.0
         ]
       },
       "ai_draw": {
-        "n": 1,
-        "mean": 20.0,
-        "std": 0.0,
-        "min": 20.0,
-        "max": 20.0,
-        "median": 20.0,
+        "n": 5,
+        "mean": 24.0,
+        "std": 5.24,
+        "min": 17.0,
+        "max": 29.0,
+        "median": 26.0,
         "values": [
-          20.0
+          20.0,
+          28.0,
+          29.0,
+          17.0,
+          26.0
         ]
       },
       "ai_fallback": {
-        "n": 1,
+        "n": 5,
         "mean": 0.0,
         "std": 0.0,
         "min": 0.0,
         "max": 0.0,
         "median": 0.0,
         "values": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
           0.0
         ]
       },
       "total_turns": {
-        "n": 1,
-        "mean": 62.0,
-        "std": 0.0,
-        "min": 62.0,
-        "max": 62.0,
-        "median": 62.0,
+        "n": 5,
+        "mean": 69.2,
+        "std": 16.1,
+        "min": 44.0,
+        "max": 80.0,
+        "median": 80.0,
         "values": [
-          62.0
+          62.0,
+          80.0,
+          80.0,
+          44.0,
+          80.0
         ]
       },
       "elapsed": {
-        "n": 1,
-        "mean": 2094.0,
-        "std": 0.0,
-        "min": 2094.0,
-        "max": 2094.0,
-        "median": 2094.0,
+        "n": 5,
+        "mean": 2698.3,
+        "std": 732.27,
+        "min": 1764.2,
+        "max": 3491.4,
+        "median": 3056.2,
         "values": [
-          2094.0
+          2094.0,
+          3056.2,
+          3491.4,
+          1764.2,
+          3085.7
         ]
       },
       "est_cost": {
-        "n": 1,
-        "mean": 2.22,
-        "std": 0.0,
-        "min": 2.22,
-        "max": 2.22,
-        "median": 2.22,
+        "n": 5,
+        "mean": 2.49,
+        "std": 0.6,
+        "min": 1.55,
+        "max": 2.89,
+        "median": 2.89,
         "values": [
-          2.22
+          2.22,
+          2.89,
+          2.89,
+          1.55,
+          2.89
         ]
       },
       "resp_avg": {
-        "n": 1,
-        "mean": 63.8,
-        "std": 0.0,
+        "n": 5,
+        "mean": 76.38,
+        "std": 9.61,
         "min": 63.8,
-        "max": 63.8,
-        "median": 63.8,
+        "max": 89.5,
+        "median": 78.4,
         "values": [
-          63.8
+          63.8,
+          78.4,
+          89.5,
+          71.1,
+          79.1
         ]
       },
       "resp_p50": {
-        "n": 1,
-        "mean": 44.6,
-        "std": 0.0,
+        "n": 5,
+        "mean": 70.64,
+        "std": 18.79,
         "min": 44.6,
-        "max": 44.6,
-        "median": 44.6,
+        "max": 96.4,
+        "median": 71.2,
         "values": [
-          44.6
+          44.6,
+          76.4,
+          96.4,
+          64.6,
+          71.2
         ]
       },
       "result_distribution": {
-        "WS_TIMEOUT": 1
+        "WS_TIMEOUT": 2,
+        "TIMEOUT": 3
       },
       "runs": [
         {
@@ -290,97 +412,142 @@
           "est_cost": 2.22,
           "result": "WS_TIMEOUT",
           "source": "v2-prompt-crossmodel"
+        },
+        {
+          "run_id": "multirun-claude-run1-20260411_090038",
+          "date": "2026-04-11",
+          "place_rate": 28.2,
+          "total_turns": 80,
+          "elapsed": 3056.2,
+          "est_cost": 2.886,
+          "result": "TIMEOUT",
+          "source": "multirun"
+        },
+        {
+          "run_id": "multirun-claude-run1-20260411_170555",
+          "date": "2026-04-11",
+          "place_rate": 25.6,
+          "total_turns": 80,
+          "elapsed": 3491.4,
+          "est_cost": 2.886,
+          "result": "TIMEOUT",
+          "source": "multirun"
+        },
+        {
+          "run_id": "multirun-claude-run2-20260411_095150",
+          "date": "2026-04-11",
+          "place_rate": 19.0,
+          "total_turns": 44,
+          "elapsed": 1764.2,
+          "est_cost": 1.554,
+          "result": "WS_TIMEOUT",
+          "source": "multirun"
+        },
+        {
+          "run_id": "multirun-claude-run3-20260411_102130",
+          "date": "2026-04-11",
+          "place_rate": 33.3,
+          "total_turns": 80,
+          "elapsed": 3085.7,
+          "est_cost": 2.886,
+          "result": "TIMEOUT",
+          "source": "multirun"
         }
       ]
     },
     "deepseek": {
       "model_key": "deepseek",
-      "total_runs": 6,
-      "valid_runs": 6,
-      "completed_runs": 6,
+      "total_runs": 7,
+      "valid_runs": 7,
+      "completed_runs": 7,
       "failed_runs": 0,
       "place_rate": {
-        "n": 6,
-        "mean": 23.92,
-        "std": 6.03,
+        "n": 7,
+        "mean": 25.26,
+        "std": 6.55,
         "min": 17.9,
-        "max": 30.8,
-        "median": 23.05,
+        "max": 33.3,
+        "median": 25.6,
         "values": [
           30.8,
           17.9,
           17.9,
           20.5,
           25.6,
-          30.8
+          30.8,
+          33.3
         ]
       },
       "ai_place": {
-        "n": 6,
-        "mean": 9.33,
-        "std": 2.34,
+        "n": 7,
+        "mean": 9.86,
+        "std": 2.54,
         "min": 7.0,
-        "max": 12.0,
-        "median": 9.0,
+        "max": 13.0,
+        "median": 10.0,
         "values": [
           12.0,
           7.0,
           7.0,
           8.0,
           10.0,
-          12.0
+          12.0,
+          13.0
         ]
       },
       "ai_tiles_placed": {
-        "n": 6,
-        "mean": 29.83,
-        "std": 3.06,
+        "n": 7,
+        "mean": 29.57,
+        "std": 2.88,
         "min": 25.0,
         "max": 33.0,
-        "median": 30.5,
+        "median": 29.0,
         "values": [
           32.0,
           29.0,
           25.0,
           32.0,
           28.0,
-          33.0
+          33.0,
+          28.0
         ]
       },
       "ai_draw": {
-        "n": 6,
-        "mean": 29.67,
-        "std": 2.34,
-        "min": 27.0,
+        "n": 7,
+        "mean": 29.14,
+        "std": 2.54,
+        "min": 26.0,
         "max": 32.0,
-        "median": 30.0,
+        "median": 29.0,
         "values": [
           27.0,
           32.0,
           32.0,
           31.0,
           29.0,
-          27.0
+          27.0,
+          26.0
         ]
       },
       "ai_fallback": {
-        "n": 6,
-        "mean": 4.17,
-        "std": 6.37,
+        "n": 7,
+        "mean": 3.57,
+        "std": 6.02,
         "min": 0.0,
         "max": 15.0,
-        "median": 0.5,
+        "median": 0.0,
         "values": [
           0.0,
           0.0,
           15.0,
           9.0,
           1.0,
+          0.0,
           0.0
         ]
       },
       "total_turns": {
-        "n": 6,
+        "n": 7,
         "mean": 80.0,
         "std": 0.0,
         "min": 80.0,
@@ -392,27 +559,29 @@
           80.0,
           80.0,
           80.0,
+          80.0,
           80.0
         ]
       },
       "elapsed": {
-        "n": 6,
-        "mean": 6627.5,
-        "std": 1157.42,
+        "n": 7,
+        "mean": 7010.69,
+        "std": 1464.3,
         "min": 5127.0,
-        "max": 8236.9,
-        "median": 6530.0,
+        "max": 9309.8,
+        "median": 6835.3,
         "values": [
           5127.0,
           5763.0,
           7578.1,
           6835.3,
           6224.7,
-          8236.9
+          8236.9,
+          9309.8
         ]
       },
       "est_cost": {
-        "n": 6,
+        "n": 7,
         "mean": 0.04,
         "std": 0.0,
         "min": 0.04,
@@ -424,43 +593,46 @@
           0.04,
           0.04,
           0.04,
+          0.04,
           0.04
         ]
       },
       "resp_avg": {
-        "n": 6,
-        "mean": 169.95,
-        "std": 29.66,
+        "n": 7,
+        "mean": 179.77,
+        "std": 37.53,
         "min": 131.5,
-        "max": 211.2,
-        "median": 167.45,
+        "max": 238.7,
+        "median": 175.3,
         "values": [
           131.5,
           147.8,
           194.3,
           175.3,
           159.6,
-          211.2
+          211.2,
+          238.7
         ]
       },
       "resp_p50": {
-        "n": 6,
-        "mean": 172.75,
-        "std": 29.28,
+        "n": 7,
+        "mean": 179.46,
+        "std": 32.08,
         "min": 123.5,
-        "max": 210.4,
-        "median": 173.4,
+        "max": 219.7,
+        "median": 179.2,
         "values": [
           123.5,
           167.6,
           190.6,
           179.2,
           165.2,
-          210.4
+          210.4,
+          219.7
         ]
       },
       "result_distribution": {
-        "TIMEOUT": 6
+        "TIMEOUT": 7
       },
       "runs": [
         {
@@ -519,6 +691,16 @@
           "place_rate": 30.8,
           "total_turns": 80,
           "elapsed": 8236.9,
+          "est_cost": 0.039,
+          "result": "TIMEOUT",
+          "source": "multirun"
+        },
+        {
+          "run_id": "multirun-deepseek-run1-20260411_134046",
+          "date": "2026-04-11",
+          "place_rate": 33.3,
+          "total_turns": 80,
+          "elapsed": 9309.8,
           "est_cost": 0.039,
           "result": "TIMEOUT",
           "source": "multirun"
