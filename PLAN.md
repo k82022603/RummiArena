@@ -17,7 +17,7 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 |-------|------|--------|-------------|------|
 | 1 | 기획 & 환경 구축 | Sprint 0 | 기획/설계 문서, K8s/ArgoCD/Traefik 환경 | **완료** |
 | 2 | 핵심 게임 개발 (MVP) | Sprint 1~3 | Game Engine (Go), Backend API, Frontend 기본 | **완료** (2026-03-23) |
-| 3 | AI 연동 & 멀티플레이 | Sprint 4~5 | AI Adapter (NestJS), 실시간 대전, 1인 연습 모드 | **Sprint 5 W2 마감 중** (2026-04-10, 마감 4/12 연장) |
+| 3 | AI 연동 & 멀티플레이 | Sprint 4~5 | AI Adapter (NestJS), 실시간 대전, 1인 연습 모드 | **Sprint 5 완료** (2026-04-12 마감, 진행률 100%) |
 | 4 | 플랫폼 기능 확장 | Sprint 6 | 관리자 대시보드, 카카오톡 알림, ELO, 게임 복기 | 일부 선행 완료 (ELO, 관리자) |
 | 5 | DevSecOps 고도화 | Sprint 7~9 | Observability, 보안 고도화, Istio Service Mesh | **Sprint 5에서 선행 착수** (SEC-RL-003, SEC-ADD-001/002, Istio 설계) |
 | 6 | 운영 & 실험 | (Phase 6) | AI 토너먼트, 모델 비교 분석, OpenShift 검토 | **일부 선행** (Round 4 토너먼트, v2 크로스모델 실험) |
@@ -359,7 +359,19 @@ docs/
 
 ## 현재 진행 상황
 
-**Sprint 5 W2 Day 3 완료** (2026-04-08) — 진행률 **~92%**
+**Sprint 5 최종 마감** (2026-04-12) — 진행률 **100%**
+
+### Sprint 5 최종 성과 요약
+- **AI 대전 12회** 완료: multirun 9회 (GPT/Claude/DeepSeek 각 3회) + 검증 대전 3회 (BUG-GS-005 수정 후)
+- **검증 대전 3모델 전수 완주**: DeepSeek 33.3% / GPT 28.2% / Claude 25.6%, Fallback 0, WS_TIMEOUT 0
+- **BUG-GS-005 수정 완료**: WS 끊김 시 AI goroutine 생명주기 독립 버그 → `aiTurnCancels` + `cancelAITurn` + `cleanupGame`
+- **보고서 47번 신규** (575줄): 추론 엔진 심층 분석, 토큰 효율성
+- **에세이 4편 완성**: DeepSeek 15/16, GPT 17, Claude 18 — 네 모델 초상화 시리즈
+- **테스트**: Go 689 PASS / AI Adapter 428 PASS / E2E 376 PASS = 총 1,528건
+- **CI/CD**: 17/17 GREEN (Pipeline #113)
+- **보안**: 13건 중 9건 해결 (Critical 2 + High 3 + Medium 4)
+- **문서**: 총 114문서
+- **총 비용**: $14.09 (대전 12회), API 잔액 Sprint 6 예산 충분
 
 ### 완료된 스프린트
 
@@ -405,8 +417,26 @@ docs/
 - [x] 에러코드 레지스트리 (29번, 38개 코드, CRITICAL 1건)
 - [x] DB 연결 수정 (postgres password sync)
 
-**W2 Day 5 잔여** (04-10):
-- [ ] 아키텍트 에러코드 소스코드 전수 검토 + P1 수정(AI_COOLDOWN 429→403)
-- [ ] v2 다회 실행 배틀 (GPT/DeepSeek 각 3회, Claude 1회)
-- [ ] E2E 전체 390건 재실행 검증
-- [ ] Sprint 5 회고 + 종료 보고 (4/11 마감)
+**W2 Day 5 완료** (2026-04-10):
+- [x] DeepSeek 3회 multirun (20.5% / 25.6% / 30.8%) — timeout 500초 효과 확인
+- [x] AI_ADAPTER_TIMEOUT_SEC 240→500 전구간 배포 (game-server, ai-adapter, ConfigMap, Helm, config.go)
+- [x] E2E 376/390 PASS
+- [x] 배치 대전 스킬 생성 (`batch-battle`)
+- [x] DeepSeek 에세이 15/16번 작성
+
+**W2 Day 6 완료** (2026-04-11):
+- [x] GPT 3회 multirun (33.3% / 30.8% / 21.9%)
+- [x] Claude 3회 multirun (28.2% / 19.0% / 33.3%)
+- [x] **BUG-GS-005 수정** — AI goroutine 생명주기 독립 버그 (6파일, 9테스트)
+- [x] **검증 대전 3모델** — 전수 완주, Fallback 0, WS_TIMEOUT 0
+- [x] 46번 보고서 갱신 + **47번 신규 (575줄)** 토큰 효율성 분석
+- [x] 에러코드 전수 검토 + 게임룰 3건 구현
+
+**W2 Day 7 완료** (2026-04-12) — **Sprint 5 마감**:
+- [x] Sprint 5 최종 종료 보고 갱신 (`16-sprint5-closing-report.md` 479→550줄)
+- [x] GPT·Claude 대전 에세이 2편 작성 (`17`, `18`) — 네 모델 초상화 시리즈 완성
+- [x] TIMEOUT Redis 자동 삭제 설계 메모 (`32`) — Sprint 6 Day 1 구현용
+- [x] Istio 드라이런 최종 확인 — Not Ready, P0 이슈 3건 사전 발견
+- [x] AI 토너먼트 대시보드 컴포넌트 스펙 초안 (`33`, 1538줄, 13 컴포넌트)
+- [x] 와이어프레임 23번 기술 리뷰 — Conditional Ready, 선결 5건
+- [x] Agent Teams 6명 병렬 실행 — 30분 내 3,631줄 생산
