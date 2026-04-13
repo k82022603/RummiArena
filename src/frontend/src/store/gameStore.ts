@@ -60,6 +60,13 @@ interface GameStore {
   pendingMyTiles: TileCode[] | null;
   setPendingMyTiles: (tiles: TileCode[] | null) => void;
 
+  // P3: 테이블 조커 교체로 회수한 조커 대기 풀
+  // 규칙 §3.3/§6.2 유형 4 — 회수한 조커는 같은 턴 내에 다른 세트에 반드시 사용해야 한다.
+  pendingRecoveredJokers: TileCode[];
+  addRecoveredJoker: (code: TileCode) => void;
+  removeRecoveredJoker: (code: TileCode) => void;
+  clearRecoveredJokers: () => void;
+
   // 이번 턴에 새로 추가된 그룹 ID 세트 (프리뷰 표시용, 서버 미확정)
   pendingGroupIds: Set<string>;
   addPendingGroupId: (id: string) => void;
@@ -122,6 +129,7 @@ const initialState = {
   pendingTableGroups: null as TableGroup[] | null,
   pendingMyTiles: null as TileCode[] | null,
   pendingGroupIds: new Set<string>(),
+  pendingRecoveredJokers: [] as TileCode[],
   aiThinkingSeat: null as number | null,
   turnNumber: 1,
   gameEnded: false,
@@ -154,6 +162,20 @@ export const useGameStore = create<GameStore>()(
         pendingGroupIds: new Set([...state.pendingGroupIds, id]),
       })),
     clearPendingGroupIds: () => set({ pendingGroupIds: new Set<string>() }),
+
+    addRecoveredJoker: (code) =>
+      set((state) => ({
+        pendingRecoveredJokers: [...state.pendingRecoveredJokers, code],
+      })),
+    removeRecoveredJoker: (code) =>
+      set((state) => {
+        const idx = state.pendingRecoveredJokers.indexOf(code);
+        if (idx < 0) return {};
+        const next = [...state.pendingRecoveredJokers];
+        next.splice(idx, 1);
+        return { pendingRecoveredJokers: next };
+      }),
+    clearRecoveredJokers: () => set({ pendingRecoveredJokers: [] }),
     setAIThinkingSeat: (aiThinkingSeat) => set({ aiThinkingSeat }),
     setTurnNumber: (turnNumber) => set({ turnNumber }),
     setGameEnded: (gameEnded) => set({ gameEnded }),
@@ -190,6 +212,7 @@ export const useGameStore = create<GameStore>()(
         pendingTableGroups: null,
         pendingMyTiles: null,
         pendingGroupIds: new Set<string>(),
+        pendingRecoveredJokers: [],
       }),
 
     reset: () => set(initialState),
