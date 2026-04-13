@@ -449,6 +449,10 @@ export default function GameClient({ roomId }: GameClientProps) {
     | { kind: "table"; groupId: string; index: number };
   const activeDragSourceRef = useRef<ActiveDragSource | null>(null);
 
+  // BUG-UI-REARRANGE-002: pending 그룹 ID 생성용 단조 카운터 —
+  // Date.now() 단독은 같은 ms 내 연속 드롭 시 ID 충돌 → 중복 렌더링을 유발했다.
+  const pendingGroupSeqRef = useRef(0);
+
   // 다음 보드 드롭 시 새 그룹 강제 생성 여부
   const [forceNewGroup, setForceNewGroup] = useState(false);
 
@@ -640,6 +644,8 @@ export default function GameClient({ roomId }: GameClientProps) {
         if (!hasInitialMeld) return; // 최초 등록 전에는 재배치 금지
         const targetGroup = currentTableGroups.find((g) => g.id === over.id);
         if (!targetGroup) return;
+        // 자기 자신으로 이동하는 경우 no-op (동일 object id면 tiles가 두 번 변형됨)
+        if (targetGroup.id === sourceGroup.id) return;
 
         const updatedSourceTiles = [...sourceGroup.tiles];
         const [removed] = updatedSourceTiles.splice(dragSource.index, 1);
@@ -647,6 +653,8 @@ export default function GameClient({ roomId }: GameClientProps) {
 
         const updatedTargetTiles = [...targetGroup.tiles, tileCode];
 
+        // BUG-UI-REARRANGE-002: 불변성 유지 + 중복 방지
+        // map 결과를 filter하여 빈 그룹 제거, id 기준 unique 체크로 안전장치 추가.
         const nextTableGroups = currentTableGroups
           .map((g) => {
             if (g.id === sourceGroup.id) return { ...g, tiles: updatedSourceTiles, type: classifySetType(updatedSourceTiles) };
@@ -655,10 +663,20 @@ export default function GameClient({ roomId }: GameClientProps) {
           })
           .filter((g) => g.tiles.length > 0);
 
+        // dev assertion: 그룹 ID는 항상 unique해야 한다
+        if (process.env.NODE_ENV !== "production") {
+          const ids = nextTableGroups.map((g) => g.id);
+          if (new Set(ids).size !== ids.length) {
+            console.error("[BUG-UI-REARRANGE-002] 그룹 ID 중복 감지", ids);
+          }
+        }
+
         setPendingTableGroups(nextTableGroups);
         // 랙 상태는 변화 없음 — pendingMyTiles 최신 값을 그대로 유지
         setPendingMyTiles(pendingMyTiles ?? myTiles);
-        addPendingGroupId(sourceGroup.id);
+        // 원 그룹이 비워져 제거된 경우 pendingGroupIds에 유령 ID를 남기지 않음
+        const sourceStillExists = updatedSourceTiles.length > 0;
+        if (sourceStillExists) addPendingGroupId(sourceGroup.id);
         addPendingGroupId(targetGroup.id);
         return;
       }
@@ -740,10 +758,11 @@ export default function GameClient({ roomId }: GameClientProps) {
         );
         const lastPendingGroup = pendingOnlyGroups?.at(-1);
 
-        // BUG-UI-001 수정: 자동 새 그룹 생성 조건 판단
+        // BUG-UI-001 수정 + BUG-UI-CLASSIFY-001a 강화: 자동 새 그룹 생성 조건 판단
         // 1) forceNewGroup이 활성화된 경우
-        // 2) 마지막 pending 그룹이 4개 이상인 경우 (5개 이상은 그룹으로 불가능)
-        // 3) 마지막 pending 그룹에 추가 시 숫자/색상 불일치로 무효해지는 경우
+        // 2) 마지막 pending 그룹이 4개 이상 그룹이거나 최대 한계에 도달
+        // 3) 마지막 pending 그룹과 숫자/색상이 모두 불일치하면 합치지 말 것
+        //    (예: 1개 타일만 있는 pending 그룹 [R7]에 Y4 드롭 → 새 그룹)
         const shouldCreateNewGroup = (() => {
           if (forceNewGroup) return true;
           if (!lastPendingGroup) return false;
@@ -764,10 +783,29 @@ export default function GameClient({ roomId }: GameClientProps) {
           const existingColors = new Set(existingTiles.map((t) => t.color));
           const isRunCandidate = existingColors.size === 1;
 
+          // BUG-UI-CLASSIFY-001a: 타일이 1개일 때는 양쪽 다 후보가 되지만,
+          // 새 타일이 숫자/색 모두 불일치하면 그룹도 런도 될 수 없으므로 새 그룹.
+          if (isGroupCandidate && isRunCandidate) {
+            const refNumber = existingTiles[0].number;
+            const refColor = existingTiles[0].color;
+            const numberMatches = newTile.number === refNumber;
+            const colorMatches = newTile.color === refColor;
+            if (!numberMatches && !colorMatches) return true;
+            // 그룹 후보: 숫자 같고 색 다름 → 허용 (기존 합치기)
+            // 런 후보: 색 같고 숫자 연속(±1)이면 허용, 아니면 새 그룹
+            if (!numberMatches && colorMatches) {
+              if (newTile.number === null) return false;
+              const refNum = refNumber ?? 0;
+              if (Math.abs(newTile.number - refNum) !== 1) return true;
+            }
+          }
+
           if (isGroupCandidate && !isRunCandidate) {
             // 그룹 후보: 새 타일 숫자가 다르면 새 그룹 생성
             const groupNumber = existingTiles[0].number;
             if (newTile.number !== groupNumber) return true;
+            // 그룹 내 색 중복이면 새 그룹 생성
+            if (existingColors.has(newTile.color)) return true;
             // 그룹은 최대 4개 (4색): 이미 4개면 새 그룹
             if (lastPendingGroup.tiles.length >= 4) return true;
           }
@@ -789,6 +827,9 @@ export default function GameClient({ roomId }: GameClientProps) {
             }
           }
 
+          // BUG-UI-CLASSIFY-001a: 그룹도 런도 아닌 잡혼 상태면 항상 새 그룹
+          if (!isGroupCandidate && !isRunCandidate) return true;
+
           return false;
         })();
 
@@ -805,7 +846,9 @@ export default function GameClient({ roomId }: GameClientProps) {
           setPendingMyTiles(nextMyTiles);
         } else {
           // 새 그룹 생성 (서버 미전송, 프리뷰 상태)
-          const newGroupId = `pending-${Date.now()}`;
+          // BUG-UI-REARRANGE-002: 단조 카운터로 ID 생성 → 동일 ms 중복 방지
+          pendingGroupSeqRef.current += 1;
+          const newGroupId = `pending-${Date.now()}-${pendingGroupSeqRef.current}`;
           // BUG-UI-005: 새 그룹 타일로 타입 자동 판별
           const newGroup: TableGroup = {
             id: newGroupId,
@@ -813,6 +856,13 @@ export default function GameClient({ roomId }: GameClientProps) {
             type: classifySetType([tileCode]),
           };
           const nextTableGroups = [...currentTableGroups, newGroup];
+          // dev assertion: 그룹 ID는 항상 unique해야 한다
+          if (process.env.NODE_ENV !== "production") {
+            const ids = nextTableGroups.map((g) => g.id);
+            if (new Set(ids).size !== ids.length) {
+              console.error("[BUG-UI-REARRANGE-002] 그룹 ID 중복 감지", ids);
+            }
+          }
           const nextMyTiles = removeFirstOccurrence(currentMyTiles, tileCode);
           setPendingTableGroups(nextTableGroups);
           setPendingMyTiles(nextMyTiles);

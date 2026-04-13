@@ -117,9 +117,11 @@ const GameBoard = memo(function GameBoard({
   const { setNodeRef, isOver } = useDroppable({ id: BOARD_DROP_ID });
 
   // 그룹별 동일 색상 중복 경고 맵 (메모이제이션)
+  // BUG-UI-CLASSIFY-001b: 런에는 같은 색상이 정상이므로 그룹 타입에만 적용
   const duplicateColorWarnings = useMemo(() => {
     const warnings: Record<string, string> = {};
     for (const group of tableGroups) {
+      if (group.type !== "group") continue;
       const warning = detectDuplicateColors(group.tiles);
       if (warning) {
         warnings[group.id] = warning;
