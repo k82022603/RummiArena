@@ -3,30 +3,84 @@
 > 이 문서는 `06-game-rules.md`에 정의된 모든 게임 규칙이 소스코드에 어떻게 구현되어 있는지 추적한다.
 > 게임 엔진 수정 시 반드시 이 문서를 참조하여 규칙 누락을 방지한다.
 
-**최종 갱신**: 2026-04-10
-**근거 문서**: `docs/02-design/06-game-rules.md` (규칙 정의서)
+**최종 갱신**: 2026-04-13
+**근거 문서**:
+- `docs/02-design/06-game-rules.md` (규칙 정의서)
+- `docs/04-testing/48-game-rule-coverage-audit.md` (UI/테스트 커버리지 감사 보고)
+
+---
+
+## 0. 매트릭스 표기 규약
+
+본 문서의 §1 매트릭스는 **3단계 7컬럼 구조**(2026-04-13 도입)를 따른다:
+
+| 컬럼 | 의미 | ✅ 조건 |
+|------|------|--------|
+| **Engine 구현** | 서버 엔진 검증 로직 존재 | `internal/engine/` 또는 `internal/service/` 에 검증 코드가 있음 |
+| **Engine 테스트** | Go 단위/통합 테스트 존재 | Happy + Negative 최소 각 1건 |
+| **UI 구현** | 사용자가 실제로 해당 동작을 수행할 수 있는 프론트 경로 존재 | `src/frontend/` 인터랙션 핸들러 존재 |
+| **UI 테스트(E2E)** | Playwright E2E 시나리오 존재 | Happy 최소 1건 |
+| **Playtest** | Human×AI 시나리오에서 실제 실행/관찰됨 | `docs/04-testing/` 시나리오 보고서에 실행 결과 기록 |
+| **종합** | 위 5개 모두 ✅일 때만 ✅ | 하나라도 ⚠️/❌ → "부분" 또는 "미완" |
+
+**표기 기호**:
+- ✅ 완료
+- ⚠️ 부분 (일부 구현/테스트 누락)
+- ❌ 미구현/미테스트
+- N/A 해당 단계 자체가 적용되지 않음 (예: 서버 전용 규칙은 UI 컬럼이 N/A)
+
+> **주의**: 2026-04-13 이전 매트릭스는 "Engine 구현 + Engine 테스트"만으로 PASS를 표기했다.
+> 본 갱신은 그 표기를 "엔진 한정 PASS"로 재해석하고, UI/E2E/Playtest 컬럼을 신설하여 종합 상태를 다시 산정한다.
+> 계기는 2026-04-13 라이브 테스트에서 발견된 V-13 재배치 합병 UI 누락 사건이다 (감사: `docs/04-testing/48-game-rule-coverage-audit.md`).
 
 ---
 
 ## 1. 규칙 검증 매트릭스 (V-01 ~ V-15)
 
-| 규칙 ID | 검증 항목 | 구현 파일:라인 | 에러 코드 | 테스트 파일 | 상태 |
-|---------|----------|--------------|----------|------------|------|
-| **V-01** | 세트가 유효한 그룹 또는 런인가 | `engine/validator.go:80-84` → `ValidateTable()` | `ERR_INVALID_SET` | `validator_test.go:87,135` `group_test.go:18` `run_test.go:9` | **PASS** |
-| **V-02** | 세트가 3장 이상인가 | `engine/group.go` (3~4장) `engine/run.go` (3+장) | `ERR_SET_SIZE` | `validator_test.go:62` `group_test.go:47,54` `run_test.go:38` | **PASS** |
-| **V-03** | 랙에서 최소 1장 추가했는가 | `engine/validator.go:85-90` | `ERR_NO_RACK_TILE` | `validator_test.go:148-163` | **PASS** |
-| **V-04** | 최초 등록 30점 이상인가 | `engine/validator.go:133-162` → `validateInitialMeld()` | `ERR_INITIAL_MELD_SCORE` | `validator_test.go:167-205` `turn_service_test.go:454` | **PASS** |
-| **V-05** | 최초 등록 시 랙 타일만 사용했는가 | `engine/validator.go:123-131` → `validateInitialMeld()` | `ERR_INITIAL_MELD_SOURCE` | `validator_test.go:208-229` `turn_service_test.go:497-558` | **PASS** |
-| **V-06** | 테이블 타일이 유실되지 않았는가 | `engine/validator.go:91-97` + `111-119` (코드 수준 보전) | `ERR_TABLE_TILE_MISSING` | `validator_test.go:230-250,432-509` `conservation_test.go` (43개) | **PASS** |
-| **V-07** | 조커 교체 후 즉시 사용했는가 | `engine/validator.go:106-110,164-181` → `validateJokerReturned()` | `ERR_JOKER_NOT_USED` | `validator_test.go:251-292` `turn_service_test.go:329-452` | **PASS** |
-| **V-08** | 자기 턴인가 | `service/game_service.go:295-300` (seat 확인) | `ERR_NOT_YOUR_TURN` | `game_service_test.go` (간접) | **PASS** |
-| **V-09** | 턴 타임아웃 | `service/turn_service.go:106-127` → `HandleTimeout()` | `ERR_TURN_TIMEOUT` | `turn_service_test.go:148-198` | **PASS** |
-| **V-10** | 드로우 파일이 비어있는가 | `engine/pool.go:49-53` → `Draw()` | `ERR_DRAW_PILE_EMPTY` | `turn_service_test.go:199-230` | **PASS** |
-| **V-11** | 교착 상태인가 | `service/game_service.go` (ConsecutivePassCount 기반) | - (게임 종료 처리) | `game_service_test.go:580-603,701-732` | **PASS** |
-| **V-12** | 승리 조건 (랙 타일 0장) | `service/game_service.go` (ConfirmTurn 후 랙 체크) | - (GAME_OVER 전송) | `game_service_test.go` (간접) | **PASS** |
-| **V-13** | 재배치 권한 (hasInitialMeld) | `engine/errors.go:52` 정의됨 | `ERR_NO_REARRANGE_PERM` | `game_rules_comprehensive_test.go:574` (간접) | **PASS** (V-05로 간접 보장) |
-| **V-14** | 그룹에서 같은 색상 중복 불가 | `engine/group.go` (색상 중복 체크) | `ERR_GROUP_COLOR_DUP` | `group_test.go:62` `regression_test.go:554` | **PASS** |
-| **V-15** | 런에서 숫자 연속 (13-1 순환 불가) | `engine/run.go:60` → `checkRunDuplicates()` + 순서 검증 | `ERR_RUN_SEQUENCE` `ERR_RUN_RANGE` `ERR_RUN_DUPLICATE` | `run_test.go:53,114,172` | **PASS** |
+| 규칙 ID | 검증 항목 | Engine 구현 | Engine 테스트 | UI 구현 | UI 테스트(E2E) | Playtest | 종합 |
+|---------|----------|-----------|------------|--------|-------------|---------|------|
+| **V-01** | 세트가 유효한 그룹 또는 런인가 | ✅ `validator.go:80-84` `ValidateTable()` | ✅ `validator_test.go:87,135` `group_test.go:18` `run_test.go:9` | ✅ `GameClient.tsx` `handleConfirmTurn` (서버 검증 트리거) | ✅ `e2e/game-rules.spec.ts` (그룹/런 기본) | ✅ S1~S7 다수 실행 | ✅ |
+| **V-02** | 세트가 3장 이상인가 | ✅ `engine/group.go` (3~4장) `engine/run.go` (3+장) | ✅ `validator_test.go:62` `group_test.go:47,54` `run_test.go:38` | ✅ 서버 검증 (UI는 위반 가능, 서버 거부) | ✅ `e2e/game-rules.spec.ts` (negative case) | ✅ S1 기본 등록 | ✅ |
+| **V-03** | 랙에서 최소 1장 추가했는가 | ✅ `validator.go:85-90` | ✅ `validator_test.go:148-163` | ✅ 서버 검증 | ⚠️ E2E 직접 케이스 없음 | ✅ S1~S7 간접 | ⚠️ |
+| **V-04** | 최초 등록 30점 이상인가 | ✅ `validator.go:133-162` `validateInitialMeld()` | ✅ `validator_test.go:167-205` `turn_service_test.go:454` | ✅ `GameClient.tsx` 서버 검증 트리거, 에러 메시지 표시 | ✅ `e2e/game-rules.spec.ts` 30점 이하 거부 | ✅ S1, S4 등 | ✅ |
+| **V-05** | 최초 등록 시 랙 타일만 사용했는가 | ✅ `validator.go:123-131` `validateInitialMeld()` | ✅ `validator_test.go:208-229` `turn_service_test.go:497-558` | ✅ 서버 검증 | ⚠️ E2E 직접 케이스 없음 (간접만) | ✅ S4 등 | ⚠️ |
+| **V-06** | 테이블 타일이 유실되지 않았는가 | ✅ `validator.go:91-97,111-119` | ✅ `validator_test.go:230-250,432-509` `conservation_test.go` (43개) | ✅ `GameClient.tsx` 보드 상태 동기화 | ✅ `e2e/game-rules.spec.ts` 기본 (간접) | ✅ S1~S7 간접 | ✅ |
+| **V-07** | 조커 교체 후 즉시 사용했는가 | ✅ `validator.go:106-110,164-181` `validateJokerReturned()` | ✅ `validator_test.go:251-292` `turn_service_test.go:329-452` | ⚠️ 조커 회수 후 즉시 사용 UX 검증 미수행 | ❌ E2E 0건 | ⚠️ S4 Phase D 조커 미획득 스킵 | ⚠️ |
+| **V-08** | 자기 턴인가 | ✅ `service/game_service.go:295-300` (seat 확인) | ✅ `game_service_test.go` (간접) | ✅ 클라이언트 isMyTurn UI 상태 | ⚠️ E2E 직접 케이스 없음 | ✅ 모든 시나리오 | ⚠️ |
+| **V-09** | 턴 타임아웃 | ✅ `service/turn_service.go:106-127` `HandleTimeout()` | ✅ `turn_service_test.go:148-198` | ✅ `GameClient.tsx` 타이머 UI | ⚠️ E2E 타임아웃 직접 케이스 없음 | ✅ AI 대전 다수 관찰 | ⚠️ |
+| **V-10** | 드로우 파일이 비어있는가 | ✅ `engine/pool.go:49-53` `Draw()` | ✅ `turn_service_test.go:199-230` | ✅ 서버 검증 (드로우 버튼 비활성) | ❌ E2E 0건 | ⚠️ Round 4 80턴 완주에서 1회 관찰 | ⚠️ |
+| **V-11** | 교착 상태인가 | ✅ `service/game_service.go` (ConsecutivePassCount) | ✅ `game_service_test.go:580-603,701-732` | ✅ `GameClient.tsx` GAME_OVER 메시지 처리 | ❌ E2E 0건 | ⚠️ 자연 발생 드물어 드물게 관찰 | ⚠️ |
+| **V-12** | 승리 조건 (랙 타일 0장) | ✅ `service/game_service.go` (ConfirmTurn 후 랙 체크) | ✅ `game_service_test.go` (간접) | ✅ `GameClient.tsx` GAME_OVER UI | ⚠️ E2E 직접 케이스 없음 | ✅ Round 4 DeepSeek 등 다수 | ⚠️ |
+| **V-13** | 재배치 권한 + 4유형 | (V-13a~V-13e 분해 — 아래 §1.1 참조) | | | | | **부분** |
+| **V-14** | 그룹에서 같은 색상 중복 불가 | ✅ `engine/group.go` (색상 중복 체크) | ✅ `group_test.go:62` `regression_test.go:554` | ✅ 서버 검증 | ✅ `e2e/game-rules.spec.ts` 그룹 negative | ✅ S1 등 | ✅ |
+| **V-15** | 런에서 숫자 연속 (13-1 순환 불가) | ✅ `engine/run.go:60` `checkRunDuplicates()` + 순서 검증 | ✅ `run_test.go:53,114,172` | ✅ 서버 검증 | ✅ `e2e/game-rules.spec.ts` 런 negative | ✅ S1 등 | ✅ |
+
+> **에러 코드 참조**: 기존 §1의 에러 코드 컬럼은 가독성을 위해 본 매트릭스에서 분리했다. 에러 코드는 `internal/engine/errors.go` 및 `docs/02-design/30-error-management-policy.md`를 참조한다.
+> 주요 코드: V-01 `ERR_INVALID_SET` / V-02 `ERR_SET_SIZE` / V-03 `ERR_NO_RACK_TILE` / V-04 `ERR_INITIAL_MELD_SCORE` / V-05 `ERR_INITIAL_MELD_SOURCE` / V-06 `ERR_TABLE_TILE_MISSING` / V-07 `ERR_JOKER_NOT_USED` / V-08 `ERR_NOT_YOUR_TURN` / V-09 `ERR_TURN_TIMEOUT` / V-10 `ERR_DRAW_PILE_EMPTY` / V-13 `ERR_NO_REARRANGE_PERM` / V-14 `ERR_GROUP_COLOR_DUP` / V-15 `ERR_RUN_SEQUENCE` `ERR_RUN_RANGE` `ERR_RUN_DUPLICATE`.
+
+---
+
+## 1.1 V-13 재배치 4유형 분해 (2026-04-13 신설)
+
+V-13은 단일 권한 검증이 아니라 **재배치 권한 + 4가지 재배치 유형 각각의 UI 경로**로 구성된다.
+2026-04-13 라이브 테스트에서 유형 2(합병)가 UI에서 동작하지 않음을 확인하여 **4유형으로 분해 추적**한다.
+
+근거 규칙: `docs/02-design/06-game-rules.md` §6.2 (재배치 4유형)
+근거 감사: `docs/04-testing/48-game-rule-coverage-audit.md` §3 (재배치 4유형 × 3단계 매트릭스)
+
+| 규칙 ID | 검증 항목 | Engine 구현 | Engine 테스트 | UI 구현 | UI 테스트(E2E) | Playtest | 종합 |
+|---------|----------|-----------|------------|--------|-------------|---------|------|
+| **V-13a** | 재배치 권한 (hasInitialMeld) | ✅ `engine/errors.go:52` `validator.go` (간접) | ✅ `game_rules_comprehensive_test.go:574` | ✅ `GameClient.tsx` 최초 등록 후 재배치 활성 | ❌ E2E 0건 | ✅ AI 대전에서 자연 관찰 | ⚠️ |
+| **V-13b** | 유형 1: 세트 분할 (split) | ✅ V-06 보존 + V-01 유효성 | ✅ `conservation_test.go` 간접 | ❌ `GameClient.tsx` 테이블 타일 드래그 원점 핸들러 없음 | ❌ E2E 0건 | ❌ S4 미실행 | **미완** |
+| **V-13c** | 유형 2: 세트 합병 (merge) — **본 사건** | ✅ V-01 4색 그룹 + V-06 보존 | ✅ 그룹 유효성 테스트 다수 | ⚠️ `GameClient.tsx:494-510` `pendingGroupIds.has` 검사로 pending 그룹만 허용 (서버 확정 그룹 머지 불가) | ❌ `e2e/rearrangement.spec.ts` 미존재 | ❌ S4 미실행 | **버그** |
+| **V-13d** | 유형 3: 타일 이동 (move) | ✅ V-06 보존 + V-01/V-02 최종 유효성 | ✅ `conservation_test.go` 간접 | ❌ 테이블 타일 드래그 원점 핸들러 없음 | ❌ E2E 0건 | ❌ S4 미실행 | **미완** |
+| **V-13e** | 유형 4: 조커 교체 (joker swap) | ✅ V-07 조커 즉시 사용 검증 | ✅ `game_rules_comprehensive_test.go` joker swap | ⚠️ 교체 자체는 가능, 회수 후 즉시 사용 UX 검증 미수행 | ❌ E2E 0건 | ⚠️ S4 Phase D 조커 미획득 스킵 | **부분** |
+
+**개선 계획** (Sprint 6, 감사 보고 §6 권고 기반):
+- V-13c (합병): 즉시 조치 — `GameClient.tsx handleDragEnd` 서버 그룹 머지 분기 추가 + E2E 1건 (예상 50분)
+- V-13b/V-13d (분할/이동): Sprint 6 단기 — 테이블 타일 드래그 원점 핸들러 신설 (예상 2~3시간)
+- V-13e (조커 회수): Sprint 6 단기 — 조커 회수 후 즉시 사용 UX 검증 + Playtest S4 결정론적 전환 (시드 기반)
+- 모든 유형: `e2e/rearrangement.spec.ts` 신규 작성 (4유형 Happy + Negative)
 
 ---
 
@@ -150,5 +204,45 @@
 2. **게임 규칙 문서 변경 시** — 새 규칙 추가 또는 기존 규칙 변경 반영
 3. **미구현 규칙 구현 시** — §2 "비검증 규칙"에서 해당 항목을 §1로 이동
 4. **Sprint 회고 시** — 규칙 위반 사고가 있었으면 이 문서의 누락 여부 점검
+5. **UI/E2E 작업 시** — UI 구현 또는 E2E 테스트가 추가/제거되면 §1의 해당 컬럼을 즉시 갱신
 
 **아키텍트 책임**: 게임 엔진 수정 계획서 작성 시 이 문서를 참조하여 규칙 커버리지를 확인한다.
+
+**3단계 매트릭스 의무화** (2026-04-13~):
+- 새 규칙 추가 시 §1에 7컬럼 행을 추가하고 5단계(Engine 구현/Engine 테스트/UI 구현/UI 테스트/Playtest)를 모두 평가한다
+- 5단계 중 하나라도 ⚠️/❌이면 종합 컬럼은 "부분" 또는 "미완"으로 표기하며 PR 본문에 명시한다
+- 체크리스트 6건은 `docs/04-testing/48-game-rule-coverage-audit.md` §8 참조
+
+---
+
+## 11. 요약 (2026-04-13 감사 기준)
+
+3단계 매트릭스로 재평가한 결과:
+
+### V-01 ~ V-15 (V-13을 V-13a~V-13e 5건으로 분해 → 총 19개 규칙)
+| 종합 상태 | 건수 | 비율 | 규칙 ID |
+|---------|-----|------|--------|
+| ✅ 완료 (5단계 모두 ✅) | 6 | 32% | V-01, V-02, V-04, V-06, V-14, V-15 |
+| ⚠️ 부분 (E2E/Playtest 일부 결손) | 10 | 53% | V-03, V-05, V-07, V-08, V-09, V-10, V-11, V-12, V-13a, V-13e |
+| ❌ 미완/버그 (UI 또는 핵심 기능 결손) | 3 | 16% | V-13b (분할 미완), **V-13c (합병 — 본 사건, 버그)**, V-13d (이동 미완) |
+
+> 위 합계는 V-13을 V-13a~e의 5건으로 분해한 결과(총 19건 기준, V-13 통합 행은 카운트에서 제외)이다.
+> V-13c는 "버그"로 분류되며 Sprint 6 Day 2 즉시 조치 대상이다.
+
+### 핵심 결손 영역
+1. **재배치 4유형 UI 구현** (V-13b/c/d/e) — 본 사건의 직접 원인
+2. **E2E 테스트 커버리지** — 9개 규칙이 E2E 직접 케이스 부재 (간접만)
+3. **Playtest 결정론적 시나리오** — S4 조커 시나리오가 확률 의존으로 미실행
+
+### 재발 방지 관련 문서
+- 감사 보고: `docs/04-testing/48-game-rule-coverage-audit.md`
+- 권고 항목: 감사 §6 (즉시/단기/장기 12건)
+- 신규 규칙 체크리스트: 감사 §8 (6항목 의무화)
+
+---
+
+## 12. 업데이트 이력
+
+- **2026-04-13**: 3단계(Engine/Engine 테스트/UI/UI 테스트/Playtest) 7컬럼 매트릭스로 확장. V-13을 V-13a~V-13e 4유형으로 분해. 기존 "PASS" 표기를 "엔진 한정 PASS"로 재해석하여 종합 상태 재산정. 요약 섹션(§11) 신설. 계기: 2026-04-13 라이브 테스트 V-13c 합병 UI 누락 사건. 감사 보고: `docs/04-testing/48-game-rule-coverage-audit.md`.
+- **2026-04-10**: 비검증 규칙 §2 3건(패널티 드로우, AI 5턴 강제 드로우, 끊김 후 3턴 부재) 구현 완료 반영. 에러코드 전수 검토(커밋 `822282e`)와 동시 갱신. (당시 UI 컬럼 부재로 V-13 UI 누락 미인지)
+- **2026-03-29**: V-01~V-15 초기 매트릭스 작성. Engine 구현 + Engine 테스트 2단계 기준.
