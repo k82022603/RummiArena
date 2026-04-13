@@ -454,7 +454,9 @@ describe('DeepSeekAdapter', () => {
       expect(body.response_format).toBeUndefined();
     });
 
-    it('reasoner 모드에서 최소 타임아웃 150초가 적용된다', async () => {
+    it('reasoner 모드에서 최소 타임아웃 500초가 적용된다', async () => {
+      // 2026-04-10: AI_ADAPTER_TIMEOUT_SEC 240→500초 상향 (DeepSeek Reasoner 후반부 356s 관찰)
+      // deepseek.adapter.ts:193 → Math.max(timeoutMs, 500_000)
       const content = JSON.stringify({ action: 'draw', reasoning: 'no combo' });
       mockedAxios.post = jest
         .fn()
@@ -463,7 +465,7 @@ describe('DeepSeekAdapter', () => {
       await reasonerAdapter.generateMove(makeMoveRequest({ timeoutMs: 10000 }));
 
       const [, , config] = (mockedAxios.post as jest.Mock).mock.calls[0];
-      expect(config.timeout).toBe(210_000);
+      expect(config.timeout).toBe(500_000);
     });
 
     it('reasoner 모드에서 영어 기반 시스템 프롬프트를 사용한다', async () => {
