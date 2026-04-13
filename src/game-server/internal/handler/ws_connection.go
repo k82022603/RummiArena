@@ -41,6 +41,12 @@ type Connection struct {
 	// Ensure Close is called only once
 	closeOnce sync.Once
 
+	// sendMu guards sendClosed flag and channel writes. SEC-REV-008:
+	// prevents "send on closed channel" panic when Close() races with Send()
+	// across goroutines (exposed by the snapshot-then-iterate refactor of Hub).
+	sendMu     sync.RWMutex
+	sendClosed bool
+
 	// Rate limiter (per-connection, in-memory) -- SEC-RL-003
 	rateLimiter *wsRateLimiter
 }
@@ -85,6 +91,14 @@ func (c *Connection) Send(msg *WSMessage) {
 		return
 	}
 
+	// SEC-REV-008: guard against "send on closed channel" panic.
+	// RLock allows multiple concurrent Send() calls; Close() takes Lock.
+	c.sendMu.RLock()
+	defer c.sendMu.RUnlock()
+	if c.sendClosed {
+		return
+	}
+
 	select {
 	case c.send <- data:
 	default:
@@ -104,9 +118,15 @@ func (c *Connection) SendError(code, message string) {
 }
 
 // Close closes the send channel, causing WritePump to exit.
+// SEC-REV-008: sendMu.Lock() serializes with in-flight Send() calls to
+// prevent "send on closed channel" panics. sendClosed flag is set BEFORE
+// close() so concurrent Send() callers observe the closed state via RLock.
 func (c *Connection) Close() {
 	c.closeOnce.Do(func() {
+		c.sendMu.Lock()
+		c.sendClosed = true
 		close(c.send)
+		c.sendMu.Unlock()
 	})
 }
 

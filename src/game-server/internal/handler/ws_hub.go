@@ -10,8 +10,8 @@ import (
 // Thread-safe: all methods can be called concurrently.
 type Hub struct {
 	// rooms maps roomID → (userID → *Connection)
-	rooms map[string]map[string]*Connection
-	mu    sync.RWMutex
+	rooms  map[string]map[string]*Connection
+	mu     sync.RWMutex
 	logger *zap.Logger
 }
 
@@ -77,63 +77,111 @@ func (h *Hub) Unregister(conn *Connection) {
 	)
 }
 
-// BroadcastToRoom sends a message to all connections in a room.
-func (h *Hub) BroadcastToRoom(roomID string, msg *WSMessage) {
+// snapshotRoom returns a point-in-time slice of all connections in a room.
+// The returned slice is a shallow copy — safe to iterate without holding Hub locks.
+// SEC-REV-008: prevents holding RLock while performing external I/O (Redis, network, JSON marshal).
+func (h *Hub) snapshotRoom(roomID string) []*Connection {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
 	room, ok := h.rooms[roomID]
 	if !ok {
-		return
+		return nil
 	}
+	conns := make([]*Connection, 0, len(room))
 	for _, conn := range room {
+		conns = append(conns, conn)
+	}
+	return conns
+}
+
+// snapshotRoomExcept is like snapshotRoom but excludes a specific user.
+func (h *Hub) snapshotRoomExcept(roomID, excludeUserID string) []*Connection {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	room, ok := h.rooms[roomID]
+	if !ok {
+		return nil
+	}
+	conns := make([]*Connection, 0, len(room))
+	for uid, conn := range room {
+		if uid != excludeUserID {
+			conns = append(conns, conn)
+		}
+	}
+	return conns
+}
+
+// BroadcastToRoom sends a message to all connections in a room.
+// SEC-REV-008: Snapshot-then-iterate — lock is released before Send() (which performs JSON marshal).
+func (h *Hub) BroadcastToRoom(roomID string, msg *WSMessage) {
+	for _, conn := range h.snapshotRoom(roomID) {
 		conn.Send(msg)
 	}
 }
 
 // BroadcastToRoomExcept sends a message to all connections in a room except one user.
+// SEC-REV-008: Snapshot-then-iterate — lock is released before Send().
 func (h *Hub) BroadcastToRoomExcept(roomID, excludeUserID string, msg *WSMessage) {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-
-	room, ok := h.rooms[roomID]
-	if !ok {
-		return
-	}
-	for uid, conn := range room {
-		if uid != excludeUserID {
-			conn.Send(msg)
-		}
-	}
-}
-
-// SendToUser sends a message to a specific user in a room.
-func (h *Hub) SendToUser(roomID, userID string, msg *WSMessage) {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-
-	room, ok := h.rooms[roomID]
-	if !ok {
-		return
-	}
-	if conn, ok := room[userID]; ok {
+	for _, conn := range h.snapshotRoomExcept(roomID, excludeUserID) {
 		conn.Send(msg)
 	}
 }
 
-// ForEachInRoom calls fn for every connection in the room.
-// fn receives the connection; the caller must not hold Hub locks.
-func (h *Hub) ForEachInRoom(roomID string, fn func(conn *Connection)) {
+// SendToUser sends a message to a specific user in a room.
+// SEC-REV-008: lookup under RLock, Send() executed after RUnlock.
+func (h *Hub) SendToUser(roomID, userID string, msg *WSMessage) {
 	h.mu.RLock()
-	defer h.mu.RUnlock()
+	var target *Connection
+	if room, ok := h.rooms[roomID]; ok {
+		target = room[userID]
+	}
+	h.mu.RUnlock()
 
-	room, ok := h.rooms[roomID]
-	if !ok {
-		return
+	if target != nil {
+		target.Send(msg)
 	}
-	for _, conn := range room {
-		fn(conn)
+}
+
+// ForEachInRoom calls fn for every connection in the room.
+//
+// SEC-REV-008: Uses Snapshot-then-iterate. The Hub lock is released BEFORE fn is called,
+// so callbacks may safely perform I/O (Redis GET, DB query, JSON marshal) without
+// starving Register/Unregister (which need Write Lock).
+//
+// SEC-REV-009: Each callback invocation is wrapped in a defer-recover. A panic in one
+// callback logs the error but does NOT prevent the remaining connections from being processed.
+// This prevents a single bad GAME_STATE from blocking 3 other players in a 4-person room.
+//
+// Callers must not assume callbacks observe the exact same room membership — a Register
+// or Unregister concurrent with the iteration will take effect on the next call.
+func (h *Hub) ForEachInRoom(roomID string, fn func(conn *Connection)) {
+	conns := h.snapshotRoom(roomID)
+	for _, conn := range conns {
+		h.invokeCallback(roomID, conn, fn)
 	}
+}
+
+// invokeCallback runs fn(conn) inside a defer-recover guard (SEC-REV-009).
+// Panics are logged at Error level and swallowed so iteration continues.
+func (h *Hub) invokeCallback(roomID string, conn *Connection, fn func(conn *Connection)) {
+	defer func() {
+		if r := recover(); r != nil {
+			// Do NOT include the panic value verbatim in messages sent to clients —
+			// only log locally. Keeps SEC-REV-010 (error message sanitization) clean.
+			userID := ""
+			if conn != nil {
+				userID = conn.userID
+			}
+			h.logger.Error("ws: panic in ForEachInRoom callback",
+				zap.String("room", roomID),
+				zap.String("user", userID),
+				zap.Any("panic", r),
+			)
+		}
+	}()
+	fn(conn)
 }
 
 // RoomConnectionCount returns the number of active connections in a room.
