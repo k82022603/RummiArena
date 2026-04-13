@@ -71,15 +71,19 @@ V-13은 단일 권한 검증이 아니라 **재배치 권한 + 4가지 재배치
 | 규칙 ID | 검증 항목 | Engine 구현 | Engine 테스트 | UI 구현 | UI 테스트(E2E) | Playtest | 종합 |
 |---------|----------|-----------|------------|--------|-------------|---------|------|
 | **V-13a** | 재배치 권한 (hasInitialMeld) | ✅ `engine/errors.go:52` `validator.go` (간접) | ✅ `game_rules_comprehensive_test.go:574` | ✅ `GameClient.tsx` 최초 등록 후 재배치 활성 | ❌ E2E 0건 | ✅ AI 대전에서 자연 관찰 | ⚠️ |
-| **V-13b** | 유형 1: 세트 분할 (split) | ✅ V-06 보존 + V-01 유효성 | ✅ `conservation_test.go` 간접 | ⚠️ `f3eedb9` tilesDraggable 프롭 + DraggableTile 렌더링 landed, **서버 확정 그룹 → 랙 split 경로 미완** (`handleDragEnd` 분기 부재) | ⚠️ TC-RR-04 Negative **PASS** (회귀 가드) + TC-RR-03 Happy **fixme** (프론트 재배포 대기) | ❌ S4 미실행 | **부분** |
+| **V-13b** | 유형 1: 세트 분할 (split) | ✅ V-06 보존 + V-01 유효성 | ✅ `conservation_test.go` 간접 | ✅ `f3eedb9` tilesDraggable 프롭 + DraggableTile 렌더링 + `handleDragEnd` 내 table→다른 group 이동 + pending→rack 되돌리기 landed | ⚠️ TC-RR-04 Negative **PASS** (회귀 가드) + TC-RR-03 Happy **fixme** (프론트 재배포 대기) | ❌ S4 미실행 | **부분** |
 | **V-13c** | 유형 2: 세트 합병 (merge) — **본 사건** | ✅ V-01 4색 그룹 + V-06 보존 | ✅ 그룹 유효성 테스트 다수 | ✅ `23e770a` `GameClient.tsx handleDragEnd` 서버 확정 그룹 머지 분기 landed | ⚠️ `adf0d84` TC-RR-01 Happy **fixme** + TC-RR-02 Negative **PASS** | ❌ S4 미실행 | **부분** |
-| **V-13d** | 유형 3: 타일 이동 (move) | ✅ V-06 보존 + V-01/V-02 최종 유효성 | ✅ `conservation_test.go` 간접 | ⚠️ `f3eedb9` tilesDraggable + `handleDragEnd` 내 이동 분기 부분 landed | ❌ 전용 TC 없음 (TC-RR-03 간접 커버 예정, 현재 fixme) | ❌ S4 미실행 | **부분** |
+| **V-13d** | 유형 3: 타일 이동 (move) | ✅ V-06 보존 + V-01/V-02 최종 유효성 | ✅ `conservation_test.go` 간접 | ✅ `f3eedb9` tilesDraggable + `handleDragEnd` 내 table→다른 group 이동 분기 landed | ❌ 전용 TC 없음 (TC-RR-03 간접 커버 예정, 현재 fixme) | ❌ S4 미실행 | **부분** |
 | **V-13e** | 유형 4: 조커 교체 (joker swap) | ✅ V-07 조커 즉시 사용 검증 | ✅ `game_rules_comprehensive_test.go` joker swap | ⚠️ `8e540cc` P3 MVP — `pendingRecoveredJokers` + `JokerSwapIndicator` + ConfirmTurn 사전 차단 landed, **회수 조커 재드래그 미완** (Sprint 6 후반 이월) | ⚠️ TC-RR-06 **fixme** (재배포 대기) | ⚠️ S4 Phase D 조커 미획득 스킵 | **부분** |
+
+> **V-13b/V-13d UI 구현 주석**: `GameClient.tsx` `handleDragEnd` 내 `if (!sourceIsPending) return;` 가드는 **의도적 V-06 conservation 준수**이다.
+> 루미큐브 규칙상 "서버 확정 그룹의 타일을 랙으로 회수"는 타일 보존 법칙 위반이므로 **차단하는 것이 정답**이다.
+> 따라서 V-13b UI 구현은 (i) pending 그룹 타일 랙 되돌리기, (ii) 테이블 타일 → 다른 그룹 이동 두 경로로 완성이며 미완이 아니다.
 
 **개선 계획** (Sprint 6, 감사 보고 §6 권고 기반):
 - ~~V-13c (합병): 즉시 조치~~ → **Day 2 초반 landed** (`23e770a` 구현 + `adf0d84` E2E), TC-RR-01 Happy fixme 해제는 프론트 재배포 후속
-- V-13b (분할): split-to-rack 경로(`handleDragEnd` 서버 확정 그룹 → 랙 분기) 후속 필요 — frontend-dev-1 이어 작업 중, TC-RR-03 fixme 해제 동반
-- V-13d (이동): 전용 E2E TC 신규 작성 필요 (현재 TC-RR-03 간접 커버만)
+- ~~V-13b (분할): UI 구현~~ → **Day 2 후반 landed** (`f3eedb9`), TC-RR-03 Happy fixme 해제 후속 (프론트 재배포)
+- ~~V-13d (이동): UI 구현~~ → **Day 2 후반 landed** (`f3eedb9`), 전용 E2E TC 신규 작성 필요 (현재 TC-RR-03 간접 커버만)
 - V-13e (조커 회수): 회수 조커 재드래그 UX 후속 (Sprint 6 후반 이월) + Playtest S4 결정론적 전환 (시드 기반)
 - 추가: `e2e/rearrangement.spec.ts` fixme 일괄 해제 (프론트 재배포 후)
 
@@ -230,11 +234,13 @@ V-13은 단일 권한 검증이 아니라 **재배치 권한 + 4가지 재배치
 > 위 합계는 V-13을 V-13a~e의 5건으로 분해한 결과(총 19건 기준, V-13 통합 행은 카운트에서 제외)이다.
 > **Sprint 6 Day 2 진전**: 2026-04-13 기준 ❌ 3건(V-13b/c/d) → 0건 해소.
 > - V-13c (합병, 본 사건): Day 2 초반에 UI 복원(`23e770a`) + E2E(`adf0d84`) landed → **버그 → 부분**
-> - V-13b (분할), V-13d (이동): Day 2 후반 P2-1 `f3eedb9` tilesDraggable 랜딩으로 UI 부분 커버 → **미완 → 부분**
+> - V-13b (분할), V-13d (이동): Day 2 후반 P2-1 `f3eedb9` UI 완전 랜딩 (table→group 이동 + pending→rack) → **미완 → 부분** (종합 판정은 E2E Happy fixme로 "부분"이지만 UI는 ✅)
 > - V-13e (조커 교체): Day 2 후반 P3 `8e540cc` MVP 랜딩으로 UI 부분 커버 유지 → **부분 유지** (세부 개선)
 >
 > 단, ⚠️ "부분"은 여전히 sprint 6 후반 후속 작업 대상이다:
-> (i) V-13b split-to-rack 경로 미완, (ii) 모든 TC-RR-{01,03,05,06} Happy fixme 해제 (프론트 재배포 후), (iii) Playtest S4 결정론적 전환.
+> (i) 모든 TC-RR-{01,03,05,06} Happy fixme 해제 (프론트 재배포 후), (ii) V-13d 전용 E2E TC 신규 작성, (iii) V-13e 회수 조커 재드래그 UX, (iv) Playtest S4 결정론적 전환.
+>
+> **참고**: 서버 확정 그룹 → 랙 회수 경로는 V-06 conservation 위반이므로 `handleDragEnd`에서 의도적으로 차단되어 있으며 gap이 아니다 (§1.1 V-13b/d 주석 참조).
 
 ### 핵심 결손 영역
 1. **재배치 4유형 UI 구현** (V-13b/c/d/e) — 본 사건의 직접 원인
@@ -250,7 +256,7 @@ V-13은 단일 권한 검증이 아니라 **재배치 권한 + 4가지 재배치
 
 ## 12. 업데이트 이력
 
-- **2026-04-13 (Day 2 후반)**: Sprint 6 Day 2 P2/P3 UI 구현 반영 — V-13c 합병 UI ✅ 승격 (`23e770a` + `adf0d84`), V-13b 분할 UI 부분 랜딩 (`f3eedb9` tilesDraggable), V-13d 이동 UI 부분 랜딩 (동일 커밋), V-13e 조커 교체 P3 MVP 랜딩 (`8e540cc`). 결과: ❌ 3건 → 0건 해소, ⚠️ 10 → 13, ✅ 6 유지. E2E 테스트 4건(TC-RR-03/04/05/06) 추가(대부분 fixme, 프론트 재배포 후 해제). 잔여 gap: V-13b split-to-rack 경로(handleDragEnd 분기) 후속, V-13e 회수 조커 재드래그 후속, Playtest S4 결정론적 전환.
+- **2026-04-13 (Day 2 후반, 정정)**: Sprint 6 Day 2 P2/P3 UI 구현 반영 — V-13c 합병 UI ✅ (`23e770a` + `adf0d84`), V-13b 분할 UI ✅ 완전 랜딩 (`f3eedb9` — table→group 이동 + pending→rack), V-13d 이동 UI ✅ (동일 커밋), V-13e 조커 교체 P3 MVP 랜딩 (`8e540cc`). 결과: ❌ 3건 → 0건 해소, ⚠️ 10 → 13, ✅ 6 유지. E2E 4건(TC-RR-03/04/05/06) 추가(대부분 fixme, 프론트 재배포 후 해제). **정정**: 이전 기록의 "V-13b split-to-rack 경로 미완"은 오해였음 — `handleDragEnd` `!sourceIsPending` 가드는 V-06 conservation 준수이며 차단이 정답. §1.1에 주석으로 명시. 잔여 gap: V-13d 전용 E2E TC, V-13e 회수 조커 재드래그, Playtest S4 결정론적 전환.
 - **2026-04-13**: 3단계(Engine/Engine 테스트/UI/UI 테스트/Playtest) 7컬럼 매트릭스로 확장. V-13을 V-13a~V-13e 4유형으로 분해. 기존 "PASS" 표기를 "엔진 한정 PASS"로 재해석하여 종합 상태 재산정. 요약 섹션(§11) 신설. 계기: 2026-04-13 라이브 테스트 V-13c 합병 UI 누락 사건. 감사 보고: `docs/04-testing/48-game-rule-coverage-audit.md`.
 - **2026-04-10**: 비검증 규칙 §2 3건(패널티 드로우, AI 5턴 강제 드로우, 끊김 후 3턴 부재) 구현 완료 반영. 에러코드 전수 검토(커밋 `822282e`)와 동시 갱신. (당시 UI 컬럼 부재로 V-13 UI 누락 미인지)
 - **2026-03-29**: V-01~V-15 초기 매트릭스 작성. Engine 구현 + Engine 테스트 2단계 기준.
