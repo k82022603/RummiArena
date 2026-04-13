@@ -11,12 +11,21 @@ import {
 
 type TileSize = "rack" | "table" | "mini" | "quad" | "icon";
 
+/**
+ * 최근 턴에 배치된 타일 시각적 강조 variant.
+ * - "mine": 내가 최근 턴에 놓은 타일 (녹색 글로우)
+ * - "opponent": 상대가 최근 턴에 놓은 타일 (주황색 글로우)
+ * - null/undefined: 강조 없음
+ */
+export type TileHighlightVariant = "mine" | "opponent" | null;
+
 interface TileProps {
   code: TileCode;
   size?: TileSize;
   draggable?: boolean;
   selected?: boolean;
   invalid?: boolean;
+  highlightVariant?: TileHighlightVariant;
   className?: string;
   onClick?: () => void;
   "aria-label"?: string;
@@ -45,6 +54,7 @@ const Tile = memo(function Tile({
   draggable = false,
   selected = false,
   invalid = false,
+  highlightVariant = null,
   className = "",
   onClick,
   "aria-label": ariaLabel,
@@ -65,6 +75,14 @@ const Tile = memo(function Tile({
       ? "ring-2 ring-border-active"
       : jokerRingClass;
 
+  // 최근 턴 하이라이트 (invalid/selected보다 우선순위 낮음)
+  const highlightGlowStyle: React.CSSProperties | undefined =
+    highlightVariant === "mine"
+      ? { boxShadow: "0 0 0 2px rgba(74,222,128,0.9), 0 0 10px 2px rgba(74,222,128,0.55)" }
+      : highlightVariant === "opponent"
+        ? { boxShadow: "0 0 0 2px rgba(251,146,60,0.9), 0 0 10px 2px rgba(251,146,60,0.55)" }
+        : undefined;
+
   const label =
     ariaLabel ??
     (tile.isJoker ? "조커" : `${tile.color}${tile.number} 타일`);
@@ -73,6 +91,9 @@ const Tile = memo(function Tile({
   const jokerStyle = tile.isJoker
     ? { boxShadow: "0 0 0 2px transparent, 0 0 0 3px #c084fc, 0 0 8px 2px rgba(192,132,252,0.5)" }
     : undefined;
+
+  // 스타일 병합: highlight가 있으면 조커 ring을 덮어쓴다 (조커도 하이라이트 가능)
+  const mergedStyle = highlightGlowStyle ?? jokerStyle;
 
   return (
     <motion.div
@@ -84,7 +105,7 @@ const Tile = memo(function Tile({
       whileTap={draggable || onClick ? { scale: 0.95 } : undefined}
       animate={selected ? { y: -6 } : { y: 0 }}
       transition={{ type: "spring", stiffness: 400, damping: 20 }}
-      style={jokerStyle}
+      style={mergedStyle}
       className={[
         "relative flex flex-col items-center justify-center",
         "rounded-md shadow-md select-none",

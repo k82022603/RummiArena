@@ -6,6 +6,7 @@ import { useWSStore } from "@/store/wsStore";
 import { useGameStore } from "@/store/gameStore";
 import { useRateLimitStore } from "@/store/rateLimitStore";
 import { getGameToken } from "@/lib/authToken";
+import { computeNewlyPlacedTiles } from "@/lib/tileDiff";
 import type { TileCode } from "@/types/tile";
 import type { Player } from "@/types/game";
 import type {
@@ -203,6 +204,26 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
           const payload = msg.payload as TurnEndPayload;
           useGameStore.setState((state) => {
             const isMySeatTurn = payload.seat === state.mySeat;
+
+            // 최근 턴 하이라이트 + 히스토리 추적: 이전 테이블과 diff
+            const prevGroups = state.gameState?.tableGroups ?? [];
+            const newlyPlaced = computeNewlyPlacedTiles(prevGroups, payload.tableGroups);
+            const turnNumberForRecord =
+              payload.turnNumber ?? state.turnNumber;
+            const placement = {
+              turnNumber: turnNumberForRecord,
+              seat: payload.seat,
+              action: payload.action,
+              placedTiles: newlyPlaced as TileCode[],
+              placedAt: Date.now(),
+            };
+
+            // 히스토리는 draw/place 모두 기록 (UI에서 구분), placement는 newlyPlaced > 0일 때만
+            const nextHistory = [...state.turnHistory, placement];
+            if (nextHistory.length > 50) {
+              nextHistory.splice(0, nextHistory.length - 50);
+            }
+
             return {
               gameState: state.gameState
                 ? {
@@ -225,6 +246,9 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
                   : {})),
               // hasInitialMeld 업데이트 (내 턴인 경우)
               ...(isMySeatTurn ? { hasInitialMeld: payload.hasInitialMeld } : {}),
+              // 턴 히스토리 + 최근 배치 하이라이트 (타일이 실제 추가된 경우만 highlight 활성)
+              turnHistory: nextHistory,
+              lastTurnPlacement: newlyPlaced.length > 0 ? placement : state.lastTurnPlacement,
             };
           });
           if (payload.nextTurnNumber != null) setTurnNumber(payload.nextTurnNumber);

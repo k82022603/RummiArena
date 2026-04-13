@@ -5,7 +5,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { motion, AnimatePresence } from "framer-motion";
 import type { TableGroup } from "@/types/tile";
 import { parseTileCode } from "@/types/tile";
-import Tile from "@/components/tile/Tile";
+import Tile, { type TileHighlightVariant } from "@/components/tile/Tile";
 
 /**
  * 그룹 내 동일 색상 타일 중복 감지
@@ -47,6 +47,13 @@ interface GameBoardProps {
    * 여기에 포함된 그룹은 반투명 + 노란 점선 테두리(프리뷰)로 표시된다.
    */
   pendingGroupIds?: Set<string>;
+  /**
+   * 최근 턴에 배치된 타일 코드 세트 (UX 개선: 누가 방금 놓았는지 시각화).
+   * 여기에 포함된 타일은 highlightVariant에 따라 glow 효과가 적용된다.
+   */
+  recentTileCodes?: Set<string>;
+  /** 최근 턴 하이라이트 색상 (mine=녹색, opponent=주황) */
+  recentTileVariant?: TileHighlightVariant;
   /** true이면 각 그룹도 droppable zone으로 등록 (연습 모드에서 그룹 합치기 지원) */
   groupsDroppable?: boolean;
   className?: string;
@@ -85,6 +92,8 @@ const GameBoard = memo(function GameBoard({
   isMyTurn,
   isDragging = false,
   pendingGroupIds = new Set<string>(),
+  recentTileCodes,
+  recentTileVariant = null,
   groupsDroppable = false,
   className = "",
 }: GameBoardProps) {
@@ -228,14 +237,18 @@ const GameBoard = memo(function GameBoard({
                         : "bg-black/20 border border-board-border",
                     ].join(" ")}
                   >
-                    {group.tiles.map((code, idx) => (
-                      <Tile
-                        key={`${group.id}-${code}-${idx}`}
-                        code={code}
-                        size="table"
-                        aria-label={`${group.type} 그룹의 ${code} 타일${isPending ? " (미확정)" : ""}`}
-                      />
-                    ))}
+                    {group.tiles.map((code, idx) => {
+                      const isRecent = !isPending && recentTileCodes?.has(code);
+                      return (
+                        <Tile
+                          key={`${group.id}-${code}-${idx}`}
+                          code={code}
+                          size="table"
+                          highlightVariant={isRecent ? recentTileVariant : null}
+                          aria-label={`${group.type} 그룹의 ${code} 타일${isPending ? " (미확정)" : ""}${isRecent ? " (방금 배치됨)" : ""}`}
+                        />
+                      );
+                    })}
                   </div>
 
                   {/* 동일 색상 중복 경고: m-3: pending 그룹에서만 표시 */}

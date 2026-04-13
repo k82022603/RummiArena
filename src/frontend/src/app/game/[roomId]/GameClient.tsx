@@ -28,6 +28,7 @@ import ConnectionStatus from "@/components/game/ConnectionStatus";
 import ErrorToast from "@/components/game/ErrorToast";
 import ReconnectToast from "@/components/game/ReconnectToast";
 import ThrottleBadge from "@/components/game/ThrottleBadge";
+import TurnHistoryPanel from "@/components/game/TurnHistoryPanel";
 import Tile from "@/components/tile/Tile";
 
 import type { TileCode, TileNumber, TableGroup, GroupType } from "@/types/tile";
@@ -343,6 +344,8 @@ export default function GameClient({ roomId }: GameClientProps) {
     disconnectedPlayers,
     isDrawPileEmpty,
     deadlockReason,
+    turnHistory,
+    lastTurnPlacement,
     reset: resetGameStore,
   } = useGameStore();
 
@@ -454,6 +457,18 @@ export default function GameClient({ roomId }: GameClientProps) {
   // 상대 플레이어 목록 (내 seat 제외)
   const opponents = players.filter((p) => p.seat !== effectiveMySeat);
 
+  // 최근 턴 하이라이트 계산 (pending 배치 중에는 하이라이트 비활성)
+  const recentTileCodes = useMemo(() => {
+    if (pendingTableGroups) return undefined;
+    if (!lastTurnPlacement || lastTurnPlacement.placedTiles.length === 0) return undefined;
+    return new Set<string>(lastTurnPlacement.placedTiles);
+  }, [lastTurnPlacement, pendingTableGroups]);
+
+  const recentTileVariant: "mine" | "opponent" | null = useMemo(() => {
+    if (!lastTurnPlacement) return null;
+    return lastTurnPlacement.seat === effectiveMySeat ? "mine" : "opponent";
+  }, [lastTurnPlacement, effectiveMySeat]);
+
   // dnd-kit 센서
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -491,7 +506,30 @@ export default function GameClient({ roomId }: GameClientProps) {
         const nextMyTiles = removeFirstOccurrence(currentMyTiles, tileCode);
         setPendingTableGroups(nextTableGroups);
         setPendingMyTiles(nextMyTiles);
-      } else if (over.id === "game-board") {
+        return;
+      }
+
+      // BUG-UI-REARRANGE-001: 서버 확정 그룹에 드롭한 경우 (재배치 합병)
+      // 기존 구현은 pending 그룹에만 머지를 허용했고, 서버 확정 그룹은 드롭이 무시되거나
+      // board로 fallback되어 새 그룹으로 만들어졌다. 루미큐브 규칙 §6.2(합병)을 지원하기 위해
+      // 최초 등록 완료 상태에서는 서버 확정 그룹도 머지 가능하도록 확장한다.
+      const targetServerGroup = currentTableGroups.find((g) => g.id === over.id);
+      if (targetServerGroup && hasInitialMeld) {
+        const updatedTiles = [...targetServerGroup.tiles, tileCode];
+        const nextTableGroups = currentTableGroups.map((g) =>
+          g.id === targetServerGroup.id
+            ? { ...g, tiles: updatedTiles, type: classifySetType(updatedTiles) }
+            : g
+        );
+        const nextMyTiles = removeFirstOccurrence(currentMyTiles, tileCode);
+        setPendingTableGroups(nextTableGroups);
+        setPendingMyTiles(nextMyTiles);
+        // pending ID 세트에 등록 → UI에서 "수정 중 (미확정)"으로 표시
+        addPendingGroupId(targetServerGroup.id);
+        return;
+      }
+
+      if (over.id === "game-board") {
         // 보드 빈 공간에 드롭
         const pendingOnlyGroups = pendingTableGroups?.filter((g) =>
           pendingGroupIds.has(g.id)
@@ -612,6 +650,7 @@ export default function GameClient({ roomId }: GameClientProps) {
       pendingGroupIds,
       myTiles,
       forceNewGroup,
+      hasInitialMeld,
     ]
   );
 
@@ -860,13 +899,15 @@ export default function GameClient({ roomId }: GameClientProps) {
 
           {/* 중앙: 게임 보드 + 랙 */}
           <main className="flex-1 flex flex-col p-4 gap-3 overflow-hidden">
-            {/* 게임 보드 */}
+            {/* 게임 보드 — 최근 턴 하이라이트 포함 */}
             <GameBoard
               tableGroups={currentTableGroups}
               isMyTurn={isMyTurn}
               isDragging={isDragging}
               pendingGroupIds={pendingGroupIds}
-              groupsDroppable={!!pendingTableGroups}
+              recentTileCodes={recentTileCodes}
+              recentTileVariant={recentTileVariant}
+              groupsDroppable={isMyTurn && (isDragging || !!pendingTableGroups)}
               className="flex-1"
             />
 
@@ -951,6 +992,14 @@ export default function GameClient({ roomId }: GameClientProps) {
               />
             </div>
           </main>
+
+          {/* 우측: 턴 히스토리 패널 */}
+          <TurnHistoryPanel
+            history={turnHistory}
+            players={players}
+            mySeat={effectiveMySeat}
+            className="w-56 flex-shrink-0"
+          />
         </div>
       </div>
 

@@ -14,6 +14,15 @@ export interface DisconnectedPlayerInfo {
   disconnectedAt: number;   // 수신 시점 Unix timestamp (ms)
 }
 
+/** 턴 히스토리 1건 — 특정 턴에 특정 플레이어가 테이블에 새로 놓은 타일 기록 */
+export interface TurnPlacement {
+  turnNumber: number;
+  seat: number;
+  action: string;            // "place" | "draw" | "timeout" 등 (TurnEndPayload.action)
+  placedTiles: TileCode[];   // 해당 턴에 테이블에 새로 추가된 타일 코드 (drawGroups diff 결과)
+  placedAt: number;          // Unix ms
+}
+
 interface GameStore {
   // 방 정보
   room: Room | null;
@@ -85,6 +94,16 @@ interface GameStore {
   deadlockReason: string | null;
   setDeadlockReason: (reason: string | null) => void;
 
+  // 턴 히스토리 — 최근 N턴의 플레이어별 placement 기록 (오래된 것부터 정렬)
+  turnHistory: TurnPlacement[];
+  addTurnPlacement: (placement: TurnPlacement) => void;
+  clearTurnHistory: () => void;
+
+  // 최근 턴 하이라이트 — 가장 최근 TURN_END의 placement (현재 턴 동안 표시)
+  // 다음 TURN_END가 오면 교체된다. null이면 하이라이트 없음.
+  lastTurnPlacement: TurnPlacement | null;
+  setLastTurnPlacement: (placement: TurnPlacement | null) => void;
+
   // pending 상태만 초기화 (INVALID_MOVE 롤백 시 사용)
   resetPending: () => void;
 
@@ -110,7 +129,12 @@ const initialState = {
   disconnectedPlayers: [] as DisconnectedPlayerInfo[],
   isDrawPileEmpty: false,
   deadlockReason: null as string | null,
+  turnHistory: [] as TurnPlacement[],
+  lastTurnPlacement: null as TurnPlacement | null,
 };
+
+// 히스토리 보관 최대 건수 (메모리 절약)
+const TURN_HISTORY_MAX = 50;
 
 export const useGameStore = create<GameStore>()(
   subscribeWithSelector((set) => ({
@@ -151,6 +175,15 @@ export const useGameStore = create<GameStore>()(
 
     setIsDrawPileEmpty: (isDrawPileEmpty) => set({ isDrawPileEmpty }),
     setDeadlockReason: (deadlockReason) => set({ deadlockReason }),
+
+    addTurnPlacement: (placement) =>
+      set((state) => {
+        const next = [...state.turnHistory, placement];
+        if (next.length > TURN_HISTORY_MAX) next.splice(0, next.length - TURN_HISTORY_MAX);
+        return { turnHistory: next };
+      }),
+    clearTurnHistory: () => set({ turnHistory: [] }),
+    setLastTurnPlacement: (lastTurnPlacement) => set({ lastTurnPlacement }),
 
     resetPending: () =>
       set({
