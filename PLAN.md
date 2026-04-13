@@ -160,7 +160,7 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 - [x] Room 기반 세션 관리 (생명주기 전체) — FinishRoom + ListRooms 필터 + 재접속 감지 (2026-03-21)
 - [x] Human + AI 혼합 매칭 — BUG-S4-001 수정 후 E2E 5/5 PASS (2026-03-23)
 - [x] 턴 오케스트레이터 (Human ↔ AI 턴 전환) — AI Turn Orchestrator goroutine + forceAIDraw 폴백 (2026-03-21)
-- [ ] 테이블 재배치 동기화
+- [x] **테이블 재배치 동기화** — V-13 재배치 4유형 UI 완성 (§6.2 유형 1/2/3/4) — 2026-04-13 Sprint 6 Day 2 가속
 - [x] 연결 끊김/재연결 처리 — PLAYER_RECONNECT Frontend 토스트 UI 구현 (2026-03-21)
 - [x] 1인 연습 모드 Stage 1~3 — PracticeBoard + dnd-kit + joker-aware validation (2026-03-21)
 - [x] 1인 연습 모드 Stage 4~6 — 조커 마스터/복합 배치/루미큐브 마스터 (2026-03-21)
@@ -242,10 +242,10 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 - [x] **AI 토너먼트 대시보드 와이어프레임** — 23번 문서 (894줄), Sprint 6 P1 (2026-04-07)
 - [x] **AI 토너먼트 대시보드 컴포넌트 스펙** — 33번 문서 (1538줄, 13 컴포넌트, PR 5개 분할) (2026-04-12)
 - [ ] **AI 토너먼트 대시보드 구현** — Sprint 6 P1, PR 1~5 (8 SP, 나머지 4 SP Sprint 7 이월 가능)
-  - [ ] PR 1: 기반 구조 + 옵션 B 엔드포인트
-  - [ ] PR 2: 공용 컴포넌트 + TournamentFilter
-  - [ ] PR 3: ModelCard + Grid + Legend
-  - [ ] PR 4: PlaceRateChart + CostEfficiencyScatter
+  - [x] PR 1: 기반 구조 + 옵션 B 엔드포인트 + TournamentPage 레이아웃 — 2026-04-13
+  - [ ] PR 2: PlaceRateChart (recharts LineChart)
+  - [ ] PR 3: CostEfficiencyScatter
+  - [ ] PR 4: ModelCardGrid + Sparkline + GradeBadge
   - [ ] PR 5: RoundHistoryTable + 조립 + 반응형 + E2E
 - [ ] 카카오톡 알림 연동 (빌드/배포/게임 결과) — Sprint 7+
 - [ ] ELO 랭킹 시스템 — 설계 완료 (docs/01-planning/10-phase4-elo-design.md), Issues #25~#27 등록
@@ -282,11 +282,12 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 - [x] **Istio CRD 매니페스트** — PeerAuth 2개, DestinationRule, VirtualService — 2026-04-08
 - [x] **Helm Istio values** — istio-values.yaml + deployment 조건부 annotations — 2026-04-08
 - [x] **Istio 드라이런 P0×3 사전 발견** — I1/I2/I3 블로커 식별 — 2026-04-12
-- [ ] **Sprint 6 Day 1 선결 블로커** — I1 virtual-service timeout 200→510s / I2 ArgoCD ignoreDifferences / I3 argocd/istio-config.yaml 신설
-- [ ] **Istio Phase 5.0** istiod minimal 설치 + 안정화 (Sprint 6 Day 1~3)
-- [ ] **Istio Phase 5.1** namespace label + sidecar injection + mTLS STRICT (Sprint 6 Day 4~6)
-- [ ] **Istio Phase 5.2** DestinationRule + VirtualService + Circuit Breaker (Sprint 6 Day 7~9)
-- [ ] **Istio Phase 5.3** 관측성 (조건부, Sprint 6 Day 10 또는 Sprint 7 이월)
+- [x] **Sprint 6 Day 1 선결 블로커** — I1/I2/I3 완료 — 2026-04-13
+- [x] **Istio Phase 5.0** istiod minimal 설치 (30Mi 메모리, 설계 예측 180Mi 대비 17%) — 2026-04-13
+- [x] **Istio Phase 5.1** sidecar injection + mTLS (game-server/ai-adapter 2/2, SPIFFE 양방향, mutual_tls 9회) — 2026-04-13
+- [x] **Istio Phase 5.2 검증 초안** — DestinationRule + VirtualService + ollama Recreate strategy 적용 — 2026-04-13
+- [ ] **Istio Phase 5.2 본격 적용** — 서킷 브레이커 실증 테스트 + 재시도 동작 검증 (Sprint 6 Day 3~4)
+- [ ] **Istio Phase 5.3** 관측성 (조건부, istioctl PATH + proxy-check 스크립트)
 - [ ] Kiali 관측성 (Sprint 7 예정)
 
 ### 부하 테스트
@@ -371,7 +372,21 @@ docs/
 
 ## 현재 진행 상황
 
-**Sprint 6 착수** (2026-04-13) — Day 1 킥오프
+**Sprint 6 Day 1 + Day 2 동시 수행** (2026-04-13) — 사용자 "일정 땡겨서" 지시로 2일치 가속
+
+### Sprint 6 Day 1+2 당일 성과
+- **24건 커밋** origin/main 반영
+- **Agent Teams 13명 투입** — 3개 팀 (sprint6-day2 / sprint6-day2-p2p3 / sprint6-day2-ui-hotfix)
+- **Istio Phase 5.0/5.1 완료** — 30Mi 메모리, mTLS 양방향 9회 실체결
+- **재배치 4유형 UI 최초 완성** — V-13 분할/합병/이동/조커 교체 (§6.2) 라이브 플레이 가능
+- **BUG-GS-005 후속** TIMEOUT Redis cleanup 옵션 A
+- **대시보드 PR 1** TournamentPage + 옵션 B 엔드포인트
+- **SEC-REV-002/008/009** Sprint 5 Medium 3건 모두 해소
+- **DashScope V1/V2/V10 확인** (V3~V9 Sprint 6 후반 이월)
+- **진단 보고서 48번 신규** — 게임 규칙 커버리지 감사 (286줄)
+- **라이브 테스트 핫픽스 4건** — LAYOUT/REARRANGE-002/CLASSIFY-001a/b
+- **Frontend 재배포 2회** — P2/P3 반영 + 핫픽스 반영
+- **추적성 매트릭스**: ❌ 3 → **0** 해소, ⚠️ 10 → 13, ✅ 6 유지
 
 ### Sprint 6 백로그 요약 (확정 40 SP)
 - **기간**: 2026-04-13 (월) ~ 2026-04-26 (일) — 2주
@@ -380,7 +395,7 @@ docs/
 - **P1 (14 SP)**: 대시보드 PR 1~5 (8) + SEC-REV Medium 3건 (6)
 - **P2 (2 SP)**: DashScope 스켈레톤 (1) + v3 프롬프트 confirm (1)
 - **상세**: `docs/01-planning/17-sprint6-kickoff-directives.md`
-- **Day 1 Must-Do**: I1/I2/I3 선결 블로커 → Phase 5.0 istiod 설치 / 병렬: BUG-GS-005 후속 + 대시보드 엔드포인트
+- **Day 3 우선**: 라이브 테스트 재개 + Playwright suite 안정화 + Playtest S4 결정론적 전환 + 전체 19 규칙 3단계 재감사
 
 ---
 
