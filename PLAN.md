@@ -239,9 +239,17 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 - [x] 관리자 대시보드 실 API 연동 — fetchHealth/fetchRooms + ServerStatus 배지 + Bearer 토큰 (2026-03-21)
 - [x] 관리자 인증 — getAdminToken() 3단계 fallback (env → sessionStorage → dev-login) (2026-03-21)
 - [x] AI 모델별 통계 UI (승률, 평균 응답시간) — mock 데이터 기반, 실 데이터 연동 미완 (2026-03-21)
-- [ ] 카카오톡 알림 연동 (빌드/배포/게임 결과)
+- [x] **AI 토너먼트 대시보드 와이어프레임** — 23번 문서 (894줄), Sprint 6 P1 (2026-04-07)
+- [x] **AI 토너먼트 대시보드 컴포넌트 스펙** — 33번 문서 (1538줄, 13 컴포넌트, PR 5개 분할) (2026-04-12)
+- [ ] **AI 토너먼트 대시보드 구현** — Sprint 6 P1, PR 1~5 (8 SP, 나머지 4 SP Sprint 7 이월 가능)
+  - [ ] PR 1: 기반 구조 + 옵션 B 엔드포인트
+  - [ ] PR 2: 공용 컴포넌트 + TournamentFilter
+  - [ ] PR 3: ModelCard + Grid + Legend
+  - [ ] PR 4: PlaceRateChart + CostEfficiencyScatter
+  - [ ] PR 5: RoundHistoryTable + 조립 + 반응형 + E2E
+- [ ] 카카오톡 알림 연동 (빌드/배포/게임 결과) — Sprint 7+
 - [ ] ELO 랭킹 시스템 — 설계 완료 (docs/01-planning/10-phase4-elo-design.md), Issues #25~#27 등록
-- [ ] 게임 복기 (4분할 뷰, game_snapshots 기반 턴별 리플레이)
+- [ ] 게임 복기 (4분할 뷰, game_snapshots 기반 턴별 리플레이) — Sprint 7+
 
 ---
 
@@ -273,9 +281,13 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 - [x] **Istio 설치/롤백 스크립트** — istio-install.sh, namespace-label.sh, uninstall.sh — 2026-04-08
 - [x] **Istio CRD 매니페스트** — PeerAuth 2개, DestinationRule, VirtualService — 2026-04-08
 - [x] **Helm Istio values** — istio-values.yaml + deployment 조건부 annotations — 2026-04-08
-- [ ] Istio 실제 설치 + mTLS (Sprint 6 Phase 5.0~5.1)
-- [ ] Circuit Breaker + 재시도 정책 (Sprint 6 Phase 5.2)
-- [ ] Kiali 관측성 (Sprint 6 Phase 5.3, 조건부)
+- [x] **Istio 드라이런 P0×3 사전 발견** — I1/I2/I3 블로커 식별 — 2026-04-12
+- [ ] **Sprint 6 Day 1 선결 블로커** — I1 virtual-service timeout 200→510s / I2 ArgoCD ignoreDifferences / I3 argocd/istio-config.yaml 신설
+- [ ] **Istio Phase 5.0** istiod minimal 설치 + 안정화 (Sprint 6 Day 1~3)
+- [ ] **Istio Phase 5.1** namespace label + sidecar injection + mTLS STRICT (Sprint 6 Day 4~6)
+- [ ] **Istio Phase 5.2** DestinationRule + VirtualService + Circuit Breaker (Sprint 6 Day 7~9)
+- [ ] **Istio Phase 5.3** 관측성 (조건부, Sprint 6 Day 10 또는 Sprint 7 이월)
+- [ ] Kiali 관측성 (Sprint 7 예정)
 
 ### 부하 테스트
 - [ ] k6 스크립트 작성
@@ -358,6 +370,19 @@ docs/
 ---
 
 ## 현재 진행 상황
+
+**Sprint 6 착수** (2026-04-13) — Day 1 킥오프
+
+### Sprint 6 백로그 요약 (확정 40 SP)
+- **기간**: 2026-04-13 (월) ~ 2026-04-26 (일) — 2주
+- **미션**: "Istio 메시로 East-West 통신을 보호하고, AI 실험 데이터를 대시보드로 시각화한다"
+- **P0 (24 SP)**: Istio Phase 5.0~5.3 (12) + BUG-GS-005 후속 (2) + 에러코드 정리 (2) + Istio 런북 (2) + 품질 게이트 (5) + 기타 (1)
+- **P1 (14 SP)**: 대시보드 PR 1~5 (8) + SEC-REV Medium 3건 (6)
+- **P2 (2 SP)**: DashScope 스켈레톤 (1) + v3 프롬프트 confirm (1)
+- **상세**: `docs/01-planning/17-sprint6-kickoff-directives.md`
+- **Day 1 Must-Do**: I1/I2/I3 선결 블로커 → Phase 5.0 istiod 설치 / 병렬: BUG-GS-005 후속 + 대시보드 엔드포인트
+
+---
 
 **Sprint 5 최종 마감** (2026-04-12) — 진행률 **100%**
 
