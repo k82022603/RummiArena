@@ -51,7 +51,7 @@ type aiPlayerReq struct {
 type createRoomRequest struct {
 	Name           string        `json:"name"           binding:"max=50"`
 	PlayerCount    int           `json:"playerCount"    binding:"required,min=2,max=4"`
-	TurnTimeoutSec int           `json:"turnTimeoutSec" binding:"required,min=30,max=120"`
+	TurnTimeoutSec int           `json:"turnTimeoutSec" binding:"required,min=30,max=600"`
 	DisplayName    string        `json:"displayName"    binding:"max=50"`
 	AIPlayers      []aiPlayerReq `json:"aiPlayers"`
 }

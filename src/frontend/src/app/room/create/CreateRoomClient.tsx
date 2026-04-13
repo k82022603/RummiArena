@@ -150,7 +150,7 @@ export default function CreateRoomClient() {
               <span className="text-warning font-mono">{turnTimeoutSec}초</span>
             </h2>
             <div className="flex gap-2 mb-2">
-              {[30, 60, 90, 120].map((sec) => (
+              {[60, 120, 300, 600].map((sec) => (
                 <button
                   key={sec}
                   type="button"
@@ -170,16 +170,16 @@ export default function CreateRoomClient() {
             <input
               type="range"
               min={30}
-              max={120}
+              max={600}
               step={10}
               value={turnTimeoutSec}
               onChange={(e) => setTurnTimeoutSec(Number(e.target.value))}
               className="w-full accent-warning"
-              aria-label="턴 제한 시간 설정 (30~120초)"
+              aria-label="턴 제한 시간 설정 (30~600초)"
             />
             <div className="flex justify-between text-tile-xs text-text-secondary mt-1">
               <span>30초</span>
-              <span>120초</span>
+              <span>600초</span>
             </div>
           </section>
 
