@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -8,6 +9,7 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
+	"github.com/k82022603/RummiArena/game-server/internal/data"
 	"github.com/k82022603/RummiArena/game-server/internal/service"
 )
 
@@ -135,4 +137,45 @@ func (h *AdminHandler) GetPerformanceStats(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, stats)
+}
+
+// GetTournamentSummary GET /admin/stats/ai/tournament
+//
+// AI 토너먼트 대시보드 요약을 반환한다.
+//
+// Sprint 6 W1 선행 구현 — **옵션 B 정적 JSON 프록시 방식**.
+// DB 집계 없이 `internal/data/tournament-summary.json` 임베디드 바이트를
+// 그대로 반환한다. 실제 DB 집계 교체는 Sprint 6 W2에서 수행한다.
+//
+// 응답 스키마: docs/02-design/33-ai-tournament-dashboard-component-spec.md §6.2
+//
+// Query params (현 옵션 B에서는 **무시**, Sprint 6 W2에서 서버 사이드 필터링 구현):
+//   - models=openai,claude,deepseek
+//   - rounds=R2-R4v2
+//   - prompt=all|v1|v2
+//
+// 응답 헤더:
+//   - Cache-Control: public, max-age=30 (ISR 캐싱 정렬)
+//   - X-Data-Source: static (Sprint 6 W2에서 "db" 로 교체)
+func (h *AdminHandler) GetTournamentSummary(c *gin.Context) {
+	// 임베디드 JSON 유효성 검증 (빌드 타임에 이미 검증되지만 방어적으로 확인)
+	if len(data.TournamentSummaryJSON) == 0 {
+		h.logger.Error("admin: tournament summary JSON is empty")
+		respondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "토너먼트 데이터를 불러올 수 없습니다.")
+		return
+	}
+
+	// JSON 구조 검증 (malformed JSON 방지).
+	// 성능 고려 시 매 요청마다 파싱할 필요는 없으나, 옵션 B는 개발 편의성을 우선하여
+	// 검증 후 반환한다. Sprint 6 W2 DB 집계로 교체되면 이 로직은 제거된다.
+	var payload map[string]interface{}
+	if err := json.Unmarshal(data.TournamentSummaryJSON, &payload); err != nil {
+		h.logger.Error("admin: tournament summary JSON unmarshal failed", zap.Error(err))
+		respondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "토너먼트 데이터 형식이 잘못되었습니다.")
+		return
+	}
+
+	c.Header("Cache-Control", "public, max-age=30")
+	c.Header("X-Data-Source", "static") // Sprint 6 W2에서 "db" 로 교체
+	c.Data(http.StatusOK, "application/json; charset=utf-8", data.TournamentSummaryJSON)
 }

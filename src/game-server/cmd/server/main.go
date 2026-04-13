@@ -342,6 +342,10 @@ func registerAdminRoutes(router *gin.Engine, cfg *config.Config, rl middleware.R
 		admin.GET("/stats/ai", adminHandler.GetAIStats)
 		admin.GET("/stats/elo", adminHandler.GetEloStats)
 		admin.GET("/stats/performance", adminHandler.GetPerformanceStats)
+		// Sprint 6 W1 선행 — AI 토너먼트 대시보드 요약 (정적 JSON 프록시, 옵션 B).
+		// Sprint 6 W2에서 DB 집계로 교체 예정.
+		// 스펙: docs/02-design/33-ai-tournament-dashboard-component-spec.md §6.2
+		admin.GET("/stats/ai/tournament", adminHandler.GetTournamentSummary)
 	}
 }
 

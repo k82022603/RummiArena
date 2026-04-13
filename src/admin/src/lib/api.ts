@@ -18,7 +18,10 @@ import type {
   EloRankingsResponse,
   EloSummary,
   EloTierDistribution,
+  TournamentSummary,
+  TournamentFilterState,
 } from "./types";
+import { EMPTY_TOURNAMENT } from "./types";
 
 export type {
   AdminGame,
@@ -32,6 +35,15 @@ export type {
   EloRankingsResponse,
   EloSummary,
   EloTierDistribution,
+  TournamentSummary,
+  TournamentRoundEntry,
+  TournamentFilterState,
+  ModelLatestStats,
+  CostEfficiencyEntry,
+  ModelType,
+  PromptVersion,
+  TournamentStatus,
+  ModelGrade,
 } from "./types";
 
 export type {
@@ -220,6 +232,43 @@ export async function getEloSummary(): Promise<EloSummary> {
         ? Math.round(ranked.reduce((s, r) => s + r.rating, 0) / ranked.length)
         : 0,
   };
+}
+
+// ------------------------------------------------------------------
+// AI 토너먼트 대시보드 API
+// ------------------------------------------------------------------
+//
+// 스펙: docs/02-design/33-ai-tournament-dashboard-component-spec.md §6
+// Sprint 6 W1 — 옵션 B 선행 구현. game-server는 정적 JSON 프록시로 응답.
+// 쿼리 파라미터는 현재 서버 사이드에서 무시되며, Sprint 6 W2에서 DB 집계
+// 교체와 함께 서버 사이드 필터링이 구현된다. 그때까지는 클라이언트가
+// useMemo로 필터링한다 (스펙 4.1 TournamentPageClient).
+
+/**
+ * AI 토너먼트 대시보드 요약을 가져온다.
+ *
+ * @param filter 선택적 필터. 현재 옵션 B에서는 **서버 사이드에서 무시**되지만,
+ *               Sprint 6 W2 DB 집계 교체 시 자동으로 활성화되도록 쿼리 문자열을
+ *               미리 구성한다. 호출자는 클라이언트 사이드에서 useMemo로
+ *               필터링한다.
+ * @returns 토너먼트 요약. API 실패 시 `EMPTY_TOURNAMENT` fallback.
+ */
+export async function getTournamentSummary(
+  filter?: Partial<TournamentFilterState>,
+): Promise<TournamentSummary> {
+  const params = new URLSearchParams();
+  if (filter?.selectedModels?.length) {
+    params.set("models", filter.selectedModels.join(","));
+  }
+  if (filter?.roundRange) {
+    params.set("rounds", `${filter.roundRange[0]}-${filter.roundRange[1]}`);
+  }
+  if (filter?.promptVersion && filter.promptVersion !== "all") {
+    params.set("prompt", filter.promptVersion);
+  }
+  const qs = params.toString();
+  const path = `/admin/stats/ai/tournament${qs ? `?${qs}` : ""}`;
+  return fetchApi<TournamentSummary>(path, EMPTY_TOURNAMENT);
 }
 
 /**

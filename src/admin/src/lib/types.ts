@@ -151,3 +151,115 @@ export interface EloTierDistribution {
   count: number;
   color: string;
 }
+
+// ------------------------------------------------------------------
+// AI 토너먼트 대시보드 타입
+// ------------------------------------------------------------------
+//
+// 스펙: docs/02-design/33-ai-tournament-dashboard-component-spec.md §5
+// Sprint 6 W1: game-server가 `GET /admin/stats/ai/tournament`를 옵션 B
+// (정적 JSON 프록시) 방식으로 먼저 제공. Sprint 6 W2에서 DB 집계로 교체.
+
+/** 지원 모델 타입 (기존 PlayerType에서 HUMAN 제외) */
+export type ModelType = "openai" | "claude" | "deepseek" | "ollama";
+
+/** 프롬프트 버전 */
+export type PromptVersion = "v1" | "v2" | "v3";
+
+/** 대전 상태 */
+export type TournamentStatus =
+  | "COMPLETED" // 80턴 완주
+  | "WS_TIMEOUT" // WebSocket 타임아웃
+  | "WS_CLOSED" // WebSocket 연결 종료
+  | "UNKNOWN"; // 측정 불가
+
+/** 등급 */
+export type ModelGrade = "A+" | "A" | "B" | "C" | "D" | "F";
+
+/**
+ * 단일 라운드 x 모델 결과 엔트리.
+ * PlaceRateChart, RoundHistoryTable 공통 사용.
+ */
+export interface TournamentRoundEntry {
+  /** 'R2' | 'R3' | 'R4' | 'R4v2' | 'R5-DS-run1' 등 */
+  round: string;
+  promptVersion: PromptVersion;
+  modelType: ModelType;
+  modelName: string;
+  placeRate: number; // 0~100
+  placeCount: number;
+  drawCount: number;
+  totalTiles: number;
+  totalTurns: number;
+  completed: boolean;
+  status: TournamentStatus;
+  totalCost: number;
+  avgResponseTimeSec: number;
+  p50ResponseTimeSec: number;
+  minResponseTimeSec: number;
+  maxResponseTimeSec: number;
+  grade: ModelGrade;
+}
+
+/** CostEfficiencyScatter 전용 (산점도 1점) */
+export interface CostEfficiencyEntry {
+  modelType: ModelType;
+  modelName: string;
+  round: string;
+  promptVersion: PromptVersion;
+  costPerGame: number; // X축
+  placeRate: number; // Y축
+  totalTilesPlaced: number; // Z축 (버블 크기)
+  placePerDollar: number;
+}
+
+/** ModelCard 전용 (최신 라운드 기준) */
+export interface ModelLatestStats {
+  modelType: ModelType;
+  modelName: string;
+  latestRound: string;
+  latestRate: number;
+  grade: ModelGrade;
+  avgResponseTimeSec: number;
+  costPerTurn: number;
+  totalTilesPlaced: number;
+  completed: boolean;
+  promptVersion: PromptVersion;
+  /** 라운드별 Place Rate 시계열 (R2→R3→R4→R5 순). 데이터 없음은 null. */
+  sparkline: (number | null)[];
+}
+
+/** 토너먼트 전체 요약 (GET /admin/stats/ai/tournament 응답) */
+export interface TournamentSummary {
+  rounds: TournamentRoundEntry[];
+  modelStats: ModelLatestStats[];
+  costEfficiency: CostEfficiencyEntry[];
+  /** ISO8601 */
+  lastUpdated: string;
+  totalBattles: number;
+  totalCostUsd: number;
+}
+
+/** 필터 상태 (URL 쿼리 동기화 대상) */
+export interface TournamentFilterState {
+  selectedModels: ModelType[];
+  roundRange: [string, string];
+  promptVersion: "all" | PromptVersion;
+}
+
+/** 기본 필터 값 */
+export const DEFAULT_TOURNAMENT_FILTER: TournamentFilterState = {
+  selectedModels: ["openai", "claude", "deepseek"],
+  roundRange: ["R2", "R5-CL-run3"],
+  promptVersion: "all",
+};
+
+/** Empty fallback (API 실패 시) */
+export const EMPTY_TOURNAMENT: TournamentSummary = {
+  rounds: [],
+  modelStats: [],
+  costEfficiency: [],
+  lastUpdated: new Date(0).toISOString(),
+  totalBattles: 0,
+  totalCostUsd: 0,
+};
