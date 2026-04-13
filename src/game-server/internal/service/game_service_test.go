@@ -1647,3 +1647,266 @@ func TestPlayerState_ConsecutiveAbsentTurns_ZeroDefault(t *testing.T) {
 	assert.Equal(t, 0, state.Players[0].ConsecutiveAbsentTurns)
 	assert.Equal(t, 0, state.Players[1].ConsecutiveAbsentTurns)
 }
+
+// ============================================================================
+// BUG-GS-005 후속: 게임 턴 상한(MaxTurnsLimit) 도달 시 STALEMATE 귀결 + Redis 정리
+// 설계 문서: docs/02-design/32-timeout-redis-cleanup-design.md §7 (옵션 A)
+// ============================================================================
+
+// seedRepoWithTurnLimit 턴 상한을 설정한 GameService를 반환하는 헬퍼.
+func seedRepoWithTurnLimit(t *testing.T, state *model.GameStateRedis, maxTurns int) (GameService, repository.MemoryGameStateRepository) {
+	t.Helper()
+	repo := repository.NewMemoryGameStateRepo()
+	require.NoError(t, repo.SaveGameState(state))
+	svc := NewGameService(repo, WithMaxTurnsLimit(maxTurns))
+	return svc, repo
+}
+
+// TestDrawTile_TurnLimitReached_FinishesAsStalemate
+// Given: maxTurnsLimit=10, TurnCount=9, DrawPile>=1
+// When: DrawTile 호출 → TurnCount가 10으로 증가하며 상한 도달
+// Then: 게임이 STALEMATE로 종결되고 IsStalemate=true, GameEnded=true
+func TestDrawTile_TurnLimitReached_FinishesAsStalemate(t *testing.T) {
+	rack0 := []string{"R1a", "R2a"}
+	rack1 := []string{"K1a", "K2a"}
+	state := newTestGameState("turn-limit-draw", twoPlayerState(rack0, rack1), []string{"Y1a", "Y2a"})
+	state.TurnCount = 9
+
+	svc, repo := seedRepoWithTurnLimit(t, state, 10)
+
+	result, err := svc.DrawTile("turn-limit-draw", 0)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	assert.True(t, result.GameEnded, "턴 상한 도달 시 GameEnded=true")
+	assert.Equal(t, "STALEMATE", result.ErrorCode, "ErrorCode=STALEMATE")
+	require.NotNil(t, result.GameState)
+	assert.True(t, result.GameState.IsStalemate, "IsStalemate=true")
+	assert.Equal(t, model.GameStatusFinished, result.GameState.Status, "게임 상태=Finished")
+
+	// Redis에도 Finished로 저장되어야 한다
+	saved, err := repo.GetGameState("turn-limit-draw")
+	require.NoError(t, err)
+	assert.Equal(t, model.GameStatusFinished, saved.Status)
+	assert.True(t, saved.IsStalemate)
+}
+
+// TestDrawTile_TurnLimitDisabled_ContinuesNormally
+// Given: maxTurnsLimit=0 (제한 없음), TurnCount=9
+// When: DrawTile 호출 → TurnCount가 10으로 증가
+// Then: 게임은 계속 진행되고 STALEMATE로 귀결되지 않음
+func TestDrawTile_TurnLimitDisabled_ContinuesNormally(t *testing.T) {
+	rack0 := []string{"R1a", "R2a"}
+	rack1 := []string{"K1a", "K2a"}
+	state := newTestGameState("turn-limit-disabled", twoPlayerState(rack0, rack1), []string{"Y1a", "Y2a"})
+	state.TurnCount = 9
+
+	// 제한 없음 (maxTurnsLimit=0)
+	svc, repo := seedRepoWithTurnLimit(t, state, 0)
+
+	result, err := svc.DrawTile("turn-limit-disabled", 0)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	assert.False(t, result.GameEnded, "턴 상한이 없으면 게임이 계속 진행되어야 한다")
+	assert.NotEqual(t, "STALEMATE", result.ErrorCode)
+	require.NotNil(t, result.GameState)
+	assert.False(t, result.GameState.IsStalemate)
+	assert.Equal(t, model.GameStatusPlaying, result.GameState.Status)
+
+	// Redis에서도 진행 중
+	saved, err := repo.GetGameState("turn-limit-disabled")
+	require.NoError(t, err)
+	assert.Equal(t, model.GameStatusPlaying, saved.Status)
+	assert.Equal(t, 10, saved.TurnCount, "TurnCount는 증가했지만 게임은 계속")
+}
+
+// TestConfirmTurn_TurnLimitReached_FinishesAsStalemate
+// Given: maxTurnsLimit=10, TurnCount=9, 유효한 배치 가능한 랙
+// When: 승리가 아닌 일반 ConfirmTurn → advanceToNextTurn에서 TurnCount=10 도달
+// Then: STALEMATE로 귀결
+func TestConfirmTurn_TurnLimitReached_FinishesAsStalemate(t *testing.T) {
+	// 30점 이상 최초 등록 조건 충족: R5+R6+R7+R8+R9+R10 = 45점
+	// 랙에 여분 타일도 남겨서 "배치 후 랙이 비지 않음" 조건 유지 → 승리 조건 미충족
+	rack0 := []string{"R5a", "R6a", "R7a", "R8a", "R9a", "R10a", "B1a"}
+	rack1 := []string{"K1a", "K2a"}
+	state := newTestGameState("turn-limit-confirm", twoPlayerState(rack0, rack1), []string{"Y1a"})
+	state.TurnCount = 9
+	svc, repo := seedRepoWithTurnLimit(t, state, 10)
+
+	tilesFromRack := []string{"R5a", "R6a", "R7a", "R8a", "R9a", "R10a"}
+	tableGroups := []TilePlacement{{ID: "run-1", Tiles: tilesFromRack}}
+
+	// 스냅샷 생성을 위해 먼저 PlaceTiles 호출
+	_, err := svc.PlaceTiles("turn-limit-confirm", &PlaceRequest{
+		Seat:          0,
+		TableGroups:   tableGroups,
+		TilesFromRack: tilesFromRack,
+	})
+	require.NoError(t, err)
+
+	result, err := svc.ConfirmTurn("turn-limit-confirm", &ConfirmRequest{
+		Seat:          0,
+		TableGroups:   tableGroups,
+		TilesFromRack: tilesFromRack,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	// 승리가 아닌 일반 턴이지만 상한 도달로 STALEMATE
+	assert.True(t, result.GameEnded, "상한 도달 시 GameEnded=true")
+	assert.Equal(t, "STALEMATE", result.ErrorCode)
+	require.NotNil(t, result.GameState)
+	assert.True(t, result.GameState.IsStalemate)
+	assert.Equal(t, model.GameStatusFinished, result.GameState.Status)
+
+	// Redis에 Finished로 저장 + IsStalemate=true
+	saved, err := repo.GetGameState("turn-limit-confirm")
+	require.NoError(t, err)
+	assert.Equal(t, model.GameStatusFinished, saved.Status)
+	assert.True(t, saved.IsStalemate)
+}
+
+// TestForfeitPlayer_TurnLimitReached_FinishesAsStalemate
+// Given: 3인 게임, maxTurnsLimit=10, TurnCount=9, 현재 turn owner가 기권
+// When: ForfeitPlayer 호출 → activeCount=2 유지 + TurnCount 증가 → 상한 도달
+// Then: STALEMATE로 귀결되고 기권 처리보다 상한 검사가 우선
+func TestForfeitPlayer_TurnLimitReached_FinishesAsStalemate(t *testing.T) {
+	// 3인 게임: 기권자(seat 0) + 나머지 2명
+	players := []model.PlayerState{
+		{SeatOrder: 0, UserID: "user-A", PlayerType: "HUMAN", Rack: []string{"R1a"}},
+		{SeatOrder: 1, UserID: "user-B", PlayerType: "HUMAN", Rack: []string{"B1a"}},
+		{SeatOrder: 2, UserID: "user-C", PlayerType: "HUMAN", Rack: []string{"Y1a"}},
+	}
+	state := &model.GameStateRedis{
+		GameID:      "turn-limit-forfeit",
+		Status:      model.GameStatusPlaying,
+		CurrentSeat: 0,
+		DrawPile:    []string{"K1a"},
+		Table:       []*model.SetOnTable{},
+		Players:     players,
+		TurnStartAt: time.Now().Unix(),
+		TurnCount:   9, // 이번 기권으로 10 도달 예정
+	}
+	svc, repo := seedRepoWithTurnLimit(t, state, 10)
+
+	result, err := svc.ForfeitPlayer("turn-limit-forfeit", 0, "test")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	// activeCount=2여서 원래라면 게임이 계속되겠지만, 상한 도달로 STALEMATE
+	assert.True(t, result.GameEnded, "상한 도달 시 GameEnded=true")
+	assert.Equal(t, "STALEMATE", result.ErrorCode, "FORFEIT가 아닌 STALEMATE로 귀결")
+	require.NotNil(t, result.GameState)
+	assert.True(t, result.GameState.IsStalemate)
+	assert.Equal(t, model.GameStatusFinished, result.GameState.Status)
+
+	// Redis에 Finished로 저장
+	saved, err := repo.GetGameState("turn-limit-forfeit")
+	require.NoError(t, err)
+	assert.Equal(t, model.GameStatusFinished, saved.Status)
+	assert.True(t, saved.IsStalemate)
+}
+
+// TestForfeitPlayer_MidGame_TurnLimitNotTriggered
+// Given: 3인 게임, maxTurnsLimit=100, TurnCount=5, 1명 기권
+// When: ForfeitPlayer 호출
+// Then: 기권은 정상 처리되고 게임 계속 진행 (회귀 방지)
+func TestForfeitPlayer_MidGame_TurnLimitNotTriggered(t *testing.T) {
+	players := []model.PlayerState{
+		{SeatOrder: 0, UserID: "user-A", PlayerType: "HUMAN", Rack: []string{"R1a"}},
+		{SeatOrder: 1, UserID: "user-B", PlayerType: "HUMAN", Rack: []string{"B1a"}},
+		{SeatOrder: 2, UserID: "user-C", PlayerType: "HUMAN", Rack: []string{"Y1a"}},
+	}
+	state := &model.GameStateRedis{
+		GameID:      "turn-limit-forfeit-midgame",
+		Status:      model.GameStatusPlaying,
+		CurrentSeat: 0,
+		DrawPile:    []string{"K1a"},
+		Table:       []*model.SetOnTable{},
+		Players:     players,
+		TurnStartAt: time.Now().Unix(),
+		TurnCount:   5,
+	}
+	svc, repo := seedRepoWithTurnLimit(t, state, 100)
+
+	result, err := svc.ForfeitPlayer("turn-limit-forfeit-midgame", 0, "test")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	assert.False(t, result.GameEnded, "상한 미도달 시 게임은 계속")
+	assert.NotEqual(t, "STALEMATE", result.ErrorCode)
+	require.NotNil(t, result.GameState)
+	assert.False(t, result.GameState.IsStalemate)
+
+	// Redis에서도 여전히 진행 중
+	saved, err := repo.GetGameState("turn-limit-forfeit-midgame")
+	require.NoError(t, err)
+	assert.Equal(t, model.GameStatusPlaying, saved.Status)
+	assert.Equal(t, 6, saved.TurnCount, "기권자 턴이었으므로 TurnCount가 1 증가")
+	assert.Equal(t, model.PlayerStatusForfeited, saved.Players[0].Status)
+}
+
+// TestDrawTile_PenaltyDraw_TurnLimitReached_FinishesAsStalemate
+// penaltyDrawAndAdvance 경로도 상한 검사를 수행하는지 검증.
+// Given: maxTurnsLimit=10, TurnCount=9, ConfirmTurn 검증 실패 상황
+// When: 유효하지 않은 세트를 Confirm → 패널티 드로우 → TurnCount 10 도달
+// Then: STALEMATE로 귀결
+func TestConfirmTurn_PenaltyDraw_TurnLimitReached_FinishesAsStalemate(t *testing.T) {
+	// 2장짜리 세트(최소 3장 규칙 위반)로 검증 실패 유도
+	rack0 := []string{"R5a", "R6a", "B1a"}
+	rack1 := []string{"K1a"}
+	state := newTestGameState("turn-limit-penalty", twoPlayerState(rack0, rack1), []string{"Y1a", "Y2a", "Y3a", "Y4a"})
+	state.Players[0].HasInitialMeld = true
+	state.TurnCount = 9
+	svc, repo := seedRepoWithTurnLimit(t, state, 10)
+
+	tilesFromRack := []string{"R5a", "R6a"}
+	tableGroups := []TilePlacement{{ID: "bad-set", Tiles: tilesFromRack}}
+
+	// PlaceTiles는 성공
+	_, err := svc.PlaceTiles("turn-limit-penalty", &PlaceRequest{
+		Seat:          0,
+		TableGroups:   tableGroups,
+		TilesFromRack: tilesFromRack,
+	})
+	require.NoError(t, err)
+
+	// ConfirmTurn: 검증 실패 → 패널티 드로우 → 상한 도달 → STALEMATE
+	result, err := svc.ConfirmTurn("turn-limit-penalty", &ConfirmRequest{
+		Seat:        0,
+		TableGroups: tableGroups,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	// 패널티 경로에서도 상한 도달 시 STALEMATE로 귀결되어야 한다
+	assert.True(t, result.GameEnded, "패널티 경로에서도 상한 도달 시 GameEnded=true")
+	assert.Equal(t, "STALEMATE", result.ErrorCode, "ErrorCode=STALEMATE (패널티 에러코드보다 우선)")
+	require.NotNil(t, result.GameState)
+	assert.True(t, result.GameState.IsStalemate)
+	assert.Equal(t, model.GameStatusFinished, result.GameState.Status)
+
+	saved, err := repo.GetGameState("turn-limit-penalty")
+	require.NoError(t, err)
+	assert.Equal(t, model.GameStatusFinished, saved.Status)
+	assert.True(t, saved.IsStalemate)
+}
+
+// TestWithMaxTurnsLimit_OptionAppliedCorrectly
+// Option 패턴 자체 검증: WithMaxTurnsLimit이 생성자에서 정확히 반영되는지 확인.
+func TestWithMaxTurnsLimit_OptionAppliedCorrectly(t *testing.T) {
+	repo := repository.NewMemoryGameStateRepo()
+
+	// 옵션 미전달: 제한 없음
+	svcNoLimit := NewGameService(repo)
+	gsNoLimit, ok := svcNoLimit.(*gameService)
+	require.True(t, ok)
+	assert.Equal(t, 0, gsNoLimit.maxTurnsLimit, "옵션 미전달 시 0(제한 없음)")
+
+	// 옵션 전달: 120
+	svcWithLimit := NewGameService(repo, WithMaxTurnsLimit(120))
+	gsWithLimit, ok := svcWithLimit.(*gameService)
+	require.True(t, ok)
+	assert.Equal(t, 120, gsWithLimit.maxTurnsLimit, "WithMaxTurnsLimit(120) 반영")
+}

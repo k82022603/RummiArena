@@ -14,7 +14,15 @@ type Config struct {
 	AIAdapter   AIAdapterConfig
 	GoogleOAuth GoogleOAuthConfig
 	RateLimit   RateLimitConfig
+	Game        GameConfig
 	AppEnv      string // "dev" | "staging" | "production"
+}
+
+// GameConfig 게임 규칙 관련 런타임 설정.
+// MaxTurnsLimit: 게임 1판의 최대 턴 수. 초과 시 STALEMATE로 귀결된다.
+// 0(기본값 0 미만) 또는 음수면 제한 없음. 기본값 200턴(설계 문서 32 §8.1 리스크 반영).
+type GameConfig struct {
+	MaxTurnsLimit int
 }
 
 // RateLimitConfig holds configurable rate limit thresholds.
@@ -94,6 +102,10 @@ func Load() (*Config, error) {
 	viper.SetDefault("RATE_LIMIT_WS_MAX", 5)
 	viper.SetDefault("RATE_LIMIT_WINDOW_SECONDS", 60)
 
+	// BUG-GS-005 후속: 80턴 만료 시 Redis 자동 정리를 위한 서버 측 턴 상한
+	// 기본값 200 — 정상 플레이 여유분 확보 (설계 문서 32 §8.1), 0 이하면 제한 없음
+	viper.SetDefault("GAME_MAX_TURNS_LIMIT", 200)
+
 	viper.AutomaticEnv()
 
 	cfg := &Config{
@@ -134,6 +146,9 @@ func Load() (*Config, error) {
 			AdminMax:      viper.GetInt("RATE_LIMIT_ADMIN_MAX"),
 			WSMax:         viper.GetInt("RATE_LIMIT_WS_MAX"),
 			WindowSeconds: viper.GetInt("RATE_LIMIT_WINDOW_SECONDS"),
+		},
+		Game: GameConfig{
+			MaxTurnsLimit: viper.GetInt("GAME_MAX_TURNS_LIMIT"),
 		},
 	}
 

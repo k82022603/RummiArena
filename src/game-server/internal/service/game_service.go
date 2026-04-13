@@ -102,6 +102,22 @@ type gameService struct {
 	gameRepo   repository.MemoryGameStateRepository
 	snapshotMu sync.Mutex
 	snapshots  map[string]*turnSnapshot // key: gameID+":"+seat
+	// maxTurnsLimit: BUG-GS-005 후속. 게임 1판의 최대 턴 수.
+	// 초과 시 advanceToNextTurn/DrawTile/penaltyDrawAndAdvance/ForfeitPlayer가
+	// finishGameStalemate로 귀결한다. 0 이하면 제한 없음.
+	maxTurnsLimit int
+}
+
+// GameServiceOption gameService 생성 시 선택적 설정을 주입하는 함수 타입.
+type GameServiceOption func(*gameService)
+
+// WithMaxTurnsLimit 게임 최대 턴 수 상한을 설정한다.
+// limit <= 0 이면 제한 없음(기본 동작).
+// BUG-GS-005 후속: TIMEOUT(턴 상한 초과) 시 Redis 자동 정리를 위한 진입점.
+func WithMaxTurnsLimit(limit int) GameServiceOption {
+	return func(s *gameService) {
+		s.maxTurnsLimit = limit
+	}
 }
 
 // newGame 방의 플레이어들로 게임을 생성하고 초기 타일을 분배한다.
@@ -168,12 +184,18 @@ func (s *gameService) newGame(
 	return state, nil
 }
 
-// NewGameService GameService 구현체 생성자
-func NewGameService(gameRepo repository.MemoryGameStateRepository) GameService {
-	return &gameService{
+// NewGameService GameService 구현체 생성자.
+// opts로 WithMaxTurnsLimit 등 선택적 설정을 주입할 수 있다.
+// 옵션을 전달하지 않으면 기존 동작(턴 상한 없음)을 그대로 유지한다.
+func NewGameService(gameRepo repository.MemoryGameStateRepository, opts ...GameServiceOption) GameService {
+	svc := &gameService{
 		gameRepo:  gameRepo,
 		snapshots: make(map[string]*turnSnapshot),
 	}
+	for _, opt := range opts {
+		opt(svc)
+	}
+	return svc
 }
 
 // GetGameState 1인칭 뷰로 게임 상태를 반환한다.
@@ -494,12 +516,32 @@ func tileScore(code string) int {
 	return parsed.Number
 }
 
+// checkTurnLimit 현재 TurnCount가 maxTurnsLimit에 도달(또는 초과)했는지 검사한다.
+// 도달했다면 finishGameStalemate 결과를 반환한다 (두 번째 반환값 true).
+// maxTurnsLimit <= 0 이면 제한 없음으로 취급하고 (nil, nil, false)를 반환한다.
+// BUG-GS-005 후속: 80턴/120턴/200턴 등 턴 상한 도달 시 Redis 자동 정리를 단일 진입점으로 처리.
+func (s *gameService) checkTurnLimit(state *model.GameStateRedis) (*GameActionResult, error, bool) {
+	if s.maxTurnsLimit <= 0 {
+		return nil, nil, false
+	}
+	if state.TurnCount < s.maxTurnsLimit {
+		return nil, nil, false
+	}
+	result, err := s.finishGameStalemate(state)
+	return result, err, true
+}
+
 // advanceToNextTurn 다음 플레이어 턴으로 전환하고 상태를 저장한 후 결과를 반환한다.
+// TurnCount 증가 직후 maxTurnsLimit 검사 — 초과 시 STALEMATE로 귀결 (BUG-GS-005 후속).
 func (s *gameService) advanceToNextTurn(state *model.GameStateRedis) (*GameActionResult, error) {
 	nextSeat := advanceTurn(state)
 	state.CurrentSeat = nextSeat
 	state.TurnStartAt = time.Now().Unix()
 	state.TurnCount++
+
+	if result, err, reached := s.checkTurnLimit(state); reached {
+		return result, err
+	}
 
 	if err := s.gameRepo.SaveGameState(state); err != nil {
 		return nil, fmt.Errorf("game_service: save after confirm: %w", err)
@@ -535,6 +577,11 @@ func (s *gameService) penaltyDrawAndAdvance(state *model.GameStateRedis, gameID 
 	state.CurrentSeat = nextSeat
 	state.TurnStartAt = time.Now().Unix()
 	state.TurnCount++
+
+	// BUG-GS-005 후속: 턴 상한 도달 시 STALEMATE로 귀결
+	if result, err, reached := s.checkTurnLimit(state); reached {
+		return result, err
+	}
 
 	if err := s.gameRepo.SaveGameState(state); err != nil {
 		return nil, fmt.Errorf("game_service: save after penalty draw: %w", err)
@@ -601,6 +648,11 @@ func (s *gameService) DrawTile(gameID string, seat int) (*GameActionResult, erro
 	state.CurrentSeat = nextSeat
 	state.TurnStartAt = time.Now().Unix()
 	state.TurnCount++
+
+	// BUG-GS-005 후속: 턴 상한 도달 시 STALEMATE로 귀결
+	if result, err, reached := s.checkTurnLimit(state); reached {
+		return result, err
+	}
 
 	if err := s.gameRepo.SaveGameState(state); err != nil {
 		return nil, fmt.Errorf("game_service: save after draw: %w", err)
@@ -714,6 +766,11 @@ func (s *gameService) ForfeitPlayer(gameID string, seat int, reason string) (*Ga
 		state.CurrentSeat = nextSeat
 		state.TurnStartAt = time.Now().Unix()
 		state.TurnCount++
+
+		// BUG-GS-005 후속: 기권으로 턴이 증가한 경우에도 상한 검사
+		if result, err, reached := s.checkTurnLimit(state); reached {
+			return result, err
+		}
 	}
 
 	if err := s.gameRepo.SaveGameState(state); err != nil {

@@ -106,7 +106,15 @@ func buildRouter(
 		service.SetCooldownChecker(roomSvc, service.NewRedisCooldownChecker(redisClient))
 		logger.Info("ai game cooldown enabled (5min per user)")
 	}
-	gameSvc := service.NewGameService(gameStateRepo)
+	// BUG-GS-005 후속: GAME_MAX_TURNS_LIMIT 환경변수로 게임 턴 상한 주입
+	// 기본 200턴 — 초과 시 STALEMATE로 귀결되며 Redis GameState가 자동 정리된다
+	gameSvc := service.NewGameService(
+		gameStateRepo,
+		service.WithMaxTurnsLimit(cfg.Game.MaxTurnsLimit),
+	)
+	if cfg.Game.MaxTurnsLimit > 0 {
+		logger.Info("game turn limit enabled", zap.Int("maxTurnsLimit", cfg.Game.MaxTurnsLimit))
+	}
 	turnSvc := service.NewTurnService(gameStateRepo, gameSvc)
 
 	// AI Client: AI_ADAPTER_URL이 설정되지 않으면 nil로 두어 AI 턴을 비활성화한다.

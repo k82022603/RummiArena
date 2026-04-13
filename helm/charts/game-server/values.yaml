@@ -33,6 +33,9 @@ env:
   AI_ADAPTER_TIMEOUT_SEC: "500"
   RATE_LIMIT_LOW_MAX: "1000"
   AI_COOLDOWN_SEC: "0"
+  # BUG-GS-005 후속: 게임 턴 상한. 초과 시 STALEMATE로 귀결되며 Redis GameState 자동 정리.
+  # 0 이하면 제한 없음. 기본 200턴 (정상 플레이 여유분, 설계 문서 32 §8.1)
+  GAME_MAX_TURNS_LIMIT: "200"
 
 secrets:
   # 실제 값은 kubectl patch 또는 외부 Secret으로 주입 (Git에 커밋하지 말 것)

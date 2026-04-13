@@ -24,3 +24,4 @@ data:
   AI_ADAPTER_TIMEOUT_SEC: {{ .Values.env.AI_ADAPTER_TIMEOUT_SEC | quote }}
   RATE_LIMIT_LOW_MAX: {{ .Values.env.RATE_LIMIT_LOW_MAX | quote }}
   AI_COOLDOWN_SEC: {{ .Values.env.AI_COOLDOWN_SEC | quote }}
+  GAME_MAX_TURNS_LIMIT: {{ .Values.env.GAME_MAX_TURNS_LIMIT | quote }}
