@@ -32,7 +32,6 @@ import {
   createRoomAndStart,
   waitForGameReady,
   waitForStoreReady,
-  setStoreState,
 } from "./helpers/game-helpers";
 import { dndDrag } from "./helpers";
 
@@ -121,22 +120,9 @@ test.describe("TC-RR: 재배치 합병 (§6.2 유형 2)", () => {
 
   test("TC-RR-01: 최초 등록 완료 후 랙 Y9a를 서버 그룹 [R9 B9 K9]에 합병 → 4타일 그룹", async ({
     page,
-  }, testInfo) => {
-    // 합병 분기(handleDragEnd line 517~530, BUG-UI-REARRANGE-001)는 commit 23e770a로
-    // 소스에는 들어왔지만, K8s pod의 frontend 이미지(rummiarena/frontend:dev)가
-    // 재배포되기 전까지는 동작하지 않는다. 재배포 후 fixme를 제거하고 PASS 검증할 것.
-    // - 진단: TC-RR-02(Negative)는 PASS, TC-RR-01만 4타일 머지 unmet → 합병 분기 미반영 확정
-    // - 후속 액션: frontend 이미지 재빌드 + helm upgrade → 본 fixme 제거 + 재실행
-    testInfo.fixme(
-      true,
-      "frontend pod 재배포 대기 중 (commit 23e770a 합병 분기 미반영). 재배포 후 fixme 제거."
-    );
-
-    // 1. 실제 게임 세션 시작
-    //    turnTimeout 60 사용: frontend-dev-1의 600초 옵션 추가(7244fce)는 commit됐지만
-    //    K8s pod 이미지가 재배포되기 전에는 옛 옵션만 지원한다.
-    //    재배포 후에는 600/300 등 더 큰 값으로 갱신 가능 (deterministic store 주입 후엔
-    //    실제 타이머가 흐를 일이 없어 60초로도 충분).
+  }) => {
+    // Sprint 6 Day 2 핫픽스(commit 740a6f8+68203b6) frontend 재배포 완료.
+    // BUG-UI-REARRANGE-002(pendingGroupSeqRef 단조 카운터) 반영 확인.
     await createRoomAndStart(page, {
       playerCount: 2,
       aiCount: 1,
@@ -179,8 +165,12 @@ test.describe("TC-RR: 재배치 합병 (§6.2 유형 2)", () => {
     ).toBeVisible({ timeout: 3000 });
 
     // 7. 랙에서 Y9a가 사라졌는지 (pendingMyTiles로 이동)
+    //    주의: P2-1로 머지된 보드 타일도 drag 가능하므로 aria-label 조건이
+    //    보드/랙 양쪽에서 매치된다. 랙 scope으로 한정한다.
     await expect(
-      page.locator('[aria-label="Y9a 타일 (드래그 가능)"]')
+      page.locator(
+        'section[aria-label="내 타일 랙"] [aria-label="Y9a 타일 (드래그 가능)"]'
+      )
     ).toHaveCount(0, { timeout: 3000 });
   });
 
@@ -307,15 +297,14 @@ test.describe("TC-RR: 재배치 분할 (§6.2 유형 1)", () => {
   test("TC-RR-03: 최초 등록 후 서버 런 [B10 B11 B12 B13]의 B13을 랙으로 split → 3타일 런 + pendingMyTiles에 B13", async ({
     page,
   }, testInfo) => {
-    // frontend-dev-1의 P2-1 구현은 tilesDraggable=isMyTurn 으로 서버 타일도 드래그 가능하고,
-    // handleDragEnd가 서버 확정 그룹 → 랙 split을 허용하도록 확장된다. K8s frontend 이미지
-    // 재배포 전에는 TC-RR-01과 마찬가지로 동작하지 않으므로 fixme 처리한다.
-    // - 재배포 후: fixme 제거, pendingGroupIds에 srv-run-blue 추가 + tiles 3장 + pendingMyTiles에 B13 있음 검증
+    // Sprint 6 Day 2 재확인: 현재 구현은 V-06 conservation 가드로 서버 확정 그룹 →
+    // 랙 되돌리기를 명시적으로 차단한다(GameClient.tsx handleDragEnd:626
+    // `if (!sourceIsPending) return;`). P2-1 "server-split" 기능은 아직 미구현이며,
+    // 본 테스트는 구현 완료 전까지 fixme 상태로 둔다.
     testInfo.fixme(
       true,
-      "P2-1 server-split frontend 재배포 대기 중. 재배포 후 fixme 제거하고 PASS 검증할 것."
+      "P2-1 server-split 미구현 (V-06 conservation 가드로 차단). 구현 완료 후 fixme 제거."
     );
-
     await createRoomAndStart(page, {
       playerCount: 2,
       aiCount: 1,
@@ -440,15 +429,8 @@ test.describe("TC-RR: 머지 호환 힌트 (P2-2)", () => {
 
   test("TC-RR-05: 랙 B5a 드래그 시작 → [R5 Y5 K5] 그룹에 compatible ring 적용, [B10 B11 B12] 런에는 미적용", async ({
     page,
-  }, testInfo) => {
-    // frontend-dev-2의 P2-2: computeValidMergeGroups + GameBoard.validMergeGroupIds 프롭은
-    // commit되어 있으나 K8s frontend 이미지 재배포 전에는 DOM에 반영되지 않는다.
-    // - 재배포 후: fixme 제거하고 ring-green-400/40 class 검증
-    testInfo.fixme(
-      true,
-      "P2-2 merge hint frontend 재배포 대기 중. 재배포 후 fixme 제거하고 PASS 검증할 것."
-    );
-
+  }) => {
+    // Sprint 6 Day 2 핫픽스 반영 후 fixme 해제.
     await createRoomAndStart(page, {
       playerCount: 2,
       aiCount: 1,
@@ -568,14 +550,8 @@ test.describe("TC-RR: 조커 교체 MVP (§6.2 유형 4)", () => {
 
   test("TC-RR-06: 서버 그룹 [R7 JK1 K7]에 B7a 드롭 → JK1 회수 + ConfirmTurn 차단", async ({
     page,
-  }, testInfo) => {
-    // frontend-dev-3의 P3: tryJokerSwap + addRecoveredJoker + handleConfirm 가드 + JokerSwapIndicator
-    // K8s frontend 이미지 재배포 전에는 동작 확인 불가. 재배포 후 fixme 제거.
-    testInfo.fixme(
-      true,
-      "P3 joker swap frontend 재배포 대기 중. 재배포 후 fixme 제거하고 PASS 검증할 것."
-    );
-
+  }) => {
+    // Sprint 6 Day 2 핫픽스 반영 후 fixme 해제.
     await createRoomAndStart(page, {
       playerCount: 2,
       aiCount: 1,
@@ -670,5 +646,112 @@ test.describe("TC-RR: 조커 교체 MVP (§6.2 유형 4)", () => {
         page.locator('[role="alert"]').filter({ hasText: /회수한 조커/ })
       ).toBeVisible({ timeout: 3000 });
     }
+  });
+});
+
+// ==================================================================
+// TC-RR-07: 혼합 숫자 자동 분리 (BUG-UI-CLASSIFY-001a 회귀 방지)
+// 최초 등록 전 랙 [R7a Y4a]를 빈 보드에 순차 드롭 →
+// 숫자도 색도 다르므로 하나의 그룹으로 합쳐지지 않고 2개 pending 그룹으로 분리돼야 한다.
+// ==================================================================
+
+test.describe("TC-RR: 혼합 숫자 자동 분리 (BUG-UI-CLASSIFY-001a)", () => {
+  test.setTimeout(180_000);
+
+  test.afterEach(async ({ page }) => {
+    await cleanupViaPage(page).catch(() => {
+      /* best-effort cleanup */
+    });
+  });
+
+  test("TC-RR-07: 빈 보드에 R7a → Y4a 순차 드롭 시 2개 pending 그룹으로 분리", async ({
+    page,
+  }) => {
+    await createRoomAndStart(page, {
+      playerCount: 2,
+      aiCount: 1,
+      turnTimeout: 60,
+    });
+    await waitForGameReady(page);
+    await waitForStoreReady(page);
+
+    // store 강제 주입: 빈 보드 + 랙 [R7a, Y4a] + 최초 등록 전(hasInitialMeld=false)
+    // shouldCreateNewGroup 분기는 hasInitialMeld 상관없이 동작하므로 false에서도 검증 가능.
+    // 기존 gameState를 spread하여 players/currentTurn 등 필수 필드를 보존한다.
+    await page.evaluate(() => {
+      const store = (
+        window as unknown as Record<
+          string,
+          {
+            getState: () => Record<string, unknown>;
+            setState: (s: Record<string, unknown>) => void;
+          }
+        >
+      ).__gameStore;
+      if (!store) throw new Error("__gameStore not available");
+      const current = store.getState();
+      const baseGameState = (current.gameState ?? {}) as Record<string, unknown>;
+      store.setState({
+        mySeat: 0,
+        myTiles: ["R7a", "Y4a"],
+        hasInitialMeld: false,
+        pendingTableGroups: null,
+        pendingMyTiles: null,
+        pendingGroupIds: new Set<string>(),
+        pendingRecoveredJokers: [],
+        aiThinkingSeat: null,
+        gameState: {
+          ...baseGameState,
+          currentSeat: 0,
+          tableGroups: [],
+          turnTimeoutSec: 600,
+          drawPileCount: 90,
+        },
+      });
+    });
+    await page.waitForTimeout(400);
+
+    const board = page.locator('section[aria-label="게임 테이블"]');
+    await expect(board).toBeVisible({ timeout: 5000 });
+
+    // 1. R7a를 빈 보드에 드롭 → 1개 pending 그룹 [R7a]
+    const r7 = page.locator('[aria-label="R7a 타일 (드래그 가능)"]').first();
+    await expect(r7).toBeVisible({ timeout: 5000 });
+    await dndDrag(page, r7, board);
+    await page.waitForTimeout(300);
+
+    // 2. Y4a를 빈 보드에 드롭 → [R7a]와 숫자/색 모두 불일치 → 새 그룹 생성
+    //    (BUG-UI-CLASSIFY-001a 수정 전이라면 [R7a, Y4a] 하나의 잘못된 그룹에 합쳐졌음)
+    const y4 = page.locator('[aria-label="Y4a 타일 (드래그 가능)"]').first();
+    await expect(y4).toBeVisible({ timeout: 5000 });
+    await dndDrag(page, y4, board);
+    await page.waitForTimeout(300);
+
+    // 검증: pendingTableGroups가 2개의 1-타일 그룹으로 구성돼야 한다
+    const result = await page.evaluate(() => {
+      const store = (
+        window as unknown as Record<
+          string,
+          { getState: () => Record<string, unknown> }
+        >
+      ).__gameStore;
+      const state = store.getState();
+      const pending = state.pendingTableGroups as
+        | { id: string; tiles: string[] }[]
+        | null;
+      if (!pending) return { groupCount: 0, sizes: [] as number[] };
+      return {
+        groupCount: pending.length,
+        sizes: pending.map((g) => g.tiles.length),
+        ids: pending.map((g) => g.id),
+      };
+    });
+
+    // 기대: 2개의 1-타일 pending 그룹
+    expect(result.groupCount).toBe(2);
+    expect(result.sizes.sort()).toEqual([1, 1]);
+    // BUG-UI-REARRANGE-002 회귀 방지: 그룹 ID는 모두 unique
+    const uniqueIds = new Set(result.ids ?? []);
+    expect(uniqueIds.size).toBe(result.groupCount);
   });
 });
