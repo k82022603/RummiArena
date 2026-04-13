@@ -440,6 +440,8 @@ export default function GameClient({ roomId }: GameClientProps) {
 
   const [activeDragCode, setActiveDragCode] = useState<TileCode | null>(null);
   const isDragging = activeDragCode !== null;
+  // BUG-UI-LAYOUT-001: 히스토리 패널 토글 (기본 펼침)
+  const [historyCollapsed, setHistoryCollapsed] = useState(false);
   // P2-1: 드래그 원점 추적. 테이블 타일 드래그 시 원본 그룹/인덱스를 보존해
   // handleDragEnd에서 분할/이동 분기를 결정한다.
   type ActiveDragSource =
@@ -1017,8 +1019,25 @@ export default function GameClient({ roomId }: GameClientProps) {
             />
           )}
 
-          <div className="text-tile-xs text-text-secondary">
-            턴 #{turnNumber}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setHistoryCollapsed((v) => !v)}
+              className={[
+                "px-2 py-1 rounded-md text-[11px] font-medium border transition-colors",
+                historyCollapsed
+                  ? "border-border text-text-secondary hover:text-text-primary hover:border-text-secondary"
+                  : "border-warning/60 text-warning bg-warning/10 hover:bg-warning/15",
+              ].join(" ")}
+              aria-pressed={!historyCollapsed}
+              aria-label="턴 히스토리 패널 토글"
+              title={historyCollapsed ? "히스토리 보이기" : "히스토리 숨기기"}
+            >
+              히스토리
+            </button>
+            <span className="text-tile-xs text-text-secondary">
+              턴 #{turnNumber}
+            </span>
           </div>
         </header>
 
@@ -1048,7 +1067,7 @@ export default function GameClient({ roomId }: GameClientProps) {
         </div>
 
         {/* 게임 본문 */}
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex flex-1 overflow-hidden min-h-0">
           {/* 좌측 사이드: 내 플레이어 카드 + 드로우 파일 */}
           <aside
             className="w-48 flex-shrink-0 bg-panel-bg border-r border-border p-3 flex flex-col gap-3"
@@ -1119,7 +1138,7 @@ export default function GameClient({ roomId }: GameClientProps) {
           </aside>
 
           {/* 중앙: 게임 보드 + 랙 */}
-          <main className="flex-1 flex flex-col p-4 gap-3 overflow-hidden">
+          <main className="flex-1 flex flex-col p-4 gap-3 overflow-hidden min-h-0 min-w-0">
             {/* 게임 보드 — 최근 턴 하이라이트 포함 */}
             <GameBoard
               tableGroups={currentTableGroups}
@@ -1223,12 +1242,12 @@ export default function GameClient({ roomId }: GameClientProps) {
             </div>
           </main>
 
-          {/* 우측: 턴 히스토리 패널 */}
+          {/* 우측: 턴 히스토리 패널 (토글로 숨김 가능) */}
           <TurnHistoryPanel
             history={turnHistory}
             players={players}
             mySeat={effectiveMySeat}
-            className="w-56 flex-shrink-0"
+            className={historyCollapsed ? "hidden" : "w-44 flex-shrink-0"}
           />
         </div>
       </div>

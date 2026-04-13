@@ -50,7 +50,7 @@ const TurnHistoryPanel = memo(function TurnHistoryPanel({
   return (
     <aside
       className={[
-        "flex flex-col bg-panel-bg border-l border-border overflow-hidden",
+        "flex flex-col bg-panel-bg border-l border-border overflow-hidden max-h-full min-h-0",
         className,
       ].join(" ")}
       aria-label="턴 히스토리"
