@@ -29,11 +29,13 @@ import ErrorToast from "@/components/game/ErrorToast";
 import ReconnectToast from "@/components/game/ReconnectToast";
 import ThrottleBadge from "@/components/game/ThrottleBadge";
 import TurnHistoryPanel from "@/components/game/TurnHistoryPanel";
+import JokerSwapIndicator from "@/components/game/JokerSwapIndicator";
 import Tile from "@/components/tile/Tile";
 
 import type { TileCode, TileNumber, TableGroup, GroupType } from "@/types/tile";
 import { parseTileCode } from "@/types/tile";
 import { calculateScore } from "@/lib/practice/practice-engine";
+import { computeValidMergeGroups } from "@/lib/mergeCompatibility";
 import type { GameOverPayload } from "@/types/websocket";
 import type { Player } from "@/types/game";
 
@@ -65,6 +67,88 @@ function classifySetType(tiles: TileCode[]): GroupType {
 function removeFirstOccurrence<T>(arr: T[], item: T): T[] {
   const idx = arr.indexOf(item);
   return idx >= 0 ? [...arr.slice(0, idx), ...arr.slice(idx + 1)] : arr;
+}
+
+// ------------------------------------------------------------------
+// P3: 조커 교체 후보 탐색 (§6.2 유형 4)
+//
+// 주어진 그룹에 조커가 포함되어 있고, 드롭된 랙 타일이 그 조커의 논리적
+// 슬롯을 대체할 수 있는지 판정한다. 대체 가능 시 교체 후 그룹 타일 배열을
+// 반환하고, 회수된 조커 코드를 함께 넘긴다. 불가능 시 null을 반환한다.
+//
+// 단순화된 판정 로직 (MVP):
+// - group 타입 (같은 숫자, 다른 색): 랙 타일 숫자가 그룹 숫자와 같고, 색이
+//   아직 해당 그룹에 없으면 교체 가능. 첫 번째 조커를 회수 대상으로 선택.
+// - run 타입 (같은 색, 연속 숫자): 랙 타일 색이 런 색과 같고, 조커 위치에
+//   들어갈 수 있는 숫자가 랙 타일 숫자와 일치하면 교체 가능. 조커 위치는
+//   기존 타일 사이의 빈 숫자로 추정하고, 추정 불가 시 양 끝의 ±1 후보로
+//   확장한다.
+// ------------------------------------------------------------------
+interface JokerSwapResult {
+  nextTiles: TileCode[];
+  recoveredJoker: TileCode;
+}
+
+function tryJokerSwap(
+  groupTiles: TileCode[],
+  rackTile: TileCode
+): JokerSwapResult | null {
+  const rackParsed = parseTileCode(rackTile);
+  if (rackParsed.isJoker) return null; // 조커로 조커를 대체하지 않는다
+
+  const jokerIdx = groupTiles.findIndex((t) => t === "JK1" || t === "JK2");
+  if (jokerIdx < 0) return null;
+
+  const nonJokers = groupTiles
+    .filter((t) => t !== "JK1" && t !== "JK2")
+    .map((t) => parseTileCode(t));
+  if (nonJokers.length === 0) return null; // 조커만 있는 그룹은 판정 불가
+
+  const numbers = new Set(nonJokers.map((t) => t.number));
+  const colors = new Set(nonJokers.map((t) => t.color));
+  const isGroup = numbers.size === 1;
+  const isRun = colors.size === 1;
+
+  if (isGroup && !isRun) {
+    // 그룹: 랙 타일 숫자가 그룹 숫자와 일치 & 색상 중복 없음
+    const groupNumber = nonJokers[0].number;
+    if (rackParsed.number !== groupNumber) return null;
+    if (colors.has(rackParsed.color as typeof nonJokers[number]["color"])) return null;
+  } else if (isRun && !isGroup) {
+    // 런: 랙 타일 색상이 런 색상과 일치
+    const runColor = nonJokers[0].color;
+    if (rackParsed.color !== runColor) return null;
+    if (rackParsed.number === null) return null;
+
+    // 런 후보 숫자: 비어있는 연속 슬롯 탐색
+    // 정렬된 실제 숫자 목록과 조커 개수(1)를 고려해, 추정 가능한 빈 숫자 집합 구성
+    const sortedNums = nonJokers
+      .map((t) => t.number)
+      .filter((n): n is TileNumber => n !== null)
+      .sort((a, b) => a - b);
+    if (sortedNums.length === 0) return null;
+
+    const candidateNumbers = new Set<number>();
+    // 연속 슬롯의 빈자리 후보
+    for (let i = 1; i < sortedNums.length; i++) {
+      for (let n = sortedNums[i - 1] + 1; n < sortedNums[i]; n++) {
+        candidateNumbers.add(n);
+      }
+    }
+    // 양 끝 확장 후보 (조커가 맨앞/맨뒤에서 런을 연장하는 경우)
+    if (sortedNums[0] > 1) candidateNumbers.add(sortedNums[0] - 1);
+    if (sortedNums[sortedNums.length - 1] < 13)
+      candidateNumbers.add(sortedNums[sortedNums.length - 1] + 1);
+
+    if (!candidateNumbers.has(rackParsed.number)) return null;
+  } else {
+    return null; // 판정 불가
+  }
+
+  const recoveredJoker = groupTiles[jokerIdx];
+  const nextTiles = [...groupTiles];
+  nextTiles[jokerIdx] = rackTile;
+  return { nextTiles, recoveredJoker: recoveredJoker as TileCode };
 }
 
 interface GameClientProps {
@@ -332,12 +416,15 @@ export default function GameClient({ roomId }: GameClientProps) {
     pendingTableGroups,
     pendingMyTiles,
     pendingGroupIds,
+    pendingRecoveredJokers,
     aiThinkingSeat,
     turnNumber,
     setPendingTableGroups,
     setPendingMyTiles,
     addPendingGroupId,
     clearPendingGroupIds,
+    addRecoveredJoker,
+    clearRecoveredJokers,
     setMyTiles,
     gameEnded,
     gameOverResult,
@@ -353,6 +440,12 @@ export default function GameClient({ roomId }: GameClientProps) {
 
   const [activeDragCode, setActiveDragCode] = useState<TileCode | null>(null);
   const isDragging = activeDragCode !== null;
+  // P2-1: 드래그 원점 추적. 테이블 타일 드래그 시 원본 그룹/인덱스를 보존해
+  // handleDragEnd에서 분할/이동 분기를 결정한다.
+  type ActiveDragSource =
+    | { kind: "rack" }
+    | { kind: "table"; groupId: string; index: number };
+  const activeDragSourceRef = useRef<ActiveDragSource | null>(null);
 
   // 다음 보드 드롭 시 새 그룹 강제 생성 여부
   const [forceNewGroup, setForceNewGroup] = useState(false);
@@ -469,6 +562,12 @@ export default function GameClient({ roomId }: GameClientProps) {
     return lastTurnPlacement.seat === effectiveMySeat ? "mine" : "opponent";
   }, [lastTurnPlacement, effectiveMySeat]);
 
+  // P2-2: 드래그 중 타일과 호환되는 머지 대상 그룹 ID 집합
+  const validMergeGroupIds = useMemo(() => {
+    if (!activeDragCode) return new Set<string>();
+    return computeValidMergeGroups(activeDragCode, currentTableGroups);
+  }, [activeDragCode, currentTableGroups]);
+
   // dnd-kit 센서
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -478,18 +577,121 @@ export default function GameClient({ roomId }: GameClientProps) {
 
   // 드래그 시작 핸들러
   const handleDragStart = useCallback((event: DragStartEvent) => {
-    const code = event.active.data.current?.tileCode as TileCode | undefined;
+    const data = event.active.data.current as
+      | { tileCode?: TileCode; source?: "rack" | "table"; groupId?: string; index?: number }
+      | undefined;
+    const code = data?.tileCode;
     if (code) setActiveDragCode(code);
+    if (data?.source === "table" && typeof data.groupId === "string" && typeof data.index === "number") {
+      activeDragSourceRef.current = { kind: "table", groupId: data.groupId, index: data.index };
+    } else {
+      activeDragSourceRef.current = { kind: "rack" };
+    }
   }, []);
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
+      const dragSource = activeDragSourceRef.current;
+      activeDragSourceRef.current = null;
       setActiveDragCode(null);
       const { active, over } = event;
       if (!over || !isMyTurn) return;
 
       const tileCode = active.data.current?.tileCode as TileCode | undefined;
       if (!tileCode) return;
+
+      // ------------------------------------------------------------
+      // P2-1: 테이블 타일 드래그 (§6.2 유형 1/3 재배치)
+      // 출처가 테이블이면 분할/이동/랙 되돌리기 분기를 우선 처리한다.
+      // ------------------------------------------------------------
+      if (dragSource?.kind === "table") {
+        // 최초 등록 전에는 pending 그룹 내 타일을 랙으로 되돌리는 경우만 허용
+        // (§6.1 — 서버 확정 그룹 수정 금지)
+        const sourceGroup = currentTableGroups.find((g) => g.id === dragSource.groupId);
+        if (!sourceGroup) return;
+        const sourceIsPending = pendingGroupIds.has(dragSource.groupId);
+
+        // 같은 그룹 위로 떨어뜨리면 no-op
+        if (over.id === dragSource.groupId) return;
+
+        // 테이블 → 랙 되돌리기 (유형 1 일부)
+        if (over.id === "player-rack") {
+          // 서버 확정 그룹의 타일을 랙으로 되돌리면 conservation 위반 (V-06)
+          if (!sourceIsPending) return;
+
+          const baseTiles = [...sourceGroup.tiles];
+          const [removed] = baseTiles.splice(dragSource.index, 1);
+          if (removed !== tileCode) return; // 안전장치
+
+          const nextTableGroups = currentTableGroups
+            .map((g) => (g.id === dragSource.groupId ? { ...g, tiles: baseTiles, type: classifySetType(baseTiles) } : g))
+            .filter((g) => g.tiles.length > 0);
+
+          const stillHasPending = nextTableGroups.some((g) => pendingGroupIds.has(g.id));
+          setPendingTableGroups(stillHasPending ? nextTableGroups : null);
+          if (!stillHasPending) clearPendingGroupIds();
+          setPendingMyTiles([...(pendingMyTiles ?? myTiles), tileCode]);
+          return;
+        }
+
+        // 테이블 → 다른 그룹 이동 (유형 3)
+        if (!hasInitialMeld) return; // 최초 등록 전에는 재배치 금지
+        const targetGroup = currentTableGroups.find((g) => g.id === over.id);
+        if (!targetGroup) return;
+
+        const updatedSourceTiles = [...sourceGroup.tiles];
+        const [removed] = updatedSourceTiles.splice(dragSource.index, 1);
+        if (removed !== tileCode) return; // 렌더와 state가 어긋나면 중단
+
+        const updatedTargetTiles = [...targetGroup.tiles, tileCode];
+
+        const nextTableGroups = currentTableGroups
+          .map((g) => {
+            if (g.id === sourceGroup.id) return { ...g, tiles: updatedSourceTiles, type: classifySetType(updatedSourceTiles) };
+            if (g.id === targetGroup.id) return { ...g, tiles: updatedTargetTiles, type: classifySetType(updatedTargetTiles) };
+            return g;
+          })
+          .filter((g) => g.tiles.length > 0);
+
+        setPendingTableGroups(nextTableGroups);
+        // 랙 상태는 변화 없음 — pendingMyTiles 최신 값을 그대로 유지
+        setPendingMyTiles(pendingMyTiles ?? myTiles);
+        addPendingGroupId(sourceGroup.id);
+        addPendingGroupId(targetGroup.id);
+        return;
+      }
+
+      // ------------------------------------------------------------
+      // P3: 조커 교체 (§6.2 유형 4)
+      // 랙 타일을 조커가 포함된 그룹에 드롭하면 조커를 해당 타일로 교체하고
+      // 회수한 조커를 pendingRecoveredJokers 풀로 이동시킨다. 교체 대상은
+      // pending/서버 확정 그룹 모두 포함 (최초 등록 후). 규칙 V-07: 회수한
+      // 조커는 같은 턴에 다른 세트에 사용해야 ConfirmTurn 가능.
+      // ------------------------------------------------------------
+      const swapCandidate = currentTableGroups.find((g) => g.id === over.id);
+      if (swapCandidate) {
+        const hasJoker = swapCandidate.tiles.some((t) => t === "JK1" || t === "JK2");
+        if (hasJoker) {
+          // 서버 확정 그룹에서 조커를 빼내려면 최초 등록이 완료되어 있어야 한다 (§6.1)
+          const isPending = pendingGroupIds.has(swapCandidate.id);
+          if (isPending || hasInitialMeld) {
+            const swap = tryJokerSwap(swapCandidate.tiles, tileCode);
+            if (swap) {
+              const nextTableGroups = currentTableGroups.map((g) =>
+                g.id === swapCandidate.id
+                  ? { ...g, tiles: swap.nextTiles, type: classifySetType(swap.nextTiles) }
+                  : g
+              );
+              const nextMyTiles = removeFirstOccurrence(currentMyTiles, tileCode);
+              setPendingTableGroups(nextTableGroups);
+              setPendingMyTiles(nextMyTiles);
+              addPendingGroupId(swapCandidate.id);
+              addRecoveredJoker(swap.recoveredJoker);
+              return;
+            }
+          }
+        }
+      }
 
       // 기존 pending 그룹에 드롭한 경우
       const existingPendingGroup = pendingTableGroups?.find(
@@ -645,6 +847,7 @@ export default function GameClient({ roomId }: GameClientProps) {
       setPendingMyTiles,
       addPendingGroupId,
       clearPendingGroupIds,
+      addRecoveredJoker,
       pendingTableGroups,
       pendingMyTiles,
       pendingGroupIds,
@@ -674,6 +877,16 @@ export default function GameClient({ roomId }: GameClientProps) {
     if (!pendingTableGroups) return;
     // M-4: pendingMyTiles가 null이면 확정 차단
     if (!pendingMyTiles) return;
+
+    // P3: 조커 교체로 회수한 조커가 있으면 같은 턴 내에 다른 세트에 사용 필수
+    // (§6.2 유형 4, 엔진 V-07). 미사용 시 서버가 INVALID_MOVE로 거절하기 전에
+    // 클라이언트에서 차단하여 빠른 피드백 제공.
+    if (pendingRecoveredJokers.length > 0) {
+      useWSStore
+        .getState()
+        .setLastError("회수한 조커(JK)를 같은 턴에 다른 세트에 사용해야 합니다");
+      return;
+    }
 
     // C-3: 클라이언트 측 사전 검증 -- 서버 전송 전 기본 유효성 확인
     for (const group of pendingTableGroups) {
@@ -725,6 +938,7 @@ export default function GameClient({ roomId }: GameClientProps) {
   }, [
     pendingTableGroups,
     pendingMyTiles,
+    pendingRecoveredJokers,
     myTiles,
     send,
   ]);
@@ -735,8 +949,15 @@ export default function GameClient({ roomId }: GameClientProps) {
     setPendingTableGroups(null);
     setPendingMyTiles(null);
     clearPendingGroupIds();
+    clearRecoveredJokers();
     setForceNewGroup(false);
-  }, [send, setPendingTableGroups, setPendingMyTiles, clearPendingGroupIds]);
+  }, [
+    send,
+    setPendingTableGroups,
+    setPendingMyTiles,
+    clearPendingGroupIds,
+    clearRecoveredJokers,
+  ]);
 
   // 드로우
   const handleDraw = useCallback(() => {
@@ -908,6 +1129,8 @@ export default function GameClient({ roomId }: GameClientProps) {
               recentTileCodes={recentTileCodes}
               recentTileVariant={recentTileVariant}
               groupsDroppable={isMyTurn && (isDragging || !!pendingTableGroups)}
+              tilesDraggable={isMyTurn}
+              validMergeGroupIds={validMergeGroupIds}
               className="flex-1"
             />
 
@@ -931,6 +1154,13 @@ export default function GameClient({ roomId }: GameClientProps) {
                 >
                   {forceNewGroup ? "[ 새 그룹 모드 ON ]" : "+ 새 그룹"}
                 </button>
+              </div>
+            )}
+
+            {/* P3: 회수된 조커 배너 (§6.2 유형 4) */}
+            {pendingRecoveredJokers.length > 0 && (
+              <div className="flex-shrink-0 flex justify-center">
+                <JokerSwapIndicator recoveredJokers={pendingRecoveredJokers} />
               </div>
             )}
 

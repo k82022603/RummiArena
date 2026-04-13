@@ -3,9 +3,10 @@
 import React, { memo, useMemo } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { motion, AnimatePresence } from "framer-motion";
-import type { TableGroup } from "@/types/tile";
+import type { TableGroup, TileCode } from "@/types/tile";
 import { parseTileCode } from "@/types/tile";
 import Tile, { type TileHighlightVariant } from "@/components/tile/Tile";
+import DraggableTile from "@/components/tile/DraggableTile";
 
 /**
  * 그룹 내 동일 색상 타일 중복 감지
@@ -56,23 +57,37 @@ interface GameBoardProps {
   recentTileVariant?: TileHighlightVariant;
   /** true이면 각 그룹도 droppable zone으로 등록 (연습 모드에서 그룹 합치기 지원) */
   groupsDroppable?: boolean;
+  /**
+   * true이면 테이블 위 타일을 드래그 원점으로 사용할 수 있다 (§6.2 유형 1/3 재배치 UX).
+   * 최초 등록 완료 전에는 pending 그룹의 타일만 되돌릴 수 있도록 false로 둔다.
+   */
+  tilesDraggable?: boolean;
+  /**
+   * P2-2: 현재 드래그 중인 타일이 유효하게 머지될 수 있는 그룹 ID 집합.
+   * 드래그 중일 때만 의미 있으며, 포함된 그룹은 녹색 pulse ring으로 강조된다.
+   */
+  validMergeGroupIds?: Set<string>;
   className?: string;
 }
 
 /** 그룹 하나를 droppable zone으로 래핑하는 서브 컴포넌트 */
 function DroppableGroupWrapper({
   groupId,
+  isCompatible,
   children,
 }: {
   groupId: string;
+  isCompatible?: boolean;
   children: React.ReactNode;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: groupId });
+  const ringClass = isOver
+    ? "ring-2 ring-green-400/80 rounded-lg"
+    : isCompatible
+      ? "ring-2 ring-green-400/40 rounded-lg animate-pulse"
+      : undefined;
   return (
-    <div
-      ref={setNodeRef}
-      className={isOver ? "ring-2 ring-green-400/60 rounded-lg" : undefined}
-    >
+    <div ref={setNodeRef} className={ringClass}>
       {children}
     </div>
   );
@@ -95,6 +110,8 @@ const GameBoard = memo(function GameBoard({
   recentTileCodes,
   recentTileVariant = null,
   groupsDroppable = false,
+  tilesDraggable = false,
+  validMergeGroupIds,
   className = "",
 }: GameBoardProps) {
   const { setNodeRef, isOver } = useDroppable({ id: BOARD_DROP_ID });
@@ -239,6 +256,21 @@ const GameBoard = memo(function GameBoard({
                   >
                     {group.tiles.map((code, idx) => {
                       const isRecent = !isPending && recentTileCodes?.has(code);
+                      if (tilesDraggable) {
+                        return (
+                          <DraggableTile
+                            key={`${group.id}-${code}-${idx}`}
+                            id={`table-${group.id}-${idx}`}
+                            code={code as TileCode}
+                            size="table"
+                            dragData={{
+                              source: "table",
+                              groupId: group.id,
+                              index: idx,
+                            }}
+                          />
+                        );
+                      }
                       return (
                         <Tile
                           key={`${group.id}-${code}-${idx}`}
@@ -263,7 +295,13 @@ const GameBoard = memo(function GameBoard({
                 </motion.div>
               );
               return groupsDroppable ? (
-                <DroppableGroupWrapper key={group.id} groupId={group.id}>
+                <DroppableGroupWrapper
+                  key={group.id}
+                  groupId={group.id}
+                  isCompatible={
+                    isDragging && !!validMergeGroupIds?.has(group.id)
+                  }
+                >
                   {groupContent}
                 </DroppableGroupWrapper>
               ) : (
