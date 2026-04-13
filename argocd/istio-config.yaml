@@ -1,0 +1,50 @@
+---
+# ArgoCD Application -- Istio Mesh Configuration (Phase 5)
+# Git 소스: istio/ 디렉토리 (PeerAuth / DestinationRule / VirtualService)
+# 대상: rummikub namespace
+# 분리 이유:
+#   1. 메인 rummikub Application(Helm umbrella)과 life cycle 분리
+#   2. Istio CRD가 먼저 설치되어 있어야 하므로 sync-wave로 순서 보장
+#   3. Istio 리소스만 독립적으로 rollback / re-sync 가능 (GitOps 원칙)
+# 설계 근거: docs/02-design/20-istio-selective-mesh-design.md + 27-istio-sprint6-precheck.md
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: rummikub-istio
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: rummikub-istio
+    app.kubernetes.io/part-of: rummikub
+  annotations:
+    # 메인 rummikub(sync-wave=0) 이후에 적용 — Deployment가 먼저 생성되고
+    # sidecar injection 받은 뒤 PeerAuth STRICT / DestinationRule이 활성화되도록 순서 보장
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/k82022603/RummiArena.git
+    targetRevision: main
+    # istio/ 디렉토리의 CR 리소스를 감시
+    path: istio
+    directory:
+      recurse: false
+      include: '{peer-authentication-default.yaml,peer-authentication-ai-adapter.yaml,destination-rule-ai-adapter.yaml,virtual-service-ai-adapter.yaml}'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: rummikub
+  syncPolicy:
+    automated:
+      prune: true        # Git에서 삭제된 Istio 리소스는 K8s에서도 삭제
+      selfHeal: true     # 수동 변경 감지 시 자동 복구
+    syncOptions:
+      - CreateNamespace=false   # rummikub ns는 메인 Application이 생성
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true
+      # Istio CRD가 없으면 초기 sync 실패 — istiod 설치 후 재시도 자동화
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m
