@@ -28,17 +28,23 @@ var globalWSRateLimit = wsRateLimitPolicy{
 	Window:      time.Minute,
 }
 
+// violationsDecayThreshold violations 카운터를 1 감소시키기 위해 요구되는 연속 정상 메시지 수.
+// SEC-REV-002: 기존에는 정상 메시지 1건마다 violations 1 감소 → "위반-정상-위반-정상" 교대 패턴에서
+// violations가 3에 도달하지 못해 Rate Limit 우회가 가능했다. 연속 허용 5회를 요구하여 교대 패턴을 차단한다.
+const violationsDecayThreshold = 5
+
 // wsRateLimiter 커넥션 단위 메시지 빈도 제한기.
 // In-memory Fixed Window Counter 알고리즘을 사용한다.
 // Redis 불필요 -- gorilla/websocket 연결은 단일 Pod에 고정되므로 Pod 간 공유 불필요.
 type wsRateLimiter struct {
-	mu          sync.Mutex
-	globalCount int            // 글로벌 카운터 (모든 타입 합산)
-	typeCount   map[string]int // 메시지 타입별 카운터
-	windowStart time.Time      // 현재 윈도우 시작 시각
-	violations  int            // 연속 위반 횟수
-	policies    map[string]wsRateLimitPolicy
-	nowFunc     func() time.Time // 테스트용 시간 오버라이드
+	mu                 sync.Mutex
+	globalCount        int            // 글로벌 카운터 (모든 타입 합산)
+	typeCount          map[string]int // 메시지 타입별 카운터
+	windowStart        time.Time      // 현재 윈도우 시작 시각
+	violations         int            // 연속 위반 횟수
+	consecutiveAllowed int            // 마지막 위반 이후 연속 허용된 메시지 수 (SEC-REV-002)
+	policies           map[string]wsRateLimitPolicy
+	nowFunc            func() time.Time // 테스트용 시간 오버라이드
 }
 
 // checkResult rate limit 검사 결과
@@ -52,11 +58,12 @@ type checkResult struct {
 // newWSRateLimiter 새 rate limiter를 생성한다.
 func newWSRateLimiter() *wsRateLimiter {
 	return &wsRateLimiter{
-		globalCount: 0,
-		typeCount:   make(map[string]int),
-		windowStart: time.Now(),
-		violations:  0,
-		policies:    defaultWSRateLimits,
+		globalCount:        0,
+		typeCount:          make(map[string]int),
+		windowStart:        time.Now(),
+		violations:         0,
+		consecutiveAllowed: 0,
+		policies:           defaultWSRateLimits,
 	}
 }
 
@@ -93,6 +100,7 @@ func (rl *wsRateLimiter) check(msgType string) checkResult {
 	rl.globalCount++
 	if rl.globalCount > globalWSRateLimit.MaxRequests {
 		rl.violations++
+		rl.consecutiveAllowed = 0
 		return checkResult{
 			Allowed:      false,
 			Reason:       "global",
@@ -107,6 +115,7 @@ func (rl *wsRateLimiter) check(msgType string) checkResult {
 		// SEC-REV-001: 미등록 메시지 타입은 즉시 거부 (글로벌 카운터 롤백)
 		rl.globalCount--
 		rl.violations++
+		rl.consecutiveAllowed = 0
 		return checkResult{
 			Allowed:      false,
 			Reason:       "unknown_type",
@@ -117,6 +126,7 @@ func (rl *wsRateLimiter) check(msgType string) checkResult {
 	rl.typeCount[msgType]++
 	if rl.typeCount[msgType] > policy.MaxRequests {
 		rl.violations++
+		rl.consecutiveAllowed = 0
 		return checkResult{
 			Allowed:      false,
 			Reason:       "type:" + msgType,
@@ -125,9 +135,14 @@ func (rl *wsRateLimiter) check(msgType string) checkResult {
 		}
 	}
 
-	// 허용: violations 카운터 감소 (0 이하로 내려가지 않음)
+	// SEC-REV-002: 연속 허용이 임계값(5회) 누적된 경우에만 violations 1 감소.
+	// "위반-정상-위반-정상" 교대 패턴으로 violations 감소를 악용할 수 없게 한다.
 	if rl.violations > 0 {
-		rl.violations--
+		rl.consecutiveAllowed++
+		if rl.consecutiveAllowed >= violationsDecayThreshold {
+			rl.violations--
+			rl.consecutiveAllowed = 0
+		}
 	}
 
 	return checkResult{
@@ -144,4 +159,5 @@ func (rl *wsRateLimiter) reset() {
 	rl.typeCount = make(map[string]int)
 	rl.windowStart = rl.now()
 	rl.violations = 0
+	rl.consecutiveAllowed = 0
 }

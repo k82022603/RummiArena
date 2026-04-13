@@ -228,7 +228,8 @@ func TestWSRateLimiter_ViolationEscalation(t *testing.T) {
 	assert.True(t, r3.ShouldClose, "3회 위반 시 연결 종료 필요")
 }
 
-// TestWSRateLimiter_ViolationDecay 위반 후 정상 메시지가 오면 violations가 감소한다.
+// TestWSRateLimiter_ViolationDecay 위반 후 연속 정상 메시지 5회마다 violations가 1씩 감소한다.
+// SEC-REV-002: 연속 허용 임계값(violationsDecayThreshold=5) 기준.
 func TestWSRateLimiter_ViolationDecay(t *testing.T) {
 	rl := newWSRateLimiter()
 
@@ -247,17 +248,32 @@ func TestWSRateLimiter_ViolationDecay(t *testing.T) {
 	assert.False(t, r.Allowed)
 	assert.Equal(t, 2, rl.violations)
 
-	// 정상 메시지 전송 (CHAT은 아직 한도 내) -> violations 감소
+	// 연속 정상 메시지 4회는 violations를 감소시키지 않는다 (임계값 5 미달)
+	for i := 0; i < 4; i++ {
+		r = rl.check(C2SChat)
+		assert.True(t, r.Allowed)
+		assert.Equal(t, 2, rl.violations, "정상 %d회만으로는 감소 없음", i+1)
+	}
+
+	// 5번째 정상 메시지에서 violations 2 -> 1
 	r = rl.check(C2SChat)
 	assert.True(t, r.Allowed)
 	assert.Equal(t, 1, rl.violations)
+	assert.Equal(t, 0, rl.consecutiveAllowed, "감소 후 consecutiveAllowed 리셋")
 
-	// 한 번 더 정상 메시지
+	// 추가 정상 4회는 다시 감소 없음
+	for i := 0; i < 4; i++ {
+		r = rl.check(C2SChat)
+		assert.True(t, r.Allowed)
+		assert.Equal(t, 1, rl.violations)
+	}
+
+	// 다시 5회째 정상 메시지에서 violations 1 -> 0
 	r = rl.check(C2SChat)
 	assert.True(t, r.Allowed)
 	assert.Equal(t, 0, rl.violations)
 
-	// 0 이하로는 내려가지 않음
+	// 0 이하로는 내려가지 않음 (violations==0 이면 consecutiveAllowed도 증가 불필요)
 	r = rl.check(C2SChat)
 	assert.True(t, r.Allowed)
 	assert.Equal(t, 0, rl.violations)
@@ -392,6 +408,7 @@ func TestWSRateLimiter_GlobalLimitCountsAllTypes(t *testing.T) {
 }
 
 // TestWSRateLimiter_ViolationDoesNotResetOnWindowChange 윈도우 교체로 카운터는 리셋되지만 violations는 유지된다.
+// SEC-REV-002: 연속 정상 5회 후에만 violations 감소.
 func TestWSRateLimiter_ViolationPersistsAcrossWindows(t *testing.T) {
 	rl := newWSRateLimiter()
 	mockTime := time.Now()
@@ -408,13 +425,135 @@ func TestWSRateLimiter_ViolationPersistsAcrossWindows(t *testing.T) {
 	// 윈도우 넘기기
 	mockTime = mockTime.Add(61 * time.Second)
 
-	// 새 윈도우에서 카운터는 리셋되지만 violations는 유지됨
-	// 정상 메시지 -> violations 1로 감소
-	result := rl.check(C2SChat)
-	assert.True(t, result.Allowed, "새 윈도우에서는 카운터가 리셋되어 허용")
+	// 새 윈도우에서 카운터는 리셋되지만 violations는 유지됨.
+	// 정상 메시지 4회는 감소 없음 (연속 임계값 5 미달).
+	for i := 0; i < 4; i++ {
+		result := rl.check(C2SChat)
+		assert.True(t, result.Allowed, "새 윈도우에서는 카운터가 리셋되어 허용")
+		rl.mu.Lock()
+		assert.Equal(t, 2, rl.violations, "정상 %d회만으로는 감소 없음", i+1)
+		rl.mu.Unlock()
+	}
 
-	// violations는 2에서 1로 감소했어야 함
+	// 5번째 정상 메시지에서 violations 2 -> 1
+	result := rl.check(C2SChat)
+	assert.True(t, result.Allowed)
 	rl.mu.Lock()
-	assert.Equal(t, 1, rl.violations, "정상 메시지 1회로 violations 2->1")
+	assert.Equal(t, 1, rl.violations, "연속 정상 5회로 violations 2->1")
 	rl.mu.Unlock()
+}
+
+// TestWSRateLimiter_SEC_REV_002_AlternatingPatternReachesThree
+// SEC-REV-002: "위반-정상-위반-정상" 교대 패턴 공격에서도 violations가 반드시 3에 도달해야 한다.
+// 기존 로직은 정상 1회당 violations 1 감소로 인해 영원히 3에 도달하지 못했다.
+func TestWSRateLimiter_SEC_REV_002_AlternatingPatternReachesThree(t *testing.T) {
+	rl := newWSRateLimiter()
+
+	// PING 한도 소진 (6회)
+	for i := 0; i < 6; i++ {
+		r := rl.check(C2SPing)
+		require.True(t, r.Allowed)
+	}
+
+	// 교대 패턴: 위반 1회 → 정상 1회 → 위반 1회 → 정상 1회 → 위반 1회
+	// 각 위반 사이에 정상 1회만 삽입되므로 consecutiveAllowed는 임계값(5)에 도달하지 못한다.
+
+	// violation 1 (PING 한도 초과)
+	r := rl.check(C2SPing)
+	assert.False(t, r.Allowed)
+	assert.Equal(t, 1, rl.violations)
+	assert.False(t, r.ShouldClose)
+
+	// 정상 1회 (CHAT) -> consecutiveAllowed=1, violations 변화 없음
+	r = rl.check(C2SChat)
+	assert.True(t, r.Allowed)
+	assert.Equal(t, 1, rl.violations, "정상 1회로는 violations 감소 없음")
+	assert.Equal(t, 1, rl.consecutiveAllowed)
+
+	// violation 2 (PING 한도 여전히 초과 상태)
+	r = rl.check(C2SPing)
+	assert.False(t, r.Allowed)
+	assert.Equal(t, 2, rl.violations)
+	assert.Equal(t, 0, rl.consecutiveAllowed, "위반 시 consecutiveAllowed 리셋")
+	assert.False(t, r.ShouldClose)
+
+	// 정상 1회
+	r = rl.check(C2SChat)
+	assert.True(t, r.Allowed)
+	assert.Equal(t, 2, rl.violations)
+	assert.Equal(t, 1, rl.consecutiveAllowed)
+
+	// violation 3 -> ShouldClose=true
+	r = rl.check(C2SPing)
+	assert.False(t, r.Allowed)
+	assert.Equal(t, 3, rl.violations)
+	assert.True(t, r.ShouldClose, "교대 패턴에서도 3회 위반 누적 시 연결 종료되어야 한다")
+}
+
+// TestWSRateLimiter_SEC_REV_002_DecayRequiresFiveConsecutive
+// SEC-REV-002: 연속 정상 5회 이상이어야 violations가 1 감소한다.
+func TestWSRateLimiter_SEC_REV_002_DecayRequiresFiveConsecutive(t *testing.T) {
+	rl := newWSRateLimiter()
+
+	// PING 한도 소진 후 위반 2회 유발
+	for i := 0; i < 6; i++ {
+		rl.check(C2SPing)
+	}
+	rl.check(C2SPing) // violation 1
+	rl.check(C2SPing) // violation 2
+	require.Equal(t, 2, rl.violations)
+
+	// 정상 4회 -> violations 유지
+	for i := 0; i < 4; i++ {
+		r := rl.check(C2SChat)
+		require.True(t, r.Allowed)
+		assert.Equal(t, 2, rl.violations, "정상 %d회만으로 감소 금지", i+1)
+		assert.Equal(t, i+1, rl.consecutiveAllowed)
+	}
+
+	// 5회 째 정상 -> violations 2->1, consecutiveAllowed 리셋
+	r := rl.check(C2SChat)
+	require.True(t, r.Allowed)
+	assert.Equal(t, 1, rl.violations)
+	assert.Equal(t, 0, rl.consecutiveAllowed)
+}
+
+// TestWSRateLimiter_SEC_REV_002_ViolationResetsConsecutiveAllowed
+// SEC-REV-002: 정상이 4회 누적되었더라도 위반이 섞이면 consecutiveAllowed가 0으로 리셋되어
+// 그 이후 다시 5회 연속이 요구된다.
+func TestWSRateLimiter_SEC_REV_002_ViolationResetsConsecutiveAllowed(t *testing.T) {
+	rl := newWSRateLimiter()
+
+	// PING 한도 소진 후 위반 1회 유발 (violations=1)
+	for i := 0; i < 6; i++ {
+		rl.check(C2SPing)
+	}
+	rl.check(C2SPing)
+	require.Equal(t, 1, rl.violations)
+
+	// 정상 4회 누적
+	for i := 0; i < 4; i++ {
+		r := rl.check(C2SChat)
+		require.True(t, r.Allowed)
+	}
+	assert.Equal(t, 4, rl.consecutiveAllowed)
+	assert.Equal(t, 1, rl.violations)
+
+	// 여기서 위반 1회 발생 -> consecutiveAllowed 0으로 리셋, violations 1->2
+	r := rl.check(C2SPing)
+	assert.False(t, r.Allowed)
+	assert.Equal(t, 2, rl.violations)
+	assert.Equal(t, 0, rl.consecutiveAllowed, "위반 시 consecutiveAllowed 리셋")
+
+	// 정상 4회만으로는 여전히 감소하지 못한다
+	for i := 0; i < 4; i++ {
+		r := rl.check(C2SChat)
+		require.True(t, r.Allowed)
+	}
+	assert.Equal(t, 2, rl.violations, "리셋 후 정상 4회만으로 감소 금지")
+
+	// 5회째 정상 시 비로소 violations 2->1
+	r = rl.check(C2SChat)
+	require.True(t, r.Allowed)
+	assert.Equal(t, 1, rl.violations)
 }
