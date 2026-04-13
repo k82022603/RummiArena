@@ -75,13 +75,13 @@ func SetCooldownChecker(svc RoomService, checker CooldownChecker) {
 }
 
 // CreateRoom 새 방을 생성하고 호스트를 seat 0에 배정한다.
-// playerCount: 2~4, turnTimeoutSec: 30~120
+// playerCount: 2~4, turnTimeoutSec: 30~600
 func (s *roomService) CreateRoom(req *CreateRoomRequest) (*model.RoomState, error) {
 	if req.PlayerCount < 2 || req.PlayerCount > 4 {
 		return nil, &ServiceError{Code: "INVALID_REQUEST", Message: "playerCount는 2~4 사이여야 합니다.", Status: 400}
 	}
-	if req.TurnTimeoutSec < 30 || req.TurnTimeoutSec > 120 {
-		return nil, &ServiceError{Code: "INVALID_REQUEST", Message: "turnTimeoutSec은 30~120초 사이여야 합니다.", Status: 400}
+	if req.TurnTimeoutSec < 30 || req.TurnTimeoutSec > 600 {
+		return nil, &ServiceError{Code: "INVALID_REQUEST", Message: "turnTimeoutSec은 30~600초 사이여야 합니다.", Status: 400}
 	}
 	if req.HostUserID == "" {
 		return nil, &ServiceError{Code: "UNAUTHORIZED", Message: "인증된 사용자만 방을 생성할 수 있습니다.", Status: 401}

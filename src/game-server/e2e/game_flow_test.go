@@ -288,8 +288,8 @@ func TestRoomCreationValidation(t *testing.T) {
 			wantCode: http.StatusBadRequest,
 		},
 		{
-			name:     "turnTimeoutSec 범위 초과 (200)",
-			body:     map[string]interface{}{"playerCount": 2, "turnTimeoutSec": 200},
+			name:     "turnTimeoutSec 범위 초과 (700)",
+			body:     map[string]interface{}{"playerCount": 2, "turnTimeoutSec": 700},
 			wantCode: http.StatusBadRequest,
 		},
 	}
