@@ -691,3 +691,105 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
 | 날짜 | 내용 | 작성자 |
 |------|------|--------|
 | 2026-04-13 | 초안 작성 (v0.1, 설계만 / 구현 미착수) | AI Engineer (애벌레) |
+| 2026-04-14 | §16 V1~V10 공식 문서 조사 결과 append (부분) | ai-engineer-1 |
+
+---
+
+## 16. V1~V10 공식 문서 조사 결과 (2026-04-14, 부분)
+
+> **주의**: 본 섹션은 Sprint 6 Day 2 Task #4 (조사만, 구현 금지) 결과이다. 시간 제약으로 부분 조사에 그쳤으며, 미확인 항목은 Sprint 6 후반 재조사가 필요하다.
+>
+> **조사 방법**: curl (WebFetch 도구 미가용) + 공식 Alibaba Cloud Model Studio 문서 페이지. 일부 페이지는 JavaScript 렌더링으로 본문 추출이 제한되었다.
+>
+> **주 참조 페이지**: `https://www.alibabacloud.com/help/en/model-studio/compatibility-of-openai-with-dashscope` (OpenAI Compatible 모드 공식 레퍼런스, HTTP 200, 약 77KB HTML)
+
+### 16.1 검증 결과 요약 표
+
+| ID | 항목 | 결과 | 상태 | 근거 URL |
+|----|------|------|:----:|---------|
+| V1 | OpenAI 호환 모드 base URL | **확인됨**: intl / cn / us / HK 4개 엔드포인트 | 확인 | [compatibility-of-openai-with-dashscope](https://www.alibabacloud.com/help/en/model-studio/compatibility-of-openai-with-dashscope) |
+| V2 | Qwen3 추론 모델 ID | **확인됨**: `qwen3-235b-a22b-thinking-2507`, `qwen3-30b-a3b-thinking-2507`, `qwen3-next-80b-a3b-thinking` 등 | 확인 | 동일 페이지 "Supported model list" 섹션 |
+| V3 | thinking 모드 활성화 플래그 | **미확인** (호환 모드 문서에서 `enable_thinking` 키워드 미검출, 별도 Qwen3 API 레퍼런스 페이지 접근 필요) | 미확인 | 재조사 필요 |
+| V4 | `response_format: json_object` 지원 | **미확인** (호환 모드 페이지에서 `json_object`, `response_format` 키워드 미검출) | 미확인 | 재조사 필요 |
+| V5 | Qwen3 토큰 단가 | **미확인** (pricing 페이지 별도 조사 필요) | 미확인 | 재조사 필요 |
+| V6 | `reasoning_content` 응답 필드 | **미확인** (호환 모드 페이지에서 키워드 미검출) | 미확인 | 재조사 필요 |
+| V7 | Rate Limit 정책 (RPM/TPM) | **미확인** (사용자 가이드 별도 조사 필요) | 미확인 | 재조사 필요 |
+| V8 | `/models` 엔드포인트 지원 | **미확인** (compat 페이지에 `/models` 경로 1건 언급 존재하나 지원 여부 명시 미확인) | 미확인 | 재조사 필요 |
+| V9 | thinking 모드 + temperature 허용 | **미확인** (API 레퍼런스 별도 조사 필요) | 미확인 | 재조사 필요 |
+| V10 | API 키 환경변수 관례 | **확인됨**: `DASHSCOPE_API_KEY` (공식 Python/Node 예제에서 표준) | 확인 | 동일 페이지 "Use the OpenAI SDK → Prerequisites" 섹션 |
+
+**합격 기준 충족 여부**: 3개 이상 확인 → **3건 확인됨 (V1, V2, V10)** — 합격.
+
+### 16.2 확인된 항목 상세
+
+#### V1: OpenAI 호환 모드 Base URL (4개 리전)
+
+공식 문서에서 4개의 `/compatible-mode/v1` 엔드포인트가 확인되었다.
+
+| 리전 | URL | 비고 |
+|------|-----|------|
+| International (싱가포르) | `https://dashscope-intl.aliyuncs.com/compatible-mode/v1` | **권장 기본값** (한국 네트워크 친화) |
+| China (Beijing) | `https://dashscope.aliyuncs.com/compatible-mode/v1` | CN 전용, 규제/차단 리스크 존재 |
+| US | `https://dashscope-us.aliyuncs.com/compatible-mode/v1` | 미주 리전 |
+| Hong Kong (China) | `https://cn-hongkong.aliyuncs.com/compatible-mode/v1/chat/completions` | 홍콩 리전 |
+
+**설계 반영 권장**:
+- 34번 문서 §5 (Adapter 구현) `DASHSCOPE_BASE_URL` 기본값을 `https://dashscope-intl.aliyuncs.com/compatible-mode/v1` 로 확정.
+- `chat/completions` 경로는 OpenAI SDK가 자동 append하므로 base URL에는 `/compatible-mode/v1` 까지만 설정.
+
+#### V2: Qwen3 추론 모델 ID (thinking 계열)
+
+공식 모델 목록에서 명확히 "thinking" 접미사를 가진 모델군이 확인되었다.
+
+**오픈소스 thinking 시리즈** (Global / International / CN 모두 지원):
+- `qwen3-next-80b-a3b-thinking` — 최신 next 세대
+- `qwen3-235b-a22b-thinking-2507` — 2025-07 릴리즈
+- `qwen3-30b-a3b-thinking-2507` — 2025-07 릴리즈
+
+**상용 Max/Plus 시리즈** (별도 thinking 모드 플래그 필요 추정):
+- `qwen3-max`, `qwen3-max-preview`, `qwen3-max-2025-09-23`, `qwen3-max-2026-01-23`
+- `qwen3.5-plus`, `qwen3.5-plus-2026-02-15` (International)
+
+**설계 반영 권장**:
+- 기본 모델 후보 1순위: `qwen3-235b-a22b-thinking-2507` (오픈소스, thinking 내장)
+- 대안: `qwen3-max-2026-01-23` (상용, 최신 스냅샷, thinking 별도 플래그 필요 추정)
+- `qwen3-next-80b-a3b-thinking` 은 신세대이므로 stability 검증 후 채택 검토.
+- V5 (가격) 확인 전까지 **기본 모델 확정 보류**.
+
+#### V10: API 키 환경변수 관례
+
+공식 문서 "Use the OpenAI SDK → Prerequisites" 섹션에서 환경변수 이름이 `DASHSCOPE_API_KEY` 로 명시되어 있으며, Python 예제 및 문서 메타(description) 전반에 걸쳐 동일 명칭이 사용된다. HTML 소스 내 총 8회 검출.
+
+**설계 반영 권장**:
+- 34번 문서 §7 (환경변수 / Secret) 및 `inject-secrets.sh` 에서 키 이름을 **`DASHSCOPE_API_KEY`** 로 확정.
+- 34번 문서 §10 V10 "표준인지" 질문 → **YES, 표준임**.
+
+### 16.3 미확인 항목 (Sprint 6 후반 재조사 필요)
+
+다음 7개 항목은 이번 조사 시간 내에 공식 문서에서 확인되지 않았다. 원인은 크게 3가지:
+
+1. **호환 모드 페이지에 해당 주제 미수록** → 별도 페이지 조회 필요 (V3, V5, V6, V7, V9)
+2. **JS 렌더링으로 curl 기반 본문 추출 실패** → 실제 브라우저 또는 WebFetch 도구 필요 (V4, V8)
+3. **Sprint 6 계정 발급 후에만 확인 가능** → API 키 발급 후 샘플 호출로 직접 검증 (V6, V7)
+
+| ID | 미확인 이유 | Sprint 6 재조사 권장 방법 |
+|----|------------|-------------------------|
+| V3 | `enable_thinking` 키워드 호환 모드 페이지 미검출 | Qwen3 API 레퍼런스 페이지 직접 조회 + 공식 Python 예제 검토 |
+| V4 | `json_object` 키워드 미검출 (호환 모드 페이지) | OpenAI Compatible 스펙상 `response_format` 지원은 일반적이나, Qwen3 thinking 모델에서의 제한 별도 확인 필요 |
+| V5 | Pricing 페이지 별도 | Model Studio billing 페이지 조회 |
+| V6 | 응답 샘플 필요 | API 키 발급 후 실제 호출로 `response.choices[0].message` 구조 확인 |
+| V7 | Rate limit 문서 별도 | Rate limits 페이지 또는 콘솔 Quota 페이지 |
+| V8 | `/models` 경로 1건 언급되나 지원 여부 불명 | 실제 `GET {base_url}/models` 호출로 검증 (계정 발급 후) |
+| V9 | thinking + temperature 조합 정책 미확인 | Qwen3 API 레퍼런스 페이지 + 샘플 호출 |
+
+### 16.4 조사 한계 및 후속 조치
+
+**한계**:
+- 본 에이전트는 `WebFetch` 도구 미보유로 `curl` 기반 수동 HTML 파싱을 수행했다. 일부 페이지(특히 Model Studio landing)가 JavaScript 렌더링으로 본문이 비어 있어 키워드 검출에 실패했다.
+- 중국어 원본 문서(`help.aliyun.com/zh/...`)는 조회는 가능하나 본 조사에서는 영문 `alibabacloud.com/help/en/` 페이지에만 집중했다. 중국어 원본이 더 상세할 가능성 존재.
+
+**후속 조치**:
+1. Sprint 6 Day 3~5 중 DashScope API 키 발급 후 **실제 호출 기반 검증** (V3, V6, V8, V9) — 10턴 smoke test와 병행 가능.
+2. V5 (pricing), V7 (rate limit) 은 별도 공식 페이지 재조사로 먼저 해결 (브라우저 기반 또는 WebFetch 가능 세션에서).
+3. V4 (json_object) 는 OpenAI Compatible 일반 동작 가정 하에 구현 후, 실패 시 DeepSeek 패턴인 `extractBestJson()` 폴백을 이미 설계에 반영했으므로 **리스크 낮음**.
+4. 본 §16 결과를 반영하여 §5 (Adapter 구현) 기본값을 `DASHSCOPE_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1`, `DASHSCOPE_DEFAULT_MODEL=qwen3-235b-a22b-thinking-2507` (V5 확인 후 재검토), `DASHSCOPE_API_KEY` 로 확정 권장.
