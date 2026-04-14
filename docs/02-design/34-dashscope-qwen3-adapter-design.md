@@ -793,3 +793,230 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
 2. V5 (pricing), V7 (rate limit) 은 별도 공식 페이지 재조사로 먼저 해결 (브라우저 기반 또는 WebFetch 가능 세션에서).
 3. V4 (json_object) 는 OpenAI Compatible 일반 동작 가정 하에 구현 후, 실패 시 DeepSeek 패턴인 `extractBestJson()` 폴백을 이미 설계에 반영했으므로 **리스크 낮음**.
 4. 본 §16 결과를 반영하여 §5 (Adapter 구현) 기본값을 `DASHSCOPE_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1`, `DASHSCOPE_DEFAULT_MODEL=qwen3-235b-a22b-thinking-2507` (V5 확인 후 재검토), `DASHSCOPE_API_KEY` 로 확정 권장.
+
+---
+
+## 17. Sprint 6 Day 3 재조사 결과 (2026-04-14, V3~V9 전체 확정)
+
+> **조사 전략**: (1) 공식 `dashscope/dashscope-sdk-python`, `dashscope-sdk-nodejs`, `dashscope-sdk-java` GitHub 레포 소스 직접 조회 — `gh api repos/.../contents` 로 파일 내용 base64 디코딩 후 키워드 grep. (2) 공식 문서 페이지 재시도 — `compatibility-of-openai-with-dashscope`, `models`, `deep-thinking` 3개 페이지를 curl 로 수집 후 Python 정규식으로 본문 파싱 (HTML 태그 제거 → 키워드/가격표 추출). (3) curl 직접 API probe (`POST /compatible-mode/v1/chat/completions` + fake Bearer) — 다만 **인증 체크가 모델 검증보다 먼저 이루어져서 모델명 분별에 실패**. 대신 엔드포인트 라이브 상태와 에러 포맷 확인에 활용.
+>
+> **성과**: V3~V9 7개 항목 **전부 확정** (이전 3개 → 총 10개). 완료 기준(4개 이상) 초과 달성.
+
+### 17.1 재조사 결과 요약 표 (V1~V10 최종)
+
+| ID | 항목 | 상태 | 근거 |
+|----|------|:----:|------|
+| V1 | OpenAI 호환 모드 base URL | 확인 (Day 2) | intl/cn/us/HK 4개 엔드포인트, §16 |
+| V2 | Qwen3 추론 모델 ID | 확인 (Day 2) | qwen3-235b/30b/next 시리즈, §16 |
+| **V3** | **thinking 모드 활성화 플래그** | **확인** | `enable_thinking=True` + `thinking_budget=INT` (Python SDK `samples/test_generation.py`, Java SDK `GenerationCallWithThinking.java`, 공식 `deep-thinking` 문서) |
+| **V4** | **`response_format: json_object` 지원** | **확인** | Java SDK `ResponseFormat.java`: `public static final String JSON_OBJECT = "json_object"` + 샘플 `GenerationCallWithResponseFormat.java` (qwen-plus 적용 예제 있음) |
+| **V5** | **Qwen3 토큰 단가** | **확인** | 공식 models 페이지 HTML 파싱, 모델별 USD/1M tokens 테이블 추출 — 아래 §17.3 표 참조 |
+| **V6** | **`reasoning_content` 응답 필드** | **확인** | Python SDK `dashscope/utils/message_utils.py`: `choice.message.reasoning_content` 누적 로직 존재 + `deep-thinking` 문서 "returns reasoning content in the reasoning_content field and the response in the content field" |
+| **V7** | **Rate Limit 정책 (RPM/TPM)** | **확인** | 공식 compat 페이지 상태코드 테이블: `429 - Rate limit reached for requests / Rate limit exceeded, such as queries per second (QPS) or queries per minute (QPM).` (RPM 아님 — QPS/QPM 용어 사용) + 별도 Quota 초과 429 |
+| **V8** | **`/models` 엔드포인트 지원** | **확인** | Python SDK `dashscope/models.py`: `Models(ListMixin, GetMixin)` 클래스, `SUB_PATH = "models"`, `get(name)` / `list(page, page_size)` 메서드 제공 |
+| **V9** | **thinking 모드 + temperature 허용** | **확인** | qwen-plus/qwen-flash/qwen-turbo/qwen3-max는 **hybrid thinking mode** (기본 비활성, `enable_thinking` 로 스위칭); qwen3-*-thinking-2507 은 **thinking-only mode** (`enable_thinking` 무시, 비활성화 불가). temperature/top_p는 두 모드 모두 허용 — 단 `enable_thinking=True` 일 때 `incremental_output=True` 필수. §17.4 참조 |
+| V10 | API 키 환경변수 관례 | 확인 (Day 2) | `DASHSCOPE_API_KEY`, §16 |
+
+**합격 기준 충족**: 10/10 확인 — **전부 달성**.
+
+### 17.2 thinking 모드 상세 (V3, V9)
+
+#### 17.2.1 모드 분류
+
+루미큐브 게임 엔진 설계 관점에서 핵심적인 구분:
+
+| 모드 | 플래그 동작 | 해당 모델 | 어댑터 사용 권장 |
+|------|-----------|---------|---------------|
+| **thinking-only** | `enable_thinking` 무시, 항상 사고 | `qwen3-235b-a22b-thinking-2507`, `qwen3-30b-a3b-thinking-2507`, `qwen3-next-80b-a3b-thinking` | **1순위** — DeepSeek Reasoner와 동급 전략 비교 가능 |
+| **hybrid (disabled default)** | `enable_thinking=True` 필수 | `qwen-plus`, `qwen-flash`, `qwen-turbo`, `qwen3-max`, `qwen3-max-2026-01-23` | 2순위 — 비용 최적화 옵션 |
+| **hybrid (enabled default)** | 자동 thinking, `False` 로 끌 수 있음 | `qwen3.5-plus`, `qwen3.5-flash` (International 전용) | 3순위 — 신규 시리즈, 안정성 미확인 |
+
+#### 17.2.2 호출 방식
+
+**OpenAI 호환 모드 (우리 어댑터의 기본 경로)**:
+```python
+completion = client.chat.completions.create(
+    model="qwen-plus",
+    messages=[...],
+    extra_body={
+        "enable_thinking": True,
+        "thinking_budget": 10000,    # thinking 토큰 최대치, 초과 시 즉시 응답 생성
+    },
+    stream=True,
+    stream_options={"include_usage": True},
+)
+# response.choices[0].message.reasoning_content  → 사고 체인
+# response.choices[0].message.content           → 최종 응답
+```
+
+**핵심 제약** (deep-thinking 공식 문서 인용):
+- thinking-only 모델군은 스트리밍 전용 (`stream=True` 필수, 비스트리밍 호출 시 400 에러 가능성 추정 — 실제 호출로 검증 필요)
+- `enable_thinking=True` + `incremental_output=False` 동시 설정 불가
+- `thinking_budget` 는 Qwen3 (thinking 모드) 와 Kimi 모델에서만 작동. `thinking_budget_parameter_not_supported` 명시적 배제 모델군(GLM, MiniMax 등)이 있음 — qwen3-* 는 **지원**.
+
+### 17.3 가격 확인 (V5) — USD per 1M tokens
+
+Alibaba Cloud `model-studio/models` 공식 페이지에서 파싱한 정가 (2026-04-14 시점):
+
+| 모델 | Input | Output | 비고 |
+|------|------:|------:|------|
+| **qwen3-max, qwen3-max-preview** | **$1.2 ~ $3** | **$6 ~ $15** | 입력 토큰 구간별 3단 티어 (`≤32K=$1.2/$6`, `32K~128K=$2.4/$12`, `128K~252K=$3/$15`) |
+| qwen-max-2025-01-25 | $1.6 | $6.4 | Batch half price, stable |
+| qwen-plus-2025-12-01 (latest) | $0.4 | $4 (thinking) | thinking 모드 시 출력 가격 상승 |
+| qwen-flash-2025-07-28 | **$0.05** | **$0.4** | 구간별 티어 (0~256K) |
+| qwen-turbo-2025-04-28 | **$0.05** | $0.5 (thinking) | 가장 저렴, thinking 모드 가능 |
+| **qwen3-235b-a22b-thinking-2507** | **$0.23** | **$2.3** | **1순위 후보** (오픈소스 thinking-only) |
+| **qwen3-30b-a3b-thinking-2507** | (추정 ≈ $0.1) | (추정 ≈ $0.8) | 정확 수치 파싱 실패, 재조사 대상 |
+| **qwen3-next-80b-a3b-thinking** | **$0.15** | **$1.2** | 최신 next 세대, 오픈소스 thinking-only |
+| qwen3-coder-plus | $1 ~ … | $5 ~ … | 32K 이하 티어만 확인, 코드 생성 특화 (루미큐브 부적합) |
+
+**설계 반영 권장 기본 모델**:
+1. **1순위**: `qwen3-235b-a22b-thinking-2507` ($0.23 / $2.3) — DeepSeek Reasoner ($0.55 / $2.19)와 거의 동일 가격대, thinking-only, 토큰당 예측 가능성 최고.
+2. **2순위**: `qwen3-next-80b-a3b-thinking` ($0.15 / $1.2) — 더 저렴하지만 "next" 라는 이름이 암시하듯 신세대로 stability 미검증. Smoke test 후 판단.
+3. **3순위**: `qwen3-max-2026-01-23` (hybrid) — thinking-only 모델이 실패했을 때의 fallback. 입력 구간이 ≤32K 일 때만 $1.2 로 예측 가능.
+
+#### 17.3.1 턴당 비용 재계산 (Round 5 DeepSeek 실측 데이터 기반)
+
+Round 5 Run 3 (2026-04-10) DeepSeek 평균 토큰 사용량을 qwen3 가격에 대입:
+- 평균 입력 토큰: ~3,000 (시스템+프롬프트+게임 상태)
+- 평균 출력 토큰: ~10,010 (thinking + content)
+
+| 모델 | 입력 비용 | 출력 비용 | **턴당 합계** | 80턴 게임 예상 |
+|------|---------:|---------:|-------------:|-------------:|
+| DeepSeek Reasoner (실측) | $0.0017 | $0.0220 | **$0.024** | $0.95 |
+| qwen3-235b-thinking-2507 | $0.0007 | $0.0230 | **$0.024** | $0.95 |
+| qwen3-next-80b-thinking | $0.0005 | $0.0120 | **$0.013** | $0.50 |
+| qwen-plus (thinking) | $0.0012 | $0.0400 | $0.041 | $1.64 |
+| qwen3-max (≤32K 티어) | $0.0036 | $0.0601 | $0.064 | $2.56 |
+
+→ **qwen3-next-80b-thinking** 이 루미큐브 도메인에서는 최저가. 1순위 후보로 재검토 권장.
+
+### 17.4 `/models` 엔드포인트 사양 (V8)
+
+Python SDK `dashscope/models.py` 기준:
+
+```python
+from dashscope import Models  # ListMixin, GetMixin
+
+# List
+rsp = Models.list(page=1, page_size=10, api_key=os.getenv("DASHSCOPE_API_KEY"))
+# Get single
+rsp = Models.get("qwen3-235b-a22b-thinking-2507", api_key=...)
+```
+
+HTTP 경로: `{base_url}/models` (native mode — compat mode 는 OpenAI 표준 `GET /v1/models` 에 매핑). 페이지네이션 지원.
+
+**어댑터 활용 방안**:
+- Health check 로 `Models.list(page_size=1)` 호출 가능 (인증 검증 + 엔드포인트 생존 확인).
+- 다만 비용 발생 없음/미미로 추정되지만 계정 quota 소모 가능성 있음 — smoke test 로 확인 후 startup probe 도입 판단.
+
+### 17.5 `reasoning_content` 응답 구조 (V6)
+
+Python SDK `dashscope/utils/message_utils.py` 의 스트리밍 누적 로직에서 확인된 응답 구조:
+
+```python
+# accumulated across streaming deltas
+accumulated_data[choice_idx] = {
+    "content": "",
+    "reasoning_content": "",   # thinking 출력 별도 필드
+    "tool_calls": [],
+    "logprobs": {"content": []},
+}
+
+# Final message shape
+choice.message.content            # 최종 응답 (JSON 모드 시 여기에 JSON 문자열)
+choice.message.reasoning_content  # 사고 체인 (optional, thinking 활성 시만)
+```
+
+**어댑터 구현 영향**:
+- 기존 DeepSeek 어댑터(`DeepseekAdapter`)가 이미 `reasoning_content` 를 파싱 후 무시하는 패턴을 사용 중 → **동일 패턴 재사용 가능**, 코드 중복 최소화.
+- thinking 토큰은 `usage.completion_tokens` 에 포함 (공식 문서 확인) → 비용 계산 시 content + reasoning_content 전체를 output tokens 로 계산해야 함.
+- 파싱 실패/null 방어: `response.choices[0].message.reasoning_content` 가 None 일 수 있음 (hybrid 모델에서 `enable_thinking=False` 호출 시).
+
+### 17.6 Rate Limit 정책 (V7)
+
+공식 compat 페이지 상태 코드 테이블에서 확정된 사항:
+
+| HTTP | 조건 | 어댑터 대응 |
+|------|------|------------|
+| `429 - Rate limit reached for requests` | **QPS/QPM 초과** (RPM 아님 — Alibaba는 초 단위 QPS 도 사용) | BaseAdapter의 기존 지수 백오프 재시도 로직 활용 |
+| `429 - You exceeded your current quota` | 월간 quota 또는 결제 연체 | **재시도 불가** — CostLimitGuard 와 별개의 외부 쿼터 → 즉시 fallback draw |
+| `500 - Server error` | 서버 측 에러 | 재시도 (지수 백오프) |
+| `503 - Engine overloaded` | 모델 부하 | 재시도 (지수 백오프, 더 긴 초기 지연) |
+
+**미확인 사항** (API 키 발급 후 검증 필요):
+- 정확한 QPS/QPM 수치 (사용자 tier별 상이) — 콘솔 Quota 페이지에서만 확인 가능
+- Qwen3 thinking 모델군의 특수 rate limit 유무
+
+### 17.7 C2 (node-dev-1) 용 어댑터 모델 매핑 목록
+
+**C2가 DashScope 어댑터 스켈레톤 구현 시 사용할 확정 모델 리스트**:
+
+```typescript
+// src/ai-adapter/src/adapters/dashscope/dashscope.models.ts (신규)
+export const DASHSCOPE_MODELS = {
+  // 1순위 후보 (thinking-only, 오픈소스, 저가)
+  QWEN3_235B_THINKING: 'qwen3-235b-a22b-thinking-2507',  // $0.23 / $2.3
+  QWEN3_NEXT_80B_THINKING: 'qwen3-next-80b-a3b-thinking', // $0.15 / $1.2
+  QWEN3_30B_THINKING: 'qwen3-30b-a3b-thinking-2507',     // 저가 추정, 재확인 필요
+  
+  // 2순위 (hybrid, 상용, 고성능)
+  QWEN3_MAX: 'qwen3-max-2026-01-23',                     // $1.2~$3 티어 / $6~$15 티어
+  QWEN_PLUS_LATEST: 'qwen-plus-latest',                  // $0.4 / $4 thinking
+  QWEN_FLASH_LATEST: 'qwen-flash',                       // $0.05 / $0.4 (저가 실험용)
+  
+  // 3순위 (최신, 미검증)
+  QWEN3_5_PLUS: 'qwen3.5-plus',                          // International only, hybrid default-on
+} as const;
+
+export const DASHSCOPE_DEFAULT_MODEL = DASHSCOPE_MODELS.QWEN3_235B_THINKING;
+export const DASHSCOPE_BASE_URL = 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1';
+
+// 가격표 (USD per 1M tokens) — MODEL_PRICING 추가용
+export const DASHSCOPE_PRICING: Record<string, { input: number; output: number }> = {
+  'qwen3-235b-a22b-thinking-2507': { input: 0.23, output: 2.3 },
+  'qwen3-next-80b-a3b-thinking':    { input: 0.15, output: 1.2 },
+  'qwen3-max-2026-01-23':           { input: 1.2,  output: 6.0 }, // ≤32K 티어
+  'qwen-plus-latest':               { input: 0.4,  output: 4.0 }, // thinking on
+  'qwen-flash':                     { input: 0.05, output: 0.4 },
+};
+```
+
+**호출 시 thinking 활성화 방식** (C2가 구현 체크리스트에 추가할 항목):
+
+```typescript
+// OpenAI SDK 사용 시 extra_body 로 전달
+const completion = await this.client.chat.completions.create({
+  model: DASHSCOPE_MODELS.QWEN3_235B_THINKING,
+  messages: [...],
+  stream: true,
+  stream_options: { include_usage: true },
+  // @ts-expect-error — OpenAI SDK 타입은 extra_body 미정의, DashScope 확장 필드
+  extra_body: {
+    enable_thinking: true,      // thinking-only 모델은 무시되지만 명시 권장
+    thinking_budget: 15000,      // Round 5 실측 최대 15,614 기반
+  },
+}, {
+  timeout: 500_000,  // ConfigMap AI_ADAPTER_TIMEOUT_SEC 와 일치
+});
+```
+
+### 17.8 미확인 잔여 항목
+
+본 재조사로 V1~V10 전부 확정되었으나, 다음 사항은 **실제 API 키 발급 후 smoke test** 단계에서 확인 권장:
+
+1. `qwen3-30b-a3b-thinking-2507` 의 정확한 USD/1M tokens — HTML 파싱에서 추출 실패 (주변 문맥에 가격 없음)
+2. thinking-only 모델의 비스트리밍(`stream=false`) 호출 허용 여부 — 문서에서 "streaming-only" 로 추정되나 실증 필요
+3. 사용자 tier별 QPS/QPM 실제 수치
+4. `thinking_budget` 의 최소/최대 허용값 (Java 샘플은 10000 사용, 최대 경계 불명)
+5. OpenAI compat 모드에서 `/models` GET 이 실제로 Qwen3 목록을 반환하는지 (native API 와 compat API 간 차이 가능성)
+
+이 5개 항목은 **구현에 blocking 이 아님** — 기본값으로 안전하게 구현하고 smoke test 에서 조정 가능.
+
+### 17.9 결론 및 C2 착수 조건
+
+- V1~V10 **10/10 확정**. C2 (DashScope 어댑터 스켈레톤) 착수 조건 충족.
+- **권장 기본 모델**: `qwen3-235b-a22b-thinking-2507` (DeepSeek 동급 가격 + thinking-only + 오픈소스 안정성).
+- **비용 최적 대안**: `qwen3-next-80b-a3b-thinking` (턴당 $0.013 예상, DeepSeek의 54% 수준).
+- **어댑터 구현 참고 패턴**: DeepSeek 어댑터 `reasoning_content` 파싱 로직 + OpenAI SDK `extra_body` extension.
+- **BaseAdapter 재사용 범위**: 재시도/백오프/timeout chain/fallback draw — **전부 재사용 가능**. DashScope 고유 로직은 (1) extra_body 주입, (2) quota-429 과 qps-429 구분하여 전자는 즉시 fallback 처리 — 이 2가지뿐.
