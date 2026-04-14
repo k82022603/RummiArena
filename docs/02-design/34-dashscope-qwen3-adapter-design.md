@@ -1020,3 +1020,70 @@ const completion = await this.client.chat.completions.create({
 - **비용 최적 대안**: `qwen3-next-80b-a3b-thinking` (턴당 $0.013 예상, DeepSeek의 54% 수준).
 - **어댑터 구현 참고 패턴**: DeepSeek 어댑터 `reasoning_content` 파싱 로직 + OpenAI SDK `extra_body` extension.
 - **BaseAdapter 재사용 범위**: 재시도/백오프/timeout chain/fallback draw — **전부 재사용 가능**. DashScope 고유 로직은 (1) extra_body 주입, (2) quota-429 과 qps-429 구분하여 전자는 즉시 fallback 처리 — 이 2가지뿐.
+
+## 18. Implementation Status (Sprint 6 Day 3, 2026-04-14, C2 완료)
+
+### 18.1 스켈레톤 구현 완료 파일
+
+C2 (node-dev-1) 가 2026-04-14 완료한 파일 목록:
+
+| 경로 | 역할 | 비고 |
+|------|------|------|
+| `src/ai-adapter/src/adapter/dashscope/dashscope.types.ts` | 요청/응답 타입 + 모델 매핑 + 가격표 | §17.7 TypeScript 코드 반영 |
+| `src/ai-adapter/src/adapter/dashscope/prompt-builder.ts` | MoveRequest → DashScope 메시지 변환 | V3 reasoning 프롬프트 재사용 |
+| `src/ai-adapter/src/adapter/dashscope/dashscope.service.ts` | 메인 어댑터 (BaseAdapter 상속) | classifyError + extractBestJson 포함 |
+| `src/ai-adapter/src/adapter/dashscope/dashscope.module.ts` | NestJS 모듈 정의 | Sprint 7 에 MoveModule 에 연결 |
+| `src/ai-adapter/src/adapter/dashscope/dashscope.service.spec.ts` | 단위 테스트 28건 (mock HTTP) | 모두 PASS |
+| `src/ai-adapter/src/adapter/deepseek/prompt-v3-tuned.ts` | DeepSeek v3-tuned 대체 프롬프트 (A/B용) | Sprint 6 후반 실전 검증 예정 |
+
+### 18.2 어댑터 구현 결정 사항
+
+설계 문서 §16~§17 의 권장값을 그대로 채택하고, 실제 경로에 반영한 결정은 다음과 같다:
+
+1. **디렉토리**: 기존 프로젝트 컨벤션(`src/adapter/`)을 유지하고 `dashscope/` 서브디렉토리로 그룹화. 설계 문서의 `src/providers/` 표기는 과제 지시 표현이었으며, 실제 컨벤션에 맞게 조정.
+2. **기본 모델**: `DASHSCOPE_DEFAULT_MODEL = qwen3-235b-a22b-thinking-2507` (§17.3 1순위).
+3. **thinking 파라미터**: `enable_thinking=true`, `thinking_budget=15000` (Round 5 실측 최대 15,614 기반).
+4. **타임아웃 정책**: thinking-only 모델은 `timeoutMs` 와 무관하게 `max(timeoutMs, 600_000)` 을 적용. `DeepSeekAdapter` 의 500초 패턴을 한 단계 더 안전하게 확장 (DeepSeek 실측 최대 434초 + CoT 여지 166초).
+5. **에러 분류**: `classifyError()` 로 401 / 429-QPS / 429-quota / 500 / 503 / timeout / unknown 7단계 분류. 429-quota 만 즉시 중단(fallback draw), 나머지는 BaseAdapter 재시도 체인에 위임.
+6. **reasoning_content 파싱**: DeepSeek Reasoner 의 `extractBestJson` 4단계 전략을 그대로 이식 (마크다운/trailing comma/다중 JSON 후보 처리).
+7. **API 키**: `DASHSCOPE_API_KEY` 환경변수로 주입, 현재는 빈 값. Sprint 7 에 발급 후 Kubernetes Secret 으로 배포.
+
+### 18.3 MoveService 통합 Pending 항목
+
+현재 스켈레톤은 독립 모듈로만 존재하며, `MoveService.selectAdapter()` 의 `ModelType` 유니온에 `'dashscope'` 를 추가하지 않았다. Sprint 7 착수 시 다음 4개 파일을 수정하면 즉시 프로덕션 활성화된다:
+
+1. `src/move/move.service.ts` — `ModelType = 'openai' | 'claude' | 'deepseek' | 'ollama' | 'dashscope'` 확장 + `selectAdapter()` switch 확장
+2. `src/move/move.module.ts` — `DashScopeAdapter` providers 배열에 추가
+3. `src/cost/cost-tracking.service.ts` — `DASHSCOPE_PRICING` import 후 modelType 매핑 추가
+4. `helm/charts/ai-adapter/values.yaml` — `DASHSCOPE_API_KEY` secret 마운트 + `DASHSCOPE_DEFAULT_MODEL` ConfigMap 엔트리
+
+### 18.4 단위 테스트 커버리지 (mock-only)
+
+28건 전체 PASS (기존 428건 + 신규 28건 = **456건 ALL GREEN**):
+
+| 테스트 그룹 | 건수 | 커버 영역 |
+|------------|:---:|---------|
+| `getModelInfo()` | 2 | modelType/modelName/baseUrl, env override |
+| `healthCheck()` | 2 | 정상/네트워크 실패 |
+| 정상 응답 | 3 | draw/place/token usage |
+| 요청 바디/헤더 | 5 | URL, extra_body, temperature 미포함, Authorization, timeout 600s |
+| 에러 처리 | 8 | 401/429-QPS/429-quota/500/503/timeout + fallback draw |
+| 파싱 실패/빈 응답 | 3 | JSON 아님/빈 응답/empty choices |
+| `extractBestJson()` | 5 | 순수 JSON/코드블록/reasoning 추출/다중 후보/trailing comma |
+
+### 18.5 DeepSeek v3-tuned 프롬프트
+
+`src/ai-adapter/src/adapter/deepseek/prompt-v3-tuned.ts` 는 v3 원본을 보존하고 다음 3개 블록만 추가한 대체 프롬프트다:
+
+1. **Thinking Time Budget** 섹션 — "사고 시간 자율 확장" 특성을 명시적으로 허가 (`docs/03-development/19` §5 근거). burst 턴이 5/5 place 성공한 관찰을 언어화.
+2. **Position Evaluation Criteria** 5개 항목 (Legality / Meld Threshold / Tile Count / Point Value / Rack Residual Quality) + Count→Point→Residual Tiebreak 순서. Step 6 앞에 삽입.
+3. **Verify Twice** 문구 — 재시도 프롬프트에 "retry is expensive, verify correctness before submitting" 추가로 fallback 감소 유도.
+
+**토큰 예산**: v3 대비 +220 토큰 (~1,750 총). **검증**: Sprint 6 후반 DeepSeek 단일 A/B 대전 예정 (Round 6 or 7).
+
+### 18.6 요약
+
+- **C2 스켈레톤 완료**. 코드만 보면 `DashScopeAdapter` 를 MoveModule providers 에 추가하는 즉시 작동 가능.
+- **API 키만 blocker**. 모든 구현 요소(요청 포맷, 에러 분류, 파싱, 타임아웃, 테스트)는 mock 기반 검증 완료.
+- **문서와 코드 일치**: §17 TypeScript 코드는 그대로 `dashscope.types.ts` 에 반영. 향후 §17 수정 시 `types.ts` 도 동기 업데이트 필요.
+- **Sprint 7 Day 1 시작 조건**: API 키 발급 + `MoveService.ModelType` 유니온 확장 4개 파일 수정 → 즉시 smoke test 가능.
