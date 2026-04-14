@@ -1,0 +1,4 @@
+# SP4 A/B eval: timestamped runs are ephemeral — do not commit.
+# Canonical sample reports use stable filenames like 'sample-*.{json,md}'.
+ab-eval-20*.json
+ab-eval-20*.md
