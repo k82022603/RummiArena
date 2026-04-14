@@ -131,6 +131,26 @@ lint-admin:
     - if: $CI_COMMIT_BRANCH == "develop"
   interruptible: true
 
+# 게임룰 추적성 매트릭스 ↔ 실제 코드 정합성 검증 (Sprint 6 Day 3 Track 5)
+# 매트릭스(`docs/02-design/31-game-rule-traceability.md`)에서 종합=✅로 표기된
+# 규칙은 Engine/Engine 테스트/UI/E2E 4단계 셀 모두 ✅ + 참조 파일이 실재해야 PASS.
+# 검증 스크립트: scripts/rule-matrix-check.py (소요 < 5초, 외부 의존 0)
+# 실패 시: 매트릭스 셀의 backtick 파일 경로를 리네임/이동 이후 갱신했는지 확인.
+rule-matrix-check:
+  stage: lint
+  <<: *local-runner
+  timeout: 5m
+  image: python:3.11-alpine
+  before_script:
+    - apk add --no-cache git
+  script:
+    - python3 scripts/rule-matrix-check.py --verbose
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "develop"
+  interruptible: true
+
 # =============================================================================
 # Test Stage — 단위/통합 테스트 + 커버리지 수집
 # =============================================================================
