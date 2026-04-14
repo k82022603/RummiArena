@@ -12,6 +12,7 @@ import { DEFAULT_TOURNAMENT_FILTER } from "@/lib/types";
 import TournamentFilter from "./TournamentFilter";
 import TournamentGrid from "./TournamentGrid";
 import ModelLegend from "./ModelLegend";
+import PlaceRateChart from "./PlaceRateChart";
 
 interface TournamentPageClientProps {
   initialSummary: TournamentSummary;
@@ -122,10 +123,10 @@ export default function TournamentPageClient({
 
       <TournamentGrid
         topLeft={
-          <PlaceholderSlot
-            title="Place Rate 추이"
-            description="라운드별 모델별 타일 배치율 (라인 차트, PR 2)"
-            count={filteredRounds.length}
+          <PlaceRateChart
+            data={filteredRounds}
+            selectedModels={filters.selectedModels}
+            promptVersion={filters.promptVersion}
           />
         }
         topRight={
