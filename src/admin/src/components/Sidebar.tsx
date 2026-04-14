@@ -10,12 +10,13 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { href: "/",           label: "대시보드",     icon: "grid" },
-  { href: "/games",      label: "활성 게임",    icon: "play" },
-  { href: "/users",      label: "유저 목록",    icon: "users" },
-  { href: "/stats",      label: "AI 통계",      icon: "bar-chart" },
-  { href: "/tournament", label: "AI 토너먼트",  icon: "trophy-chart" },
-  { href: "/rankings",   label: "ELO 랭킹",     icon: "trophy" },
+  { href: "/",            label: "대시보드",     icon: "grid" },
+  { href: "/games",       label: "활성 게임",    icon: "play" },
+  { href: "/users",       label: "유저 목록",    icon: "users" },
+  { href: "/stats",       label: "AI 통계",      icon: "bar-chart" },
+  { href: "/tournament",  label: "AI 토너먼트",  icon: "trophy-chart" },
+  { href: "/rankings",    label: "ELO 랭킹",     icon: "trophy" },
+  { href: "/playtest-s4", label: "Playtest S4",  icon: "beaker" },
 ];
 
 function NavIcon({ name }: { name: string }) {
@@ -58,6 +59,12 @@ function NavIcon({ name }: { name: string }) {
         d="M8 21h8M12 17v4M7 4h10v6a5 5 0 01-10 0V4zM7 7H4v2a3 3 0 003 3M17 7h3v2a3 3 0 01-3 3" />
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
         d="M9.5 9l1.5 1.5L14 8" />
+    </svg>
+  );
+  if (name === "beaker") return (
+    <svg className={cls} fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+        d="M9 3v6.5L4 17a3 3 0 002.5 4.5h11A3 3 0 0020 17l-5-7.5V3M8 3h8M9 13h6" />
     </svg>
   );
   return null;
