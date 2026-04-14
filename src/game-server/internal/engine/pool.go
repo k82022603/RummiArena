@@ -3,18 +3,34 @@ package engine
 import (
 	"fmt"
 	"math/rand"
+	"os"
+	"strconv"
 )
+
+// EnvTestSeed 테스트 전용 고정 시드 환경변수 이름.
+// 설정되면 NewTilePool()이 NewTilePoolWithSeed(seed)로 우회된다.
+// 프로덕션 코드에서는 설정하지 말 것. 결정론적 Playtest/회귀 전용.
+const EnvTestSeed = "RUMMIKUB_TEST_SEED"
 
 // TilePool 게임에서 사용하는 전체 타일 풀(106장)을 관리한다.
 // 셔플, 분배, 드로우 기능을 제공하며 외부 의존성 없이 순수하게 동작한다.
 type TilePool struct {
 	tiles []*Tile
+	rng   *rand.Rand // nil이면 global rand 사용 (기존 동작)
 }
 
 // NewTilePool 106장의 타일로 초기화된 TilePool을 생성한다.
 // 생성 직후 Fisher-Yates 셔플이 적용된다.
 // 4색 × 13숫자 × 2세트(a, b) = 104장 + 조커 2장 = 106장
+//
+// RUMMIKUB_TEST_SEED 환경변수가 설정되어 있으면 NewTilePoolWithSeed로 우회한다.
+// 이는 결정론적 E2E/Playtest/회귀 테스트 전용이다.
 func NewTilePool() *TilePool {
+	if seedStr := os.Getenv(EnvTestSeed); seedStr != "" {
+		if seed, err := strconv.ParseUint(seedStr, 0, 64); err == nil {
+			return NewTilePoolWithSeed(seed)
+		}
+	}
 	p := &TilePool{
 		tiles: GenerateDeck(),
 	}
@@ -22,9 +38,30 @@ func NewTilePool() *TilePool {
 	return p
 }
 
+// NewTilePoolWithSeed 고정 시드로 결정론적 TilePool을 생성한다.
+// 같은 seed → 같은 셔플 결과 → 같은 초기 랙/드로우 파일 순서.
+// B3 결정론적 Playtest 프레임워크(Task #7)에서 사용된다.
+func NewTilePoolWithSeed(seed uint64) *TilePool {
+	// #nosec G404 — 결정론 재현이 목적, 암호학적 난수 불필요
+	r := rand.New(rand.NewSource(int64(seed)))
+	p := &TilePool{
+		tiles: GenerateDeck(),
+		rng:   r,
+	}
+	p.Shuffle()
+	return p
+}
+
 // Shuffle math/rand.Shuffle 기반으로 타일을 무작위 섞는다.
-// 동일한 시드 없이 호출할 때마다 다른 순서를 반환한다.
+// rng 필드가 설정되어 있으면 해당 rng를 사용하여 결정론적으로 셔플한다.
+// 그렇지 않으면 글로벌 rand를 사용 (기존 동작).
 func (p *TilePool) Shuffle() {
+	if p.rng != nil {
+		p.rng.Shuffle(len(p.tiles), func(i, j int) {
+			p.tiles[i], p.tiles[j] = p.tiles[j], p.tiles[i]
+		})
+		return
+	}
 	rand.Shuffle(len(p.tiles), func(i, j int) {
 		p.tiles[i], p.tiles[j] = p.tiles[j], p.tiles[i]
 	})

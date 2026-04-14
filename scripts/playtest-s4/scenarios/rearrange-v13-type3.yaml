@@ -1,0 +1,71 @@
+id: rearrange-v13-type3
+title: "V-13 Type 3 재배치 — 기존 런 분할 + 랙 타일 추가"
+description: |
+  BUG-UI-REARRANGE-002 (그룹 5회 중복 렌더링)가 재현된 경로다.
+  런 4매 이상 + 경계 타일이 함께 있을 때 split + re-merge가 발생한다.
+  확률적으로는 30턴 중 약 18%만 조건 충족 — 시드 고정 없이 회귀 불가.
+target_rule: V-13b
+priority: P0
+references:
+  - doc: docs/04-testing/52-19-rules-full-audit-report.md
+    section: "§4.1 P0"
+  - doc: docs/02-design/37-playtest-s4-deterministic-ux.md
+    section: "§5 시나리오 2"
+  - commit: "68203b6"
+    note: "fix(ui): 재배치 그룹 중복 렌더링"
+
+required_conditions:
+  - "seat 0 initial hand에 같은 색 4매 이상의 연속 숫자 (run length >= 4)"
+
+seed_candidates:
+  - seed: "0xB"
+    condition: "B run start=5 len>=4 (B5, B6, B7, B8 all Blue)"
+    hand:
+      - K8b
+      - B8b
+      - B11b
+      - B7b
+      - Y7a
+      - K6b
+      - B6b
+      - B5b
+      - Y8b
+      - K6a
+      - Y9a
+      - K11a
+      - K13a
+      - Y1a
+  - seed: "0xF"
+    condition: "Y run start=10 len>=4 (Y10, Y11, Y12, Y13 all Yellow)"
+    hand:
+      - Y4a
+      - K11b
+      - B3a
+      - B13a
+      - B6b
+      - R6a
+      - Y10b
+      - Y11b
+      - Y13b
+      - R6b
+      - B5a
+      - K3a
+      - K9a
+      - Y12a
+  - seed: "0x14"
+    condition: "K run start=10 len>=4 (K10, K11, K12, K13 all Black)"
+
+engine_checks:
+  - name: determinism
+    description: "같은 시드로 두 번 생성 시 동일한 seat 0 hand"
+  - name: run4_present
+    description: "seat 0 hand에 같은 색 연속 4매 이상 존재"
+  - name: conservation_106
+    description: "초기 분배 직후 전체 106장 보존"
+  - name: validator_split_run
+    description: |
+      기본 run [B5, B6, B7, B8]이 ValidateTileSet 통과해야 하며,
+      분할 후 [B5, B6, B7] + [B8, B9, B10] (가상 B9, B10 추가)도 각각 유효해야 함
+
+expected_outcome: PASS
+estimated_sec: 2

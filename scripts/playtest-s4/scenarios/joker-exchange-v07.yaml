@@ -1,0 +1,69 @@
+id: joker-exchange-v07
+title: "V-07 조커 교환 후 같은 턴 재사용"
+description: |
+  조커 셋이 테이블에 있고 내 랙에 교체 타일이 있을 때,
+  조커를 꺼내 같은 턴에 새 셋에서 재사용하는 플로우를 검증한다.
+  시드 고정이 없으면 조커 획득 확률 ~34%로 S4 Phase D가 실행되지 않음.
+target_rule: V-07
+priority: P0
+references:
+  - doc: docs/04-testing/52-19-rules-full-audit-report.md
+    section: "§4.1 P0"
+  - doc: docs/02-design/37-playtest-s4-deterministic-ux.md
+    section: "§5 시나리오 1"
+
+required_conditions:
+  - "seat 0 initial hand contains at least one joker (JK1 or JK2)"
+  - "initial meld feasible (heuristic)"
+
+seed_candidates:
+  - seed: "0x14"
+    condition: "joker in rack + initial meld feasible + bonus K run 10-13"
+    hand:
+      - B11a
+      - K10b
+      - K8b
+      - B12b
+      - Y5b
+      - JK2
+      - K12b
+      - K4b
+      - JK1
+      - K13b
+      - R4a
+      - Y8a
+      - K11a
+      - K2a
+  - seed: "0x16"
+    condition: "joker in rack + initial meld feasible"
+    hand:
+      - R12a
+      - R4a
+      - K13a
+      - Y13b
+      - Y2b
+      - B12a
+      - R1a
+      - K6b
+      - JK1
+      - R3a
+      - K12a
+      - Y7a
+      - K5a
+      - K10b
+  - seed: "0x1C"
+    condition: "joker in rack + initial meld feasible"
+
+engine_checks:
+  - name: determinism
+    description: "같은 시드로 두 번 풀을 생성하면 동일한 seat 0 hand이 나와야 한다"
+  - name: joker_present
+    description: "seat 0 initial hand에 JK1 또는 JK2가 포함되어야 한다"
+  - name: conservation_106
+    description: "초기 분배 직후 table(0) + racks(28) + drawPile(78) = 106"
+  - name: validator_joker_set
+    description: |
+      조커 포함 런 [Y8a, JK(rep Y9), Y10]이 validator.ValidateTileSet를 통과해야 한다
+
+expected_outcome: PASS
+estimated_sec: 2

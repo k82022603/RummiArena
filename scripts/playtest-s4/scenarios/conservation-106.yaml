@@ -1,0 +1,41 @@
+id: conservation-106
+title: "타일 보전 불변식 (Universe Conservation = 106)"
+description: |
+  전역 불변식. 매 턴 종료 후 table + allRacks + drawPile = 106이 유지되어야 한다.
+  과거 conservation 버그는 모두 특정 수 수열에서만 재현됨 → 시드 고정 필수.
+  CI 회귀 세트에 포함. 1개라도 FAIL 시 PR 블로킹.
+target_rule: "전역 불변식 (V-06 확장)"
+priority: P0
+references:
+  - doc: docs/04-testing/52-19-rules-full-audit-report.md
+    section: "§4.1 P0"
+  - doc: docs/02-design/37-playtest-s4-deterministic-ux.md
+    section: "§5 시나리오 5"
+
+required_conditions:
+  - "any initial rack (불변식은 분배 직후 자동 성립)"
+
+seed_candidates:
+  - seed: "0x1"
+    condition: "any rack"
+  - seed: "0x2"
+    condition: "any rack"
+  - seed: "0x3"
+    condition: "any rack"
+  - seed: "0xDEADBEEF"
+    condition: "any rack (high entropy)"
+  - seed: "0xCAFEBABE"
+    condition: "any rack (high entropy)"
+
+engine_checks:
+  - name: determinism
+    description: "같은 시드로 두 번 생성 시 동일한 seat 0/1 hand + drawPile"
+  - name: total_count_106
+    description: "seat 0 (14) + seat 1 (14) + drawPile (78) = 106"
+  - name: no_duplicates
+    description: "분배된 106장 코드가 모두 유니크"
+  - name: conservation_after_draws
+    description: "DrawOne 10회 후 total = 106 (랙 14+24, drawPile 68 등)"
+
+expected_outcome: PASS
+estimated_sec: 1

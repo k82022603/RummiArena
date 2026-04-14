@@ -1,0 +1,202 @@
+{
+  "generatedAt": "2026-04-14T03:59:52.030Z",
+  "aiMode": "baseline",
+  "runs": [
+    {
+      "scenario": "conservation-106",
+      "seed": "0x1",
+      "seedUint": 1,
+      "status": "PASS",
+      "durationMs": 0,
+      "checks": {
+        "conservation_106": true,
+        "conservation_after_draws": true,
+        "determinism": true,
+        "no_duplicates": true,
+        "total_count_106": true
+      },
+      "details": {
+        "after_draws_total": 106,
+        "drawpile_count": 78,
+        "initial_total": 106,
+        "max_duplicate": 1,
+        "seat0_hand": [
+          "R1a",
+          "B4b",
+          "R9a",
+          "K1b",
+          "B1a",
+          "Y10b",
+          "K10b",
+          "Y3b",
+          "Y11a",
+          "Y2a",
+          "Y3a",
+          "B10b",
+          "R5b",
+          "B11a"
+        ],
+        "seat1_count": 14,
+        "total_unique": 106
+      }
+    },
+    {
+      "scenario": "joker-exchange-v07",
+      "seed": "0x14",
+      "seedUint": 20,
+      "status": "PASS",
+      "durationMs": 0,
+      "checks": {
+        "conservation_106": true,
+        "determinism": true,
+        "joker_present": true,
+        "validator_joker_set": true
+      },
+      "details": {
+        "drawpile_count": 78,
+        "initial_total": 106,
+        "joker_found": true,
+        "seat0_hand": [
+          "B11a",
+          "K10b",
+          "K8b",
+          "B12b",
+          "Y5b",
+          "JK2",
+          "K12b",
+          "K4b",
+          "JK1",
+          "K13b",
+          "R4a",
+          "Y8a",
+          "K11a",
+          "K2a"
+        ],
+        "seat1_count": 14,
+        "valid_joker_set": [
+          "B11a",
+          "B12b",
+          "JK2"
+        ]
+      }
+    },
+    {
+      "scenario": "rearrange-classify-mixed-numbers",
+      "seed": "0x1",
+      "seedUint": 1,
+      "status": "PASS",
+      "durationMs": 0,
+      "checks": {
+        "conservation_106": true,
+        "determinism": true,
+        "mixed_triple_present": true,
+        "validator_rejects_mixed": true
+      },
+      "details": {
+        "drawpile_count": 78,
+        "initial_total": 106,
+        "mixed_triple": "B10+B11+Y10",
+        "rejection_reason": "[ERR_GROUP_NUMBER] 그룹의 모든 타일은 같은 숫자여야 합니다.",
+        "seat0_hand": [
+          "R1a",
+          "B4b",
+          "R9a",
+          "K1b",
+          "B1a",
+          "Y10b",
+          "K10b",
+          "Y3b",
+          "Y11a",
+          "Y2a",
+          "Y3a",
+          "B10b",
+          "R5b",
+          "B11a"
+        ],
+        "seat1_count": 14
+      }
+    },
+    {
+      "scenario": "rearrange-v13-type3",
+      "seed": "0xB",
+      "seedUint": 11,
+      "status": "PASS",
+      "durationMs": 0,
+      "checks": {
+        "conservation_106": true,
+        "determinism": true,
+        "run4_present": true,
+        "validator_run4": true
+      },
+      "details": {
+        "drawpile_count": 78,
+        "initial_total": 106,
+        "run4_color": "B",
+        "run4_start": 5,
+        "run_codes": [
+          "B5b",
+          "B6b",
+          "B7b",
+          "B8b"
+        ],
+        "seat0_hand": [
+          "K8b",
+          "B8b",
+          "B11b",
+          "B7b",
+          "Y7a",
+          "K6b",
+          "B6b",
+          "B5b",
+          "Y8b",
+          "K6a",
+          "Y9a",
+          "K11a",
+          "K13a",
+          "Y1a"
+        ],
+        "seat1_count": 14
+      }
+    },
+    {
+      "scenario": "time-penalty-v16",
+      "seed": "0x1",
+      "seedUint": 1,
+      "status": "PASS",
+      "durationMs": 0,
+      "checks": {
+        "conservation_106": true,
+        "determinism": true,
+        "initial_hand_shape": true,
+        "timeout_cleanup_smoke": true
+      },
+      "details": {
+        "drawpile_count": 78,
+        "initial_total": 106,
+        "note": "live timeout reproduction deferred to B4 admin UI",
+        "seat0_hand": [
+          "R1a",
+          "B4b",
+          "R9a",
+          "K1b",
+          "B1a",
+          "Y10b",
+          "K10b",
+          "Y3b",
+          "Y11a",
+          "Y2a",
+          "Y3a",
+          "B10b",
+          "R5b",
+          "B11a"
+        ],
+        "seat1_count": 14
+      }
+    }
+  ],
+  "summary": {
+    "total": 5,
+    "passed": 5,
+    "failed": 0
+  }
+}

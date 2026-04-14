@@ -1,0 +1,40 @@
+id: time-penalty-v16
+title: "V-09 턴 타임아웃 → 강제 드로우 + BUG-GS-005 cleanup"
+description: |
+  V-09 타임아웃 전이는 Playwright 30초 실대기 비용으로 E2E 0건이었다.
+  결정론 프레임워크에서는 fake clock 주입 또는 단축 타임아웃으로 재현한다.
+  동시에 BUG-GS-005 (WS 끊김 + TIMEOUT) cleanup이 정상 동작하는지도 확인한다.
+target_rule: V-09
+priority: P1
+references:
+  - doc: docs/04-testing/52-19-rules-full-audit-report.md
+    section: "§4.2 P1"
+  - doc: docs/02-design/37-playtest-s4-deterministic-ux.md
+    section: "§5 시나리오 4"
+  - task: "Task #14 BUG-GS-005 cleanup 통합 테스트"
+
+required_conditions:
+  - "any initial rack (타임아웃은 랙 상태 무관)"
+
+seed_candidates:
+  - seed: "0x1"
+    condition: "any rack"
+  - seed: "0x2"
+    condition: "any rack"
+  - seed: "0x3"
+    condition: "any rack"
+
+engine_checks:
+  - name: determinism
+    description: "같은 시드로 두 번 생성 시 동일한 seat 0 hand"
+  - name: initial_hand_shape
+    description: "seat 0 hand 14장, seat 1 hand 14장, drawPile 78장"
+  - name: conservation_106
+    description: "초기 분배 직후 106장 보존"
+  - name: timeout_cleanup_smoke
+    description: |
+      BUG-GS-005 smoke — 이 checkpoint는 game-server 통합 테스트 존재 여부만 확인한다
+      (실제 WS 연결은 B4 admin UI의 live 모드에서 실행)
+
+expected_outcome: PASS
+estimated_sec: 1

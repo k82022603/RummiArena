@@ -1,0 +1,70 @@
+id: rearrange-classify-mixed-numbers
+title: "UI classify — 혼합 숫자 자동 분리 (false positive 중복 감지 가드)"
+description: |
+  BUG-UI-CLASSIFY-001a/b 재현 경로. 드래그로 같은 색 연속 숫자 2개 + 다른 색 같은 숫자 1개가
+  섞였을 때 classify/detectDuplicate 오분류를 가드한다.
+  예: R1, R2, Y1 드롭 → classify가 run인지 group인지 혼동.
+target_rule: "UI classify + detectDuplicate"
+priority: P1
+references:
+  - doc: docs/04-testing/52-19-rules-full-audit-report.md
+    section: "§4.1 P0 (UI)"
+  - doc: docs/02-design/37-playtest-s4-deterministic-ux.md
+    section: "§5 시나리오 3"
+  - commit: "68203b6"
+    note: "fix(ui): classify/detectDuplicate false positive"
+
+required_conditions:
+  - "seat 0 initial hand에 (color1, n) + (color1, n+1) + (color2, n) 조합 존재"
+
+seed_candidates:
+  - seed: "0x1"
+    condition: "B10 + B11 + Y10 (B 연속 10-11 + Y10 혼입)"
+    hand:
+      - R1a
+      - B4b
+      - R9a
+      - K1b
+      - B1a
+      - Y10b
+      - K10b
+      - Y3b
+      - Y11a
+      - Y2a
+      - Y3a
+      - B10b
+      - R5b
+      - B11a
+  - seed: "0x2"
+    condition: "B6 + B7 + K6"
+    hand:
+      - K10b
+      - B6a
+      - B1b
+      - K3a
+      - K6b
+      - R1b
+      - B4b
+      - Y12a
+      - Y11a
+      - K2a
+      - K13a
+      - Y8a
+      - R10a
+      - B7b
+  - seed: "0x3"
+    condition: "R1 + R2 + Y1"
+
+engine_checks:
+  - name: determinism
+    description: "같은 시드로 두 번 생성 시 동일한 seat 0 hand"
+  - name: mixed_triple_present
+    description: "혼합 숫자 트리플 조건 충족 여부"
+  - name: conservation_106
+    description: "초기 분배 직후 106장 보존"
+  - name: validator_rejects_mixed_group
+    description: |
+      잘못된 '같은 숫자 3색 + 연속 1색' 조합(예: R1, R2, Y1)은 validator 거절 (V-14 색 중복 또는 V-02 세트 타입 위반)
+
+expected_outcome: PASS
+estimated_sec: 2
