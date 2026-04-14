@@ -3,10 +3,12 @@
 > 이 문서는 `06-game-rules.md`에 정의된 모든 게임 규칙이 소스코드에 어떻게 구현되어 있는지 추적한다.
 > 게임 엔진 수정 시 반드시 이 문서를 참조하여 규칙 누락을 방지한다.
 
-**최종 갱신**: 2026-04-13
+**최종 갱신**: 2026-04-14 (Sprint 6 Day 3, B1 재감사)
 **근거 문서**:
 - `docs/02-design/06-game-rules.md` (규칙 정의서)
-- `docs/04-testing/48-game-rule-coverage-audit.md` (UI/테스트 커버리지 감사 보고)
+- `docs/04-testing/48-game-rule-coverage-audit.md` (UI/테스트 커버리지 감사 보고, 2026-04-13)
+- `docs/04-testing/52-19-rules-full-audit-report.md` (19규칙 전수 재감사, 2026-04-14)
+- `docs/02-design/36-rule-implementation-checklist-template.md` (6항목 체크리스트 템플릿, 2026-04-14)
 
 ---
 
@@ -47,10 +49,10 @@
 | **V-06** | 테이블 타일이 유실되지 않았는가 | ✅ `validator.go:91-97,111-119` | ✅ `validator_test.go:230-250,432-509` `conservation_test.go` (43개) | ✅ `GameClient.tsx` 보드 상태 동기화 | ✅ `e2e/game-rules.spec.ts` 기본 (간접) | ✅ S1~S7 간접 | ✅ |
 | **V-07** | 조커 교체 후 즉시 사용했는가 | ✅ `validator.go:106-110,164-181` `validateJokerReturned()` | ✅ `validator_test.go:251-292` `turn_service_test.go:329-452` | ⚠️ 조커 회수 후 즉시 사용 UX 검증 미수행 | ❌ E2E 0건 | ⚠️ S4 Phase D 조커 미획득 스킵 | ⚠️ |
 | **V-08** | 자기 턴인가 | ✅ `service/game_service.go:295-300` (seat 확인) | ✅ `game_service_test.go` (간접) | ✅ 클라이언트 isMyTurn UI 상태 | ⚠️ E2E 직접 케이스 없음 | ✅ 모든 시나리오 | ⚠️ |
-| **V-09** | 턴 타임아웃 | ✅ `service/turn_service.go:106-127` `HandleTimeout()` | ✅ `turn_service_test.go:148-198` | ✅ `GameClient.tsx` 타이머 UI | ⚠️ E2E 타임아웃 직접 케이스 없음 | ✅ AI 대전 다수 관찰 | ⚠️ |
-| **V-10** | 드로우 파일이 비어있는가 | ✅ `engine/pool.go:49-53` `Draw()` | ✅ `turn_service_test.go:199-230` | ✅ 서버 검증 (드로우 버튼 비활성) | ❌ E2E 0건 | ⚠️ Round 4 80턴 완주에서 1회 관찰 | ⚠️ |
-| **V-11** | 교착 상태인가 | ✅ `service/game_service.go` (ConsecutivePassCount) | ✅ `game_service_test.go:580-603,701-732` | ✅ `GameClient.tsx` GAME_OVER 메시지 처리 | ❌ E2E 0건 | ⚠️ 자연 발생 드물어 드물게 관찰 | ⚠️ |
-| **V-12** | 승리 조건 (랙 타일 0장) | ✅ `service/game_service.go` (ConfirmTurn 후 랙 체크) | ✅ `game_service_test.go` (간접) | ✅ `GameClient.tsx` GAME_OVER UI | ⚠️ E2E 직접 케이스 없음 | ✅ Round 4 DeepSeek 등 다수 | ⚠️ |
+| **V-09** | 턴 타임아웃 | ✅ `service/turn_service.go:106-127` `HandleTimeout()` | ✅ `turn_service_test.go:148-198` | ✅ `components/game/TurnTimer.tsx` + `GameClient.tsx` 타이머 구독 | ⚠️ E2E 설정(TC-GF-008/009, TC-RC-007)·카운트다운(A-12)만, **타임아웃→강제 드로우 전이 E2E 0건** | ✅ AI 대전 다수 관찰 | ⚠️ |
+| **V-10** | 드로우 파일이 비어있는가 | ✅ `engine/pool.go:49-53` `Draw()` + `ErrDrawPileEmpty` | ✅ `turn_service_test.go:199-230` | ✅ `GameClient.tsx` 드로우 버튼 → 패스 전환 | ✅ `e2e/game-lifecycle.spec.ts` TC-DL-E01~E04 (패스 전환·안내 메시지·X 시각화) | ⚠️ Round 4 80턴 완주에서 1회 관찰 | ✅ |
+| **V-11** | 교착 상태인가 | ✅ `service/game_service.go:618-639` (ConsecutivePassCount) | ✅ `game_service_test.go:580-603,701-732` | ✅ `GameClient.tsx` GAME_OVER 메시지 → 오버레이 분기 | ✅ `e2e/game-lifecycle.spec.ts` TC-LF-E07 (교착 종료 라벨 + ALL_PASS 안내) | ⚠️ 자연 발생 드물어 드물게 관찰 | ✅ |
+| **V-12** | 승리 조건 (랙 타일 0장) | ✅ `service/game_service.go:483-500` (ConfirmTurn 후 랙 체크) | ✅ `game_service_test.go` (간접) | ✅ `GameClient.tsx` GameEndedOverlay 렌더 | ✅ `e2e/game-lifecycle.spec.ts` TC-LF-E05/E09 + `game-ui-multiplayer.spec.ts A-11` | ✅ Round 4 DeepSeek 등 다수 | ✅ |
 | **V-13** | 재배치 권한 + 4유형 | (V-13a~V-13e 분해 — 아래 §1.1 참조) | | | | | **부분** |
 | **V-14** | 그룹에서 같은 색상 중복 불가 | ✅ `engine/group.go` (색상 중복 체크) | ✅ `group_test.go:62` `regression_test.go:554` | ✅ 서버 검증 | ✅ `e2e/game-rules.spec.ts` 그룹 negative | ✅ S1 등 | ✅ |
 | **V-15** | 런에서 숫자 연속 (13-1 순환 불가) | ✅ `engine/run.go:60` `checkRunDuplicates()` + 순서 검증 | ✅ `run_test.go:53,114,172` | ✅ 서버 검증 | ✅ `e2e/game-rules.spec.ts` 런 negative | ✅ S1 등 | ✅ |
@@ -70,7 +72,7 @@ V-13은 단일 권한 검증이 아니라 **재배치 권한 + 4가지 재배치
 
 | 규칙 ID | 검증 항목 | Engine 구현 | Engine 테스트 | UI 구현 | UI 테스트(E2E) | Playtest | 종합 |
 |---------|----------|-----------|------------|--------|-------------|---------|------|
-| **V-13a** | 재배치 권한 (hasInitialMeld) | ✅ `engine/errors.go:52` `validator.go` (간접) | ✅ `game_rules_comprehensive_test.go:574` | ✅ `GameClient.tsx` 최초 등록 후 재배치 활성 | ❌ E2E 0건 | ✅ AI 대전에서 자연 관찰 | ⚠️ |
+| **V-13a** | 재배치 권한 (hasInitialMeld) | ⚠️ **간접 구현** — `ErrNoRearrangePerm` 상수 정의만 존재(`engine/errors.go:52`), 실제로는 `validator.go:100-104 validateInitialMeld` → `ErrInitialMeldSource`가 대체 차단 (review 2026-04-10 §2.7.1) | ✅ `game_rules_comprehensive_test.go:574` + `validator_test.go:208-229` (V-05 간접) | ✅ `GameClient.tsx:644` `if (!hasInitialMeld) return` 재배치 차단 가드 | ✅ `e2e/rearrangement.spec.ts` TC-RR-02/TC-RR-04 Negative(최초 등록 전 시도 차단) PASS | ✅ AI 대전에서 자연 관찰 | ⚠️ |
 | **V-13b** | 유형 1: 세트 분할 (split) | ✅ V-06 보존 + V-01 유효성 | ✅ `conservation_test.go` 간접 | ✅ `f3eedb9` tilesDraggable 프롭 + DraggableTile 렌더링 + `handleDragEnd` 내 table→다른 group 이동 + pending→rack 되돌리기 landed | ⚠️ TC-RR-04 Negative **PASS** (회귀 가드) + TC-RR-03 Happy **fixme** (프론트 재배포 대기) | ❌ S4 미실행 | **부분** |
 | **V-13c** | 유형 2: 세트 합병 (merge) — **본 사건** | ✅ V-01 4색 그룹 + V-06 보존 | ✅ 그룹 유효성 테스트 다수 | ✅ `23e770a` `GameClient.tsx handleDragEnd` 서버 확정 그룹 머지 분기 landed | ⚠️ `adf0d84` TC-RR-01 Happy **fixme** + TC-RR-02 Negative **PASS** | ❌ S4 미실행 | **부분** |
 | **V-13d** | 유형 3: 타일 이동 (move) | ✅ V-06 보존 + V-01/V-02 최종 유효성 | ✅ `conservation_test.go` 간접 | ✅ `f3eedb9` tilesDraggable + `handleDragEnd` 내 table→다른 group 이동 분기 landed | ❌ 전용 TC 없음 (TC-RR-03 간접 커버 예정, 현재 fixme) | ❌ S4 미실행 | **부분** |
@@ -225,11 +227,21 @@ V-13은 단일 권한 검증이 아니라 **재배치 권한 + 4가지 재배치
 3단계 매트릭스로 재평가한 결과:
 
 ### V-01 ~ V-15 (V-13을 V-13a~V-13e 5건으로 분해 → 총 19개 규칙)
+
+**2026-04-14 Sprint 6 Day 3 B1 재감사 반영** (audit: `docs/04-testing/52-19-rules-full-audit-report.md`):
+
 | 종합 상태 | 건수 | 비율 | 규칙 ID |
 |---------|-----|------|--------|
-| ✅ 완료 (5단계 모두 ✅) | 6 | 32% | V-01, V-02, V-04, V-06, V-14, V-15 |
-| ⚠️ 부분 (E2E/Playtest 일부 결손 또는 UI/E2E fixme) | 13 | 68% | V-03, V-05, V-07, V-08, V-09, V-10, V-11, V-12, V-13a, **V-13b**, **V-13c**, **V-13d**, V-13e |
+| ✅ 완료 (5단계 모두 ✅) | 9 | 47% | V-01, V-02, V-04, V-06, V-10, V-11, V-12, V-14, V-15 |
+| ⚠️ 부분 (E2E/Playtest 일부 결손 또는 UI/E2E fixme) | 10 | 53% | V-03, V-05, V-07, V-08, V-09, V-13a, **V-13b**, **V-13c**, **V-13d**, V-13e |
 | ❌ 미완/버그 (UI 또는 핵심 기능 결손) | 0 | 0% | — |
+
+**Day 2 대비 진전** (2026-04-13 → 2026-04-14):
+- V-10 (드로우 파일 소진): ⚠️ → ✅ (TC-DL-E01~E04 E2E 발굴로 승격 — Sprint 5 lifecycle 구현에 포함되어 있었으나 매트릭스 반영 누락)
+- V-11 (교착): ⚠️ → ✅ (TC-LF-E07 E2E 발굴로 승격 — 동일하게 반영 누락)
+- V-12 (승리): ⚠️ → ✅ (TC-LF-E05/E09 + A-11 발굴로 승격 — 동일)
+- V-09 (턴 타임아웃): ⚠️ 유지 — TC-GF-008/009는 **설정 값만** 검증, 실제 타임아웃→강제 드로우 전이 E2E는 여전히 0건
+- V-13a (재배치 권한): ⚠️ 유지 — TC-RR-02/04 Negative는 UI 차단 가드만 검증, **엔진은 V-05 간접 차단으로 `ErrNoRearrangePerm` 미사용** (정확도 gap)
 
 > 위 합계는 V-13을 V-13a~e의 5건으로 분해한 결과(총 19건 기준, V-13 통합 행은 카운트에서 제외)이다.
 > **Sprint 6 Day 2 진전**: 2026-04-13 기준 ❌ 3건(V-13b/c/d) → 0건 해소.
@@ -256,6 +268,7 @@ V-13은 단일 권한 검증이 아니라 **재배치 권한 + 4가지 재배치
 
 ## 12. 업데이트 이력
 
+- **2026-04-14 (Sprint 6 Day 3, B1 전수 재감사)**: 19규칙 3단계 매트릭스 재감사 (`docs/04-testing/52-19-rules-full-audit-report.md`). V-10(드로우 파일 소진) / V-11(교착) / V-12(승리)는 lifecycle E2E(`game-lifecycle.spec.ts TC-DL-E01~04, TC-LF-E05/E07/E09`)에 이미 커버되어 있었으나 매트릭스 반영이 누락되어 있었음 → ⚠️ → ✅ 일괄 승격. V-13a(재배치 권한)의 `ErrNoRearrangePerm` 미사용(V-05 간접 차단) 사실을 Engine 구현 컬럼에 명시. V-09(턴 타임아웃)는 설정 E2E만 있고 전이 E2E 0건임을 명확화. 결정론 테스트 필요 규칙 목록을 감사 보고에 별도 섹션으로 분리하여 B3(qa-2)에 전달. 6항목 체크리스트 템플릿을 `docs/02-design/36-rule-implementation-checklist-template.md`로 신설. 결과: ✅ 6 → 9, ⚠️ 13 → 10, ❌ 0 유지.
 - **2026-04-13 (Day 2 후반, 정정)**: Sprint 6 Day 2 P2/P3 UI 구현 반영 — V-13c 합병 UI ✅ (`23e770a` + `adf0d84`), V-13b 분할 UI ✅ 완전 랜딩 (`f3eedb9` — table→group 이동 + pending→rack), V-13d 이동 UI ✅ (동일 커밋), V-13e 조커 교체 P3 MVP 랜딩 (`8e540cc`). 결과: ❌ 3건 → 0건 해소, ⚠️ 10 → 13, ✅ 6 유지. E2E 4건(TC-RR-03/04/05/06) 추가(대부분 fixme, 프론트 재배포 후 해제). **정정**: 이전 기록의 "V-13b split-to-rack 경로 미완"은 오해였음 — `handleDragEnd` `!sourceIsPending` 가드는 V-06 conservation 준수이며 차단이 정답. §1.1에 주석으로 명시. 잔여 gap: V-13d 전용 E2E TC, V-13e 회수 조커 재드래그, Playtest S4 결정론적 전환.
 - **2026-04-13**: 3단계(Engine/Engine 테스트/UI/UI 테스트/Playtest) 7컬럼 매트릭스로 확장. V-13을 V-13a~V-13e 4유형으로 분해. 기존 "PASS" 표기를 "엔진 한정 PASS"로 재해석하여 종합 상태 재산정. 요약 섹션(§11) 신설. 계기: 2026-04-13 라이브 테스트 V-13c 합병 UI 누락 사건. 감사 보고: `docs/04-testing/48-game-rule-coverage-audit.md`.
 - **2026-04-10**: 비검증 규칙 §2 3건(패널티 드로우, AI 5턴 강제 드로우, 끊김 후 3턴 부재) 구현 완료 반영. 에러코드 전수 검토(커밋 `822282e`)와 동시 갱신. (당시 UI 컬럼 부재로 V-13 UI 누락 미인지)
