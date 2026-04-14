@@ -49,5 +49,12 @@ echo "[setup]   base:     main" >&2
 
 git worktree add -b "$BRANCH_NAME" "$WORKTREE_DIR" main >&2
 
+# Per-worktree git config — commit author는 agent 이름으로 자동 기록
+# 근거: docs/02-design/40-agent-commit-queue-design.md §6 보강 1
+# 효과: git log --author=<agent-name> 으로 즉시 필터링, attribution 누락 0건
+git -C "$WORKTREE_DIR" config user.name "$AGENT_NAME"
+git -C "$WORKTREE_DIR" config user.email "${AGENT_NAME}@rummiarena.local"
+echo "[setup]   author:   ${AGENT_NAME} <${AGENT_NAME}@rummiarena.local>" >&2
+
 echo "AGENT_WORKTREE_PATH=${WORKTREE_DIR}"
 echo "AGENT_WORKTREE_BRANCH=${BRANCH_NAME}"

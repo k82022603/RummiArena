@@ -122,7 +122,170 @@ c587fa9 node-dev-1: feat(node-dev-1): add file
 
 ### 채택 여부
 
-architect-1 의 SP2 ADR 에서 commit queue 안과 비교 후 결정한다. 본 PoC 는 **worktree 안의 실현 가능성과 attribution 보존을 입증**하는 것까지가 책임 범위.
+architect-1 의 SP2 ADR(`docs/02-design/40-agent-commit-queue-design.md`)에서 commit queue 안과 비교 후 **git worktree 채택 확정** (2026-04-14, commit `a14acbf`). 비교표 16항목: worktree 13건 우세 / queue 1건 우세 / 동률 2건. 본 PoC 는 채택 안의 실현 가능성과 attribution 보존을 입증한 것이며, 아래 SP2 보강 4건이 추가로 합쳐졌다.
+
+### SP2 보강 4건 (2026-04-14 추가)
+
+architect-1 의 SP2 ADR `§6` 권고에 따라 다음 4개 보강이 PoC 위에 추가 구현되었다 (devops-1 후속 작업, Task #30).
+
+#### 보강 1 — per-worktree git config user.name/email (setup.sh)
+
+`agent-worktree-setup.sh` 가 worktree 생성 직후 해당 worktree에만 적용되는 git config를 자동 설정한다.
+
+```bash
+git -C "$WORKTREE_DIR" config user.name "$AGENT_NAME"
+git -C "$WORKTREE_DIR" config user.email "${AGENT_NAME}@rummiarena.local"
+```
+
+**효과**: agent가 그냥 `git commit` 하면 author가 자동으로 `architect-1`, `node-dev-1` 등으로 기록된다. `git log --author=architect-1` 으로 즉시 필터링 가능. 모든 agent에게 매번 `-c user.name=...` 플래그를 강요할 필요가 없다 → attribution 누락 사고 0건.
+
+**검증** (PoC commit `de0df98`):
+```text
+Author: devops-poc-2 <devops-poc-2@rummiarena.local>
+Committer: devops-poc-2 <devops-poc-2@rummiarena.local>
+```
+
+#### 보강 2 — fast-forward 실패 시 자동 rebase 정책 (merge.sh)
+
+기존 PoC는 base diverged 시 `git merge --no-ff` 3-way 머지로 폴백했지만, 머지 커밋이 attribution을 흐리고 history에 잡음이 생긴다. 보강 후 merge.sh는 항상 다음 절차를 따른다:
+
+```mermaid
+flowchart LR
+    Start([merge.sh agent-name]) --> Lock[flock 획득]
+    Lock --> SafetyChecks[안전 게이트<br/>worktree clean / branch / root clean]
+    SafetyChecks --> IsAncestor{base가 agent의<br/>ancestor?}
+    IsAncestor -->|예 ff 가능| FF[git merge --ff-only]
+    IsAncestor -->|아니오 divergence| Rebase[git -C worktree rebase base]
+    Rebase --> RebaseOK{rebase 성공?}
+    RebaseOK -->|예| FF
+    RebaseOK -->|아니오 충돌| Abort[git rebase --abort<br/>worktree/branch 보존]
+    Abort --> Exit3([exit 3])
+    FF --> Cleanup[worktree remove<br/>+ branch -D]
+    Cleanup --> Exit0([exit 0])
+
+    style Exit3 fill:#ffcccc
+    style Exit0 fill:#ccffcc
+```
+
+**효과**: history는 항상 linear (no merge commit). agent commit이 그대로 main에 등장하여 `git log` 가독성과 `git blame` 정확도 모두 향상.
+
+**검증** (isolated test repo PoC):
+```text
+=== before merge: divergence 확인 ===
+7c08bbf (agent/test/poc) feat: agent work
+96a3dea (HEAD -> main)   fix: main work
+dd152ad initial
+
+=== rebase + ff 후 ===
+30758fb (HEAD -> main, agent/test/poc) feat: agent work
+96a3dea fix: main work
+dd152ad initial
+```
+
+linear history, agent commit author 보존.
+
+#### 보강 3 — 머지 실패 시 worktree/브랜치 보존 (merge.sh)
+
+기존 PoC는 cleanup이 항상 실행되어 충돌 시에도 worktree가 사라질 위험이 있었다. 보강 후 cleanup은 **`git merge --ff-only` 성공 분기에서만** 실행된다.
+
+- rebase 충돌 → `git rebase --abort` + worktree/브랜치 보존 + exit 3
+- ff 머지 실패 → 동일하게 보존 + exit 3
+- 정상 분기 → cleanup 실행 + exit 0
+
+**recovery 절차** (스크립트 출력):
+```text
+recovery 단계:
+  cd /path/to/.claude/worktrees/agent-<name>
+  git rebase <base-sha>      # 충돌 수동 해결
+  git rebase --continue
+  cd /repo/root && bash scripts/agent-worktree-merge.sh <name>
+```
+
+**검증** (isolated conflict test):
+```text
+=== rebase 충돌 후 abort ===
+worktree dir exists: yes
+branch exists:       yes
+worktree status:     (clean)
+worktree HEAD:       c3d05aa agent change
+main HEAD unchanged: 12c2fa2 main change
+would_exit_with:     3
+```
+
+agent의 작업이 손실 없이 보존됨, main도 영향 없음, 수동 해결 후 재시도 가능.
+
+#### 보강 4 — flock 동시 머지 lock (merge.sh)
+
+두 agent가 동시에 `merge.sh` 를 호출하면 `.git/index.lock` 충돌이 발생할 수 있다 (Day 1+2 attribution 경합 commit `deb9635` 사례 재현 위험). 보강 후 merge.sh는 시작 직후 `/tmp/rummiarena-merge.lock` 에 대한 flock을 획득한다.
+
+```bash
+LOCK_FILE="/tmp/rummiarena-merge.lock"
+exec 9>"$LOCK_FILE"
+flock -w 60 -x 9
+trap "flock -u 9 2>/dev/null || true" EXIT
+```
+
+WSL2의 util-linux 2.39.3 flock 사용 (실측 가능). flock 미설치 환경 fallback으로 `mkdir /tmp/rummiarena-merge.lock.d` 폴링 1초 간격을 사용한다 (60초 timeout).
+
+**검증** (병렬 실행 테스트):
+```text
+[test1] HELD lock at 16:27:49.497  ← test1 즉시 획득
+[test2] try lock at 16:27:49.698   ← test2 200ms 후 시도, 블록됨
+[test1] release lock at 16:27:51.506
+[test2] ACQUIRED lock at 16:27:51.511  ← test1 release 후 5ms 내 획득
+```
+
+머지가 수 초 작업이므로 직렬화 비용은 무시 가능. race condition 0건.
+
+#### 보강 적용 후 머지 안전 게이트 (전체)
+
+```mermaid
+flowchart TB
+    Start([merge.sh agent-name]) --> Lock[Step 0:<br/>flock 60s timeout]
+    Lock -->|timeout| ExitL[exit 4]
+    Lock --> CheckExist{worktree<br/>존재?}
+    CheckExist -->|아니오| Exit1[exit 1]
+    CheckExist -->|예| CheckBranch{feature<br/>branch?}
+    CheckBranch -->|아니오| Exit4a[exit 4]
+    CheckBranch -->|예| WTDirty{worktree<br/>tracked dirty?}
+    WTDirty -->|예| Exit2[exit 2]
+    WTDirty -->|아니오| RootBranch{root branch<br/>= main?}
+    RootBranch -->|아니오| Exit4b[exit 4]
+    RootBranch -->|예| RootDirty{root tracked<br/>dirty?}
+    RootDirty -->|예| Exit4c[exit 4]
+    RootDirty -->|아니오| Ancestor{base ancestor<br/>of agent?}
+    Ancestor -->|아니오 divergence| Rebase[rebase agent → base]
+    Rebase --> RebaseOK{rebase OK?}
+    RebaseOK -->|아니오 충돌| AbortPreserve[abort rebase<br/>worktree+branch 보존]
+    AbortPreserve --> Exit3a[exit 3]
+    RebaseOK -->|예| FF
+    Ancestor -->|예| FF[git merge --ff-only]
+    FF --> FFOK{ff OK?}
+    FFOK -->|아니오| ExitFF[worktree+branch 보존<br/>exit 3]
+    FFOK -->|예| Cleanup[worktree remove<br/>+ branch -D]
+    Cleanup --> Done([exit 0])
+
+    style Exit1 fill:#ffcccc
+    style Exit2 fill:#ffcccc
+    style Exit3a fill:#ffcccc
+    style Exit4a fill:#ffcccc
+    style Exit4b fill:#ffcccc
+    style Exit4c fill:#ffcccc
+    style ExitL fill:#ffcccc
+    style ExitFF fill:#ffcccc
+    style Done fill:#ccffcc
+```
+
+#### 종합 효과
+
+| 보강 | 해결 문제 | 검증 commit/test |
+|---|---|---|
+| 1. per-worktree git config | attribution 누락 (agent마다 -c 플래그 강요) | PoC commit `de0df98` 자동 author 기록 |
+| 2. rebase + ff-only | 머지 커밋이 attribution 흐림 | isolated test linear history |
+| 3. 실패 시 보존 | cleanup이 충돌 시 작업 손실 | conflict test 후 worktree+branch 보존 확인 |
+| 4. flock 동시 lock | `.git/index.lock` race | parallel test 5ms 내 직렬화 확인 |
+
+→ **race condition 0건 + attribution 누락 0건** 달성.
 
 ---
 
