@@ -15,6 +15,75 @@ import type {
 } from "./types";
 import { MODEL_NAMES } from "@/components/tournament/constants";
 
+/** CostEfficiencyScatter 차트의 단일 점 — recharts 입력 */
+export interface CostEfficiencyPoint {
+  modelType: ModelType;
+  round: string;
+  promptVersion: PromptVersion;
+  costPerTurn: number;
+  totalCost: number;
+  turns: number;
+  placeRate: number;
+  placePerDollar: number;
+}
+
+/**
+ * TournamentRoundEntry[] → CostEfficiencyPoint[] 변환.
+ *
+ * - X축은 "$/턴"이므로 totalCost / totalTurns 로 도출
+ * - 비용 0(Ollama)이거나 turns 0 인 라운드는 log scale 호환을 위해 제외
+ * - placePerDollar = placeRate / costPerTurn
+ */
+export function buildCostEfficiencyPoints(
+  rows: TournamentRoundEntry[],
+  selectedModels: ModelType[],
+  promptVersion: "all" | PromptVersion,
+): CostEfficiencyPoint[] {
+  const selected = new Set(selectedModels);
+  const out: CostEfficiencyPoint[] = [];
+  for (const r of rows) {
+    if (!selected.has(r.modelType)) continue;
+    if (promptVersion !== "all" && r.promptVersion !== promptVersion) continue;
+    if (r.totalTurns <= 0) continue;
+    const costPerTurn = r.totalCost / r.totalTurns;
+    if (costPerTurn <= 0) continue;
+    out.push({
+      modelType: r.modelType,
+      round: r.round,
+      promptVersion: r.promptVersion,
+      costPerTurn,
+      totalCost: r.totalCost,
+      turns: r.totalTurns,
+      placeRate: r.placeRate,
+      placePerDollar: r.placeRate / costPerTurn,
+    });
+  }
+  return out;
+}
+
+/**
+ * Pareto frontier 계산 — 비용은 낮을수록, place rate는 높을수록 우월.
+ *
+ * 알고리즘:
+ *   1. costPerTurn 오름차순 정렬
+ *   2. placeRate 누적 최대값(running max)을 따라 점을 채택
+ */
+export function computeParetoFrontier(
+  points: CostEfficiencyPoint[],
+): CostEfficiencyPoint[] {
+  if (points.length === 0) return [];
+  const sorted = [...points].sort((a, b) => a.costPerTurn - b.costPerTurn);
+  const frontier: CostEfficiencyPoint[] = [];
+  let bestRate = -Infinity;
+  for (const p of sorted) {
+    if (p.placeRate > bestRate) {
+      frontier.push(p);
+      bestRate = p.placeRate;
+    }
+  }
+  return frontier;
+}
+
 /** 라운드-프롬프트 조합별 모델 placeRate 매핑 */
 export interface PivotRow {
   /** X축 라벨: round (promptVersion이 섞여 있으면 "R4 v2" 형태로 노출) */

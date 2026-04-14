@@ -5,7 +5,6 @@ import type {
   TournamentFilterState,
   TournamentSummary,
   TournamentRoundEntry,
-  CostEfficiencyEntry,
   ModelLatestStats,
 } from "@/lib/types";
 import { DEFAULT_TOURNAMENT_FILTER } from "@/lib/types";
@@ -13,6 +12,7 @@ import TournamentFilter from "./TournamentFilter";
 import TournamentGrid from "./TournamentGrid";
 import ModelLegend from "./ModelLegend";
 import PlaceRateChart from "./PlaceRateChart";
+import CostEfficiencyScatter from "./CostEfficiencyScatter";
 
 interface TournamentPageClientProps {
   initialSummary: TournamentSummary;
@@ -51,7 +51,7 @@ export default function TournamentPageClient({
     DEFAULT_TOURNAMENT_FILTER,
   );
 
-  const { filteredRounds, filteredCostEff, filteredCards } = useMemo(() => {
+  const { filteredRounds, filteredCards } = useMemo(() => {
     const selected = new Set(filters.selectedModels);
     const [startRound, endRound] = filters.roundRange;
 
@@ -78,20 +78,12 @@ export default function TournamentPageClient({
         promptMatches(r.promptVersion),
     );
 
-    const costEff: CostEfficiencyEntry[] = initialSummary.costEfficiency.filter(
-      (c) =>
-        selected.has(c.modelType) &&
-        inRange(c.round) &&
-        promptMatches(c.promptVersion),
-    );
-
     const cards: ModelLatestStats[] = initialSummary.modelStats.filter((c) =>
       selected.has(c.modelType),
     );
 
     return {
       filteredRounds: rounds,
-      filteredCostEff: costEff,
       filteredCards: cards,
     };
   }, [filters, initialSummary]);
@@ -130,10 +122,10 @@ export default function TournamentPageClient({
           />
         }
         topRight={
-          <PlaceholderSlot
-            title="비용 효율성"
-            description="Cost vs Place Rate 산점도 (PR 3)"
-            count={filteredCostEff.length}
+          <CostEfficiencyScatter
+            data={filteredRounds}
+            selectedModels={filters.selectedModels}
+            promptVersion={filters.promptVersion}
           />
         }
         bottomLeft={
