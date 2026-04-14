@@ -1,12 +1,14 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { BaseAdapter } from './base.adapter';
 import { ModelInfo } from '../common/interfaces/ai-adapter.interface';
+import { ModelType as RegistryModelType } from '../prompt/registry/prompt-registry.types';
 import { MoveRequestDto } from '../common/dto/move-request.dto';
 import { MoveResponseDto } from '../common/dto/move-response.dto';
 import { PromptBuilderService } from '../prompt/prompt-builder.service';
 import { ResponseParserService } from '../common/parser/response-parser.service';
+import { PromptRegistry } from '../prompt/registry/prompt-registry.service';
 
 /**
  * Ollama 로컬 LLM 어댑터.
@@ -33,8 +35,9 @@ export class OllamaAdapter extends BaseAdapter {
     promptBuilder: PromptBuilderService,
     responseParser: ResponseParserService,
     private readonly configService: ConfigService,
+    @Optional() promptRegistry?: PromptRegistry,
   ) {
-    super(promptBuilder, responseParser, 'OllamaAdapter');
+    super(promptBuilder, responseParser, 'OllamaAdapter', promptRegistry);
     this.baseUrl = this.configService.get<string>(
       'OLLAMA_BASE_URL',
       'http://localhost:11434',
@@ -43,6 +46,10 @@ export class OllamaAdapter extends BaseAdapter {
       'OLLAMA_DEFAULT_MODEL',
       'gemma3:4b',
     );
+  }
+
+  protected getRegistryModelType(): RegistryModelType {
+    return 'ollama';
   }
 
   getModelInfo(): ModelInfo {

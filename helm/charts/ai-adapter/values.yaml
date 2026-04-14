@@ -23,6 +23,15 @@ env:
   REDIS_PORT: "6379"
   DAILY_COST_LIMIT_USD: "20"
   HOURLY_USER_COST_LIMIT_USD: "5"
+  # PromptRegistry (SP3 / docs/02-design/39 §6.5) — 빈 값 = default-recommendation
+  # PROMPT_VARIANT="v3" 1줄로 5개 모델 전부 v3 전환 가능.
+  PROMPT_VARIANT: ""
+  OPENAI_PROMPT_VARIANT: ""
+  CLAUDE_PROMPT_VARIANT: ""
+  DEEPSEEK_PROMPT_VARIANT: ""
+  DEEPSEEK_REASONER_PROMPT_VARIANT: ""
+  DASHSCOPE_PROMPT_VARIANT: ""
+  OLLAMA_PROMPT_VARIANT: ""
 
 secrets:
   # 실제 값은 kubectl patch 또는 inject-secrets.sh로 주입 (Git에 커밋하지 말 것)

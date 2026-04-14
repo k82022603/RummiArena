@@ -1,12 +1,17 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosError } from 'axios';
 import { BaseAdapter } from '../base.adapter';
 import { ModelInfo } from '../../common/interfaces/ai-adapter.interface';
+import {
+  ModelType as RegistryModelType,
+  PromptVariant,
+} from '../../prompt/registry/prompt-registry.types';
 import { MoveRequestDto } from '../../common/dto/move-request.dto';
 import { MoveResponseDto } from '../../common/dto/move-response.dto';
 import { PromptBuilderService } from '../../prompt/prompt-builder.service';
 import { ResponseParserService } from '../../common/parser/response-parser.service';
+import { PromptRegistry } from '../../prompt/registry/prompt-registry.service';
 import {
   DASHSCOPE_BASE_URL,
   DASHSCOPE_DEFAULT_MODEL,
@@ -49,8 +54,9 @@ export class DashScopeAdapter extends BaseAdapter {
     promptBuilder: PromptBuilderService,
     responseParser: ResponseParserService,
     private readonly configService: ConfigService,
+    @Optional() promptRegistry?: PromptRegistry,
   ) {
-    super(promptBuilder, responseParser, 'DashScopeAdapter');
+    super(promptBuilder, responseParser, 'DashScopeAdapter', promptRegistry);
     this.apiKey = this.configService.get<string>('DASHSCOPE_API_KEY', '');
     this.defaultModel = this.configService.get<string>(
       'DASHSCOPE_DEFAULT_MODEL',
@@ -67,6 +73,10 @@ export class DashScopeAdapter extends BaseAdapter {
 
   private get isThinkingOnly(): boolean {
     return isThinkingOnlyModel(this.defaultModel);
+  }
+
+  protected getRegistryModelType(): RegistryModelType {
+    return 'dashscope';
   }
 
   getModelInfo(): ModelInfo {
@@ -100,7 +110,12 @@ export class DashScopeAdapter extends BaseAdapter {
     }
 
     const modelInfo = this.getModelInfo();
-    const systemPrompt = buildDashScopeSystemPrompt();
+    const variant: PromptVariant | null = this.promptRegistry
+      ? this.promptRegistry.resolve('dashscope')
+      : null;
+    const systemPrompt = variant
+      ? variant.systemPromptBuilder()
+      : buildDashScopeSystemPrompt();
     const totalStartTime = Date.now();
 
     let lastErrorReason = '';
@@ -115,8 +130,15 @@ export class DashScopeAdapter extends BaseAdapter {
 
       const attemptStartTime = Date.now();
 
-      const userPrompt =
-        attempt === 0
+      const userPrompt = variant
+        ? attempt === 0
+          ? variant.userPromptBuilder(request.gameState)
+          : variant.retryPromptBuilder(
+              request.gameState,
+              lastErrorReason,
+              attempt,
+            )
+        : attempt === 0
           ? buildDashScopeUserPrompt(request.gameState)
           : buildDashScopeRetryPrompt(
               request.gameState,
@@ -125,7 +147,7 @@ export class DashScopeAdapter extends BaseAdapter {
             );
 
       this.logger.log(
-        `[DashScope-Thinking] gameId=${request.gameId} attempt=${attempt + 1}/${request.maxRetries} model=${this.defaultModel}`,
+        `[DashScope-Thinking] gameId=${request.gameId} attempt=${attempt + 1}/${request.maxRetries} model=${this.defaultModel} variant=${variant?.id ?? 'v3-legacy'}`,
       );
 
       try {

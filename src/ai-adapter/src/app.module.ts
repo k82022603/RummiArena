@@ -10,6 +10,7 @@ import { CharacterModule } from './character/character.module';
 import { RedisModule } from './redis/redis.module';
 import { CostModule } from './cost/cost.module';
 import { MetricsModule } from './metrics/metrics.module';
+import { PromptRegistryModule } from './prompt/registry/prompt-registry.module';
 import { RateLimitGuard } from './common/guards/rate-limit.guard';
 
 /**
@@ -44,6 +45,7 @@ import { RateLimitGuard } from './common/guards/rate-limit.guard';
       },
     ]),
     RedisModule,
+    PromptRegistryModule,
     HealthModule,
     MoveModule,
     CharacterModule,

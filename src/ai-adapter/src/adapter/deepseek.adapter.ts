@@ -1,12 +1,17 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { BaseAdapter } from './base.adapter';
 import { ModelInfo } from '../common/interfaces/ai-adapter.interface';
+import {
+  ModelType as RegistryModelType,
+  PromptVariant,
+} from '../prompt/registry/prompt-registry.types';
 import { MoveRequestDto } from '../common/dto/move-request.dto';
 import { MoveResponseDto } from '../common/dto/move-response.dto';
 import { PromptBuilderService } from '../prompt/prompt-builder.service';
 import { ResponseParserService } from '../common/parser/response-parser.service';
+import { PromptRegistry } from '../prompt/registry/prompt-registry.service';
 import {
   V2_REASONING_SYSTEM_PROMPT,
   buildV2UserPrompt,
@@ -15,14 +20,16 @@ import {
 
 /**
  * DeepSeek 어댑터.
- * OpenAI 호환 API를 사용하므로 openai.adapter.ts와 구조가 유사하다.
+ * OpenAI 호환 API 를 사용하므로 openai.adapter.ts 와 구조가 유사하다.
  * 기본 모델: deepseek-chat (비용 효율적)
  *
  * deepseek-reasoner 사용 시:
- * - V2 공유 프롬프트(V2_REASONING_SYSTEM_PROMPT) 사용
- * - reasoning_content 필드 파싱 지원
- * - JSON 복구 로직(trailing comma, 코드블록 제거 등) 적용
- * - temperature=0 고정 (추론 모델은 낮은 온도가 유리)
+ *   - PromptRegistry 가 'deepseek-reasoner' 매핑 → 기본 'v3' (★ SP3 behavior change, 이전 v2 하드코딩)
+ *     환경변수 PROMPT_VARIANT 또는 DEEPSEEK_REASONER_PROMPT_VARIANT 로 override 가능
+ *   - reasoning_content 필드 파싱 + extractBestJson() 다단계 JSON 복구
+ *   - temperature=0 고정
+ *
+ * Registry 가 주입되지 않은 경우 (legacy spec): V2 하드코딩 경로 유지 — 기존 테스트 호환.
  */
 @Injectable()
 export class DeepSeekAdapter extends BaseAdapter {
@@ -34,13 +41,18 @@ export class DeepSeekAdapter extends BaseAdapter {
     promptBuilder: PromptBuilderService,
     responseParser: ResponseParserService,
     private readonly configService: ConfigService,
+    @Optional() promptRegistry?: PromptRegistry,
   ) {
-    super(promptBuilder, responseParser, 'DeepSeekAdapter');
+    super(promptBuilder, responseParser, 'DeepSeekAdapter', promptRegistry);
     this.apiKey = this.configService.get<string>('DEEPSEEK_API_KEY', '');
     this.defaultModel = this.configService.get<string>(
       'DEEPSEEK_DEFAULT_MODEL',
       'deepseek-chat',
     );
+  }
+
+  protected getRegistryModelType(): RegistryModelType {
+    return this.isReasoner ? 'deepseek-reasoner' : 'deepseek';
   }
 
   /** reasoner 모델 여부를 판별한다 */
@@ -69,17 +81,26 @@ export class DeepSeekAdapter extends BaseAdapter {
   }
 
   /**
-   * DeepSeek Reasoner는 generateMove를 오버라이드하여
+   * DeepSeek Reasoner 는 generateMove 를 오버라이드하여
    * 전용 프롬프트와 향상된 파싱 로직을 적용한다.
+   *
+   * 프롬프트 선택:
+   *   - PromptRegistry 가 주입된 경우: registry.resolve('deepseek-reasoner') 로 PromptVariant 획득
+   *     (default-recommendation: 'v3', 환경변수로 override 가능)
+   *   - 미주입 경우: V2 하드코딩 (legacy spec 호환)
    */
   async generateMove(request: MoveRequestDto): Promise<MoveResponseDto> {
     if (!this.isReasoner) {
       return super.generateMove(request);
     }
 
-    // Reasoner 전용 로직: V2 공유 프롬프트 + 향상된 JSON 추출
     const modelInfo = this.getModelInfo();
-    const systemPrompt = V2_REASONING_SYSTEM_PROMPT;
+    const variant: PromptVariant | null = this.promptRegistry
+      ? this.promptRegistry.resolve('deepseek-reasoner')
+      : null;
+    const systemPrompt = variant
+      ? variant.systemPromptBuilder()
+      : V2_REASONING_SYSTEM_PROMPT;
     const totalStartTime = Date.now();
 
     let lastErrorReason = '';
@@ -87,14 +108,20 @@ export class DeepSeekAdapter extends BaseAdapter {
     for (let attempt = 0; attempt < request.maxRetries; attempt++) {
       const attemptStartTime = Date.now();
 
-      // V2 공유 유저 프롬프트 (영어 기반, 3모델 공통)
-      const userPrompt =
-        attempt === 0
+      const userPrompt = variant
+        ? attempt === 0
+          ? variant.userPromptBuilder(request.gameState)
+          : variant.retryPromptBuilder(
+              request.gameState,
+              lastErrorReason,
+              attempt,
+            )
+        : attempt === 0
           ? buildV2UserPrompt(request.gameState)
           : buildV2RetryPrompt(request.gameState, lastErrorReason, attempt);
 
       this.logger.log(
-        `[DeepSeek-Reasoner] gameId=${request.gameId} attempt=${attempt + 1}/${request.maxRetries}`,
+        `[DeepSeek-Reasoner] gameId=${request.gameId} attempt=${attempt + 1}/${request.maxRetries} variant=${variant?.id ?? 'v2-legacy'}`,
       );
 
       try {
