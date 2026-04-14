@@ -32,6 +32,10 @@ env:
   AI_ADAPTER_URL: "http://ai-adapter:8081"
   AI_ADAPTER_TIMEOUT_SEC: "500"
   RATE_LIMIT_LOW_MAX: "1000"
+  # Playwright E2E suite(--repeat-each=7, spec당 최대 20 createRoomAndStart)가
+  # 단일 게스트 세션을 공유하므로 1분 윈도우에 다수 WS 업그레이드가 집중된다.
+  # 프로덕션 기본값(5)은 운영 values override에서 다시 낮춰야 한다. (docs/04-testing/51)
+  RATE_LIMIT_WS_MAX: "300"
   AI_COOLDOWN_SEC: "0"
   # BUG-GS-005 후속: 게임 턴 상한. 초과 시 STALEMATE로 귀결되며 Redis GameState 자동 정리.
   # 0 이하면 제한 없음. 기본 200턴 (정상 플레이 여유분, 설계 문서 32 §8.1)

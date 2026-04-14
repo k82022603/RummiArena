@@ -474,20 +474,59 @@ test.describe("TC-RR: 머지 호환 힌트 (P2-2)", () => {
         },
       });
     });
-    await page.waitForTimeout(400);
+    // store 주입 후 React 렌더링이 완료되어 R5a/B10a/B5a 타일이 모두 DOM에 실제로 그려질 때까지 대기.
+    // 고정 대기(400ms)는 저부하 장비에서 0.5~1.5초 걸릴 수 있어 플레이키 원인이다.
+    await page.waitForFunction(
+      () => {
+        return (
+          !!document.querySelector('[aria-label="B5a 타일 (드래그 가능)"]') &&
+          !!document.querySelector('[aria-label*="R5a 타일"]') &&
+          !!document.querySelector('[aria-label*="B10a 타일"]')
+        );
+      },
+      { timeout: 10_000 }
+    );
 
     // B5a를 mouseDown + 8px 이상 이동으로 드래그 활성화 (drop 없음)
     const b5 = page.locator('[aria-label="B5a 타일 (드래그 가능)"]').first();
     await expect(b5).toBeVisible({ timeout: 5000 });
+    // hover로 pointer 위치 확정(bounding box 계산 직후 레이아웃 shift 방지)
+    await b5.hover();
     const box = await b5.boundingBox();
     if (!box) throw new Error("B5a bounding box not found");
     const sx = box.x + box.width / 2;
     const sy = box.y + box.height / 2;
     await page.mouse.move(sx, sy);
     await page.mouse.down();
+    // PointerSensor activationConstraint(distance=8) 충족을 위해 여러 단계로 나누어 이동
     await page.mouse.move(sx + 3, sy, { steps: 2 });
     await page.mouse.move(sx + 20, sy + 20, { steps: 5 });
-    await page.waitForTimeout(200);
+    await page.mouse.move(sx + 40, sy + 40, { steps: 5 });
+
+    // dnd-kit가 activeId를 set하고 DroppableGroupWrapper가 ring class를 렌더할 때까지 폴링.
+    // DragOverlay가 존재할 수 있으므로 querySelectorAll로 모든 R5a를 검사한 뒤
+    // 하나라도 ring class를 갖는 ancestor를 찾으면 성공으로 판정.
+    await page.waitForFunction(
+      () => {
+        const nodes = document.querySelectorAll('[aria-label*="R5a 타일"]');
+        for (const r5 of Array.from(nodes)) {
+          let node: Element | null = r5;
+          for (let i = 0; i < 10 && node; i++) {
+            if (node.className && typeof node.className === "string") {
+              if (
+                node.className.includes("ring-green-400/40") ||
+                node.className.includes("animate-pulse")
+              ) {
+                return true;
+              }
+            }
+            node = node.parentElement;
+          }
+        }
+        return false;
+      },
+      { timeout: 10_000 }
+    );
 
     // 호환 그룹 [R5 Y5 K5] 래퍼 DOM에 ring-green-400/40 animate-pulse class 존재 확인
     // DroppableGroupWrapper: <div ref={setNodeRef} className={ringClass}> — 그룹을 감싸는 최외곽 div
