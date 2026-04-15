@@ -476,6 +476,14 @@ export const V4_THINKING_CLAUDE_SYSTEM_PROMPT =
 
 ### 6.3 Variant: `v4-strict-json` (GPT-5-mini)
 
+> **Empirical 검증 완료 (2026-04-15, Day 4)**: SP1 §6.3 의 설계 방향 — "GPT 는 v4 공통 body 대신 strict-json 분기 필요" — 은 Day 4 empirical 실측으로 **정당화 확정**. Redis/game-server 우회 1:1 비교에서 v4 공통 body 적용 시 GPT 의 reasoning_tokens 가 **v2 대비 -25% (Cohen d = -1.46, large negative effect)** 억제되는 것을 관측. tiles_placed 는 동일(6.33/6.33) 이어서 "같은 품질 + 사고 탄력 상실" 로 risk only. 상세:
+> - 집계 리포트: `docs/04-testing/57-v4-gpt-empirical-verification.md`
+> - 단일 샘플 마크다운 (LangSmith run `67d37c3b...`): `docs/04-testing/58-langsmith-trace-gpt-v4-sample.md`
+> - 후속 리포트: `docs/03-development/21-prompt-v4-baseline-dry-run-report.md` §3.4.1
+>
+> 본 §6.3 의 v4-strict-json 변종은 Sprint 6 후반 또는 Sprint 7 에 구현 예정.
+
+
 ```typescript
 // src/ai-adapter/src/prompt/v4/v4-strict-json.ts
 

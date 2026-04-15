@@ -211,6 +211,37 @@ node scripts/prompt-ab-eval.mjs
 
 **향후**: v4.1 에서 GPT 전용 variant 를 분기 권장 — response_format strict json_schema + token efficiency hint. SP1 §6.3 참조.
 
+#### 3.4.1 Empirical follow-up (2026-04-15, Day 4)
+
+**배경**: Day 4 Phase 2 착수 전 SP5 §3.4 의 "v4 미사용" 판단을 이론 주장 → **실측 검증**으로 고정.
+
+**검증 방식**: Redis / game-server / ai-adapter 우회, OpenAI API 직접 호출. 동일 중반 fixture (turn ~15, 11 tiles 손패, 3 melds 보드, 조커 포함) 에 v2 와 v4 system prompt 를 각 1회 × **N=3** 반복 전송. LangSmith trace 기록. 스크립트 `src/ai-adapter/scripts/verify-v4-gpt-empirical.ts` / 집계 리포트 `docs/04-testing/57-v4-gpt-empirical-verification.md` / **단일 샘플 마크다운** `docs/04-testing/58-langsmith-trace-gpt-v4-sample.md` (Run ID `67d37c3b-0460-40b3-b10a-b5dafb1ee19a`) / commit `c980da8`.
+
+**핵심 결과**:
+
+| 지표 | v2 (N=3) | v4 (N=3) | 차이 |
+|------|---------:|---------:|-----:|
+| tiles_placed (avg) | 6.33 | 6.33 | **0.00** |
+| reasoning_tokens (avg) | 4,224 | 3,179 | **-25%** |
+| reasoning_tokens (samples) | 4608 / 3328 / 4736 | 3264 / 3776 / 2496 | — |
+| Cohen d | — | — | **-1.46** (large **negative** effect) |
+
+**SP5 원 판단의 3가지 수정/확인**:
+
+1. ❌ **"API 에 thinking token 이 노출되지 않음"** (SP5 §3.4) — **틀림**. gpt-5-mini `usage.completion_tokens_details.reasoning_tokens` 필드가 **실제로 노출**되며 측정 가능
+2. ✅ **"Thinking Time Budget 섹션은 GPT-5-mini 에게 잘못된 신호"** (SP5 §3.4) — **실증 확인**. 방향은 예상과 반대 — v4 의 "extended thinking" 지시가 GPT 의 내부 CoT 에게는 **"간결 응답 원함"** 신호로 해석되어 reasoning 토큰을 **오히려 억제** (Cohen d = -1.46, large negative)
+3. ✅ **"Place 품질 개선 없음"** (SP5 §3.4 암시) — tiles_placed v2=v4=6.33. **이동 품질 동일**. v4 의 사고 탄력 상실이 이동 결과에 기여하지 않음
+
+**최종 결론 (empirical 기반)**:
+- **SP5 판단 유지** — GPT-5-mini 는 v4 공통 body 에서 **완전 제외**
+- **v4.1 GPT variant (v4-strict-json)** 설계 방향은 **empirical 로 정당화됨** — 실제 측정에서 "token efficiency hint" 가 필요하다는 증거가 나온 셈 (GPT 는 이미 간결 모드지만 v4 가 그걸 역으로 강화)
+- **Day 4 OpenAI × 2 대전**: v2 (현재 PromptRegistry default) 유지, v4 / v3 override 적용 금지
+
+**reasoning_tokens 노출에 따른 후속 과제**:
+- 오늘 empirical 에서 발견한 `reasoning_tokens` 필드는 **모든 향후 GPT 대전 메트릭에 추가 수집** 해야 함
+- 현재 ai-adapter 의 GPT MetricsLogger 가 이 필드를 캡처하는지 확인 필요 (Day 5 node-dev 후속)
+- Round 4~5 기록에는 이 필드가 없었으므로 Round 6 OpenAI × 2 가 **첫 reasoning_tokens 실측 기회**
+
 ### 3.5 Ollama qwen2.5:3b (v4 미적합)
 
 **결론**: v4 미사용. v3 도 부적합 (Place Rate 0%).
