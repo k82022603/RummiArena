@@ -6,6 +6,8 @@
 - **의존**: SP1 (v4 설계), SP3 (PromptRegistry), SP4 (A/B 프레임워크)
 - **산출물**: 본 문서 + `src/ai-adapter/src/prompt/v4-reasoning-prompt.ts` 본문 교체 + 드라이런 리포트 2개
 
+> **2026-04-16 Day 4 자정 정정 (운영 기준 동기화)**: 본 문서에서 "GPT-5-mini 는 v3 유지 권장" 또는 "GPT/Ollama 는 v3 유지" 로 표현된 문장은 **실제로는 "v2 유지"** 의미다. SP3 (2026-04-14) 에서 Round 4~5 전체가 사실 v2 였다는 점이 확정되었고 (`docs/01-planning/20` §3bis line 143~149), GPT 는 Sprint 6 Day 4 기준 v3 를 한 번도 운영해본 적이 없다. 현재 운영 기준은 `docs/02-design/42-prompt-variant-standard.md` §2 표 B 가 SSOT 이며, 본 문서의 "v3 유지" 문구는 역사적 표현으로 읽어야 한다. 환경변수 patch 금지 (`OPENAI_PROMPT_VARIANT=v3` 는 한 번도 설정된 적 없으며 Sprint 6 에서 설정할 계획도 없음).
+
 ## 0. Executive Summary — Day 4 Go/No-Go
 
 ### **판정: GO (조건부)**

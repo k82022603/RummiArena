@@ -28,7 +28,7 @@ type AIClient struct {
 }
 
 // NewAIClient AIClient 생성자.
-// timeout은 HTTP 전체 요청 타임아웃으로 기본 180초를 권장한다.
+// timeout 은 cfg.AIAdapter.TimeoutSec + 60 (handleAITurn ctx 와 동일 공식). 상세: docs/02-design/41
 // LLM 개별 호출 타임아웃(timeoutMs)은 요청 DTO 필드로 ai-adapter 내부에서 처리한다.
 func NewAIClient(baseURL string, token string, timeout time.Duration) *AIClient {
 	return &AIClient{

@@ -120,7 +120,9 @@ func buildRouter(
 	// AI Client: AI_ADAPTER_URL이 설정되지 않으면 nil로 두어 AI 턴을 비활성화한다.
 	var aiClient client.AIClientInterface
 	if cfg.AIAdapter.BaseURL != "" {
-		timeout := time.Duration(cfg.AIAdapter.TimeoutSec) * time.Second
+		// http.Client.Timeout = AI_ADAPTER_TIMEOUT_SEC + 60 초 (handleAITurn context 와 동일 공식)
+		// §4 부등식 계약: go_http_client > istio_vs_timeout. 상세: docs/02-design/41
+		timeout := time.Duration(cfg.AIAdapter.TimeoutSec+60) * time.Second
 		aiClient = client.NewAIClient(cfg.AIAdapter.BaseURL, cfg.AIAdapter.Token, timeout)
 		logger.Info("ai-adapter client configured", zap.String("url", cfg.AIAdapter.BaseURL))
 	} else {

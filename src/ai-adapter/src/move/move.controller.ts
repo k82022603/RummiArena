@@ -134,12 +134,13 @@ export class PostMoveBodyDto {
 
   /**
    * LLM API 호출 타임아웃(ms). 기본값 30000.
-   * 생략 시 기본값 30000을 사용한다. 추론 모델은 최대 300s 필요.
+   * 추론 모델은 최대 700s 필요. 상한 720_000ms = AI_ADAPTER_TIMEOUT_SEC(700) + 20s 여유.
+   * 상세: docs/02-design/41 §3 Row DTO validator.
    */
   @IsOptional()
   @IsNumber()
   @Min(5000)
-  @Max(600000)
+  @Max(720000)
   timeoutMs?: number;
 }
 

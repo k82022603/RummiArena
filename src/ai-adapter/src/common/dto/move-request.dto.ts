@@ -149,9 +149,11 @@ export class MoveRequestDto {
   @Max(5)
   maxRetries!: number;
 
-  /** LLM API 호출 타임아웃(ms). 기본값: 30000. 로컬 추론 모델은 최대 600s 필요 */
+  /** LLM API 호출 타임아웃(ms). 기본값: 30000. 추론 모델은 최대 700s.
+   *  상한 720_000ms = AI_ADAPTER_TIMEOUT_SEC(700) + 20s 여유. 상세: docs/02-design/41 §3.
+   */
   @IsNumber()
   @Min(5000)
-  @Max(600000)
+  @Max(720000)
   timeoutMs!: number;
 }

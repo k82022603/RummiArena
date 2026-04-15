@@ -89,7 +89,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("JWT_SECRET", "")
 	viper.SetDefault("AI_ADAPTER_URL", "http://ai-adapter:3000")
 	viper.SetDefault("AI_ADAPTER_INTERNAL_TOKEN", "")
-	viper.SetDefault("AI_ADAPTER_TIMEOUT_SEC", 500)
+	viper.SetDefault("AI_ADAPTER_TIMEOUT_SEC", 700)
 	viper.SetDefault("GOOGLE_CLIENT_ID", "")
 	viper.SetDefault("GOOGLE_CLIENT_SECRET", "")
 	viper.SetDefault("GOOGLE_JWKS_URL", "https://www.googleapis.com/oauth2/v3/certs")
@@ -161,6 +161,13 @@ func Load() (*Config, error) {
 			log.Fatal("[FATAL] JWT_SECRET must be set in production environment — refusing to start")
 		}
 		log.Println("[WARN] JWT_SECRET is not set — set via environment variable for production")
+	}
+
+	// AI_ADAPTER_TIMEOUT_SEC production 강제 체크 (docs/02-design/41 §6 선택지 B)
+	// dev 에서는 viper default(700) 로 동작하지만, production 에서 명시적으로 0/음수가
+	// 주입되면 §4 부등식 계약이 깨지므로 즉시 실패한다. (Sprint 6 Day 4 drift 재발 방지)
+	if cfg.AppEnv == "production" && cfg.AIAdapter.TimeoutSec <= 0 {
+		log.Fatal("[FATAL] AI_ADAPTER_TIMEOUT_SEC must be set in production environment — refusing to start")
 	}
 
 	return cfg, nil

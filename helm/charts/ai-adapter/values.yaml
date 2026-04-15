@@ -11,6 +11,7 @@ service:
   nodePort: 30081
 
 env:
+  # 참고: AI_ADAPTER_TIMEOUT_SEC 는 ai-adapter 가 소비하지 않음. game-server 가 req.timeoutMs 로 주입함 (docs/02-design/41 §8 위반 2)
   NODE_ENV: "production"
   PORT: "8081"
   OLLAMA_BASE_URL: "http://ollama:11434"
