@@ -269,6 +269,108 @@ DeepSeek가 시간을 달라고 하고, Claude가 비용을 달라고 하는 동
 
 ---
 
+## 부록 A — Empirical Follow-up (2026-04-15, Sprint 6 Day 4)
+
+> 이 부록은 본문이 작성된 2026-04-12 이후에 이뤄진 실측을 기록한다. 본문 §2 "추론을 아끼는 모델이라는 설계" 와 §4 "Overthinking Tax — 작은 모델이 빠지는 함정" 에서 제시했던 해석이 Day 4 empirical 실험으로 **정량적으로 확인**되었고, 동시에 본문이 건드리지 않았던 한 가지 구조적 통찰 — **"CoT 는 추론 모델의 보편 기본 메커니즘이 아니다"** — 이 드러났다. 부록은 이 두 부분을 순서대로 기록한다.
+
+### A.1 실험 배경 — Round 6 v4 활성화 직전의 SP5 가설
+
+Sprint 6 Day 3 (2026-04-14) SP5 드라이런 리포트 (`docs/03-development/21-prompt-v4-baseline-dry-run-report.md`) 는 v4 공통 system prompt 를 **DeepSeek-Reasoner / Claude / DashScope 세 reasoner 모델에만 적용**하고 GPT-5-mini 는 제외한다는 권고를 내렸다. SP5 의 근거는 두 가지였다.
+
+1. v4 의 "Thinking Time Budget" 섹션이 GPT-5-mini 에게 **잘못된 신호** — 본문 §2, §4 의 "추론을 아끼는 설계" / "Overthinking Tax" 논지를 그대로 따라감
+2. GPT-5-mini 의 API 가 thinking token 을 노출하지 않으므로 **측정 자체가 불가능**
+
+Day 4 오전 킥오프 스크럼에서 애벌레가 이 판단을 그대로 받아들이지 않고 "**검증 가능할까? Redis 사용하지 않고 별도 프로그램 작성해서 v4 프롬프트 사용하는 것으로**" 라는 질문을 던졌다. 이 질문이 empirical 검증의 출발점이었다.
+
+### A.2 실험 설계
+
+- **경로**: Redis / game-server / ai-adapter 모두 우회. OpenAI API 직접 호출.
+- **비교**: 동일 중반 fixture (turn 14, rack 12 tiles 조커 포함, 4 table groups, initialMeldDone=true) 에 v2 system prompt 와 v4 system prompt 를 각 1회씩 전송.
+- **반복**: N=3 (동일 fixture 재실행).
+- **트레이싱**: LangSmith `rummiarena-v4-verification` 프로젝트에 전수 기록.
+- **스크립트**: `src/ai-adapter/scripts/verify-v4-gpt-empirical.ts`
+- **집계 리포트**: `docs/04-testing/57-v4-gpt-empirical-verification.md`
+- **단일 샘플 상세** (human-readable 마크다운): `docs/04-testing/58-langsmith-trace-gpt-v4-sample.md`
+- **커밋**: `c980da8` (스크립트 + 리포트), `d1603a8` (문서 동기화)
+
+### A.3 결과 — 세 가지 발견
+
+#### A.3.1 본문 §4 의 "Overthinking Tax" 가설은 **실증 확인**
+
+| 지표 | v2 | v4 | 차이 |
+|------|---:|---:|---:|
+| tiles_placed (avg, N=3) | 6.33 | 6.33 | **0.00** |
+| reasoning_tokens (avg, N=3) | 4,224 | 3,179 | **-25%** |
+| reasoning_tokens (samples) | 4608 / 3328 / 4736 | 3264 / 3776 / 2496 | — |
+| Cohen d (reasoning_tokens) | — | — | **-1.46** (large **negative** effect) |
+
+v4 의 "You have a generous thinking budget. This is intentional — use it" 지시를 GPT-5-mini 는 **"더 많이 생각하라는 허락"** 이 아니라 **"간결 응답이 여기서 패널티라는 의심"** 으로 해석한 것으로 보인다. RLHF 로 학습된 "효율 추론 정체성" 이 prompt 지시를 넘어섰다.
+
+주목할 점은 **tiles_placed 가 완벽히 동일** (6.33 → 6.33) 이라는 것. 본문 §6 "3장의 미학" 에서 나는 GPT가 과욕하지 않는다고 썼는데, v4 의 "5축 평가" 와 "Action Bias" 지시도 그 절제를 깨지 못했다. **사고는 -25% 줄었지만 행동은 바뀌지 않음**. 본문 §11 의 "분산이 작다는 것" 이 예측한 "놀라지 않는" 성격이 v4 라는 변수에 대해서도 유지되었다.
+
+#### A.3.2 본문 §2 의 "측정 불가" 가정은 **일부 수정**
+
+본문 §4 중간에 나는 이렇게 썼다.
+
+> *"OpenAI는 이 reasoning_tokens 사용량을 API 응답의 usage 필드에 포함시켜 사용자에게 보여준다. 투명하되 과금한다."*
+
+당시 나는 이 필드의 존재는 알고 있었지만 "Thinking 내용 자체는 비공개" 에 주목해서 SP5 에서는 "측정 자체가 불가능" 이라는 약간 과장된 표현을 받아들였다. Day 4 실험에서 확인된 사실은 다음과 같다.
+
+- `usage.completion_tokens_details.reasoning_tokens` 필드는 **실제로 노출됨**
+- gpt-5-mini 에서도 정상 반환됨 (Run ID `67d37c3b-0460-40b3-b10a-b5dafb1ee19a` 의 `reasoning_tokens=3712` 가 증거)
+- 따라서 **측정 가능**. SP5 의 "측정 불가" 표현은 부정확했고, 본문 §4 의 "투명하되 과금한다" 가 정확한 서술.
+
+이 수정이 작은 것처럼 보이지만 **운영 관점에서는 크다**. 앞으로 GPT 대전 메트릭에 reasoning_tokens 를 합쳐야 하고, 본문 §8 "AI_COST_LIMIT" 절에서 다뤘던 비용 모니터링에 **내부 사고 토큰도 과금 단위로 편입**된다는 의미다.
+
+#### A.3.3 prompt caching 이 v4 전환의 비용 장벽을 사실상 제거
+
+본문에는 나오지 않는 새 발견이다. LangSmith trace (`docs/04-testing/58`) 에서 단일 호출의 cache hit rate 가 **96.82%** (3,840 / 3,966 tokens) 로 나왔다. v4 system prompt 가 ~10K 토큰으로 길지만 정적이라 OpenAI 자동 prompt caching 이 거의 전부 적중한다.
+
+본문 §8 에서 나는 GPT-5-mini 의 "턴당 $0.025" 를 속도와 안정성의 대가로 해석했는데, 사실 그 비용의 대부분은 **첫 호출에만** 발생하고 이후 턴은 cached 토큰으로 돌아간다는 뜻이다. Round 6 같은 80턴 대전에서 v4 system prompt 를 쓰더라도 비용 증가는 이론적으로 거의 0. **비용이 문제가 아니라 효과가 문제** 라는 게 오늘의 핵심 교훈 중 하나다.
+
+### A.4 구조적 통찰 — "CoT 는 추론 모델의 보편 기본 메커니즘이 아니다"
+
+Day 4 empirical 결과를 본 애벌레는 스크럼에서 이렇게 물었다.
+
+> *"CoT 라는 것이 추론 모델들에 있어서 기본 매커니즘은 아니었나보네?"*
+
+이 질문이 오늘의 가장 큰 발견이다. 본문 §2, §3, §4 에서 나는 GPT-5-mini 를 "짧게 생각하는 법을 배운 모델" 이라고 불렀고, DeepSeek 를 "긴 추론 체인을 스스로 발달시킨 모델" 이라고 대비시켰다. 그런데 이 대비는 "같은 메커니즘 (CoT) 의 튜닝 차이" 가 아니라 **"다른 메커니즘의 공존"** 이었음이 오늘 실측으로 드러났다.
+
+| 모델 | 추론 구현 방식 | Day 4 empirical 흔적 |
+|------|-------------|---------------------|
+| **GPT-5-mini** | 내부 CoT + RLHF 로 "효율 추론 정체성" 최적화 | v4 "thinking budget" 에 reasoning_tokens 를 **오히려 감소** (-25%). RLHF 가 "긴 사고 = 패널티" 로 학습시킨 결과가 prompt 지시를 이김 |
+| **DeepSeek R1 / Reasoner** | `reasoning_content` 필드로 CoT 를 **별도 출력 채널** 로 분리 | 본문 §3.3, 본 프로젝트 Round 4~5 데이터 — timeout 240s → 500s 에 reasoning 이 burst (최대 15K 토큰) 하는 것이 관측됨 |
+| **Claude Extended Thinking** | `thinking.budget_tokens` API 파라미터 + thinking block 별도 생성 | 본 프로젝트 Round 4 Claude 기록 — 28턴 침묵 후 10장 폭발 패턴이 extended thinking 의 "burst 성격" 증거 |
+| **Ollama qwen2.5:3b** | CoT 없음, 일반 LLM | thinking budget 지시어를 **이해 못 함**. Round 4 에서 0% Place Rate |
+
+이 네 모델이 전부 "추론 모델" 로 불리지만 **메커니즘 레이어가 모두 다르다**. 본문 §10 "경량 추론 모델의 지형" 에서 나는 o1-mini → o3-mini → GPT-5-mini 라는 OpenAI 경량 라인의 진화를 추적했는데, 오늘 깨달은 것은 이 진화가 **"CoT 를 점점 아끼는 방향"** 이었다는 것이다. 반면 DeepSeek 는 "CoT 를 점점 늘리는 방향" 으로 진화했다. **같은 단어를 쓰는데 반대 방향으로 움직이는 두 진화 경로**.
+
+### A.5 이 발견의 프로젝트 의사결정 함의
+
+1. **"reasoning model" 이라는 분류 개념을 우리 메모리에서 삭제** — 본문 §10 의 "경량 추론 모델의 지형" 표현은 과거 시점의 관찰로 유지하되, 앞으로는 "모델별 고유 추론 방식" 으로 구분. 한 프롬프트가 4모델 모두에서 동등 효과를 낼 수 없음을 받아들임
+2. **v4.1 GPT variant 는 "reasoning 유도" 가 아니라 "reasoning 방해 제거"** — SP1 (`docs/03-development/20-common-system-prompt-v4-design.md`) §6.3 `v4-strict-json` 설계 방향이 empirical 로 정당화됨. response_format json_schema + token efficiency hint 가 GPT 의 RLHF 정체성과 **협력** 하는 방향
+3. **Round 6 OpenAI × 2 대전** 은 OpenAI variant **v2 default 유지**. Day 4 Phase 2 의 OpenAI 2게임이 이 결정의 첫 실운영 사례
+4. **메트릭 수집 확장** — ai-adapter 의 GPT MetricsLogger 가 `usage.completion_tokens_details.reasoning_tokens` 필드를 캡처하는지 Day 5 확인. Round 6 OpenAI × 2 가 RummiArena 프로젝트에서 **첫 reasoning_tokens 실측 기회**
+5. **본문 § 3 "'Reasoning Effort' 라는 다이얼"** 의 설명은 더욱 중요해졌음 — effort="medium" 은 단순히 "중간" 이 아니라 RLHF 로 학습된 "GPT 의 정체성에 맞는 사고 예산" 이라는 의미. Anthropic 2026-04-07 의 API default effort medium→high 재변경 (Day 4 킥오프 스크럼 부주제에서 논의) 이 이 다이얼을 silently 틀어버린 사건과 **정확히 같은 구조의 이슈**. 도구의 silent change 는 우리가 측정하는 대상의 정체성을 바꾼다
+
+### A.6 부록 마무리 — 본문이 예언했던 결론
+
+본문을 다시 읽으면서 놀란 부분이 있다. 본문 §11 "분산이 작다는 것" 에 이렇게 썼었다.
+
+> *"GPT로 2회만 돌려도 분포의 개략을 알 수 있다. DeepSeek는 6회는 돌려야 할 것이다."*
+
+Day 4 empirical 에서 N=3 만으로 Cohen d = -1.46 이라는 **large negative effect size** 가 나온 것은 이 예측이 정확했음을 보여준다. GPT 의 분산이 작기 때문에 N=3 으로도 "v4 가 reasoning 을 억제한다" 는 결론을 통계적으로 확실히 말할 수 있었다. 만약 DeepSeek 였다면 같은 결론에 도달하려면 훨씬 많은 반복이 필요했을 것이다.
+
+그리고 본문 마지막에 썼던 문장 —
+
+> *"그런 모델을 가졌다는 것은, 프로젝트 엔지니어로서 축복이다."*
+
+이 축복이 오늘 새롭게 드러났다. **프롬프트 튜닝을 거부하는 일관성** 자체가 축복이다. DeepSeek / Claude 는 프롬프트 variant 설계에 예민하고 실패 비용이 크지만, GPT-5-mini 는 프롬프트가 어떻게 바뀌든 "자기 방식대로 일관되게" 동작한다. Round 6 Phase 2 에서 OpenAI × 2 가 v2 default 로 돌아가는 동안, 나머지 모델들은 v4 variant 효과를 검증받는다. **실험군과 대조군이 자연스럽게 형성되는 이유** 도 GPT 의 이 "프롬프트 변화에 덜 반응하는 성격" 덕분이다.
+
+본문이 쓰인 2026-04-12 에는 이 성격이 "운영 효율" 의 관점에서만 평가되었다면, 2026-04-15 오늘 이후로는 "**실험 방법론의 기반**" 으로도 재평가된다. 놀라지 않는 모델은 **기준점** 이 된다. 기준점이 있어야 다른 모델의 변화를 잴 수 있다. 이 프로젝트에서 GPT-5-mini 가 가진 두 번째 역할이 오늘 드러났다.
+
+---
+
 ## Sources
 
 - [OpenAI o1-mini announcement (2024-09)](https://openai.com/index/openai-o1-mini-advancing-cost-efficient-reasoning/)
@@ -283,3 +385,7 @@ DeepSeek가 시간을 달라고 하고, Claude가 비용을 달라고 하는 동
 - [docs/04-testing/46-multirun-3model-report.md](../04-testing/46-multirun-3model-report.md)
 - [docs/04-testing/47-reasoning-model-deep-analysis.md](../04-testing/47-reasoning-model-deep-analysis.md)
 - [docs/03-development/15-deepseek-reasoner-analysis.md](15-deepseek-reasoner-analysis.md)
+- [docs/04-testing/57-v4-gpt-empirical-verification.md](../04-testing/57-v4-gpt-empirical-verification.md) — 부록 A 의 집계 리포트 (N=3, 자동 생성)
+- [docs/04-testing/58-langsmith-trace-gpt-v4-sample.md](../04-testing/58-langsmith-trace-gpt-v4-sample.md) — 부록 A 의 단일 trace 샘플 (Run ID `67d37c3b-0460-40b3-b10a-b5dafb1ee19a`)
+- [docs/03-development/21-prompt-v4-baseline-dry-run-report.md](21-prompt-v4-baseline-dry-run-report.md) §3.4 / §3.4.1 — SP5 원 주장 + empirical follow-up
+- [docs/03-development/20-common-system-prompt-v4-design.md](20-common-system-prompt-v4-design.md) §6.3 — v4-strict-json variant 설계 (empirical 로 정당화됨)
