@@ -62,6 +62,11 @@ curl -s https://api.deepseek.com/user/balance -H "Authorization: Bearer $DEEPSEE
 # 6. 최신 코드 배포 여부
 docker images | grep rummiarena
 git log --oneline -3
+
+# 7. 비용 한도 실 적용 값 확인 (가장 자주 놓치는 지점)
+kubectl -n rummikub exec deploy/ai-adapter -- printenv | grep -E "DAILY_COST_LIMIT|HOURLY_USER_COST_LIMIT"
+# → 평상시: DAILY_COST_LIMIT_USD=20, HOURLY_USER_COST_LIMIT_USD=5
+# → 이 값이 Day 예산 + 모델별 시간당 rate 를 견딜 수 있는지 계산
 ```
 
 **체크리스트**:
@@ -71,6 +76,48 @@ git log --oneline -3
 - [ ] AI_COOLDOWN_SEC=0
 - [ ] API 잔액 확인 → 회수 결정
 - [ ] 이미지 빌드 시점 vs 최신 커밋 → 리빌드 필요 여부
+- [ ] **비용 한도 2건 실 적용 값 (DAILY_COST_LIMIT_USD / HOURLY_USER_COST_LIMIT_USD)**
+- [ ] **예상 Day 총 지출 + 모델별 시간당 rate 계산 → 한도 상향 필요 여부 판단 (Phase 1b)**
+
+### Phase 1b: 비용 한도 사전 상향 (필요 시)
+
+> **배경**: Sprint 5 3모델 대전 때 `DAILY_COST_LIMIT_USD=$20` 걸려서 **RESET 했던 선례** 있음. Day 예산이 $20 근접 또는 시간당 rate 가 $5 근접이면 **배틀 시작 전에** 한도를 임시 상향하고, 배틀 완료 후 즉시 복구한다. Redis DEL 로 사후 RESET 하는 건 배틀 중단을 초래하므로 비권장.
+
+**현 시스템 한도 구조** (2026-04-16 확인):
+
+| 환경변수 | 적용 범위 | Redis 키 | 평상시 | 차단 코드 |
+|---------|----------|----------|--------|----------|
+| `DAILY_COST_LIMIT_USD` | **전체 시스템** 일일 누적 | `quota:daily:{UTC-YYYY-MM-DD}` TTL 30일 | $20 | `DAILY_COST_LIMIT_EXCEEDED` 403 |
+| `HOURLY_USER_COST_LIMIT_USD` | **gameId** 단위 시간당 | `user:{gameId}:hourly` TTL 1h | $5 | `HOURLY_COST_LIMIT_EXCEEDED` 403 |
+
+**`DAILY_USER_COST_LIMIT_USD` 는 존재하지 않음** — 전역 daily + gameId-hourly 2개뿐. gameId 바뀌면 hourly 는 독립 리셋 (Run 1/2 간 누적 없음). 전역 daily 만 누적.
+
+**판단 절차**:
+
+1. **예상 최악 일일 지출** 계산 (모든 Run × 모든 모델 × v4 inflation 최악치 가정):
+   - DeepSeek: $0.001~$0.004/turn × 40 turns × Run 수
+   - GPT-5-mini: $0.025/turn × 40 × Run 수 (v2 안정)
+   - Claude: $0.074~$0.286/turn × 40 × Run 수 (v4 inflation 1x~3.86x 범위)
+   - DashScope: 미측정, stub 이면 $0
+2. 합산이 **$15** 이상이면 `DAILY_COST_LIMIT_USD` 상향 필요 (2배 여유)
+3. **모델별 시간당 rate** 계산:
+   - per-game 비용 / per-game 소요시간 = 시간당 rate
+   - Claude 가 20~30분 완주 시 $5/hr 초과 (v2 $5.92/hr, v4 최대 $17/hr)
+   - 시간당 rate 가 $3/hr 이상이면 `HOURLY_USER_COST_LIMIT_USD` 상향 필요
+
+**상향 커맨드 (필요 시)**:
+
+```bash
+# 예: Claude × 2 + DashScope × 3 + GPT × 2 대전
+kubectl -n rummikub set env deploy/ai-adapter \
+  DAILY_COST_LIMIT_USD=50 \
+  HOURLY_USER_COST_LIMIT_USD=20
+
+# 실측 후 검증
+kubectl -n rummikub exec deploy/ai-adapter -- printenv | grep COST_LIMIT
+```
+
+**주의**: 본 단계는 Phase 4 (사후 정리) 마지막에 반드시 복구해야 함. 복구 안 하면 평상시에 느슨한 한도로 폭주 리스크.
 
 ---
 
@@ -293,6 +340,15 @@ curl -s https://api.deepseek.com/user/balance -H "Authorization: Bearer $DEEPSEE
 
 # 4. 프로세스 정리
 ps aux | grep "ai-battle" | grep -v grep
+
+# 5. 비용 한도 복구 (Phase 1b 에서 상향했을 경우 반드시)
+kubectl -n rummikub exec deploy/ai-adapter -- printenv | grep COST_LIMIT
+# 평상시 값이 아니면:
+kubectl -n rummikub set env deploy/ai-adapter \
+  DAILY_COST_LIMIT_USD=20 \
+  HOURLY_USER_COST_LIMIT_USD=5
+# 복구 후 재확인 필수
+kubectl -n rummikub exec deploy/ai-adapter -- printenv | grep COST_LIMIT
 ```
 
 ---
@@ -328,3 +384,6 @@ ps aux | grep "ai-battle" | grep -v grep
 4. ❌ 로컬 서비스(Ollama) 부하로 클라우드 API(DeepSeek) 레이턴시를 설명
 5. ❌ fallback 20% 이상을 "원래 그런 것"으로 넘기기
 6. ❌ API 잔액 확인 없이 회수 결정
+7. ❌ **비용 한도 (`DAILY_COST_LIMIT_USD` / `HOURLY_USER_COST_LIMIT_USD`) 예상 지출 대비 미점검 배틀 시작** (Sprint 5 3모델 대전 RESET 사고 재발 방지)
+8. ❌ **배틀 도중 한도 걸려서 Redis `DEL quota:daily:*` 로 사후 RESET** (배틀 중단 + 통계 누락 초래, Phase 1b 사전 상향이 정답)
+9. ❌ **배틀 완료 후 Phase 1b 에서 상향한 한도 복구 누락** (평상시에 느슨한 한도 잔존 → 다음 대전/버그 폭주 리스크)
