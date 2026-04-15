@@ -161,6 +161,122 @@ done
 
 ---
 
+## Phase 3b: 메인 Claude 비동기 모니터링 (ScheduleWakeup 패턴)
+
+**상황**: 대전이 3~6시간에 걸쳐 야간에 돌거나, 애벌레가 수면 중일 때, 메인 Claude 세션이 15~30분 주기로 "깨어나 확인 후 다시 잠드는" 패턴으로 모니터링한다. Phase 3 의 in-session bash while-loop 와 **상호 배타** — 이 패턴은 bash loop 가 없을 때 또는 bash loop 를 신뢰할 수 없을 때 (주로 긴 야간 대전) 사용한다.
+
+### 전제 조건
+
+1. 대전은 백그라운드 bash 프로세스로 실행되어 로그 파일에 append 됨
+2. 로그 파일 경로가 고정되어 있어 Read 도구로 접근 가능
+3. 애벌레가 "15분(또는 N분)마다 로그 직접 읽어 확인해달라" 고 명시 요청한 상태
+
+### 로그 파일 네이밍 규칙
+
+```
+work_logs/battles/<round-tag>/
+  phase2-master.log              # 오케스트레이션 요약 (Run 시작/종료 + place/fallback/turns)
+  phase2-<model>-run1.log        # Run 1 전체 턴 로그
+  phase2-<model>-run2.log        # Run 2 (Run 1 완료 후 생성)
+  phase2-<model>-run3.log        # Run 3 (Run 2 완료 후 생성)
+```
+
+예: `work_logs/battles/r6-fix/phase2-master.log`, `phase2-deepseek-run1.log`
+
+오케스트레이션 스크립트는 반드시 각 Run 완료 시 phase2-master.log 에 한 줄 요약 append:
+```
+=== Run $i 종료 YYYY-MM-DD HH:MM:SS ===
+  Place rate=<X>% | Fallback=<Y> | Turns=<N> | Time=<S>s
+```
+
+### 모니터링 절차 (매 wake-up 마다)
+
+1. **파일 목록 + 크기 스냅샷**
+   ```bash
+   ls -la work_logs/battles/<round-tag>/
+   ```
+   - 로그 파일 개수로 현재 Run 진행도 추정 (run3.log 생성 = Run 3 시작)
+   - 크기 변화로 append 중 여부 판단
+
+2. **master.log 전체 Read** (Read 도구, tail 파이프 금지)
+   - 어느 Run 이 진행 중/완료인지 판정
+   - 완료된 Run 의 요약(Place rate / Fallback) 즉시 수집
+
+3. **현재 진행 중 Run 로그 전체 Read**
+   - 직전 wake-up 이후 append 된 턴들 파악
+   - AI 턴별: place/draw/fallback, 응답 시간
+   - 주의: `cat | tail` 금지 (feedback_no_tail_pipe 규칙). 파일 크기가 크면 Read tool 의 `offset` + `limit` 사용
+
+4. **프로세스 생존 확인**
+   ```bash
+   ps -ef | grep -E "python3 scripts/ai-battle" | grep -v grep
+   ```
+   - 생존 = 정상, 부재 + run.log 에 마지막 Run 완료 요약 있음 = 정상 종료
+   - 부재 + run.log 에 요약 없음 = 비정상 크래시 → 즉시 `kubectl logs deploy/game-server --tail=100` 원인 파악
+
+5. **비용 실시간 추적** (선택, 매 1~2시간마다)
+   ```bash
+   kubectl -n rummikub exec deploy/redis -- redis-cli HGETALL "quota:daily:$(date +%Y-%m-%d)"
+   ```
+   - total_cost_usd 를 1e6 으로 나눠 실제 $ 단위 환산
+   - DeepSeek 기준 per-turn ~$0.001, per-game ~$0.04. 예상 대비 +/- 30% 이내면 정상
+
+### 판정 규칙
+
+| 관측 | 판정 | 조치 |
+|------|------|------|
+| 프로세스 생존 + fallback 0 + Run 진행 중 | 정상 | 다음 wake-up 예약 |
+| 프로세스 생존 + fallback 1~2 (연속 아님) | 주의 | ai-adapter 로그 스냅샷, 다음 wake-up 에서 재확인 |
+| 프로세스 생존 + fallback 연속 3건 | 경고 | 즉시 kubectl logs 분석 → drift 재발 vs 일시적 LLM API 에러 구분. drift 면 대전 중단 + 긴급 수정 |
+| 프로세스 부재 + 마지막 run.log 에 요약 있음 | Run 완료 | master.log 에 다음 Run 자동 시작 여부 확인 (sleep 30s 후 run${N+1}.log 생성) |
+| 프로세스 부재 + 요약 없음 | **비정상 크래시** | kubectl logs 분석 + 애벌레 긴급 알림 검토 (수면 중이면 원인 복구 가능성 우선 시도) |
+| 3 Run 전부 완료 | 총평 작성 | 애벌레 아침 리뷰용 요약 생성, git commit 은 보류 |
+
+### 보고 형식 (매 wake-up, terse ≤ 10줄)
+
+```
+Run N/3 · 경과 XXm · 현재 Turn YY/80
+AI 턴 집계: place=A(+T tiles) / draw=B / fallback=C
+응답시간: avg=XXXs / max=YYYs
+프로세스: 생존 (PID NNNNN) / 오늘 비용: $X.XX/$20
+특이사항: (없으면 "정상")
+다음 wake-up: HH:MM
+```
+
+### 다음 wake-up 예약
+
+```python
+ScheduleWakeup(
+  delaySeconds=900,  # 15분 (애벌레 요청 주기)
+  prompt="<본 Phase 3b 절차를 그대로 재수행하도록 명시>",
+  reason="Run N/3 진행 중, 마지막 확인 시 T<turn>/80"
+)
+```
+
+**delaySeconds 선택 가이드**:
+- 15분 (900s): 애벌레 명시 요청 시 사용. Prompt cache 만료되지만 사용자 요청이 우선
+- 20~30분 (1200~1800s): 애벌레 부재 자율 모니터링. 캐시 미스 비용 절감
+- 5분 (300s) 금지: 캐시 미스 비용만 발생, 실익 없음 (DeepSeek 턴이 평균 150~200s 이므로 5분엔 1~2턴만 진행)
+
+### 금지 사항 (Phase 3b 특화)
+
+1. ❌ **sleep 루프로 자체 대기** — 반드시 ScheduleWakeup 로 명시적 예약
+2. ❌ **`cat <file> | tail`** — Read 도구로 전체 읽거나 offset 지정 (feedback_no_tail_pipe)
+3. ❌ **결과 해석 생략** — 파일만 읽고 "로그 파일 1574 bytes" 같은 단순 보고 금지. 반드시 턴별 집계 + 판정
+4. ❌ **잘못된 경보** — 단일 fallback 1건으로 수면 중인 애벌레 즉시 깨우기 금지. 연속 3건 또는 크래시만 긴급
+5. ❌ **변경 작업 수행** — 이 단계는 관찰 전용. 코드/설정 수정은 오직 "긴급 drift 재발" 판단 후에만 architect 위임 경로로
+
+### 예시 — 2026-04-15 Phase 2 재실행 모니터링 (실제 사례)
+
+- Run 1 시작 01:01:25
+- 첫 체크 01:14 (13분 경과) — T02 PLACE 6 tiles, T04/T06/T08 DRAW, T10 thinking, fallback 0
+- ScheduleWakeup 900s → 01:30 재체크 예약
+- 15분 주기로 반복, 각 체크마다 master.log + runN.log 전체 Read
+- 3 Run 예상 총 소요: ~3~4시간 (AI 턴 40개 × 평균 173s + Run 간 sleep 30s × 2)
+- 완료 시 master.log 에 모든 Run 요약이 연속으로 찍혀 있고 python3 프로세스는 종료됨
+
+---
+
 ## Phase 4: 사후 정리 (매 모델 완료 후)
 
 ```bash
