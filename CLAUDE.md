@@ -77,7 +77,7 @@ work_logs/         # 세션/데일리/스크럼/바이브/회고/결정 로그
 5. **DevSecOps**: CI 파이프라인에 SonarQube + Trivy 보안 게이트
 6. **인증/인가 ↔ 사용자 프로필 완전 분리**: OAuth 핸들러에서 DisplayName, AvatarURL 등 프로필 정보를 절대 덮어쓰지 않는다. OAuth는 identity 확인만, 프로필은 별도 API에서 관리. 상세: `docs/03-development/06-coding-conventions.md` 섹션 5.5
 7. **타임아웃 체인 SSOT**: game-server ↔ ai-adapter ↔ LLM vendor 사이의 타임아웃은 최소 10개 지점에 흩어져 있다. 한 값을 바꿀 때 반드시 `docs/02-design/41-timeout-chain-breakdown.md` §3 레지스트리 + §5 체크리스트를 따라 모든 지점을 함께 수정한다. 부등식 계약 `script_ws > gs_ctx > http_client > istio_vs > adapter_internal > llm_vendor` 가 깨지면 정상 응답이 fallback 으로 오분류된다 (2026-04-16 Day 4 Run 3 사고 근거).
-8. **프롬프트 변형 SSOT**: 각 모델이 어떤 variant 를 사용하는지, 어느 env 가 우선하는지는 `docs/02-design/42-prompt-variant-standard.md` §2 표 B 가 단일 기준이다. variant 환경변수를 추가/삭제/변경할 때 반드시 §5 체크리스트 전수 점검. **중요**: `USE_V2_PROMPT=true` 는 stale 가 아니라 per-model override 가 없는 모델(openai/ollama/deepseek-chat)을 **v2 베이스라인에 의도적으로 고정**하는 메커니즘이다. GPT 는 Sprint 6 현재까지 v3 를 한 번도 돌린 적 없으며, Round 6 Phase 3 대조군도 v2 유지가 확정이다 (2026-04-16 Day 4 검증).
+8. **프롬프트 변형 SSOT**: 각 모델이 어떤 variant 를 사용하는지, 어느 env 가 우선하는지는 `docs/02-design/42-prompt-variant-standard.md` §2 표 B 가 단일 기준이다. variant 환경변수를 추가/삭제/변경할 때 반드시 §5 체크리스트 전수 점검. **중요**: `USE_V2_PROMPT=true` 는 stale 가 아니라 per-model override 가 없는 모델(openai/ollama/deepseek-chat)을 **v2 베이스라인에 의도적으로 고정**하는 메커니즘이다. GPT v2 결정의 1차 근거는 **empirical 실측** (`docs/04-testing/57` + `docs/03-development/17` 부록 A): v2 vs v4 N=3 실험에서 v4 가 reasoning_tokens 을 −25% 감소시키고(Cohen d=−1.46), tiles_placed 는 동등. GPT-5-mini 내부 CoT RLHF 로 외부 v4 reasoning 지시가 무시/역효과. Round 6 Phase 3 대조군도 v2 유지 확정, `OPENAI_PROMPT_VARIANT=v3` patch 금지.
 
 ## Tile Encoding
 

@@ -14,7 +14,15 @@
 
 ## 1. TL;DR
 
-2026-04-16 Day 4 기준 **라이브 ai-adapter 에 USE_V2_PROMPT=true 와 per-model v4 3건이 동시 설정**되어 있다. 코드 우선순위상 per-model 3건(DeepSeek-Reasoner/Claude/DashScope)은 v4 가 적용되고, per-model 미설정인 **OpenAI/Ollama/DeepSeek-chat 3건은 USE_V2_PROMPT 의 globalVariantId='v2' 경로로 v2 가 적용된다**. 이는 **stale 가 아닌 의도된 운영 상태** — GPT 는 Sprint 6 Day 4 현재까지 v3 를 한 번도 운영/실험해본 적이 없으며, 오늘 발견된 "Round 4~5 가 v2 였다" 는 SP3 결과(`docs/02-design/18` §3.4) 이후 GPT 베이스라인 = v2 가 확정이다. `defaultForModel()` 의 권장 매핑은 deepseek-reasoner→v3 등 일부가 있으나, per-model override(v4) 와 USE_V2_PROMPT(v2) 에 의해 대부분 live 에서 사용되지 않는 상태이며 이는 관찰가능성 이슈일 뿐 운영 결함은 아니다. USE_V2_PROMPT 는 Sprint 7 에 제거되지만, 제거 후에도 `defaultForModel('openai')=v2` 이므로 OpenAI 운영 variant 는 변하지 않는다(§7 dry-run 참조).
+2026-04-16 Day 4 기준 **라이브 ai-adapter 에 USE_V2_PROMPT=true 와 per-model v4 3건이 동시 설정**되어 있다. 코드 우선순위상 per-model 3건(DeepSeek-Reasoner/Claude/DashScope)은 v4 가 적용되고, per-model 미설정인 **OpenAI/Ollama/DeepSeek-chat 3건은 USE_V2_PROMPT 의 globalVariantId='v2' 경로로 v2 가 적용된다**. 이는 **stale 가 아닌 empirical 로 정당화된 의도된 운영 상태** — GPT 에 대해서는 2026-04-15 Day 4 오전에 별도 Node 스크립트(`src/ai-adapter/scripts/verify-v4-gpt-empirical.ts`) 로 v2 vs v4 N=3 반복 실험을 수행했고, 결과는 **V4_IGNORED (v4 역효과)** 였다:
+
+- reasoning_tokens: v2 mean=4,224 → v4 mean=3,179 (**−25%**, Cohen d **−1.46** large negative)
+- tiles_placed: v2 = v4 = 6.33 (동등 품질)
+- latency_ms: v2 = 62,225 → v4 = 46,145
+
+즉 v4 의 "reasoning budget 증가 + thinking 체계화" 지시가 GPT-5-mini 의 내부 RLHF 정체성과 **반대로 작동**하여 오히려 reasoning 을 줄이고 tiles_placed 는 그대로였다. GPT 는 `reasoning_tokens` 필드가 API 에 노출되어 있으나 그 값은 외부 프롬프트로 증가시킬 수 없는 **내부 고정 상한**에 묶여 있다. 이 empirical 결과가 "GPT 는 v2 유지" 결정의 1차 근거이며, SP3 의 "Round 4~5 가 사실 v2 였다" 발견(`docs/02-design/18` §3.4) 은 2차 근거(과거 데이터와 현재 운영의 일치)다. 집계 리포트는 `docs/04-testing/57-v4-gpt-empirical-verification.md`, LangSmith 단일 trace 샘플은 `docs/04-testing/58-langsmith-trace-gpt-v4-sample.md` (Run ID `67d37c3b-0460-40b3-b10a-b5dafb1ee19a`), 메커니즘 해석은 `docs/03-development/17-gpt5-mini-analysis.md` 부록 A 참조.
+
+`defaultForModel()` 의 권장 매핑은 deepseek-reasoner→v3 등 일부가 있으나, per-model override(v4) 와 USE_V2_PROMPT(v2) 에 의해 대부분 live 에서 사용되지 않는 상태이며 이는 관찰가능성 이슈일 뿐 운영 결함은 아니다. USE_V2_PROMPT 는 Sprint 7 에 제거되지만, 제거 후에도 `defaultForModel('openai')=v2` 이므로 OpenAI 운영 variant 는 변하지 않는다(§7 dry-run 참조).
 
 ---
 
@@ -24,7 +32,7 @@
 
 | 모델 (ModelType) | 실제 운영 variant | 결정 출처 (resolve 우선순위) | env 변수 | Round 6 Phase 3 대조군 지정 | 비고 |
 |---|---|---|---|---|---|
-| `openai` (gpt-5-mini) | **v2** | 2단계 미설정 → 3단계 globalVariantId | `USE_V2_PROMPT=true` → `globalVariantId='v2'` (의도된 고정) | **대조군 (v2 베이스라인 — 확정)** | GPT 는 Sprint 6 Day 4 현재까지 **v3 를 한 번도 운영한 적 없음**. Round 4/5 가 실제로 v2 였다는 SP3 발견(`docs/02-design/18` §3.4) 이후 GPT 베이스라인 = v2 확정. 원본 Day 4 plan line 218 의 "v3 유지" 는 SP3 발견 이전 원안 텍스트이며 line 121 "Day 4 실행 중 업데이트" 에서 "v2 유지" 로 덮어써짐 |
+| `openai` (gpt-5-mini) | **v2** | 2단계 미설정 → 3단계 globalVariantId | `USE_V2_PROMPT=true` → `globalVariantId='v2'` (empirical 로 정당화된 의도된 고정) | **대조군 (v2 베이스라인 — 확정)** | **empirical 근거**: `docs/04-testing/57` + `docs/04-testing/58` + `docs/03-development/17` 부록 A. 2026-04-15 v2 vs v4 N=3 실험에서 v4 가 reasoning_tokens 을 -25% 감소(Cohen d=-1.46), tiles_placed 동등. GPT-5-mini 는 내부 CoT RLHF 고정으로 **외부 v4 지시가 무시/역효과**. Sprint 6 Day 4 까지 v3 는 한 번도 운영/실험된 적 없음 (존재하지 않던 버전). 따라서 GPT 는 v2 고정이 **empirical + historical** 양면에서 정답 |
 | `claude` (claude-sonnet-4) | **v4** | 2단계 per-model override | `CLAUDE_PROMPT_VARIANT=v4` | 본대전 참가 | v4 empirical 미검증 (Round 6 에서 최초 실측) |
 | `deepseek` (deepseek-chat) | **v2** | 2단계 미설정 → 3단계 globalVariantId | `USE_V2_PROMPT=true` 강제 | 운영 제외 (deepseek-chat 은 현재 대전 미사용) | deepseek-chat 사용 시 v2 에 고정됨 |
 | `deepseek-reasoner` | **v4** | 2단계 per-model override | `DEEPSEEK_REASONER_PROMPT_VARIANT=v4` | 본대전 주력 (Run × 3) | Day 4 plan 핵심 변경사항 |
