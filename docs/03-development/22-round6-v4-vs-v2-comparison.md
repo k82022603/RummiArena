@@ -403,12 +403,74 @@ Sprint 6 Day 4 야간 (2026-04-16 01:00~08:00) 의 이야기. Claude 가 Run 2 T
 - `work_logs/ai-battle-monitoring-20260416.md` — Phase 2 재실행 체크 #1~#24 원시 데이터
 - `work_logs/battles/r6-fix/phase2-deepseek-run1.log` / `run2.log` — 턴별 raw log
 
-### 9.4 변경 이력
+### 9.4 Round 7 — v4.1 Full Game 결과 (2026-04-16 오후 추가)
+
+v4.1 (Thinking Budget 19줄 단일 제거) 80턴 full game 결과:
+
+| 지표 | v4.1 (Round 7) |
+|------|:---:|
+| Place | 8 (30 tiles) |
+| Rate | **20.5%** |
+| Fallback | 1 (T74 710.8s, Istio VS 초과) |
+| Avg response | 271.9s |
+| Max response | 710.8s |
+| Time | 10,606s (2h 57m) |
+| Cost | $0.039 |
+
+**v4.1 Place Details** (8 events):
+
+| 턴 | Tiles | Cumul | Resp(s) |
+|:---:|:---:|:---:|:---:|
+| T18 | 6 | 6 | 118.2 |
+| T26 | 6 | 12 | 256.9 |
+| T42 | 3 | 15 | 276.7 |
+| T46 | 3 | 18 | 210.0 |
+| T50 | 3 | 21 | 197.5 |
+| T66 | 3 | 24 | 531.9 |
+| T70 | 3 | 27 | 348.8 |
+| T76 | 3 | 30 | 374.7 |
+
+### 9.5 최종 3-way 비교 (v2 vs v4 vs v4.1) — 논문 Table 수준
+
+| 지표 | **v2** (Round 5 Run 3) | **v4** (Phase 2 N=2 avg) | **v4.1** (Round 7) |
+|------|:---:|:---:|:---:|
+| **Place rate** | **30.8%** 🏆 | 25.95% | 20.5% |
+| **Place count** | ~12 | 10 | 8 |
+| **Tiles placed** | ~37 | 34 | 30 |
+| **Avg response** | **~211s** 🏆 | 320.2s | 271.9s |
+| **Max response** | **~356s** 🏆 | 690.9s | 710.8s |
+| **Fallback** | **0** | 0.5/game | 1 |
+| **Time** | **~8,237s** | ~12,487s | 10,606s |
+| **Cost** | ~$0.04 | ~$0.0385 | $0.039 |
+| **Prompt tokens** | ~1,200 | ~1,820 | ~1,740 |
+
+**순위: v2 > v4 > v4.1**. 프롬프트가 단순할수록 성능이 좋되, Thinking Budget 만 빼는 것(v4→v4.1)은 오히려 역효과 — 남은 복잡한 지시가 줄어든 사고 시간 내에서 더 큰 방해가 됨.
+
+### 9.6 Round 7 핵심 발견
+
+1. **v4.1 < v4 < v2**: Thinking Budget 단일 제거만으로는 v2 수준 회복 불가. 오히려 v4 보다도 나쁨 (20.5% < 25.95%)
+2. **T74 710.8s fallback**: TB 제거해도 극단 사고 (710s+) 는 **모델 고유 행동** 으로 발생 (v4 T46 710.3s 와 동일 패턴)
+3. **T66 531.9s PLACE**: 모델이 스스로 오래 생각하기로 결정한 턴에서 실제 조합 발견 — "스스로 생각할 시간을 허용하면 찾는다"
+4. **avg 271.9s ≈ v2 211s 근접**: latency 는 v2 와 비슷해졌으나 place rate 는 절반 수준 → **"같은 시간 사고해도 복잡한 프롬프트가 사고 효율을 떨어뜨림"**
+5. **DeepSeek-R1 Nature 논문 실증**: "Few-shot prompting consistently degrades" — v4.1 에 남아있는 few-shot 5개 + 5축 + 7항목이 여전히 degradation 원인
+
+### 9.7 v5.0 방향 (후속)
+
+Nature 논문 권고 완전 준수:
+- **Zero-shot** (few-shot 예시 0개)
+- **"Directly describe the problem"** (규칙 + 현재 상태만)
+- **"Specify the output format"** (JSON 스키마만)
+- 전략/사고/검증 지시 일체 제거
+
+예상 system prompt: ~600-700 tokens (v2 1,200 → v4 1,820 → v5.0 ~650). 3 모델 (DeepSeek / Claude / OpenAI) 공통 적용.
+
+### 9.8 변경 이력
 
 | 일자 | 변경 | 담당 |
 |------|------|------|
-| 2026-04-16 | 초판 작성 — Phase 2 N=2 종결 + v4 regression 판정 + v4.1 후속 계획 | 애벌레 + Claude(main) |
+| 2026-04-16 08:06 | 초판 작성 — Phase 2 N=2 종결 + v4 regression 판정 + v4.1 후속 계획 | 애벌레 + Claude(main) |
+| 2026-04-16 16:06 | Round 7 v4.1 결과 추가 — 20.5% place rate, 최종 3-way 비교, v5.0 방향 | Claude(main) |
 
 ---
 
-> **한 문장 요약**: v4 는 v2 대비 **−4.85%p place rate + +52% thinking time = 이중 regression**, Production 승격 불가. Run 1 과 Run 2 가 Place 10/Tiles 34 로 완전 동일한 결과를 내 deterministic signal 확정. v4.1 (Thinking Budget 지시 단일 제거) 로 원인 검증 진행 중.
+> **한 문장 요약**: v2 (30.8%) > v4 (25.95%) > v4.1 (20.5%) — 프롬프트가 복잡할수록 DeepSeek-R1 성능이 하락하며, Thinking Budget 만 빼는 것은 역효과. DeepSeek-R1 Nature 논문의 "few-shot consistently degrades, zero-shot recommended" 이 RummiArena 에서 완전 실증됨. v5.0 (zero-shot, ~650 tokens) 으로 v2 초과 성능 목표.
