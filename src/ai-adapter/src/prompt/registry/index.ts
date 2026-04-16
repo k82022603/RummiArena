@@ -13,4 +13,5 @@ export { v2Variant } from './variants/v2.variant';
 export { v3Variant } from './variants/v3.variant';
 export { v3TunedVariant } from './variants/v3-tuned.variant';
 export { v4Variant } from './variants/v4.variant';
+export { v4_1Variant } from './variants/v4-1.variant';
 export { characterKoVariant } from './variants/character-ko.variant';

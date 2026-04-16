@@ -19,7 +19,7 @@ const makeRegistry = (env: Record<string, string> = {}): PromptRegistry => {
 
 describe('PromptRegistry', () => {
   describe('builtin variant registration', () => {
-    it('onModuleInit 후 v2/v3/v3-tuned/v4/character-ko 5개 변형이 모두 등록된다', () => {
+    it('onModuleInit 후 v2/v3/v3-tuned/v4/v4.1/character-ko 6개 변형이 모두 등록된다', () => {
       const registry = makeRegistry();
       const ids = registry.list().map((v) => v.id);
       expect(ids).toEqual(
@@ -28,10 +28,40 @@ describe('PromptRegistry', () => {
           'v3',
           'v3-tuned',
           'v4',
+          'v4.1',
           'character-ko',
         ]),
       );
-      expect(ids.length).toBeGreaterThanOrEqual(5);
+      expect(ids.length).toBeGreaterThanOrEqual(6);
+    });
+
+    it('v4.1 은 v4 와 동일한 recommendedModels 를 가진다 (single-variable A/B)', () => {
+      const registry = makeRegistry();
+      const v4 = registry.resolve('deepseek-reasoner', { variantId: 'v4' });
+      const v41 = registry.resolve('deepseek-reasoner', { variantId: 'v4.1' });
+      expect(v41.metadata.recommendedModels).toEqual(
+        v4.metadata.recommendedModels,
+      );
+    });
+
+    it('v4.1 system prompt 는 Thinking Time Budget 섹션을 포함하지 않는다', () => {
+      const registry = makeRegistry();
+      const v41 = registry.resolve('deepseek-reasoner', { variantId: 'v4.1' });
+      const sys = v41.systemPromptBuilder();
+      expect(sys).not.toMatch(/Thinking Time Budget/);
+      expect(sys).not.toMatch(/generous thinking budget/);
+      expect(sys).not.toMatch(/15,000\+ thinking tokens/);
+      expect(sys).not.toMatch(/Rushing is costly/);
+    });
+
+    it('v4.1 system prompt 는 v4 의 5축 / Action Bias / Few-shot / Checklist 를 유지한다', () => {
+      const registry = makeRegistry();
+      const v41 = registry.resolve('deepseek-reasoner', { variantId: 'v4.1' });
+      const sys = v41.systemPromptBuilder();
+      expect(sys).toMatch(/Position Evaluation Criteria/);
+      expect(sys).toMatch(/Action Bias/);
+      expect(sys).toMatch(/Few-Shot Examples/);
+      expect(sys).toMatch(/Pre-Submission Validation Checklist/);
     });
 
     it('등록된 모든 변형은 systemPromptBuilder/userPromptBuilder/retryPromptBuilder 함수를 가진다', () => {
@@ -126,7 +156,7 @@ describe('PromptRegistry', () => {
     it('list() 는 등록된 모든 변형 반환', () => {
       const registry = makeRegistry();
       const list = registry.list();
-      expect(list.length).toBeGreaterThanOrEqual(5);
+      expect(list.length).toBeGreaterThanOrEqual(6);
       expect(list.find((v) => v.id === 'v3-tuned')).toBeDefined();
     });
 
