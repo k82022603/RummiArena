@@ -50,7 +50,7 @@
 
 ## 3. variant 레지스트리 (표 A) — 등록된 variant 전체
 
-> `src/ai-adapter/src/prompt/registry/variants/` 에서 `PromptRegistry.registerBuiltinVariants()` 가 부팅 시 등록하는 5개.
+> `src/ai-adapter/src/prompt/registry/variants/` 에서 `PromptRegistry.registerBuiltinVariants()` 가 부팅 시 등록하는 7개.
 
 | variant id | 파일 | version | recommendedModels | warnIfOffRecommendation | deprecated | 권장 용도 |
 |---|---|---|---|---|---|---|
@@ -58,6 +58,8 @@
 | `v3` | `variants/v3.variant.ts` | 1.0.0 | deepseek-reasoner, dashscope, openai, claude | false | 아님 | v2 + 무효 배치 감소 + 자기검증 (few-shot 5 + 체크리스트 7). DashScope 역사적 기본 |
 | `v3-tuned` | `variants/v3-tuned.variant.ts` | 1.0.0 | deepseek-reasoner, dashscope | **true** | 아님 (A/B 실험용) | v3 + Thinking Budget + 5축 평가. Round 6 현재 미운영. 비권장 모델에 적용 시 warn |
 | `v4` | `variants/v4.variant.ts` | 1.0.0 | deepseek-reasoner, claude, dashscope | **true** | 아님 (2026-04-14 도입) | reasoner 3모델 공통 body + Thinking Budget + 5축 평가 + Action Bias. Day 4 활성화 |
+| `v4.1` | `variants/v4-1.variant.ts` | 1.0.0 | deepseek-reasoner, claude, dashscope | **true** | 아님 (2026-04-16 도입) | v4 − Thinking Budget 단일 제거 (single-variable A/B). Round 7 실증 20.5% |
+| `v5` | `variants/v5.variant.ts` | 1.0.0 | deepseek-reasoner, claude, openai | **true** | 아님 (2026-04-17 도입) | Zero-shot reasoning (Nature 논문 준수). 규칙 + 상태 + JSON 포맷만. ~350 토큰 |
 | `character-ko` | `variants/character-ko.variant.ts` | 1.0.0 | ollama | **true** | 아님 (legacy placeholder) | 한국어 페르소나 — 실제 생성은 `PromptBuilderService` 경로, variant 는 metrics 태깅용 |
 
 **체크**: `v4.variant.ts` 의 recommendedModels 는 `openai` 를 포함하지 않으므로, Sprint 6 Day 5 이후 `OPENAI_PROMPT_VARIANT=v4` 로 강제 override 하면 `warnIfOffRecommendation=true` 에 의해 warn 로그가 발생한다. 이는 정상 동작 — GPT v4.1 branch 는 별도 variant 로 분리 예정(`docs/03-development/20` §6.3).
@@ -193,6 +195,7 @@ flowchart TB
 | 일자 | 변경 | 담당 | 근거 |
 |---|---|---|---|
 | 2026-04-16 | 초판 작성 (SSOT 선언) — Day 4 자정 잠복 이슈 전수조사 결과 | qa | 애벌레 Day 4 자정 지시, 표 A/B/C/D/E 5종 + Mermaid 1 개, stale 7 건 |
+| 2026-04-17 | §3 표 A 에 v4.1 + v5 행 추가, 등록 수 5→7 갱신 | ai-engineer | v5 zero-shot 구현 완료 (24/24 테스트 PASS) |
 
 ---
 

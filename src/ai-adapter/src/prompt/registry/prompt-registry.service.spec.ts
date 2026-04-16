@@ -19,7 +19,7 @@ const makeRegistry = (env: Record<string, string> = {}): PromptRegistry => {
 
 describe('PromptRegistry', () => {
   describe('builtin variant registration', () => {
-    it('onModuleInit 후 v2/v3/v3-tuned/v4/v4.1/character-ko 6개 변형이 모두 등록된다', () => {
+    it('onModuleInit 후 v2/v3/v3-tuned/v4/v4.1/v5/character-ko 7개 변형이 모두 등록된다', () => {
       const registry = makeRegistry();
       const ids = registry.list().map((v) => v.id);
       expect(ids).toEqual(
@@ -29,10 +29,11 @@ describe('PromptRegistry', () => {
           'v3-tuned',
           'v4',
           'v4.1',
+          'v5',
           'character-ko',
         ]),
       );
-      expect(ids.length).toBeGreaterThanOrEqual(6);
+      expect(ids.length).toBeGreaterThanOrEqual(7);
     });
 
     it('v4.1 은 v4 와 동일한 recommendedModels 를 가진다 (single-variable A/B)', () => {
@@ -62,6 +63,35 @@ describe('PromptRegistry', () => {
       expect(sys).toMatch(/Action Bias/);
       expect(sys).toMatch(/Few-Shot Examples/);
       expect(sys).toMatch(/Pre-Submission Validation Checklist/);
+    });
+
+    it('v5 system prompt 는 hybrid (few-shot 포함, checklist/step-by-step 없음)', () => {
+      const registry = makeRegistry();
+      const v5 = registry.resolve('deepseek-reasoner', { variantId: 'v5' });
+      const sys = v5.systemPromptBuilder();
+      // 포함해야 할 것
+      expect(sys).toMatch(/Tile Encoding/);
+      expect(sys).toMatch(/GROUP.*same number.*different colors/);
+      expect(sys).toMatch(/RUN.*same color.*consecutive/);
+      expect(sys).toMatch(/INITIAL MELD/);
+      expect(sys).toMatch(/Response Format/);
+      expect(sys).toMatch(/Example 1.*Draw/);
+      expect(sys).toMatch(/Example 5.*Multiple sets/);
+      // 제거되어야 할 것
+      expect(sys).not.toMatch(/Pre-Submission Validation Checklist/);
+      expect(sys).not.toMatch(/Step-by-Step Thinking/);
+      expect(sys).not.toMatch(/Position Evaluation Criteria/);
+      expect(sys).not.toMatch(/Action Bias/);
+      expect(sys).not.toMatch(/Thinking Time Budget/);
+    });
+
+    it('v5 는 3모델 공통 (deepseek-reasoner, claude, openai)', () => {
+      const registry = makeRegistry();
+      const v5 = registry.resolve('deepseek-reasoner', { variantId: 'v5' });
+      expect(v5.metadata.recommendedModels).toEqual(
+        expect.arrayContaining(['deepseek-reasoner', 'claude', 'openai']),
+      );
+      expect(v5.metadata.tokenBudget).toBeLessThan(800);
     });
 
     it('등록된 모든 변형은 systemPromptBuilder/userPromptBuilder/retryPromptBuilder 함수를 가진다', () => {
@@ -156,8 +186,9 @@ describe('PromptRegistry', () => {
     it('list() 는 등록된 모든 변형 반환', () => {
       const registry = makeRegistry();
       const list = registry.list();
-      expect(list.length).toBeGreaterThanOrEqual(6);
+      expect(list.length).toBeGreaterThanOrEqual(7);
       expect(list.find((v) => v.id === 'v3-tuned')).toBeDefined();
+      expect(list.find((v) => v.id === 'v5')).toBeDefined();
     });
 
     it('getActiveVariant() — env-global source 정확 표기', () => {
