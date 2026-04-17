@@ -7,6 +7,7 @@ import {
   ResolveOptions,
 } from './prompt-registry.types';
 import { v2Variant } from './variants/v2.variant';
+import { v2ZhVariant } from './variants/v2-zh.variant';
 import { v3Variant } from './variants/v3.variant';
 import { v3TunedVariant } from './variants/v3-tuned.variant';
 import { v4Variant } from './variants/v4.variant';
@@ -123,6 +124,7 @@ export class PromptRegistry implements OnModuleInit {
 
   private registerBuiltinVariants(): void {
     this.register(v2Variant);
+    this.register(v2ZhVariant);
     this.register(v3Variant);
     this.register(v3TunedVariant);
     this.register(v4Variant);
@@ -164,10 +166,7 @@ export class PromptRegistry implements OnModuleInit {
     }
   }
 
-  private resolveVariantId(
-    modelType: ModelType,
-    opts: ResolveOptions,
-  ): string {
+  private resolveVariantId(modelType: ModelType, opts: ResolveOptions): string {
     if (opts.variantId) return opts.variantId;
     if (this.perModelOverrides.has(modelType)) {
       return this.perModelOverrides.get(modelType)!;

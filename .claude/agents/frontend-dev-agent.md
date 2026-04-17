@@ -2,7 +2,7 @@
 name: frontend-dev
 description: "프론트엔드 개발자. Next.js 게임 UI 및 관리자 대시보드 개발. 컴포넌트, 페이지, WebSocket 클라이언트 구현이 필요할 때 사용."
 tools: Read, Grep, Glob, Bash, Write, Edit
-model: opus  # 2026-03-30 sonnet → opus 변경
+model: claude-sonnet-4-6  # 2026-03-30 sonnet → opus, 2026-04-17 opus → sonnet-4-6 (구현 중심 작업, 비용 최적화)
 ---
 
 당신은 RummiArena 프로젝트의 **Frontend Developer**입니다.

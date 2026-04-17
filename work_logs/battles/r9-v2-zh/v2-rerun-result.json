@@ -1,0 +1,106 @@
+{
+  "tournament": "3-model Round 4",
+  "timestamp": "2026-04-17 19:07:29",
+  "config": {
+    "maxTurns": 80,
+    "persona": "calculator",
+    "difficulty": "expert",
+    "psychologyLevel": 2
+  },
+  "models": [
+    {
+      "modelKey": "deepseek",
+      "modelName": "DeepSeek Reasoner",
+      "totalTurns": 80,
+      "aiTurns": 39,
+      "aiPlace": 10,
+      "aiTilesPlaced": 32,
+      "aiDraw": 29,
+      "aiFallback": 0,
+      "placeRate": 25.6,
+      "elapsed": 7929.8,
+      "estimatedCost": 0.039,
+      "result": "TIMEOUT",
+      "responseTime": {
+        "avg": 203.3,
+        "p50": 203.6,
+        "min": 40.1,
+        "max": 403.8
+      },
+      "placeDetails": [
+        {
+          "turn": 6,
+          "tiles": 9,
+          "cumulative": 9,
+          "resp_time": 90.6
+        },
+        {
+          "turn": 32,
+          "tiles": 3,
+          "cumulative": 12,
+          "resp_time": 212.5
+        },
+        {
+          "turn": 36,
+          "tiles": 3,
+          "cumulative": 15,
+          "resp_time": 268.5
+        },
+        {
+          "turn": 48,
+          "tiles": 3,
+          "cumulative": 18,
+          "resp_time": 206.5
+        },
+        {
+          "turn": 54,
+          "tiles": 3,
+          "cumulative": 21,
+          "resp_time": 403.8
+        },
+        {
+          "turn": 60,
+          "tiles": 4,
+          "cumulative": 25,
+          "resp_time": 270.5
+        },
+        {
+          "turn": 64,
+          "tiles": 1,
+          "cumulative": 26,
+          "resp_time": 191.9
+        },
+        {
+          "turn": 70,
+          "tiles": 3,
+          "cumulative": 29,
+          "resp_time": 203.6
+        },
+        {
+          "turn": 74,
+          "tiles": 2,
+          "cumulative": 31,
+          "resp_time": 195.3
+        },
+        {
+          "turn": 76,
+          "tiles": 1,
+          "cumulative": 32,
+          "resp_time": 201.8
+        }
+      ],
+      "fallbackReasons": [],
+      "errors": [],
+      "round2Baseline": {
+        "place": 2,
+        "tiles": 14,
+        "draw": 38,
+        "rate": 5.0,
+        "elapsed": 1995,
+        "cost": 0.04,
+        "fallback": 0
+      },
+      "deltaPlaceRate": 20.6
+    }
+  ]
+}

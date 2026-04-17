@@ -55,6 +55,7 @@
 | variant id | 파일 | version | recommendedModels | warnIfOffRecommendation | deprecated | 권장 용도 |
 |---|---|---|---|---|---|---|
 | `v2` | `variants/v2.variant.ts` | 1.0.0 | openai, claude, deepseek, ollama | false | 아님 (legacy 베이스라인) | 영문 reasoning 베이스라인, Round 4/5 검증됨, gpt-5-mini 기본 |
+| `v2-zh` | `variants/v2-zh.variant.ts` | 1.0.0 | deepseek-reasoner | **true** | 아님 (2026-04-17 도입) | v2 Simplified Chinese 번역본. DeepSeek-R1 내부 reasoning 중국어 가설 검증. same few-shot/structure, 언어만 다른 single-variable A/B (v2 vs v2-zh). 타일 코드·JSON 필드명·에러 코드는 영문 보존 |
 | `v3` | `variants/v3.variant.ts` | 1.0.0 | deepseek-reasoner, dashscope, openai, claude | false | 아님 | v2 + 무효 배치 감소 + 자기검증 (few-shot 5 + 체크리스트 7). DashScope 역사적 기본 |
 | `v3-tuned` | `variants/v3-tuned.variant.ts` | 1.0.0 | deepseek-reasoner, dashscope | **true** | 아님 (A/B 실험용) | v3 + Thinking Budget + 5축 평가. Round 6 현재 미운영. 비권장 모델에 적용 시 warn |
 | `v4` | `variants/v4.variant.ts` | 1.0.0 | deepseek-reasoner, claude, dashscope | **true** | 아님 (2026-04-14 도입) | reasoner 3모델 공통 body + Thinking Budget + 5축 평가 + Action Bias. Day 4 활성화 |
@@ -196,6 +197,7 @@ flowchart TB
 |---|---|---|---|
 | 2026-04-16 | 초판 작성 (SSOT 선언) — Day 4 자정 잠복 이슈 전수조사 결과 | qa | 애벌레 Day 4 자정 지시, 표 A/B/C/D/E 5종 + Mermaid 1 개, stale 7 건 |
 | 2026-04-17 | §3 표 A 에 v4.1 + v5 행 추가, 등록 수 5→7 갱신 | ai-engineer | v5 zero-shot 구현 완료 (24/24 테스트 PASS) |
+| 2026-04-17 | §3 표 A 에 v2-zh (DeepSeek-R1 전용 중문 variant) 행 추가, 등록 수 7→8 갱신 | node-dev | Day 7 A/B 실험 "DeepSeek reasoning 언어 가설" (v2 vs v2-zh single-variable) 착수 |
 
 ---
 

@@ -19,12 +19,13 @@ const makeRegistry = (env: Record<string, string> = {}): PromptRegistry => {
 
 describe('PromptRegistry', () => {
   describe('builtin variant registration', () => {
-    it('onModuleInit 후 v2/v3/v3-tuned/v4/v4.1/v5/character-ko 7개 변형이 모두 등록된다', () => {
+    it('onModuleInit 후 v2/v2-zh/v3/v3-tuned/v4/v4.1/v5/character-ko 8개 변형이 모두 등록된다', () => {
       const registry = makeRegistry();
       const ids = registry.list().map((v) => v.id);
       expect(ids).toEqual(
         expect.arrayContaining([
           'v2',
+          'v2-zh',
           'v3',
           'v3-tuned',
           'v4',
@@ -33,7 +34,7 @@ describe('PromptRegistry', () => {
           'character-ko',
         ]),
       );
-      expect(ids.length).toBeGreaterThanOrEqual(7);
+      expect(ids.length).toBeGreaterThanOrEqual(8);
     });
 
     it('v4.1 은 v4 와 동일한 recommendedModels 를 가진다 (single-variable A/B)', () => {
@@ -186,9 +187,10 @@ describe('PromptRegistry', () => {
     it('list() 는 등록된 모든 변형 반환', () => {
       const registry = makeRegistry();
       const list = registry.list();
-      expect(list.length).toBeGreaterThanOrEqual(7);
+      expect(list.length).toBeGreaterThanOrEqual(8);
       expect(list.find((v) => v.id === 'v3-tuned')).toBeDefined();
       expect(list.find((v) => v.id === 'v5')).toBeDefined();
+      expect(list.find((v) => v.id === 'v2-zh')).toBeDefined();
     });
 
     it('getActiveVariant() — env-global source 정확 표기', () => {
@@ -272,6 +274,76 @@ describe('PromptRegistry', () => {
       });
       expect(resolved.id).toBe('v3-experiment-A');
       expect(resolved.metadata.experimentTag).toBe('A');
+    });
+  });
+
+  describe('v2-zh — DeepSeek-Reasoner 전용 중문 variant', () => {
+    it('v2-zh 는 DeepSeek-reasoner 전용, baseVariant=v2', () => {
+      const registry = makeRegistry();
+      const v2zh = registry.resolve('deepseek-reasoner', {
+        variantId: 'v2-zh',
+      });
+      expect(v2zh.id).toBe('v2-zh');
+      expect(v2zh.metadata.recommendedModels).toEqual(['deepseek-reasoner']);
+      expect(v2zh.baseVariant).toBe('v2');
+    });
+
+    it('v2-zh system prompt 는 중문 용어를 포함 + 영문 보존 요소 유지', () => {
+      const registry = makeRegistry();
+      const sys = registry
+        .resolve('deepseek-reasoner', { variantId: 'v2-zh' })
+        .systemPromptBuilder();
+      // 중문 핵심 용어
+      expect(sys).toMatch(/手牌/);
+      expect(sys).toMatch(/桌面/);
+      expect(sys).toMatch(/首次出牌/);
+      expect(sys).toMatch(/连续/);
+      // 보존 요소
+      expect(sys).toMatch(/R7a/);
+      expect(sys).toMatch(/JK1/);
+      expect(sys).toMatch(/"action"/);
+      expect(sys).toMatch(/"tableGroups"/);
+      expect(sys).toMatch(/"tilesFromRack"/);
+      expect(sys).toMatch(/"reasoning"/);
+      expect(sys).toMatch(/ERR_GROUP_COLOR_DUP/);
+    });
+
+    it('v2-zh 는 DeepSeek 외 모델 적용 시 warn (warnIfOffRecommendation=true)', () => {
+      const registry = makeRegistry({ OPENAI_PROMPT_VARIANT: 'v2-zh' });
+      const warnSpy = jest
+        .spyOn(registry['logger'], 'warn')
+        .mockImplementation();
+      registry.resolve('openai');
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('v2-zh'));
+      warnSpy.mockRestore();
+    });
+
+    it('v2-zh user prompt 는 타일 코드 영문 보존 + 중문 섹션', () => {
+      const registry = makeRegistry();
+      const variant = registry.resolve('deepseek-reasoner', {
+        variantId: 'v2-zh',
+      });
+      const p = variant.userPromptBuilder({
+        tableGroups: [{ tiles: ['R7a', 'B7a', 'K7a'] }],
+        myTiles: ['R10a', 'B10b', 'Y2a'],
+        turnNumber: 3,
+        drawPileCount: 80,
+        initialMeldDone: false,
+        opponents: [{ playerId: 'p2', remainingTiles: 10 }],
+      });
+      expect(p).toMatch(/R7a/);
+      expect(p).toMatch(/B10b/);
+      expect(p).toMatch(/手牌|桌面/);
+    });
+
+    it('DEEPSEEK_REASONER_PROMPT_VARIANT=v2-zh 설정 시 DeepSeek-reasoner 만 v2-zh', () => {
+      const registry = makeRegistry({
+        DEEPSEEK_REASONER_PROMPT_VARIANT: 'v2-zh',
+      });
+      expect(registry.resolve('deepseek-reasoner').id).toBe('v2-zh');
+      // 다른 모델은 기본값 유지
+      expect(registry.resolve('openai').id).toBe('v2');
+      expect(registry.resolve('claude').id).toBe('v2');
     });
   });
 

@@ -2,7 +2,7 @@
 name: node-dev
 description: "Node.js 백엔드 개발자. ai-adapter 개발 (NestJS/TypeScript). LLM 어댑터, 프롬프트 빌더, 응답 파서 구현이 필요할 때 사용."
 tools: Read, Grep, Glob, Bash, Write, Edit
-model: opus  # 2026-03-30 sonnet → opus 변경
+model: claude-sonnet-4-6  # 2026-03-30 sonnet → opus, 2026-04-17 opus → sonnet-4-6 (구현 중심 작업, 비용 최적화)
 ---
 
 당신은 RummiArena 프로젝트의 **Node.js Backend Developer**입니다. ai-adapter를 담당합니다.

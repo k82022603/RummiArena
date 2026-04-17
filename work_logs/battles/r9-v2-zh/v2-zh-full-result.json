@@ -1,0 +1,100 @@
+{
+  "tournament": "3-model Round 4",
+  "timestamp": "2026-04-17 16:53:36",
+  "config": {
+    "maxTurns": 80,
+    "persona": "calculator",
+    "difficulty": "expert",
+    "psychologyLevel": 2
+  },
+  "models": [
+    {
+      "modelKey": "deepseek",
+      "modelName": "DeepSeek Reasoner",
+      "totalTurns": 80,
+      "aiTurns": 39,
+      "aiPlace": 9,
+      "aiTilesPlaced": 28,
+      "aiDraw": 30,
+      "aiFallback": 0,
+      "placeRate": 23.1,
+      "elapsed": 5720.7,
+      "estimatedCost": 0.039,
+      "result": "TIMEOUT",
+      "responseTime": {
+        "avg": 146.7,
+        "p50": 150.0,
+        "min": 42.9,
+        "max": 287.0
+      },
+      "placeDetails": [
+        {
+          "turn": 34,
+          "tiles": 9,
+          "cumulative": 9,
+          "resp_time": 196.1
+        },
+        {
+          "turn": 38,
+          "tiles": 3,
+          "cumulative": 12,
+          "resp_time": 183.8
+        },
+        {
+          "turn": 44,
+          "tiles": 3,
+          "cumulative": 15,
+          "resp_time": 158.8
+        },
+        {
+          "turn": 52,
+          "tiles": 3,
+          "cumulative": 18,
+          "resp_time": 181.9
+        },
+        {
+          "turn": 56,
+          "tiles": 1,
+          "cumulative": 19,
+          "resp_time": 269.5
+        },
+        {
+          "turn": 60,
+          "tiles": 4,
+          "cumulative": 23,
+          "resp_time": 259.0
+        },
+        {
+          "turn": 68,
+          "tiles": 1,
+          "cumulative": 24,
+          "resp_time": 120.5
+        },
+        {
+          "turn": 72,
+          "tiles": 1,
+          "cumulative": 25,
+          "resp_time": 150.0
+        },
+        {
+          "turn": 76,
+          "tiles": 3,
+          "cumulative": 28,
+          "resp_time": 173.2
+        }
+      ],
+      "fallbackReasons": [],
+      "errors": [],
+      "round2Baseline": {
+        "place": 2,
+        "tiles": 14,
+        "draw": 38,
+        "rate": 5.0,
+        "elapsed": 1995,
+        "cost": 0.04,
+        "fallback": 0
+      },
+      "deltaPlaceRate": 18.1
+    }
+  ]
+}

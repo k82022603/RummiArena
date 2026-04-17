@@ -26,6 +26,8 @@ env:
   HOURLY_USER_COST_LIMIT_USD: "5"
   # PromptRegistry (SP3 / docs/02-design/39 §6.5) — 빈 값 = default-recommendation
   # PROMPT_VARIANT="v3" 1줄로 5개 모델 전부 v3 전환 가능.
+  # v2-zh: DeepSeek Reasoner 전용 중문 variant. Day 7 A/B 실험용.
+  # 활성화: kubectl -n rummikub set env deployment/ai-adapter DEEPSEEK_REASONER_PROMPT_VARIANT=v2-zh
   PROMPT_VARIANT: ""
   OPENAI_PROMPT_VARIANT: ""
   CLAUDE_PROMPT_VARIANT: ""

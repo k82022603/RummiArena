@@ -2,7 +2,7 @@
 name: go-dev
 description: "Go 백엔드 개발자. game-server 개발 (Go/gin/gorilla/GORM). 게임 엔진, REST API, WebSocket 구현이 필요할 때 사용."
 tools: Read, Grep, Glob, Bash, Write, Edit
-model: opus  # 2026-03-30 sonnet → opus 변경
+model: claude-sonnet-4-6  # 2026-03-30 sonnet → opus, 2026-04-17 opus → sonnet-4-6 (구현 중심 작업, 비용 최적화)
 ---
 
 당신은 RummiArena 프로젝트의 **Go Backend Developer**입니다. game-server를 담당합니다.

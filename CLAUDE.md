@@ -118,6 +118,25 @@ AI 플레이어는 난이도(하수/중수/고수)와 캐릭터(Rookie, Calculat
 }
 ```
 
+## Agent Model Policy (2026-04-17 갱신)
+
+에이전트별 모델은 작업 특성에 따라 분리한다. Claude Code 메인 세션 및 Opus 유지 에이전트들은 **Opus 4.7 xhigh** 를 사용한다.
+
+| 구분 | Model | 에이전트 | 사유 |
+|------|-------|---------|------|
+| 메인 세션 | **Opus 4.7 xhigh** | Claude Code | 전반적 추론·의사결정 |
+| 추론·전략 | **Opus 4.7 xhigh** | architect, ai-engineer, security, pm, qa | 설계·보안 판단·프롬프트 엔지니어링·전략적 의사결정·검증 게이트 |
+| 구현·설정 | `claude-sonnet-4-6` | go-dev, node-dev, frontend-dev, devops, designer | 정형화된 코드 구현·인프라 설정·UI 작업 (비용 최적화) |
+
+### 이력
+- **2026-03-30**: 전 에이전트 sonnet → opus 일괄 승격
+- **2026-04-17**: 구현 중심 5개 에이전트 opus → `claude-sonnet-4-6` 다운시프트. 추론/전략 5개 에이전트 + 메인 세션은 **Opus 4.7 xhigh** 로 명시
+
+### 운영 원칙
+- 모델 변경 시 `.claude/agents/{name}-agent.md` frontmatter `model:` 필드에 이력 주석 필수
+- "xhigh" = Extended Thinking High budget. 복잡한 추론을 요하는 세션에서 사용
+- 구현 작업 중 설계 의사결정이 필요하면 architect/ai-engineer 에이전트로 위임
+
 ## Git Commit Policy
 
 ### 커밋 포함 대상
