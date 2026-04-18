@@ -294,37 +294,262 @@ kubectl -n rummikub exec deployment/ai-adapter -c ai-adapter -- printenv | grep 
 | 2026-04-17 16:55 | v2 재실측 Phase 3 시작 — 턴별 append 중 | Claude(main) |
 | 2026-04-17 19:07 | v2 재실측 Phase 3 완결 + 3-way 비교 + Phase 4 정리 | Claude(main) |
 | 2026-04-17 (TBD) | v3 / v4 unlimited 결정은 애벌레 검토 후 | — |
-| 2026-04-17 19:20 | v3 80턴 Phase 3 시작 (스크럼/마감과 병렬). env=v3, Pod ai-adapter-7dbd58cb45-524sm. 로그: v3-80t.log | Claude(main) |
+| 2026-04-17 19:20 | v3 80턴 첫 시도 (T26 까지 정상 후 DNS 장애 T28~T44) — **무효** | Claude(main) |
+| 2026-04-17 20:30 | DNS 장애 발견 + 원인 분석 + Pod 재시작 + 전체 초기화 | Claude(main) |
+| 2026-04-17 20:33 | v3 대전 깨끗이 재시작 (새로운 Phase 3 시작) | Claude(main) |
 
 ---
 
-## Phase 3: v3 초실측 80턴 (진행 중, 19:20~ KST)
+## ⚠ 이상 이벤트 기록: v3 1차 시도 중단 (19:20~20:29 KST)
 
-### Phase 1/1b/2 재확인 (v2 재실측 완료 직후)
+**무효 처리된 구간**: T02~T26 정상 (Place 4회, cumul 10) → T28~T44 DNS 장애 (9턴 연속 fallback DRAW 0.0~0.1s)
 
-- Phase 1: 7/7 Running, Redis PONG (완료)
-- Phase 1b: 누적 $0.150 + v3 예상 $0.04 → $0.19. 한도 $20 여유. **상향 불필요**
-- Phase 2: Redis game:* 0개 확인 (v2 재실측 Phase 4 에서 정리됨)
+**원인**: ai-adapter Pod 내부 `getaddrinfo ENOTFOUND api.deepseek.com` 반복 — Docker Desktop CoreDNS 또는 WSL 네트워크 일시 끊김
 
-### 환경 전환
+**조치**:
+1. Python 스크립트 종료 (20:29)
+2. Redis game:* 정리
+3. ai-adapter Pod rollout restart — 성공
+4. 재시작 후 DNS 재검증: `api.deepseek.com` 정상 해석 (CloudFront CNAME), HTTP 401 응답 OK
+5. **애벌레 "깨끗이 정리하고 다시 시작" 지시 반영** — 무효 로그 `v3-80t.log` 삭제 + 전체 재시작
 
-```bash
-kubectl -n rummikub set env deployment/ai-adapter DEEPSEEK_REASONER_PROMPT_VARIANT=v3
-# rollout: successfully rolled out
-# 새 Pod: ai-adapter-7dbd58cb45-524sm 2/2 Running
+**SKILL 준수**: Phase 3 "fallback 연속 3건 이상 → 즉시 중단" 기준 초과 → 즉시 중단 + 네트워크 진단 + 원인 복구 + **깨끗이 초기화 후 재시작** (사용자 지시)
 
-kubectl -n rummikub exec deployment/ai-adapter -c ai-adapter -- printenv | grep DEEPSEEK
-# DEEPSEEK_REASONER_PROMPT_VARIANT=v3
+---
 
-PromptRegistry 로그: per-model-override=[deepseek-reasoner:v3]
-```
+## Phase 3: v3 초실측 80턴 (재시작, 20:33~ KST)
+
+### Phase 1/1b/2 재확인 (정리 후 깨끗한 상태)
+
+- Phase 1: 7/7 Running, Redis PONG, DNS 정상 재검증 완료 (CloudFront 해석)
+- Phase 1b: 누적 $0.150 (v3 1차 시도 비용 미세 — API 요청 실패라 거의 0). v3 재실측 $0.04 예상. 한도 여유
+- Phase 2: Redis game:* 0 확인, v3-80t.log 무효 로그 삭제, 프로세스 0
+
+### 환경 (env 유지)
+
+- DEEPSEEK_REASONER_PROMPT_VARIANT=v3 (rollout restart 후에도 유지됨)
+- Pod: ai-adapter 재시작 완료
+- DNS: `api.deepseek.com` → `d3bbv8sr76az5s.cloudfront.net` 해석 정상
 
 ### 턴별 이력 (Monitor 이벤트 실시간 append)
 
 | Turn | Time(KST) | Action | Tiles | Cumul | Latency(s) |
 |------|-----------|--------|-------|-------|-----------|
-| T02 | 19:25 | **PLACE** | 3 | 3 | 291.1 ← **Initial meld T02, v2/v2-zh 대비 극초기** |
-| T04 | 19:29 | DRAW | — | 3 | 227.9 |
+| T02 | 20:37 | **PLACE** | 3 | 3 | 198.6 ← Initial meld T02 (v2-zh T34 / v2재 T06 대비 동등~빠름) |
+| T04 | 20:41 | DRAW | — | 3 | 258.9 |
+| T06 | 20:46 | DRAW | — | 3 | 307.7 |
+| T08 | 20:50 | DRAW | — | 3 | 260.1 |
+| T10 | 20:54 | DRAW | — | 3 | 224.4 |
+| T12 | 20:58 | DRAW | — | 3 | 253.6 |
+| T14 | 21:02 | **PLACE** | 3 | 6 | 234.1 |
+| T16 | 21:06 | **PLACE** | 1 | 7 | 277.2 |
+| T18 | 21:11 | DRAW | — | 7 | 313.0 |
+| T20 | 21:18 | DRAW | — | 7 | 410.3 ← v3 max 갱신 (v2재 403.8 약간 상회, 정상 범위) |
+| T22 | 21:22 | DRAW | — | 7 | 251.0 |
+| T24 | 21:26 | DRAW | — | 7 | 278.2 |
+| T26 | 21:30 | DRAW | — | 7 | 261.4 |
+| T28 | 21:37 | DRAW | — | 7 | 409.1 |
+| T30 | 21:43 | DRAW | — | 7 | 342.7 |
+| T32 | 21:48 | **PLACE** | 2 | 9 | 333.5 |
+| T34 | 21:52 | DRAW | — | 9 | 253.2 |
+| T36 | 21:55 | **PLACE** | 1 | 10 | 210.0 |
+| T38 | 22:00 | DRAW | — | 10 | 257.9 |
+| T40 | 22:08 | **PLACE** | 2 | 12 | **480.6** ← v3 max 갱신 |
+| T42 | 22:14 | DRAW | — | 12 | 356.2 |
+| T44 | 22:21 | DRAW | — | 12 | 393.4 |
+| T46 | 22:28 | DRAW | — | 12 | 415.7 |
+| T48 | 22:35 | DRAW | — | 12 | 379.9 |
+| T50 | 22:40 | **PLACE** | 3 | 15 | 286.8 |
+| T52 | 22:48 | DRAW | — | 15 | 467.5 |
+| T54 | 22:52 | DRAW | — | 15 | 277.3 |
+| T56 | 23:02 | DRAW | — | 15 | **595.8** ← v3 max 갱신, SKILL 기준(605s) 임계 근접 |
+| T58 | 23:08 | DRAW | — | 15 | 390.8 |
+| T60 | 23:20 | **FALLBACK** DRAW (AI_TIMEOUT) | — | 15 | **709.5** ← v3 첫 fallback (770s WS timeout 근접) |
+| T62 | 23:26 | **PLACE** | 3 | 18 | 360.4 ← latency 회복, fallback 격리 |
+| T64 | 23:30 | DRAW | — | 18 | 260.6 |
+| T66 | 23:35 | **PLACE** | 3 | 21 | 336.1 |
+| T68 | 23:44 | DRAW | — | 21 | 509.4 |
+| T70 | 23:52 | **PLACE** | 3 | 24 | 494.1 |
+| T72 | 23:59 | DRAW | — | 24 | 402.9 |
+| T74 | 00:07 (4/18) | DRAW | — | 24 | 216.8 |
+| T76 | 00:13 (4/18) | **PLACE** | 3 | 27 | 342.7 ← **N=2 trigger 28.6% 초과 확정** |
+| T78 | 00:22 (4/18) | DRAW | — | 27 | 524.2 |
+| T80 | (max 도달, TIMEOUT 00:14:36 4/18) | — | — | 27 | — |
+
+### 구간별 통계 (v3)
+
+| 구간 | AI 턴 | Place | Draw | 평균 Latency(s) | Max | Min |
+|------|------|-------|------|-----------------|-----|-----|
+| 초반 T02~T20 | 10 | 4 | 6 | 269.3 | 410.3 | 198.6 |
+| 중반 T22~T50 | 15 | 3 | 12 | 300.6 | 480.6 | 210.0 |
+| 후반 T52~T80 | 14 | 4 | 10 (fb 1) | 421.1 | 709.5 | 216.8 |
+| **전체** | **39** | **11** | **28+1fb** | **347.1** (p50=333.5) | 709.5 | 198.6 |
+
+### v3 최종 판정
+
+- Place: **11** / Tiles: **27** / Draw: 28 / Fallback: 1 (T60 AI_TIMEOUT)
+- **Rate: 28.2%** (11/39) — N=2 trigger 28.6% 에 0.4%p 미달
+- Avg latency **347.1s** (v2재 203.3s 대비 +71%) / Max 709.5s
+- Cost: $0.039 / 소요 3h 45m (20:33~00:14+4/18)
+- **판정: N=1 마감** (자율 판정 기준 "평균" 구간). v4 unlimited 로 전환.
+
+### Phase 4 v3 사후 정리
+
+- [x] Redis game:* 1개 삭제
+- [x] 프로세스 종료 확인
+- [x] JSON 백업: `v3-result.json`
+- [x] 누적 비용: $0.306 (UTC 2026-04-17)
+
+---
+
+## Round 9 Day 7 4-way 결과 (업데이트)
+
+| 지표 | **v2-zh** | **v2 재실측** | **v3** | **v4 Phase2 N=2 (참조)** |
+|------|:---:|:---:|:---:|:---:|
+| Place | 9 | 10 | **11** | 10 |
+| Tiles | 28 | 32 | 27 | 34 |
+| **Rate** | **23.1%** | **25.6%** | **28.2%** | **25.95%** |
+| Avg latency | 146.7s | 203.3s | **347.1s** | 320.2s |
+| Max latency | 287.0s | 403.8s | **709.5s** | 690.9s |
+| Fallback | 0 | 0 | **1** (T60) | 0.5/game |
+| 소요 | 95분 | 132분 | 225분 | 219분 × 2 |
+| Cost | $0.039 | ~$0.023 | $0.039 | $0.038 × 2 |
+
+**핵심 관찰**
+- **v3 가 Place rate 최고** (28.2%). 자기검증 체크리스트 효과 확인
+- Latency: v2-zh 146 < v2재 203 < v4 320 < **v3 347** — v3 가 가장 깊게 사고
+- v3 fallback 1건 (T60 709.5s) — WS timeout 770s 근접하며 발생. 체크리스트 과잉 reasoning 리스크
+- **v2 R4/R5 30.8%** 가정 흔들린 상태에서 v3 28.2% 가 R4/R5 와 거의 동률 → "v3 ≈ v2 baseline" 가능성
+
+---
+
+## Phase 3: v4 unlimited timeout 80턴 (진행 예정, ~00:30~ KST)
+
+### 환경 변경 적용 (DevOps Task #18 완료)
+
+| 지점 | 이전 | 현재 |
+|------|------|------|
+| VS timeout / perTryTimeout | 710s | **1810s** |
+| CM AI_ADAPTER_TIMEOUT_SEC | 700 | **1800** |
+| DTO `@Max(timeoutMs)` | 720000 | **1820000** |
+| DeepSeek adapter floor | 700_000 | **1_800_000** |
+| Python `ws_timeout` (deepseek) | 770 | **1870** |
+| DEEPSEEK_REASONER_PROMPT_VARIANT | v3 | **v4** |
+
+**부등식 성립**: script_ws(1870) > gs_ctx(1800) > VS(1810) > DTO_max(1820) > adapter_floor(1800) ✓
+
+**새 이미지 ID**: 86401a20b39a (기존 `rummiarena/ai-adapter:v5.2-prompt` 태그 재빌드)
+**스냅샷**: `/tmp/rollback-v4-unlimited-20260418-001813/` (원복용)
+**ArgoCD auto-sync OFF**: `rummikub` + `rummikub-istio` 두 앱 모두 패치 (발견사항, 원복 시 둘 다 재활성화 필수)
+
+### 턴별 이력 (Monitor 이벤트 실시간 append)
+
+| Turn | Time(KST) | Action | Tiles | Cumul | Latency(s) |
+|------|-----------|--------|-------|-------|-----------|
+| T02 | 00:46 | DRAW | — | 0 | 187.7 |
+| T04 | 00:49 | DRAW | — | 0 | 189.7 |
+| T06 | 00:51 | DRAW | — | 0 | 152.0 |
+| T08 | 00:54 | **PLACE** | 9 | 9 | 169.4 ← Initial meld |
+| T10 | 00:58 | DRAW | — | 9 | 258.5 |
+| T12 | 01:03 | DRAW | — | 9 | 346.1 |
+| T14 | 01:09 | DRAW | — | 9 | 386.7 |
+| T16 | 01:14 | DRAW | — | 9 | 301.9 |
+| T18 | 01:19 | DRAW | — | 9 | 352.0 |
+| T20 | 01:25 | DRAW | — | 9 | 337.7 |
+| T22 | 01:31 | DRAW | — | 9 | 360.5 |
+| T24 | 01:36 | DRAW | — | 9 | 304.3 |
+| T26 | 01:41 | DRAW | — | 9 | 261.7 |
+| T28 | 01:45 | DRAW | — | 9 | 250.9 |
+| T30 | 01:49 | **PLACE** | 3 | 12 | 224.0 |
+| T32 | 01:54 | DRAW | — | 12 | 312.8 |
+| T34 | 01:59 | **PLACE** | 3 | 15 | 292.9 |
+| T36 | 02:04 | DRAW | — | 15 | 312.8 |
+| T38 | 02:09 | DRAW | — | 15 | 310.6 |
+| T40 | 02:13 | DRAW | — | 15 | 264.6 |
+| T42 | 02:18 | DRAW | — | 15 | 283.5 |
+| T44 | 02:25 | **PLACE** | 3 | 18 | 414.1 |
+| T46 | 02:30 | DRAW | — | 18 | 298.3 |
+| T48 | 02:46 | DRAW | — | 18 | **941.3** ← 역대 DeepSeek 최장 응답, 기존 770s WS 에서는 fallback 처리됐을 구간 |
+| T50 | 02:53 | DRAW | — | 18 | 374.3 |
+| T52 | 03:08 | DRAW | — | 18 | **900.3** ← 또 900s 구간, 기존 timeout 에서 fallback |
+| T54 | 03:17 | DRAW | — | 18 | 513.4 |
+| T56 | 03:24 | **PLACE** | 2 | 20 | 377.1 |
+| T58 | 03:33 | DRAW | — | 20 | 504.4 |
+| T60 | 03:40 | **PLACE** | 1 | 21 | 432.5 |
+| T62 | 03:47 | DRAW | — | 21 | 447.6 |
+| T64 | 04:02 | DRAW | — | 21 | **864.2** ← 또 900s 근접 |
+| T66 | 04:09 | **PLACE** | 3 | 24 | 368.4 |
+| T68 | 04:31 | DRAW | — | 24 | **1337.0** ← 22분 reasoning, 1800s 근접 — 기존 770s 에서 무조건 fallback 구간 |
+| T70 | 04:44 | DRAW | — | 24 | 762.8 |
+| T72 | 04:52 | DRAW | — | 24 | 455.0 |
+| T74 | 04:59 | DRAW | — | 24 | 422.2 |
+| T76 | 05:07 | **PLACE** | 3 | 27 | 450.3 |
+| T78 | 05:14 | DRAW | — | 27 | 410.8 |
+| T80 | (max 도달, TIMEOUT 05:11:54) | — | — | 27 | — |
+
+### 구간별 통계 (v4 unlimited)
+
+| 구간 | AI 턴 | Place | Draw | 평균 Latency(s) | Max | Min |
+|------|------|-------|------|-----------------|-----|-----|
+| 초반 T02~T20 | 10 | 1 | 9 | 268.2 | 386.7 | 152.0 |
+| 중반 T22~T50 | 15 | 3 | 12 | 347.1 | **941.3** | 224.0 |
+| 후반 T52~T80 | 14 | 4 | 10 | **589.0** | **1337.0** | 368.4 |
+| **전체** | **39** | **8** | **31** | **413.7** | **1337.0** | 152.0 |
+
+### v4 unlimited 최종 판정
+
+- Place: **8** / Tiles: **27** / Draw: 31 / Fallback: **0**
+- **Rate: 20.5%** (8/39) — **v4 Phase2 25.95% 대비 −5.45%p 하락**
+- Avg latency **413.7s** (v4 Phase2 320.2s 대비 +29%) / Max **1337s** (22분!)
+- Cost: $0.039 / 소요 4h 26m
+- **충격**: timeout 1800s 허용하자 v4 가 더 **깊이** 사고하지만 결과는 **더 나쁨**
+- 결론: **v4 regression 은 timeout 때문이 아니라 프롬프트 자체 결함** — 재확증됨
+
+### Phase 4 v4 unlimited 사후 정리
+
+- [x] Redis game:* 삭제
+- [x] 프로세스 종료 확인
+- [x] JSON 백업: `v4-unlimited-result.json`
+- [x] 누적 비용: **$0.441** (UTC 2026-04-17)
+- [ ] **timeout 10지점 원복 필요** (Phase 1b 상향이 아닌 실험 전용 설정, 다음 Phase 4 단계에서 실행)
+
+---
+
+## Round 9 Day 7 최종 5-way 결과
+
+| 지표 | **v2-zh** | **v2 재실측** | **v3** | **v4 Phase2** (N=2, 참조) | **v4 unlimited** |
+|------|:---:|:---:|:---:|:---:|:---:|
+| Place | 9 | 10 | **11** | 10 | 8 |
+| Tiles | 28 | 32 | 27 | 34 | 27 |
+| **Rate** | **23.1%** | **25.6%** | **28.2%** | **25.95%** | **20.5%** |
+| Avg latency | 146.7s | 203.3s | 347.1s | 320.2s | **413.7s** |
+| **Max latency** | 287.0s | 403.8s | 709.5s | 690.9s | **1337.0s** |
+| Fallback | 0 | 0 | 1 | 0.5/game | **0** |
+| 소요 | 95분 | 132분 | 225분 | 219분×2 | **266분** |
+
+### Round 9 최종 핵심 발견
+
+1. **v3 가 가장 뛰어남** (28.2%). 자기검증 체크리스트 + 여유있는 reasoning 조합
+2. **v4 regression 은 timeout 문제 아님 확정**: unlimited 에서도 25.95% → 20.5% 하락. 프롬프트 자체 결함
+3. **v2 재실측 25.6% 가 새 baseline** — 기존 30.8% 는 N=2 상향 노이즈 가능성
+4. **Latency 순서**: v2-zh < v2재 < v4 Phase2 < v3 < v4 unlimited (중문 축약 > baseline > 체크리스트 > TB+unlimited)
+5. **DeepSeek 에게 주어진 시간이 길어지면** 품질이 오히려 **하락** 할 수 있음 (v4 unlimited 의 최장 22분 reasoning 이 PLACE 로 이어지지 않음)
+
+---
+
+## 변경 이력 (최종)
+
+| 시각 | 변경 | 담당 |
+|------|------|------|
+| 2026-04-17 15:13 | Phase 1/1b/2 기록 시작 | Claude(main) |
+| 2026-04-17 16:53 | v2-zh Phase 3 턴별 표 + 구간별 통계 완결 | Claude(main) |
+| 2026-04-17 19:07 | v2 재실측 Phase 3 완결 + 3-way 비교 + Phase 4 정리 | Claude(main) |
+| 2026-04-17 20:30 | v3 1차 시도 DNS 장애 무효화 + Pod 재시작 | Claude(main) |
+| 2026-04-18 00:14 | v3 Phase 3 완결 (28.2%) + N=2 trigger 28.6% 미달 → v4 unlimited 전환 | Claude(main) |
+| 2026-04-18 00:30 | DevOps timeout 10지점 상향 apply 완료 (1800s) | devops |
+| 2026-04-18 05:11 | v4 unlimited Phase 3 완결 (20.5%) + 5-way 비교 최종판 | Claude(main) |
+| 2026-04-18 (다음) | AI Engineer 5-way 분석 + PM 논문 GO/No-Go | ai-engineer + pm |
+| 2026-04-18 (다음) | timeout 10지점 원복 (v4 실험 종료) | devops |
 
 ### 초기 이상 관찰
 

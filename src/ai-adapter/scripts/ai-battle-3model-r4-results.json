@@ -1,6 +1,6 @@
 {
   "tournament": "3-model Round 4",
-  "timestamp": "2026-04-16 17:15:21",
+  "timestamp": "2026-04-16 23:03:16",
   "config": {
     "maxTurns": 30,
     "persona": "calculator",
@@ -13,51 +13,35 @@
       "modelName": "DeepSeek Reasoner",
       "totalTurns": 30,
       "aiTurns": 14,
-      "aiPlace": 4,
-      "aiTilesPlaced": 13,
-      "aiDraw": 10,
-      "aiFallback": 3,
-      "placeRate": 28.6,
-      "elapsed": 1655.2,
+      "aiPlace": 2,
+      "aiTilesPlaced": 7,
+      "aiDraw": 12,
+      "aiFallback": 0,
+      "placeRate": 14.3,
+      "elapsed": 2087.1,
       "estimatedCost": 0.014,
       "result": "TIMEOUT",
       "responseTime": {
-        "avg": 118.1,
-        "p50": 120.2,
-        "min": 17.9,
-        "max": 269.8
+        "avg": 149.0,
+        "p50": 137.4,
+        "min": 87.3,
+        "max": 253.5
       },
       "placeDetails": [
         {
-          "turn": 2,
+          "turn": 12,
           "tiles": 6,
           "cumulative": 6,
-          "resp_time": 204.0
-        },
-        {
-          "turn": 8,
-          "tiles": 3,
-          "cumulative": 9,
-          "resp_time": 129.7
-        },
-        {
-          "turn": 12,
-          "tiles": 3,
-          "cumulative": 12,
-          "resp_time": 189.5
+          "resp_time": 140.0
         },
         {
           "turn": 22,
           "tiles": 1,
-          "cumulative": 13,
-          "resp_time": 129.6
+          "cumulative": 7,
+          "resp_time": 129.1
         }
       ],
-      "fallbackReasons": [
-        "INVALID_MOVE",
-        "INVALID_MOVE",
-        "INVALID_MOVE"
-      ],
+      "fallbackReasons": [],
       "errors": [],
       "round2Baseline": {
         "place": 2,
@@ -68,7 +52,7 @@
         "cost": 0.04,
         "fallback": 0
       },
-      "deltaPlaceRate": 23.6
+      "deltaPlaceRate": 9.3
     }
   ]
 }

@@ -74,7 +74,7 @@ MODELS = {
         "persona": "calculator",
         "difficulty": "expert",
         "psychologyLevel": 2,
-        "ws_timeout": 570,       # 500s adapter timeout + 70s buffer
+        "ws_timeout": 770,       # 700s adapter timeout + 70s buffer (2026-04-18 Day 8: v3 3회 완료 후 원복)
         "cost_per_turn": 0.001,
     },
     "ollama": {

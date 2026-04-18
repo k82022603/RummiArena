@@ -1,0 +1,94 @@
+{
+  "tournament": "3-model Round 4",
+  "timestamp": "2026-04-18 05:11:54",
+  "config": {
+    "maxTurns": 80,
+    "persona": "calculator",
+    "difficulty": "expert",
+    "psychologyLevel": 2
+  },
+  "models": [
+    {
+      "modelKey": "deepseek",
+      "modelName": "DeepSeek Reasoner",
+      "totalTurns": 80,
+      "aiTurns": 39,
+      "aiPlace": 8,
+      "aiTilesPlaced": 27,
+      "aiDraw": 31,
+      "aiFallback": 0,
+      "placeRate": 20.5,
+      "elapsed": 16135.3,
+      "estimatedCost": 0.039,
+      "result": "TIMEOUT",
+      "responseTime": {
+        "avg": 413.7,
+        "p50": 352.0,
+        "min": 152.0,
+        "max": 1337.0
+      },
+      "placeDetails": [
+        {
+          "turn": 8,
+          "tiles": 9,
+          "cumulative": 9,
+          "resp_time": 169.4
+        },
+        {
+          "turn": 30,
+          "tiles": 3,
+          "cumulative": 12,
+          "resp_time": 224.0
+        },
+        {
+          "turn": 34,
+          "tiles": 3,
+          "cumulative": 15,
+          "resp_time": 292.9
+        },
+        {
+          "turn": 44,
+          "tiles": 3,
+          "cumulative": 18,
+          "resp_time": 414.1
+        },
+        {
+          "turn": 56,
+          "tiles": 2,
+          "cumulative": 20,
+          "resp_time": 377.1
+        },
+        {
+          "turn": 60,
+          "tiles": 1,
+          "cumulative": 21,
+          "resp_time": 432.5
+        },
+        {
+          "turn": 66,
+          "tiles": 3,
+          "cumulative": 24,
+          "resp_time": 368.4
+        },
+        {
+          "turn": 76,
+          "tiles": 3,
+          "cumulative": 27,
+          "resp_time": 450.3
+        }
+      ],
+      "fallbackReasons": [],
+      "errors": [],
+      "round2Baseline": {
+        "place": 2,
+        "tiles": 14,
+        "draw": 38,
+        "rate": 5.0,
+        "elapsed": 1995,
+        "cost": 0.04,
+        "fallback": 0
+      },
+      "deltaPlaceRate": 15.5
+    }
+  ]
+}
