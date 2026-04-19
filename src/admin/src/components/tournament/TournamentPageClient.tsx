@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, Suspense } from "react";
 import type {
   TournamentFilterState,
   TournamentSummary,
@@ -16,6 +16,8 @@ import CostEfficiencyScatter from "./CostEfficiencyScatter";
 import ModelCardGrid, {
   type ModelCardEntry,
 } from "./ModelCardGrid";
+import { RoundHistoryTable } from "./RoundHistoryTable";
+import { ROUND_HISTORY_SEED } from "@/lib/roundHistoryData";
 
 /**
  * ModelLatestStats (API 스키마) → ModelCardEntry (ModelCardGrid 입력) 매핑.
@@ -45,27 +47,12 @@ interface TournamentPageClientProps {
   initialSummary: TournamentSummary;
 }
 
-/**
- * PR 1 placeholder 슬롯 — PR 5 (RoundHistoryTable)에서 교체 예정.
- */
-function PlaceholderSlot({
-  title,
-  description,
-  count,
-}: {
-  title: string;
-  description: string;
-  count: number;
-}) {
+/** RoundHistoryTable 로딩 스켈레톤 */
+function RoundHistorySkeleton() {
   return (
-    <div className="h-full flex flex-col">
-      <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide mb-2">
-        {title}
-      </h2>
-      <p className="text-xs text-slate-500 mb-4">{description}</p>
-      <div className="flex-1 flex items-center justify-center border border-dashed border-slate-700 rounded-md text-slate-500 text-sm">
-        <span>PR 5에서 구현 예정 · 필터 적용 항목 {count}건</span>
-      </div>
+    <div className="h-full flex flex-col gap-2 animate-pulse">
+      <div className="h-8 bg-slate-700/50 rounded w-1/3" />
+      <div className="flex-1 bg-slate-700/30 rounded border border-slate-700" />
     </div>
   );
 }
@@ -160,11 +147,16 @@ export default function TournamentPageClient({
           />
         }
         bottomRight={
-          <PlaceholderSlot
-            title="라운드 히스토리"
-            description="라운드별 상세 테이블 (PR 5)"
-            count={filteredRounds.length}
-          />
+          <div className="h-full flex flex-col">
+            <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide mb-3">
+              라운드 히스토리
+            </h2>
+            <div className="flex-1 overflow-auto">
+              <Suspense fallback={<RoundHistorySkeleton />}>
+                <RoundHistoryTable data={ROUND_HISTORY_SEED} />
+              </Suspense>
+            </div>
+          </div>
         }
       />
 

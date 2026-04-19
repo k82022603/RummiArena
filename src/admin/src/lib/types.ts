@@ -263,3 +263,66 @@ export const EMPTY_TOURNAMENT: TournamentSummary = {
   totalBattles: 0,
   totalCostUsd: 0,
 };
+
+// ------------------------------------------------------------------
+// Round History Table 타입 (ADR 45 §2)
+// ------------------------------------------------------------------
+
+export type RoundHistoryModelType =
+  | "deepseek"
+  | "gpt-5-mini"
+  | "claude-sonnet-4"
+  | "ollama";
+
+export type VariantType =
+  | "v1"
+  | "v2"
+  | "v2-zh"
+  | "v3"
+  | "v4"
+  | "v4.1"
+  | "v5"
+  | "v5.1";
+
+export type SortDirection = "asc" | "desc" | null;
+
+export interface RoundHistoryEntry {
+  roundId: string; // "R4", "R5-Run1", "R10-v2-Run2"
+  date: string; // "2026-04-06" (ISO 8601 date)
+  model: RoundHistoryModelType;
+  variant: VariantType;
+  runNumber: number; // 1~N (동일 라운드 내 반복 순번)
+  placeCount: number; // 성공 내려놓기 횟수 (절댓값)
+  tileCount: number; // 내려놓은 타일 총수
+  placeRate: number; // 0.308 (소수, 백분율이 아님)
+  fallbackCount: number; // 강제 드로우 횟수
+  avgLatencyMs: number; // 평균 응답시간 (ms 단위, 0 = 미기록)
+  maxLatencyMs: number; // 최대 응답시간 (ms 단위, 0 = 미기록)
+  elapsedSec: number; // 대전 총 경과시간 (초)
+  costUsd: number; // 비용 (USD)
+  codePathNote?: string; // "hardcoded V2" | "Registry.resolve()" 등 선택 메모
+  turnLogUrl?: string; // 상세 턴 로그 링크 (없으면 undefined)
+}
+
+export interface RoundHistoryFilter {
+  roundIds: string[]; // 선택된 roundId 목록 (빈 배열 = 전체)
+  models: RoundHistoryModelType[];
+  variants: VariantType[];
+  dateFrom?: string; // ISO date
+  dateTo?: string;
+}
+
+export interface RoundHistorySortState {
+  column: keyof RoundHistoryEntry | null;
+  direction: SortDirection;
+}
+
+export interface RoundHistoryStats {
+  count: number;
+  avgPlaceRate: number;
+  stdDevPlaceRate: number;
+  medianPlaceRate: number;
+  totalCostUsd: number;
+  avgFallbackCount: number;
+  avgLatencyMs: number;
+}
