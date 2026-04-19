@@ -80,9 +80,9 @@ ALM/Agile/DevSecOps 기반 풀 사이클 개발.
 ### 사전 준비 (외부 서비스)
 - [x] Google Cloud Console — OAuth 2.0 클라이언트 ID 발급
 - [ ] 카카오 디벨로퍼스 — 앱 등록 + 메시지 API 키 발급
-- [x] OpenAI API Key 준비 — sk-proj-ce7... (2026-03-23)
-- [x] Anthropic (Claude) API Key 준비 — sk-ant-api03-... (2026-03-23)
-- [x] DeepSeek API Key 준비 — sk-7c302... (2026-03-23)
+- [x] OpenAI API Key 준비 — [REDACTED-OPENAI-KEY] (2026-03-23)
+- [x] Anthropic (Claude) API Key 준비 — [REDACTED-ANTHROPIC-KEY] (2026-03-23)
+- [x] DeepSeek API Key 준비 — [REDACTED-DEEPSEEK-KEY] (2026-03-23)
 - [x] GitLab 계정 + Container Registry 확인 (k82022603, 2026-03-15)
 
 ---

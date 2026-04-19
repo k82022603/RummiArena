@@ -94,7 +94,7 @@ flowchart TB
 | Ollama | Running (qwen2.5:3b) | PASS |
 | APP_ENV | `dev` (dev-login 활성) | PASS |
 | DEEPSEEK_DEFAULT_MODEL | `deepseek-reasoner` | PASS |
-| DEEPSEEK_API_KEY | `sk-7c30242...` (주입 완료) | PASS |
+| DEEPSEEK_API_KEY | `[REDACTED-DEEPSEEK-KEY]` (주입 완료) | PASS |
 | DAILY_COST_LIMIT_USD | `5` (ConfigMap) / `20` (패치됨) | 확인 필요 |
 | 헬스체크 | game-server OK, ai-adapter OK | PASS |
 
