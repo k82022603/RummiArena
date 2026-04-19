@@ -1,0 +1,78 @@
+[07:23:12] ===== v6 Smoke 실측 시작 =====
+[07:23:12] Shaper    : pair-warmup
+[07:23:12] Turns     : 80
+[07:23:12] Timeout   : 700s
+[07:23:12] Log       : /mnt/d/Users/KTDS/Documents/06.과제/RummiArena/work_logs/battles/r11-smoke/v6-pair-warmup-20260420-072312.log
+
+[07:23:12] [1/4] ai-adapter env 전환: DEEPSEEK_REASONER_CONTEXT_SHAPER=pair-warmup
+deployment.apps/ai-adapter env updated
+[07:23:13] [2/4] rollout 대기 (최대 2분)...
+Waiting for deployment "ai-adapter" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "ai-adapter" rollout to finish: 1 old replicas are pending termination...
+deployment "ai-adapter" successfully rolled out
+[07:23:36] [3/4] env 실반영 확인...
+DEEPSEEK_REASONER_CONTEXT_SHAPER=pair-warmup
+DEFAULT_CONTEXT_SHAPER=passthrough
+
+[07:23:37] [4/4] DeepSeek Reasoner 실측 시작 (80턴, ~70~100분 예상)...
+        v2 baseline: N=3 mean 29.07% (docs/04-testing/60)
+        GO 기준    : >= 31.0% (+2%p)
+
+======================================================================
+  3-MODEL ROUND 4 TOURNAMENT
+  2026-04-20 07:23:37
+  Server: http://localhost:30080
+  Max turns: 80 / Models: 1
+  Delay between battles: 10s
+======================================================================
+
+  Models to run:
+    DeepSeek Reasoner    WS timeout: 770s, est cost: $0.04, R2 baseline: 5.0%
+
+  Total estimated cost: $0.04
+  Uniform config: persona=calculator, difficulty=expert, psychologyLevel=2
+
+  --- Health Checks ---
+  Game Server:  ok
+  AI Adapter:   FAILED (('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))) -- might be OK if internal only
+
+======================================================================
+  BATTLE: Human(AutoDraw) vs DeepSeek Reasoner
+  Model: deepseek-reasoner
+  Persona: calculator / Difficulty: expert / PsychLevel: 2
+  Max turns: 80 / WS timeout: 770s
+======================================================================
+  Logged in as auto-r4-deepseek-09b1e8
+  Room created: 5cbee203-23c1-48e8-8d3e-b9a2f917fb32
+  Game started
+  WS connected, AUTH sent
+  AUTH_OK - my seat: 0
+  GAME_STATE received - hand: 14 tiles, currentSeat: 0
+  T01 Human(seat 0): DRAW (from GAME_STATE)
+  T02 AI(seat 1): thinking... DRAW [55.7s]
+  T03 Human(seat 0): DRAW
+  T04 AI(seat 1): thinking... DRAW [62.1s]
+  T05 Human(seat 0): DRAW
+  T06 AI(seat 1): thinking... DRAW [61.0s]
+  T07 Human(seat 0): DRAW
+  T08 AI(seat 1): thinking... DRAW [75.2s]
+  T09 Human(seat 0): DRAW
+  T10 AI(seat 1): thinking... DRAW [0.2s]
+  T11 Human(seat 0): DRAW
+  T12 AI(seat 1): thinking... DRAW [0.1s]
+  T13 Human(seat 0): DRAW
+  T14 AI(seat 1): thinking... DRAW [16.4s]
+  T15 Human(seat 0): DRAW
+  T16 AI(seat 1): thinking... DRAW [3.5s]
+  T17 Human(seat 0): DRAW
+  T18 AI(seat 1): thinking... DRAW [0.0s]
+  T19 Human(seat 0): DRAW
+  T20 AI(seat 1): thinking... DRAW [0.0s]
+  T21 Human(seat 0): DRAW
+  T22 AI(seat 1): thinking... DRAW [0.3s]
+  T23 Human(seat 0): DRAW
+  T24 AI(seat 1): thinking... DRAW [0.1s]
+  T25 Human(seat 0): DRAW
+  T26 AI(seat 1): thinking... DRAW [0.1s]
+  T27 Human(seat 0): DRAW
+  T28 AI(seat 1): thinking...
