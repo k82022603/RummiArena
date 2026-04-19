@@ -8,6 +8,7 @@ import {
   DifficultyLevel,
   PsychWarfareLevel,
 } from '../character/character.types';
+import { ShaperOutput } from './shapers/shaper.types';
 
 /**
  * 게임 상태와 캐릭터 설정을 LLM 프롬프트로 변환하는 서비스.
@@ -15,6 +16,11 @@ import {
  *
  * CharacterService가 주입되면 신 템플릿(PERSONA_TEMPLATES)을 사용한다.
  * CharacterService가 없으면 구 템플릿(buildSystemPrompt)으로 폴백한다.
+ *
+ * v6 ContextShaper 통합 (ADR 44 §5.3):
+ *   buildUserPrompt(request, shaped?) 오버로드 지원.
+ *   shaped 미전달 시 기존 v2 동작 완전 보존 (100% 하위호환).
+ *   shaped.hints 비어있지 않으면 userPrompt 말미에 "## 참고 힌트" 섹션 추가.
  */
 @Injectable()
 export class PromptBuilderService {
@@ -58,29 +64,41 @@ export class PromptBuilderService {
   /**
    * 현재 게임 상태를 사용자 메시지(유저 프롬프트)로 변환한다.
    * 난이도에 따라 제공 정보의 범위가 달라진다.
+   *
+   * v6 ContextShaper 통합 (ADR 44 §5.3):
+   *   shaped 가 전달되면 rackView/boardView/historyView 를 기존 gameState 대신 사용.
+   *   shaped.hints 가 비어있지 않으면 userPrompt 말미에 "## 참고 힌트 (Shaper: {id})" 섹션 추가.
+   *   shaped 미전달(undefined) → 현 v2 동작 그대로 (100% 하위호환).
    */
-  buildUserPrompt(request: MoveRequestDto): string {
+  buildUserPrompt(request: MoveRequestDto, shaped?: ShaperOutput): string {
     const { gameState, difficulty, psychologyLevel } = request;
     const lines: string[] = [];
 
-    // 현재 테이블 상태
+    // shaped 가 있으면 rackView/boardView/historyView 를 덮어쓴다.
+    // shaped 없으면 gameState 원본 그대로 — 기존 동작 보존.
+    const effectiveTiles = shaped ? [...shaped.rackView] : gameState.myTiles;
+    const effectiveGroups = shaped
+      ? shaped.boardView.map((g) => ({ tiles: [...g.tiles] }))
+      : gameState.tableGroups;
+
+    // 현재 테이블 상태 (shaped 있으면 boardView 사용)
     lines.push('## 현재 테이블 상태');
-    if (gameState.tableGroups.length === 0) {
+    if (effectiveGroups.length === 0) {
       lines.push('  (테이블이 비어있습니다)');
     } else {
-      gameState.tableGroups.forEach((group, idx) => {
+      effectiveGroups.forEach((group, idx) => {
         lines.push(`  그룹${idx + 1}: [${group.tiles.join(', ')}]`);
       });
       lines.push(
-        `  (총 ${gameState.tableGroups.length}개 그룹 -- 배치 시 이 그룹들을 tableGroups에 모두 포함하세요)`,
+        `  (총 ${effectiveGroups.length}개 그룹 -- 배치 시 이 그룹들을 tableGroups에 모두 포함하세요)`,
       );
     }
 
-    // 내 타일
+    // 내 타일 (shaped 있으면 rackView 사용)
     lines.push('');
     lines.push('## 내 타일');
     lines.push(
-      `  [${gameState.myTiles.join(', ')}] (총 ${gameState.myTiles.length}장)`,
+      `  [${effectiveTiles.join(', ')}] (총 ${effectiveTiles.length}장)`,
     );
 
     // 게임 진행 상황
@@ -162,6 +180,26 @@ export class PromptBuilderService {
     lines.push(
       '주의: tableGroups = 배치 후 테이블 전체 최종 상태. 기존 테이블 그룹을 모두 포함하고, 새 그룹을 추가하세요.',
     );
+
+    // v6 ContextShaper hints 주입 (ADR 44 §5.3)
+    // shaped.hints 가 비어있지 않으면 "## 참고 힌트" 섹션 추가
+    if (shaped && shaped.hints.length > 0) {
+      lines.push('');
+      lines.push(
+        `## 참고 힌트 (Shaper: ${shaped.hints[0].type.split('-')[0]})`,
+      );
+      lines.push(
+        '(아래 힌트는 사전 계산된 조합 후보입니다. 최종 결정은 직접 검증하세요)',
+      );
+      shaped.hints.forEach((hint, idx) => {
+        const confidenceLabel =
+          hint.confidence >= 0.9 ? 'H' : hint.confidence >= 0.7 ? 'M' : 'L';
+        lines.push(
+          `  힌트${idx + 1} [신뢰도 ${confidenceLabel}]: ${hint.type} — ${JSON.stringify(hint.payload)}`,
+        );
+      });
+    }
+
     lines.push('지금 즉시 JSON만 출력하라:');
 
     return lines.join('\n');
