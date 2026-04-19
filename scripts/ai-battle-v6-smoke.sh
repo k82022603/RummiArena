@@ -3,7 +3,8 @@
 # Usage: ./scripts/ai-battle-v6-smoke.sh <shaper-id> [turns] [timeout]
 #   shaper-id : passthrough | joker-hinter | pair-warmup
 #   turns     : default 80
-#   timeout   : default 700 (AI_ADAPTER_TIMEOUT_SEC, KDP #7 부등식 준수)
+#   timeout   : documentation 용 파라미터 (실제 timeout 은 ai-adapter env
+#               AI_ADAPTER_TIMEOUT_SEC 로 제어 — 현재 700s, KDP #7 부등식 준수)
 #
 # 예시:
 #   bash scripts/ai-battle-v6-smoke.sh passthrough      # sanity check (v2 baseline 재확인)
@@ -68,11 +69,17 @@ echo "        GO 기준    : >= 31.0% (+2%p)"
 echo ""
 
 # --- 4. 실측 실행 (결과를 로그 파일에 tee) ---
+# --turns → --max-turns (실제 인자명)
+# --timeout 인자는 존재하지 않음 → 제거 (AI_ADAPTER_TIMEOUT_SEC env 로 ai-adapter 에서 제어)
 python3 "$REPO_ROOT/scripts/ai-battle-3model-r4.py" \
   --models deepseek \
-  --turns "$TURNS" \
-  --timeout "$TIMEOUT" \
+  --max-turns "$TURNS" \
   2>&1 | tee "$LOG_FILE"
+RC=${PIPESTATUS[0]}
+if [ "$RC" -ne 0 ]; then
+  echo "[$(date +%H:%M:%S)] [ERROR] ai-battle-3model-r4.py 실패 (exit=$RC)"
+  exit "$RC"
+fi
 
 echo ""
 echo "[$(date +%H:%M:%S)] ===== v6 Smoke 실측 완료 ====="

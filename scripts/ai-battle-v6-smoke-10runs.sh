@@ -124,14 +124,28 @@ for i in "${!SEQUENCE[@]}"; do
     echo "[$(date '+%F %T')] [Phase3] 실행: bash scripts/ai-battle-v6-smoke.sh $SHAPER $TURNS $TIMEOUT"
   } | tee -a "$MASTER_LOG"
 
+  START_EPOCH=$(date +%s)
   bash "$REPO_ROOT/scripts/ai-battle-v6-smoke.sh" "$SHAPER" "$TURNS" "$TIMEOUT" > "$RUN_LOG" 2>&1
   RC=$?
+
+  # Python argparse error / 조기 종료 탐지 (exit 0 이어도 실측이 안 됐으면 실패)
+  if grep -qE "unrecognized arguments|ArgumentError|Traceback|error:" "$RUN_LOG" 2>/dev/null; then
+    RC=2
+    echo "[$(date '+%F %T')] [ERROR] Run $IDX Python 스크립트 오류 감지 (RUN_LOG 참조)" | tee -a "$MASTER_LOG"
+  fi
+
+  # 10분 미만에 Run 이 끝났으면 실측이 제대로 안 된 것 (80턴 실측은 최소 60분 소요)
+  RUN_ELAPSED=$(( $(date +%s) - START_EPOCH ))
+  if [ "$RUN_ELAPSED" -lt 600 ]; then
+    RC=3
+    echo "[$(date '+%F %T')] [ERROR] Run $IDX 비정상 조기 종료 (elapsed=${RUN_ELAPSED}s < 600s 예상)" | tee -a "$MASTER_LOG"
+  fi
 
   # run 요약 추출 (place_rate, fallback, turns 라인)
   SUMMARY=$(tail -30 "$RUN_LOG" 2>/dev/null | grep -iE "place_rate|place rate|fallback|turns|total|결과" | tail -5 || echo "  (요약 라인 없음 — 전체 로그 확인: $RUN_LOG)")
 
   {
-    echo "[$(date '+%F %T')] === Run ${IDX}/10 종료 (shaper=$SHAPER, exit=$RC) ==="
+    echo "[$(date '+%F %T')] === Run ${IDX}/10 종료 (shaper=$SHAPER, exit=$RC, elapsed=${RUN_ELAPSED}s) ==="
     if [ -n "$SUMMARY" ]; then
       echo "$SUMMARY" | sed 's/^/  /'
     else
@@ -142,9 +156,14 @@ for i in "${!SEQUENCE[@]}"; do
 
   if [ "$RC" -eq 0 ]; then
     PASS_COUNT=$((PASS_COUNT+1))
+    FAIL_COUNT=0
   else
     FAIL_COUNT=$((FAIL_COUNT+1))
-    echo "[WARN] Run ${IDX} 비정상 종료 (exit=$RC). 다음 run 계속." | tee -a "$MASTER_LOG"
+    echo "[WARN] Run ${IDX} 비정상 종료 (exit=$RC). FAIL_COUNT=$FAIL_COUNT" | tee -a "$MASTER_LOG"
+    if [ "$FAIL_COUNT" -ge 2 ]; then
+      echo "[$(date '+%F %T')] [FATAL] 연속 2 Run 실패 — 배치 중단" | tee -a "$MASTER_LOG"
+      break
+    fi
   fi
 
   # 다음 run 전 30초 쿨다운 (마지막 run 제외)
