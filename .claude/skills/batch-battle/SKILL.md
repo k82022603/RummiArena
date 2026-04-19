@@ -249,6 +249,15 @@ done
 | 레이턴시 | 모델별 역대 범위 내 | 역대 max의 1.5배 초과 |
 | fallback | 0건 | 연속 3건 이상 → timeout 부족 |
 
+### 🚨 fallback 장애 보고서 규칙 (2026-04-19 애벌레 지시)
+
+**fallback 이 1건이라도 발생하면** (연속 3건 기준과 별개로) **즉시 장애 보고서 작성**:
+- 위치: `work_logs/incidents/YYYY-MM-DD-NN-timeout.md`
+- 템플릿: `work_logs/incidents/_template-timeout.md` 복사 후 작성
+- 필수 기재: 발생 시각, Run/shaper/턴, 장애 직전·직후 turn, 구간별 통계, timeout 체인 값, ai-adapter/game-server 로그 스냅샷, 근본원인 가설, 재발방지 액션
+- 1건 fallback = 기록 의무 (배치 중단은 "연속 3건" 기준 유지)
+- 긴급 알림 여부는 "연속 3건" 기준으로 판단
+
 ### 모니터링 이력 기록
 
 `work_logs/ai-battle-monitoring-YYYYMMDD.md`에 턴별 데이터 기록:
