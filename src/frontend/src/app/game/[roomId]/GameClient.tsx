@@ -1047,7 +1047,7 @@ export default function GameClient({ roomId }: GameClientProps) {
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className="min-h-screen bg-app-bg flex flex-col overflow-hidden">
+      <div className="h-screen bg-app-bg flex flex-col overflow-hidden">
         <ConnectionStatus />
 
         {/* 게임 헤더 */}
@@ -1297,7 +1297,7 @@ export default function GameClient({ roomId }: GameClientProps) {
             history={turnHistory}
             players={players}
             mySeat={effectiveMySeat}
-            className={historyCollapsed ? "hidden" : "w-44 flex-shrink-0"}
+            className={historyCollapsed ? "hidden" : "w-44 flex-shrink-0 h-full"}
           />
         </div>
       </div>
