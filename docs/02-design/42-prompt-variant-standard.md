@@ -30,14 +30,19 @@
 
 > 이 표가 **다른 모든 문서·코드 주석·MEMORY.md 보다 우선**한다. 불일치 발견 시 본 표에 맞춘다.
 
-| 모델 (ModelType) | 실제 운영 variant | 결정 출처 (resolve 우선순위) | env 변수 | Round 6 Phase 3 대조군 지정 | 비고 |
-|---|---|---|---|---|---|
-| `openai` (gpt-5-mini) | **v2** | 2단계 미설정 → 3단계 globalVariantId | `USE_V2_PROMPT=true` → `globalVariantId='v2'` (empirical 로 정당화된 의도된 고정) | **대조군 (v2 베이스라인 — 확정)** | **empirical 근거**: `docs/04-testing/57` + `docs/04-testing/58` + `docs/03-development/17` 부록 A. 2026-04-15 v2 vs v4 N=3 실험에서 v4 가 reasoning_tokens 을 -25% 감소(Cohen d=-1.46), tiles_placed 동등. GPT-5-mini 는 내부 CoT RLHF 고정으로 **외부 v4 지시가 무시/역효과**. Sprint 6 Day 4 까지 v3 는 한 번도 운영/실험된 적 없음 (존재하지 않던 버전). 따라서 GPT 는 v2 고정이 **empirical + historical** 양면에서 정답 |
-| `claude` (claude-sonnet-4) | **v4** | 2단계 per-model override | `CLAUDE_PROMPT_VARIANT=v4` | 본대전 참가 | v4 empirical 미검증 (Round 6 에서 최초 실측) |
-| `deepseek` (deepseek-chat) | **v2** | 2단계 미설정 → 3단계 globalVariantId | `USE_V2_PROMPT=true` 강제 | 운영 제외 (deepseek-chat 은 현재 대전 미사용) | deepseek-chat 사용 시 v2 에 고정됨 |
-| `deepseek-reasoner` | **v4** | 2단계 per-model override | `DEEPSEEK_REASONER_PROMPT_VARIANT=v4` | 본대전 주력 (Run × 3) | Day 4 plan 핵심 변경사항 |
-| `dashscope` (qwen3 thinking) | **v4** | 2단계 per-model override | `DASHSCOPE_PROMPT_VARIANT=v4` | 본대전 참가 (Run × 3) | DashScope API 키 발급 전까지 stub |
-| `ollama` (qwen2.5:3b) | **v2** | 2단계 미설정 → 3단계 globalVariantId | `USE_V2_PROMPT=true` 강제 | 운영 제외 (클라우드 전용 대전) | 로컬 전용, v4 적용 대상 아님 (소형 모델) |
+**두 축의 분리 (2026-04-19 Day 9 추가)**: 프롬프트 구성은 **2축 orthogonal** 이다.
+- **텍스트 축 (variant)** — v2 / v2-zh / v3 / v4 / v4.1 / v5 까지. **본 문서가 SSOT.**
+- **구조 축 (shaper)** — Rack/Board/History 의 구조·힌트를 가공하는 축. passthrough / joker-hinter / pair-warmup 등. **`docs/02-design/44-context-shaper-v6-architecture.md` 가 별도 SSOT.**
+- 두 축은 직교하므로, 새로운 구조 실험을 "v6" 이란 이름으로 variant 표에 추가하는 행위는 **금지** (ADR 44 Principle 3 "Registry Orthogonal" 위배). shaper 는 §3 표 A 와 무관하게 §6.1 의 compatible_shapers 컬럼으로만 기술한다.
+
+| 모델 (ModelType) | 실제 운영 variant | 결정 출처 (resolve 우선순위) | env 변수 | Round 6 Phase 3 대조군 지정 | compatible_shapers | 비고 |
+|---|---|---|---|---|---|---|
+| `openai` (gpt-5-mini) | **v2** | 2단계 미설정 → 3단계 globalVariantId | `USE_V2_PROMPT=true` → `globalVariantId='v2'` (empirical 로 정당화된 의도된 고정) | **대조군 (v2 베이스라인 — 확정)** | passthrough (운영) / joker-hinter · pair-warmup (이론상 호환, 실험 미승인) | **empirical 근거**: `docs/04-testing/57` + `docs/04-testing/58` + `docs/03-development/17` 부록 A. 2026-04-15 v2 vs v4 N=3 실험에서 v4 가 reasoning_tokens 을 -25% 감소(Cohen d=-1.46), tiles_placed 동등. GPT-5-mini 는 내부 CoT RLHF 고정으로 **외부 v4 지시가 무시/역효과**. Sprint 6 Day 4 까지 v3 는 한 번도 운영/실험된 적 없음 (존재하지 않던 버전). 따라서 GPT 는 v2 고정이 **empirical + historical** 양면에서 정답. shaper 실험 대상 아님 (baseline 유지) |
+| `claude` (claude-sonnet-4) | **v4** | 2단계 per-model override | `CLAUDE_PROMPT_VARIANT=v4` | 본대전 참가 | passthrough (운영) / joker-hinter · pair-warmup (이론상 호환, 실험 미승인) | v4 empirical 미검증 (Round 6 에서 최초 실측). shaper orthogonal 원칙상 병행 가능하나 Round 6 에서는 variant 축만 측정 |
+| `deepseek` (deepseek-chat) | **v2** | 2단계 미설정 → 3단계 globalVariantId | `USE_V2_PROMPT=true` 강제 | 운영 제외 (deepseek-chat 은 현재 대전 미사용) | passthrough (운영) | deepseek-chat 사용 시 v2 에 고정됨 |
+| `deepseek-reasoner` | **v4** (현행) / **v2** (ADR 44 shaper 실험 시) | 2단계 per-model override | `DEEPSEEK_REASONER_PROMPT_VARIANT=v4` (현행) | 본대전 주력 (Run × 3) | passthrough (현행) / **joker-hinter** (Phase 4 실험 타깃, v2 조합) / **pair-warmup** (Phase 5 실험 타깃, v2 조합) | Day 4 plan 핵심 변경사항. ADR 44 §6.2 에 따라 shaper 축 실험 시 **variant 는 v2 로 고정** (confound control, Principle 1 "v2 텍스트 불변") |
+| `dashscope` (qwen3 thinking) | **v4** | 2단계 per-model override | `DASHSCOPE_PROMPT_VARIANT=v4` | 본대전 참가 (Run × 3) | passthrough (운영) / joker-hinter · pair-warmup (DashScope 실제 API 키 발급 후 결정) | DashScope API 키 발급 전까지 stub |
+| `ollama` (qwen2.5:3b) | **v2** | 2단계 미설정 → 3단계 globalVariantId | `USE_V2_PROMPT=true` 강제 | 운영 제외 (클라우드 전용 대전) | passthrough (운영) | 로컬 전용, v4 적용 대상 아님 (소형 모델). joker-hinter/pair-warmup 은 토큰 예산 위험으로 **비권장** (ADR 44 §6.2) |
 
 **핵심**: `defaultForModel()` 의 권장 매핑(openai→v2, deepseek-reasoner→v3, dashscope→v3 등)은 **현재 단 한 건도 live 에서 적용되지 않는다** — 이는 관찰가능성(observability) 이슈이지 운영 결함이 아니다. 이유:
 - per-model override 가 있는 모델(claude/deepseek-reasoner/dashscope) = 2단계에서 v4 결정
@@ -129,6 +134,8 @@ flowchart TB
 
 **원칙**: 어떤 모델의 운영 variant 를 바꾸거나, variant 자체를 추가/폐기할 때 다음 지점을 **전부** 함께 검증한다. 이것이 Sprint 6 Day 4 타입의 잠복 이슈를 막는 유일한 경로다.
 
+**shaper 축 변경 시**: 본 §6 체크리스트는 **텍스트(variant) 축 전용** 이다. 구조(shaper) 축 변경은 **ADR 44 §6 (Registry 확장) 및 §11 (구현 Phase)** 의 별도 체크리스트를 사용한다. 단, §2 표 B 의 `compatible_shapers` 컬럼에 영향이 있을 경우 본 문서도 함께 갱신한다 (ADR 44 §6.1 SSOT 정합성 요구).
+
 ### 6.1 모델 1개의 운영 variant 를 바꿀 때
 
 | # | 위치 | 작업 |
@@ -141,6 +148,7 @@ flowchart TB
 | 6 | 어댑터 주석 | 해당 어댑터 파일 상단 주석 (`openai.adapter.ts:23` 등) 의 variant 기술 갱신 |
 | 7 | 대전 실행 전 | 스크립트 실행 직전에 printenv 스냅샷을 결과 JSON 에 보존 (D6) |
 | 8 | MEMORY.md | "AI 대전 테스트" 섹션 및 "Next TODO" 의 env 명령어 업데이트 |
+| 9 | **shaper 축 교차 영향** | 변경 후 model × variant 조합이 §2 표 B 의 `compatible_shapers` 열과 일치하는지 재검토. 불일치 시 **ADR 44 §6 (ContextShaperRegistry)** 체크리스트 필수 참조 후 두 문서 동시 갱신 |
 
 ### 6.2 신규 variant 를 추가할 때 (예: v4.1-openai)
 
@@ -198,6 +206,7 @@ flowchart TB
 | 2026-04-16 | 초판 작성 (SSOT 선언) — Day 4 자정 잠복 이슈 전수조사 결과 | qa | 애벌레 Day 4 자정 지시, 표 A/B/C/D/E 5종 + Mermaid 1 개, stale 7 건 |
 | 2026-04-17 | §3 표 A 에 v4.1 + v5 행 추가, 등록 수 5→7 갱신 | ai-engineer | v5 zero-shot 구현 완료 (24/24 테스트 PASS) |
 | 2026-04-17 | §3 표 A 에 v2-zh (DeepSeek-R1 전용 중문 variant) 행 추가, 등록 수 7→8 갱신 | node-dev | Day 7 A/B 실험 "DeepSeek reasoning 언어 가설" (v2 vs v2-zh single-variable) 착수 |
+| 2026-04-19 | §2 표 B 에 `compatible_shapers` 컬럼 추가 + §2 상단에 "두 축의 분리" 설명문 추가 + §6.1 체크리스트 9 번 항목 (shaper 축 교차 영향) 추가 + §6 서문에 shaper 축 ADR 44 참조 지시 추가 | architect | ADR 44 (`docs/02-design/44-context-shaper-v6-architecture.md`) §6.1 SSOT 정합성 요구사항 이행. variant (텍스트 축) 과 shaper (구조 축) 를 orthogonal 로 명시하여 "v6 를 variant 표에 추가" 오류 방지 (ADR 44 Principle 3). AI Engineer Day 9 지적 반영. variant 정의·env 우선순위 규칙 변경 없음 (SSOT-safe 편집) |
 
 ---
 
