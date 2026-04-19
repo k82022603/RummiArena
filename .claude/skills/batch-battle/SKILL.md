@@ -67,6 +67,13 @@ git log --oneline -3
 kubectl -n rummikub exec deploy/ai-adapter -- printenv | grep -E "DAILY_COST_LIMIT|HOURLY_USER_COST_LIMIT"
 # → 평상시: DAILY_COST_LIMIT_USD=20, HOURLY_USER_COST_LIMIT_USD=5
 # → 이 값이 Day 예산 + 모델별 시간당 rate 를 견딜 수 있는지 계산
+
+# 8. 실측 스크립트 dry-run 검증 (2026-04-19 false success 사고 교훈)
+python3 scripts/ai-battle-3model-r4.py --help 2>&1 | head -20
+python3 scripts/ai-battle-3model-r4.py --models deepseek --max-turns 80 --dry-run 2>&1
+# → argparse 에러 없이 configuration dump 출력되어야 함
+# → wrapper 스크립트 (예: ai-battle-v6-smoke.sh) 가 전달하는 인자가 실제 Python 스크립트에 존재하는지 확인
+# → 존재하지 않는 인자 (예: --turns 대신 --max-turns) 사용 시 argparse error 로 Run 이 0초에 종료됨
 ```
 
 **체크리스트**:
@@ -78,6 +85,7 @@ kubectl -n rummikub exec deploy/ai-adapter -- printenv | grep -E "DAILY_COST_LIM
 - [ ] 이미지 빌드 시점 vs 최신 커밋 → 리빌드 필요 여부
 - [ ] **비용 한도 2건 실 적용 값 (DAILY_COST_LIMIT_USD / HOURLY_USER_COST_LIMIT_USD)**
 - [ ] **예상 Day 총 지출 + 모델별 시간당 rate 계산 → 한도 상향 필요 여부 판단 (Phase 1b)**
+- [ ] **실측 스크립트 `--help` + `--dry-run` 통과** (wrapper 의 인자가 실제로 존재하는지 검증 — 2026-04-19 false success 사고 재발 방지)
 
 ### Phase 1b: 비용 한도 사전 상향 (필요 시)
 
@@ -155,6 +163,50 @@ python3 scripts/ai-battle-multirun.py --model claude --runs 3 --include-historic
 # 또는 단일 모델
 python3 scripts/ai-battle-3model-r4.py --models deepseek
 ```
+
+### Wrapper/Orchestrator 스크립트 실패 감지 (2026-04-19 false success 사고 반영)
+
+배치 orchestrator 가 내부에서 `bash wrapper.sh | tee $LOG` 패턴을 쓸 때 **tee 의 exit code 0 이 Python 실패를 마스킹**해서 "Pass 10/10" 같은 가짜 성공을 초래할 수 있다. 실측 wrapper/orchestrator 작성 시 다음 3중 체크 필수:
+
+```bash
+# (A) PIPESTATUS 로 tee 마스킹 제거 — wrapper 내부
+python3 scripts/ai-battle-3model-r4.py --models deepseek --max-turns "$TURNS" 2>&1 | tee "$LOG_FILE"
+RC=${PIPESTATUS[0]}
+if [ "$RC" -ne 0 ]; then
+  echo "[ERROR] Python 실패 (exit=$RC)"
+  exit "$RC"
+fi
+
+# (B) argparse/Traceback grep 으로 조용한 실패 감지 — orchestrator 내부
+if grep -qE "unrecognized arguments|ArgumentError|Traceback|error:" "$RUN_LOG"; then
+  RC=2
+  echo "[ERROR] Python argparse/runtime 오류 감지"
+fi
+
+# (C) 비정상 조기 종료 감지 — orchestrator 내부 (80턴 실측은 최소 10~60분 소요)
+START_EPOCH=$(date +%s)
+bash "$WRAPPER" ...
+RUN_ELAPSED=$(( $(date +%s) - START_EPOCH ))
+if [ "$RUN_ELAPSED" -lt 600 ]; then
+  RC=3
+  echo "[ERROR] 비정상 조기 종료 (elapsed=${RUN_ELAPSED}s < 600s)"
+fi
+
+# (D) 연속 2 Run 실패 시 fail-fast (무한 실패 방지)
+if [ "$RC" -ne 0 ]; then
+  FAIL_COUNT=$((FAIL_COUNT+1))
+  if [ "$FAIL_COUNT" -ge 2 ]; then
+    echo "[FATAL] 연속 2 Run 실패 — 배치 중단"
+    break
+  fi
+else
+  FAIL_COUNT=0
+fi
+```
+
+**실측 후 즉시 검증 (kickoff 5분 후)**:
+- `tail master.log | head -20` 로 Run 1 이 argparse error 없이 실측 단계 (예: `T02 AI(seat 1): thinking...`) 진입했는지 확인
+- 5분 만에 Run 2/N 으로 넘어가 있다면 80턴 실측이 아닌 false success → **즉시 중단 + 스크립트 debug**
 
 ### 모니터링 설정 (필수)
 
@@ -322,6 +374,18 @@ ScheduleWakeup(
 - 3 Run 예상 총 소요: ~3~4시간 (AI 턴 40개 × 평균 173s + Run 간 sleep 30s × 2)
 - 완료 시 master.log 에 모든 Run 요약이 연속으로 찍혀 있고 python3 프로세스는 종료됨
 
+### 사고 사례 — 2026-04-19 Smoke 10회 false success (재발 방지 기록)
+
+- 킥오프 14:03:41 → 14:09:58 에 "Pass 10/10" 종료 (6분 만에 10 Run 전부 완료 보고)
+- **실제**: 매 Run 이 argparse error 로 0초에 종료. DeepSeek API 호출 0회, 비용 $0
+- **원인**: `ai-battle-v6-smoke.sh` 가 `--turns 80 --timeout 700` 전달했으나 `ai-battle-3model-r4.py` 는 `--max-turns` 만 지원. `--turns`, `--timeout` 은 존재하지 않는 인자
+- **마스킹 메커니즘**: `python ... | tee $LOG` 에서 Python exit 2 가 tee exit 0 으로 덮임 → orchestrator 가 exit=0 을 성공으로 집계
+- **교훈 반영**:
+  - Phase 1 체크리스트 8 추가 (dry-run 검증)
+  - Phase 3 에 PIPESTATUS + grep argparse error + 10분 미만 조기 종료 감지 + 연속 2 Run fail-fast 4중 방어 추가
+  - 금지 사항 10~12 추가 (dry-run 생략, PIPESTATUS 미체크, 5분 검증 생략)
+- 같은 날 15:32:17 재킥오프 성공 (BatchTag r11-smoke-20260419-153217, 정상 T02 thinking 확인)
+
 ---
 
 ## Phase 4: 사후 정리 (매 모델 완료 후)
@@ -387,3 +451,6 @@ kubectl -n rummikub exec deploy/ai-adapter -- printenv | grep COST_LIMIT
 7. ❌ **비용 한도 (`DAILY_COST_LIMIT_USD` / `HOURLY_USER_COST_LIMIT_USD`) 예상 지출 대비 미점검 배틀 시작** (Sprint 5 3모델 대전 RESET 사고 재발 방지)
 8. ❌ **배틀 도중 한도 걸려서 Redis `DEL quota:daily:*` 로 사후 RESET** (배틀 중단 + 통계 누락 초래, Phase 1b 사전 상향이 정답)
 9. ❌ **배틀 완료 후 Phase 1b 에서 상향한 한도 복구 누락** (평상시에 느슨한 한도 잔존 → 다음 대전/버그 폭주 리스크)
+10. ❌ **Python 실측 스크립트 인자 검증 (`--help` + `--dry-run`) 없이 wrapper/orchestrator kickoff** (2026-04-19 Smoke 10회 false success 사고 재발 방지 — argparse error 가 tee pipe 에 의해 마스킹되면 Pass 10/10 로 보고됨)
+11. ❌ **`tee` 로 pipe 한 실행에서 PIPESTATUS 체크 없이 `$?` 만 사용** — tee 성공이 Python 실패를 숨김. `${PIPESTATUS[0]}` 로 실행 명령 자체의 exit code 확인 필수
+12. ❌ **80턴 실측 kickoff 후 5분 검증 생략** — 정상은 Run 1 이 T02~T04 단계에 있어야 함. Run 2+ 로 넘어갔으면 false success 징후
