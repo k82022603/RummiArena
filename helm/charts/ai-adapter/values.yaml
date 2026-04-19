@@ -35,6 +35,12 @@ env:
   DEEPSEEK_REASONER_PROMPT_VARIANT: ""
   DASHSCOPE_PROMPT_VARIANT: ""
   OLLAMA_PROMPT_VARIANT: ""
+  # ContextShaper 설정 (docs/02-design/44 §6.3)
+  # 기본값 passthrough = v2 동작 그대로 보존
+  # Phase 4 실측: kubectl set env deploy/ai-adapter -n rummikub DEEPSEEK_REASONER_CONTEXT_SHAPER=joker-hinter
+  # Phase 5 실측: kubectl set env deploy/ai-adapter -n rummikub DEEPSEEK_REASONER_CONTEXT_SHAPER=pair-warmup
+  DEEPSEEK_REASONER_CONTEXT_SHAPER: "passthrough"
+  DEFAULT_CONTEXT_SHAPER: "passthrough"
 
 secrets:
   # 실제 값은 kubectl patch 또는 inject-secrets.sh로 주입 (Git에 커밋하지 말 것)
