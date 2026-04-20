@@ -170,9 +170,7 @@ describe('DashScopeAdapter', () => {
     });
 
     it('네트워크 실패 시 false 를 반환한다', async () => {
-      mockedAxios.get = jest
-        .fn()
-        .mockRejectedValueOnce(new Error('ENOTFOUND'));
+      mockedAxios.get = jest.fn().mockRejectedValueOnce(new Error('ENOTFOUND'));
       const result = await adapter.healthCheck();
       expect(result).toBe(false);
     });
@@ -189,17 +187,13 @@ describe('DashScopeAdapter', () => {
       });
       mockedAxios.post = jest
         .fn()
-        .mockResolvedValueOnce(
-          makeDashScopeResponse(content, 'Analyzing...'),
-        );
+        .mockResolvedValueOnce(makeDashScopeResponse(content, 'Analyzing...'));
 
       const response = await adapter.generateMove(makeMoveRequest());
 
       expect(response.action).toBe('draw');
       expect(response.metadata.modelType).toBe('dashscope');
-      expect(response.metadata.modelName).toBe(
-        'qwen3-235b-a22b-thinking-2507',
-      );
+      expect(response.metadata.modelName).toBe('qwen3-235b-a22b-thinking-2507');
       expect(response.metadata.isFallbackDraw).toBe(false);
     });
 
@@ -221,14 +215,16 @@ describe('DashScopeAdapter', () => {
     });
 
     it('token usage 가 metadata 에 반영된다', async () => {
-      mockedAxios.post = jest.fn().mockResolvedValueOnce(
-        makeDashScopeResponse(
-          JSON.stringify({ action: 'draw', reasoning: 'ok' }),
-          'thinking',
-          333,
-          777,
-        ),
-      );
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(
+          makeDashScopeResponse(
+            JSON.stringify({ action: 'draw', reasoning: 'ok' }),
+            'thinking',
+            333,
+            777,
+          ),
+        );
       const response = await adapter.generateMove(makeMoveRequest());
       expect(response.metadata.promptTokens).toBe(333);
       expect(response.metadata.completionTokens).toBe(777);
@@ -303,13 +299,11 @@ describe('DashScopeAdapter', () => {
   // -----------------------------------------------------------------------
   describe('generateMove() - 에러 처리', () => {
     it('401 인증 에러는 재시도 후 fallback draw 를 반환한다', async () => {
-      mockedAxios.post = jest
-        .fn()
-        .mockRejectedValue(
-          makeAxiosError(401, {
-            error: { code: 'InvalidApiKey', message: 'Unauthorized' },
-          }),
-        );
+      mockedAxios.post = jest.fn().mockRejectedValue(
+        makeAxiosError(401, {
+          error: { code: 'InvalidApiKey', message: 'Unauthorized' },
+        }),
+      );
 
       const response = await adapter.generateMove(
         makeMoveRequest({ maxRetries: 2 }),
@@ -355,13 +349,11 @@ describe('DashScopeAdapter', () => {
     });
 
     it('500 서버 에러는 재시도 후 fallback draw 를 반환한다', async () => {
-      mockedAxios.post = jest
-        .fn()
-        .mockRejectedValue(
-          makeAxiosError(500, {
-            error: { code: 'InternalError', message: 'upstream failure' },
-          }),
-        );
+      mockedAxios.post = jest.fn().mockRejectedValue(
+        makeAxiosError(500, {
+          error: { code: 'InternalError', message: 'upstream failure' },
+        }),
+      );
 
       const response = await adapter.generateMove(
         makeMoveRequest({ maxRetries: 2 }),

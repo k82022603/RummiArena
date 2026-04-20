@@ -27,10 +27,7 @@ const createMockRedis = () => ({
 });
 
 /** ConfigService 모킹 */
-const createMockConfigService = (
-  dailyLimitUsd = 5,
-  hourlyUserLimitUsd = 5,
-) =>
+const createMockConfigService = (dailyLimitUsd = 5, hourlyUserLimitUsd = 5) =>
   ({
     get: jest.fn((key: string, defaultValue: unknown) => {
       if (key === 'DAILY_COST_LIMIT_USD') return dailyLimitUsd;
@@ -363,7 +360,9 @@ describe('CostTrackingService', () => {
       await service.recordUserCost('game-001', record);
 
       expect(incrbyMock).toHaveBeenCalledWith(
-        expect.stringMatching(/^quota:hourly:game-001:\d{4}-\d{2}-\d{2}-\d{2}$/),
+        expect.stringMatching(
+          /^quota:hourly:game-001:\d{4}-\d{2}-\d{2}-\d{2}$/,
+        ),
         expect.any(Number),
       );
     });
@@ -539,7 +538,9 @@ describe('CostTrackingService', () => {
       await service.isUserHourlyLimitExceeded('game-abc');
 
       expect(mockRedis.get).toHaveBeenCalledWith(
-        expect.stringMatching(/^quota:hourly:game-abc:\d{4}-\d{2}-\d{2}-\d{2}$/),
+        expect.stringMatching(
+          /^quota:hourly:game-abc:\d{4}-\d{2}-\d{2}-\d{2}$/,
+        ),
       );
     });
 

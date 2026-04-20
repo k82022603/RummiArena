@@ -286,8 +286,7 @@ export function buildV3TunedUserPrompt(gameState: {
     lines.push('');
     lines.push('# Opponents');
     gameState.opponents.forEach((opp) => {
-      const warn =
-        opp.remainingTiles <= 3 ? ' WARNING: close to winning!' : '';
+      const warn = opp.remainingTiles <= 3 ? ' WARNING: close to winning!' : '';
       lines.push(`${opp.playerId}: ${opp.remainingTiles} tiles${warn}`);
     });
   }

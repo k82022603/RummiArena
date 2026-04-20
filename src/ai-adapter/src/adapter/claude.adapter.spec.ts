@@ -3,7 +3,11 @@ import { PromptBuilderService } from '../prompt/prompt-builder.service';
 import { ResponseParserService } from '../common/parser/response-parser.service';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
-import { MoveRequestDto, GameStateDto, Difficulty } from '../common/dto/move-request.dto';
+import {
+  MoveRequestDto,
+  GameStateDto,
+  Difficulty,
+} from '../common/dto/move-request.dto';
 
 // axios 전체를 mock
 jest.mock('axios');

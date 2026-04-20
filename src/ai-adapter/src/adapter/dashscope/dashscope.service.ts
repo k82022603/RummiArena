@@ -264,8 +264,7 @@ export class DashScopeAdapter extends BaseAdapter {
 
     const usage = response.data.usage;
     const content = (choice.message.content ?? '') as string;
-    const reasoningContent =
-      (choice.message.reasoning_content ?? '') as string;
+    const reasoningContent = (choice.message.reasoning_content ?? '') as string;
 
     if (reasoningContent) {
       this.logger.debug(
@@ -304,7 +303,8 @@ export class DashScopeAdapter extends BaseAdapter {
     if (status === 401) return 'auth';
     if (status === 429) {
       const payload = axiosErr.response?.data?.error;
-      const text = `${payload?.code ?? ''} ${payload?.message ?? ''}`.toLowerCase();
+      const text =
+        `${payload?.code ?? ''} ${payload?.message ?? ''}`.toLowerCase();
       if (text.includes('quota') || text.includes('exceeded your current')) {
         return 'quota_exceeded';
       }
@@ -394,7 +394,8 @@ export class DashScopeAdapter extends BaseAdapter {
         .replace(/,\s*]/g, ']');
       try {
         const parsed = JSON.parse(cleaned);
-        if (parsed.action === 'draw' || parsed.action === 'place') return cleaned;
+        if (parsed.action === 'draw' || parsed.action === 'place')
+          return cleaned;
       } catch {
         continue;
       }

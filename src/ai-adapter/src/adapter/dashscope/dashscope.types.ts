@@ -21,7 +21,8 @@ export const DASHSCOPE_MODELS = {
   QWEN3_5_PLUS: 'qwen3.5-plus',
 } as const;
 
-export type DashScopeModelId = (typeof DASHSCOPE_MODELS)[keyof typeof DASHSCOPE_MODELS];
+export type DashScopeModelId =
+  (typeof DASHSCOPE_MODELS)[keyof typeof DASHSCOPE_MODELS];
 
 export const DASHSCOPE_DEFAULT_MODEL: DashScopeModelId =
   DASHSCOPE_MODELS.QWEN3_235B_THINKING;
@@ -30,7 +31,10 @@ export const DASHSCOPE_BASE_URL =
   'https://dashscope-intl.aliyuncs.com/compatible-mode/v1';
 
 /** USD per 1M tokens (2026-04-14 기준, 설계 §17.3) */
-export const DASHSCOPE_PRICING: Record<string, { input: number; output: number }> = {
+export const DASHSCOPE_PRICING: Record<
+  string,
+  { input: number; output: number }
+> = {
   'qwen3-235b-a22b-thinking-2507': { input: 0.23, output: 2.3 },
   'qwen3-next-80b-a3b-thinking': { input: 0.15, output: 1.2 },
   'qwen3-max-2026-01-23': { input: 1.2, output: 6.0 },
@@ -112,10 +116,10 @@ export interface DashScopeChatResponse {
  * 공식 compat 페이지 상태 코드 테이블 참조 (설계 §17.6).
  */
 export type DashScopeErrorKind =
-  | 'auth'          // 401
+  | 'auth' // 401
   | 'rate_limit_qps' // 429 - QPS/QPM 초과, 재시도 가능
   | 'quota_exceeded' // 429 - 계정 quota 초과, 재시도 불가 → 즉시 fallback
-  | 'server_error'  // 500
-  | 'overloaded'    // 503
-  | 'timeout'       // 클라이언트 타임아웃
+  | 'server_error' // 500
+  | 'overloaded' // 503
+  | 'timeout' // 클라이언트 타임아웃
   | 'unknown';

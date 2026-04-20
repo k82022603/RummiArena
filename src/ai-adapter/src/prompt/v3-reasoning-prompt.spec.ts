@@ -163,9 +163,7 @@ describe('V3 Reasoning Prompt', () => {
         expect(V3_REASONING_SYSTEM_PROMPT).toContain(
           'count how many rack tiles it uses',
         );
-        expect(V3_REASONING_SYSTEM_PROMPT).toContain(
-          'prefer extending',
-        );
+        expect(V3_REASONING_SYSTEM_PROMPT).toContain('prefer extending');
         expect(V3_REASONING_SYSTEM_PROMPT).toContain(
           'Tie-breaker: prefer placing higher-number tiles',
         );
@@ -184,9 +182,7 @@ describe('V3 Reasoning Prompt', () => {
       expect(V3_REASONING_SYSTEM_PROMPT).toContain(
         '## Example 2: Place single run',
       );
-      expect(V3_REASONING_SYSTEM_PROMPT).toContain(
-        '## Example 3: Place group',
-      );
+      expect(V3_REASONING_SYSTEM_PROMPT).toContain('## Example 3: Place group');
       expect(V3_REASONING_SYSTEM_PROMPT).toContain(
         '## Example 4: Extend existing table group',
       );
@@ -270,9 +266,7 @@ describe('V3 Reasoning Prompt', () => {
     });
 
     it('상대가 없으면 Opponents 섹션이 없다', () => {
-      const prompt = buildV3UserPrompt(
-        makeGameState({ opponents: [] }),
-      );
+      const prompt = buildV3UserPrompt(makeGameState({ opponents: [] }));
       expect(prompt).not.toContain('# Opponents');
     });
 
@@ -325,11 +319,7 @@ describe('V3 Reasoning Prompt', () => {
     });
 
     it('빈 테이블이면 그룹 수 카운팅 안내가 없다', () => {
-      const prompt = buildV3RetryPrompt(
-        makeGameState(),
-        'parse error',
-        0,
-      );
+      const prompt = buildV3RetryPrompt(makeGameState(), 'parse error', 0);
       expect(prompt).not.toContain('Table has');
     });
 

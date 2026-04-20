@@ -90,9 +90,7 @@ function seedToGameState(seedHex: string, turnNumber = 1): PromptGameState {
 
   // turnNumber가 5 이상이면 테이블에 가짜 그룹 하나 추가
   const tableGroups =
-    turnNumber >= 5
-      ? [{ id: 'g1', tiles: ['R7a', 'B7a', 'K7a'] }]
-      : [];
+    turnNumber >= 5 ? [{ id: 'g1', tiles: ['R7a', 'B7a', 'K7a'] }] : [];
 
   return {
     tableGroups,
@@ -281,8 +279,7 @@ function comparePair(
   const userDiff = lineDiff(userA, userB);
   const retryDiff = lineDiff(retryA, retryB);
 
-  const identical =
-    sysA === sysB && userA === userB && retryA === retryB;
+  const identical = sysA === sysB && userA === userB && retryA === retryB;
 
   return {
     seed,
@@ -357,8 +354,7 @@ function summarizePairs(pairs: PairComparison[]): SummaryRow[] {
       (s, p) => s + p.systemImpact.removedDecisionLines,
       0,
     );
-    const avgDelta =
-      list.reduce((s, p) => s + p.tokenDelta, 0) / list.length;
+    const avgDelta = list.reduce((s, p) => s + p.tokenDelta, 0) / list.length;
 
     const row: SummaryRow = {
       variantA: va,
@@ -411,7 +407,8 @@ function parseArgs(argv: string[]): CliArgs {
     if (a === '--seeds') args.seeds = argv[++i].split(',');
     else if (a === '--variants')
       args.variants = argv[++i].split(',') as VariantId[];
-    else if (a === '--models') args.models = argv[++i].split(',') as ModelType[];
+    else if (a === '--models')
+      args.models = argv[++i].split(',') as ModelType[];
     else if (a === '--out') args.out = argv[++i];
     else if (a === '--format')
       args.format = argv[++i] as 'json' | 'markdown' | 'both';
@@ -525,9 +522,7 @@ function renderMarkdown(
     if (shownPairs.has(key)) continue;
     shownPairs.add(key);
     if (p.identical) {
-      lines.push(
-        `### ${p.variantA} → ${p.variantB} (${p.model}) — IDENTICAL`,
-      );
+      lines.push(`### ${p.variantA} → ${p.variantB} (${p.model}) — IDENTICAL`);
       lines.push('');
       continue;
     }
@@ -566,16 +561,14 @@ function renderMarkdown(
     );
   }
   const largestDelta = summary.reduce(
-    (max, r) => (Math.abs(r.avgTokenDelta) > Math.abs(max) ? r.avgTokenDelta : max),
+    (max, r) =>
+      Math.abs(r.avgTokenDelta) > Math.abs(max) ? r.avgTokenDelta : max,
     0,
   );
   lines.push(`- 토큰 델타 최대: ${largestDelta} tokens/cell (대략치)`);
   const maxImpact = summary.reduce(
     (max, r) =>
-      Math.max(
-        max,
-        r.totalSystemDecisionAdded + r.totalSystemDecisionRemoved,
-      ),
+      Math.max(max, r.totalSystemDecisionAdded + r.totalSystemDecisionRemoved),
     0,
   );
   lines.push(
@@ -584,9 +577,15 @@ function renderMarkdown(
   lines.push('');
   lines.push('## 6. SP5 입력 제안');
   lines.push('');
-  lines.push('- SP5는 v4 placeholder의 실제 본문을 SP1 §6.1~6.5 기반으로 교체한 뒤 본 harness를 다시 실행해야 함.');
-  lines.push('- 재실행 명령: `node scripts/prompt-ab-eval.mjs --variants v3,v4 --models deepseek-reasoner,dashscope,openai,claude`');
-  lines.push('- 기대: v4가 더 이상 IDENTICAL이 아니어야 하며 decision impact > 0이어야 함.');
+  lines.push(
+    '- SP5는 v4 placeholder의 실제 본문을 SP1 §6.1~6.5 기반으로 교체한 뒤 본 harness를 다시 실행해야 함.',
+  );
+  lines.push(
+    '- 재실행 명령: `node scripts/prompt-ab-eval.mjs --variants v3,v4 --models deepseek-reasoner,dashscope,openai,claude`',
+  );
+  lines.push(
+    '- 기대: v4가 더 이상 IDENTICAL이 아니어야 하며 decision impact > 0이어야 함.',
+  );
   lines.push('');
 
   return lines.join('\n');

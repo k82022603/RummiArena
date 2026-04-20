@@ -8,10 +8,7 @@ import { ClaudeAdapter } from './claude.adapter';
 import { DeepSeekAdapter } from './deepseek.adapter';
 import { OllamaAdapter } from './ollama.adapter';
 import { DashScopeAdapter } from './dashscope/dashscope.service';
-import {
-  MoveRequestDto,
-  GameStateDto,
-} from '../common/dto/move-request.dto';
+import { MoveRequestDto, GameStateDto } from '../common/dto/move-request.dto';
 import { V3_REASONING_SYSTEM_PROMPT } from '../prompt/v3-reasoning-prompt';
 import { V2_REASONING_SYSTEM_PROMPT } from '../prompt/v2-reasoning-prompt';
 
@@ -52,9 +49,7 @@ const makeMoveRequest = (): MoveRequestDto => ({
 
 const makeRegistry = (env: Record<string, string> = {}): PromptRegistry => {
   const cs = {
-    get: jest.fn(
-      (k: string, d?: string) => env[k] ?? d,
-    ),
+    get: jest.fn((k: string, d?: string) => env[k] ?? d),
   } as unknown as ConfigService;
   const r = new PromptRegistry(cs);
   r.onModuleInit();

@@ -427,7 +427,9 @@ describe('DeepSeekAdapter', () => {
     beforeEach(() => {
       reasonerAdapter = makeReasonerAdapter();
       jest.clearAllMocks();
-      jest.spyOn(reasonerAdapter as any, 'backoff').mockResolvedValue(undefined);
+      jest
+        .spyOn(reasonerAdapter as any, 'backoff')
+        .mockResolvedValue(undefined);
     });
 
     it('reasoner 모드에서 요청 바디에 temperature가 포함되지 않는다', async () => {
@@ -568,7 +570,9 @@ describe('DeepSeekAdapter', () => {
     beforeEach(() => {
       reasonerAdapter = makeReasonerAdapter();
       jest.clearAllMocks();
-      jest.spyOn(reasonerAdapter as any, 'backoff').mockResolvedValue(undefined);
+      jest
+        .spyOn(reasonerAdapter as any, 'backoff')
+        .mockResolvedValue(undefined);
     });
 
     it('content가 순수 JSON이면 그대로 사용한다', () => {
@@ -686,7 +690,9 @@ describe('DeepSeekAdapter', () => {
     beforeEach(() => {
       reasonerAdapter = makeReasonerAdapter();
       jest.clearAllMocks();
-      jest.spyOn(reasonerAdapter as any, 'backoff').mockResolvedValue(undefined);
+      jest
+        .spyOn(reasonerAdapter as any, 'backoff')
+        .mockResolvedValue(undefined);
     });
 
     it('reasoner 모드에서 모든 재시도 실패 시 fallback draw를 반환한다', async () => {
@@ -754,7 +760,9 @@ describe('DeepSeekAdapter', () => {
     beforeEach(() => {
       reasonerAdapter = makeReasonerAdapter();
       jest.clearAllMocks();
-      jest.spyOn(reasonerAdapter as any, 'backoff').mockResolvedValue(undefined);
+      jest
+        .spyOn(reasonerAdapter as any, 'backoff')
+        .mockResolvedValue(undefined);
     });
 
     describe('시스템 프롬프트 - few-shot 예시', () => {
@@ -910,7 +918,9 @@ describe('DeepSeekAdapter', () => {
         expect(userContent).toContain('Validation Reminders');
         expect(userContent).toContain('verify each set has 3+ tiles');
         expect(userContent).toContain('runs are consecutive same-color');
-        expect(userContent).toContain('groups are same-number different-colors');
+        expect(userContent).toContain(
+          'groups are same-number different-colors',
+        );
       });
 
       it('유저 프롬프트에 duplicate color 경고가 포함된다', async () => {
@@ -968,9 +978,7 @@ describe('DeepSeekAdapter', () => {
         const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
         const systemContent: string = body.messages[0].content;
 
-        expect(systemContent).toContain(
-          'No color can appear twice in a group',
-        );
+        expect(systemContent).toContain('No color can appear twice in a group');
       });
 
       it('런 규칙에 "no wraparound" 명시가 포함된다', async () => {

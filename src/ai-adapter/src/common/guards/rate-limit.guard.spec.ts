@@ -44,9 +44,9 @@ const createMockContext = (): ExecutionContext =>
  * ThrottlerGuard.canActivate()의 동작을 mockFn으로 제어한다.
  */
 class TestableRateLimitGuard extends RateLimitGuard {
-  public mockSuperResult:
-    | { resolved: boolean }
-    | { error: Error } = { resolved: true };
+  public mockSuperResult: { resolved: boolean } | { error: Error } = {
+    resolved: true,
+  };
 
   /** 부모의 canActivate()를 오버라이드하여 테스트에서 제어 가능하게 만든다 */
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -160,7 +160,9 @@ describe('RateLimitGuard', () => {
           string,
           unknown
         >;
-        expect(body.message).toBe('요청이 너무 많습니다. 잠시 후 다시 시도해주세요.');
+        expect(body.message).toBe(
+          '요청이 너무 많습니다. 잠시 후 다시 시도해주세요.',
+        );
       }
     });
 

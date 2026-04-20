@@ -17,9 +17,7 @@ describe('Rate Limit 설정 검증', () => {
   describe('@Throttle() 데코레이터 적용 확인', () => {
     it('MoveController.generateMove에 @Throttle 메타데이터가 설정되어 있다', async () => {
       // 동적 import로 모듈 로드 (데코레이터 메타데이터 확인)
-      const { MoveController } = await import(
-        '../../move/move.controller'
-      );
+      const { MoveController } = await import('../../move/move.controller');
       // @nestjs/throttler v6+에서는 메타데이터 키가 다를 수 있다
       // Throttle 데코레이터가 적용되었는지는 소스 코드 레벨에서 확인
       // 여기서는 데코레이터 존재 여부 + 소스 텍스트 방식으로 검증
@@ -27,9 +25,8 @@ describe('Rate Limit 설정 검증', () => {
     });
 
     it('HealthController에 @Throttle 데코레이터가 설정되어 있다', async () => {
-      const { HealthController } = await import(
-        '../../health/health.controller'
-      );
+      const { HealthController } =
+        await import('../../health/health.controller');
       expect(HealthController.prototype.check).toBeDefined();
       expect(HealthController.prototype.checkAdapters).toBeDefined();
     });

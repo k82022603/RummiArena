@@ -98,9 +98,7 @@ describe('CostLimitGuard', () => {
       try {
         await guard.canActivate(context);
       } catch (err) {
-        expect((err as HttpException).getStatus()).toBe(
-          HttpStatus.FORBIDDEN,
-        );
+        expect((err as HttpException).getStatus()).toBe(HttpStatus.FORBIDDEN);
         const response = (err as HttpException).getResponse() as any;
         expect(response.allowedModels).toContain('ollama');
         expect(response.error).toBe('Daily Cost Limit Exceeded');
@@ -139,9 +137,7 @@ describe('CostLimitGuard', () => {
       try {
         await guard.canActivate(context);
       } catch (err) {
-        expect((err as HttpException).getStatus()).toBe(
-          HttpStatus.FORBIDDEN,
-        );
+        expect((err as HttpException).getStatus()).toBe(HttpStatus.FORBIDDEN);
         const response = (err as HttpException).getResponse() as any;
         expect(response.error).toBe('Hourly User Cost Limit Exceeded');
         expect(response.code).toBe('HOURLY_COST_LIMIT_EXCEEDED');

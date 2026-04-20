@@ -1,4 +1,7 @@
-import { MoveRequestDto, GameStateDto } from '../../common/dto/move-request.dto';
+import {
+  MoveRequestDto,
+  GameStateDto,
+} from '../../common/dto/move-request.dto';
 import {
   V3_REASONING_SYSTEM_PROMPT,
   buildV3UserPrompt,

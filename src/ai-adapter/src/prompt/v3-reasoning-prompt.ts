@@ -234,9 +234,7 @@ export function buildV3UserPrompt(gameState: {
   lines.push(`Draw pile: ${gameState.drawPileCount} tiles remaining`);
 
   if (!gameState.initialMeldDone) {
-    lines.push(
-      'Initial Meld: NOT DONE -- you need sum >= 30 points to place',
-    );
+    lines.push('Initial Meld: NOT DONE -- you need sum >= 30 points to place');
     lines.push('You can ONLY use your rack tiles (no table tiles)');
     lines.push('Calculate: sum of tile numbers must be >= 30');
   } else {
@@ -249,8 +247,7 @@ export function buildV3UserPrompt(gameState: {
     lines.push('');
     lines.push('# Opponents');
     gameState.opponents.forEach((opp) => {
-      const warn =
-        opp.remainingTiles <= 3 ? ' WARNING: close to winning!' : '';
+      const warn = opp.remainingTiles <= 3 ? ' WARNING: close to winning!' : '';
       lines.push(`${opp.playerId}: ${opp.remainingTiles} tiles${warn}`);
     });
   }

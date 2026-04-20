@@ -37,8 +37,7 @@ export class CostLimitGuard implements CanActivate {
     }
 
     // 1. 일일 전체 비용 한도 확인
-    const dailyExceeded =
-      await this.costTrackingService.isDailyLimitExceeded();
+    const dailyExceeded = await this.costTrackingService.isDailyLimitExceeded();
 
     if (dailyExceeded) {
       this.logger.warn(

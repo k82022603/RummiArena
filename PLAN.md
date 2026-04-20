@@ -372,9 +372,26 @@ docs/
 
 ## 현재 진행 상황
 
-**Sprint 6 Day 1 + Day 2 동시 수행** (2026-04-13) — 사용자 "일정 땡겨서" 지시로 2일치 가속
+**Sprint 6 Day 9~10 v6 ContextShaper 실험 완결** (2026-04-19~20) — "프롬프트 엔지니어링 두 축 수확체감 이중 확증"
 
-### Sprint 6 Day 1+2 당일 성과
+### Sprint 6 Day 9~10 성과
+- **20건 커밋** origin/main 반영 (9c90199 ~ 53e5886)
+- **Agent Teams 8명 병렬 출동** (PM×2, Architect×2, AIE×2, Security, QA, Designer, Node Dev×2, Frontend Dev×2, DevOps×3)
+- **Task #20 v6 ContextShaper 당일 구현 완결** — ADR 44 (1041줄) + Passthrough/JokerHinter/PairWarmup 실알고리즘 + PromptBuilder 통합, **576 tests PASS**
+- **v6 Smoke 10회 실측 (2일, $0.88)** — passthrough 28.2%/28.2% (N=2), joker-hinter 25.6%/30.8%/25.6% (N=3=27.3%), pair-warmup 28.9% (N=1 유효)
+- **🎯 v6 Kill 공식 확정** — 3 shaper 모두 Δ<2%p, v2 baseline 29.07% 에 수렴. Day 8 텍스트 축 (v2 vs v3 Δ=0.04%p) + Day 9/10 구조 축 이중 확증
+- **종합 리포트 63번 완성** — 831줄, Part 1 실측 / Part 2 감상 / Part 3 반성 6건 (AI Engineer, commit 53e5886)
+- **PR 5 RoundHistoryTable draft** (1607줄), ADR 42/44/45 3건, Day 12 GO/Kill/Pivot 선제 결정문
+- **게임 UI** 턴 히스토리 자체 스크롤 수정 (애벌레 피드백)
+- **장애 3건 기록** — argparse bug (복구), T66 fallback (장애보고서), DNS 장애 3회 (Run 7/9/10 오염)
+- **batch-battle SKILL 2회 업데이트** — Phase 1 dry-run + 4중 방어 + fallback 1건 장애보고서 규칙
+
+### Task #20/#21 판정
+- **Task #20 v6 구조 재설계**: 구현 완결 + 실측 완결 → **Kill 확정**
+- **Task #21 A안 (v6 Round 11 + 블로그 2차)**: Kill → **Plan B 자동 발동** (D안 대시보드 + B안 PostgreSQL 마이그)
+- **Task #19 본실측 turn 80 × 3N**: 불필요 확정 (Smoke 결과로 충분)
+
+### Sprint 6 Day 1+2 당일 성과 (2026-04-13, 참고)
 - **24건 커밋** origin/main 반영
 - **Agent Teams 13명 투입** — 3개 팀 (sprint6-day2 / sprint6-day2-p2p3 / sprint6-day2-ui-hotfix)
 - **Istio Phase 5.0/5.1 완료** — 30Mi 메모리, mTLS 양방향 9회 실체결
