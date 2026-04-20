@@ -65,6 +65,10 @@ kubeconfig
 .env.production
 .env.staging
 .docker/
+# Secret mapping files (dev/staging secret → placeholder 매핑 테이블)
+secret-replacements*
+*secret-replacements*
+scripts/secret-replacements.txt
 
 # Temporary
 tmp/
