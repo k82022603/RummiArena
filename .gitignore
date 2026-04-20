@@ -7,6 +7,11 @@ dist/
 build/
 .next/
 out/
+# Docker image exports (로컬 빌드 tar 산출물)
+admin.tar
+*-image.tar
+# Helm chart packages (helm package 명령의 산출물, 릴리스 시 수동 업로드)
+helm/charts/*.tgz
 
 # Go binaries
 src/game-server/server
@@ -46,6 +51,11 @@ docker-compose.override.yml
 # Test coverage
 coverage/
 *.lcov
+# Playwright root-level test-results (src/frontend/test-results/ 는 CLAUDE.md 정책상 추적 대상)
+/test-results/
+
+# Claude Code 로컬 도구 (워크트리는 세션별 임시 디렉토리)
+.claude/worktrees/
 
 # Logs (application runtime logs only)
 *.log
