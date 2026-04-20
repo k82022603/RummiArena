@@ -31,8 +31,8 @@
  * - DashScope가 ModelType에 편입되는 Sprint 7에서 constants.ts로 이관.
  */
 
-import type { ModelType, ModelGrade, PromptVersion } from "@/lib/types";
-import { MODEL_COLORS, MODEL_MARKERS, MODEL_NAMES, GRADE_COLORS } from "./constants";
+import type { ModelType, ModelGrade, PromptVersion, TournamentStatus } from "@/lib/types";
+import { MODEL_COLORS, MODEL_MARKERS, MODEL_NAMES, GRADE_COLORS, STATUS_COLORS, STATUS_LABELS } from "./constants";
 
 // ============================================================================
 // 로컬 타입 — ModelCardGrid 전용 (스펙 §4.6 ModelLatestStats의 부분 집합 + 확장)
@@ -68,6 +68,12 @@ export interface ModelCardEntry {
 interface ModelCardGridProps {
   /** 비어 있으면 MOCK_MODEL_CARDS로 fallback (skeleton 단계 전용 동작) */
   cards?: ModelCardEntry[];
+  /**
+   * 현재 필터에서 선택된 modelKey 목록.
+   * 포함되지 않은 카드는 opacity-40 grayscale 처리 (스펙 §4.6).
+   * 비어 있거나 미전달 시 모든 카드를 active로 간주.
+   */
+  selectedModelKeys?: string[];
   /** place rate 내림차순 정렬 여부 (default: true) */
   sortByPlaceRateDesc?: boolean;
 }
@@ -321,24 +327,63 @@ function GradeBadge({ grade }: { grade: ModelGrade }) {
 }
 
 // ============================================================================
+// 내부 subcomponent — StatusBadge (inline, 후속 PR에서 shared/로 분리)
+// 스펙 §4.10.4
+// ============================================================================
+
+/**
+ * completed 플래그를 TournamentStatus 에 매핑한다.
+ * ModelCardEntry는 completed: boolean만 가지므로, 단순 2-상태 변환을 사용한다.
+ * WS_CLOSED / WS_TIMEOUT 구분이 필요한 경우 ModelCardEntry에 status 필드를 추가할 것.
+ */
+function completedToStatus(completed: boolean): TournamentStatus {
+  return completed ? "COMPLETED" : "WS_TIMEOUT";
+}
+
+interface StatusBadgeProps {
+  status: TournamentStatus;
+}
+
+function StatusBadge({ status }: StatusBadgeProps) {
+  const cls = STATUS_COLORS[status] ?? STATUS_COLORS.UNKNOWN;
+  const label = STATUS_LABELS[status] ?? STATUS_LABELS.UNKNOWN;
+  return (
+    <span
+      className={`inline-flex items-center px-2 py-0.5 rounded border text-xs font-medium ${cls}`}
+      aria-label={`완료 상태: ${label}`}
+    >
+      {label}
+    </span>
+  );
+}
+
+// ============================================================================
 // 메인 subcomponent — ModelCard
 // ============================================================================
 
-function ModelCard({ stats }: { stats: ModelCardEntry }) {
+interface ModelCardProps {
+  stats: ModelCardEntry;
+  /** 필터에서 선택된 모델인지 여부. false이면 opacity-40 grayscale (스펙 §4.6) */
+  active: boolean;
+}
+
+function ModelCard({ stats, active }: ModelCardProps) {
   const color = resolveColor(stats.modelKey);
   const displayName = resolveName(stats.modelKey, stats.modelName);
+  const inactiveClass = active ? "" : "opacity-40 grayscale";
 
   return (
     <article
-      className="relative bg-slate-800 border border-slate-700 rounded-lg p-5 overflow-hidden"
+      className={`relative bg-slate-800 border border-slate-700 rounded-lg p-5 overflow-hidden transition-opacity ${inactiveClass}`}
       aria-label={`${displayName} 모델 카드`}
+      aria-disabled={!active}
       data-testid="model-card"
       data-model-key={stats.modelKey}
       data-place-rate={stats.latestRate}
     >
       {/* 상단 색상 바 */}
       <div
-        className="absolute top-0 left-0 right-0 h-1"
+        className="absolute top-0 left-0 right-0 h-1 rounded-t-lg"
         style={{ backgroundColor: color }}
         aria-hidden="true"
       />
@@ -369,12 +414,14 @@ function ModelCard({ stats }: { stats: ModelCardEntry }) {
       {/* Sparkline */}
       <Sparkline data={stats.sparkline} color={color} />
 
-      {/* 보조 지표 3종: fallback / cost / tiles */}
+      {/* 보조 지표 3종: 응답시간 / cost / tiles (스펙 §4.6 순서) */}
       <dl className="grid grid-cols-3 gap-2 mt-4 text-center">
         <div>
-          <dt className="text-xs text-slate-500">Fallback</dt>
+          <dt className="text-xs text-slate-500">응답 시간</dt>
           <dd className="text-sm font-medium text-slate-200 tabular-nums">
-            {stats.fallbackCount}
+            {stats.avgResponseTimeSec > 0
+              ? `${stats.avgResponseTimeSec.toFixed(1)}s`
+              : "—"}
           </dd>
         </div>
         <div>
@@ -391,11 +438,14 @@ function ModelCard({ stats }: { stats: ModelCardEntry }) {
         </div>
       </dl>
 
-      {/* 푸터: prompt version + 최근 대전 보기 링크 */}
+      {/* 푸터: 상태 배지 + prompt version + 최근 대전 보기 링크 (스펙 §4.6) */}
       <footer className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-slate-700">
-        <span className="text-xs px-2 py-0.5 rounded bg-slate-700 text-slate-300">
-          {stats.promptVersion} 프롬프트
-        </span>
+        <div className="flex items-center gap-1.5 min-w-0">
+          <StatusBadge status={completedToStatus(stats.completed)} />
+          <span className="text-xs px-2 py-0.5 rounded bg-slate-700 text-slate-300 shrink-0">
+            {stats.promptVersion}
+          </span>
+        </div>
         <a
           href={stats.recentBattleHref}
           className="text-xs text-sky-400 hover:text-sky-300 hover:underline focus:outline-none focus:ring-2 focus:ring-sky-500 rounded"
@@ -414,6 +464,7 @@ function ModelCard({ stats }: { stats: ModelCardEntry }) {
 
 export default function ModelCardGrid({
   cards,
+  selectedModelKeys,
   sortByPlaceRateDesc = true,
 }: ModelCardGridProps) {
   // props.cards가 비어 있으면 mock fallback (skeleton 단계)
@@ -422,6 +473,16 @@ export default function ModelCardGrid({
   const rendered = sortByPlaceRateDesc
     ? [...source].sort((a, b) => b.latestRate - a.latestRate)
     : source;
+
+  // selectedModelKeys가 비어 있거나 미전달 시 전체 active 처리
+  const activeSet =
+    selectedModelKeys && selectedModelKeys.length > 0
+      ? new Set(selectedModelKeys)
+      : null;
+
+  const activeCount = activeSet
+    ? rendered.filter((c) => activeSet.has(c.modelKey)).length
+    : rendered.length;
 
   return (
     <section
@@ -436,17 +497,50 @@ export default function ModelCardGrid({
         모델 카드
       </h2>
       <p className="sr-only">
-        총 {rendered.length}개 모델. Place Rate 내림차순으로 정렬되어 있습니다.
+        총 {rendered.length}개 모델 중 {activeCount}개 선택됨.
+        Place Rate 내림차순으로 정렬되어 있습니다.
       </p>
+
+      {/*
+        반응형 레이아웃 (스펙 §4.6):
+        - mobile (< sm): 가로 스와이프 캐러셀 (overflow-x-auto snap-x)
+        - tablet (sm+): grid 2열
+        - desktop (lg+): grid 4열 (dashboard 4분할 내에서 compact하게)
+      */}
+
+      {/* 모바일 캐러셀 (sm 미만에서만 표시) */}
       <div
-        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 flex-1 auto-rows-min"
+        className="flex sm:hidden gap-3 overflow-x-auto snap-x snap-mandatory pb-2 -mx-1 px-1"
+        role="list"
+        aria-label="모델 카드 목록 (스와이프)"
+      >
+        {rendered.map((c) => {
+          const isActive = activeSet ? activeSet.has(c.modelKey) : true;
+          return (
+            <div
+              key={c.modelKey}
+              role="listitem"
+              className="snap-start shrink-0 w-64"
+            >
+              <ModelCard stats={c} active={isActive} />
+            </div>
+          );
+        })}
+      </div>
+
+      {/* 태블릿 이상: 그리드 (스펙 §4.6 tablet 2col / desktop 4col) */}
+      <div
+        className="hidden sm:grid sm:grid-cols-2 xl:grid-cols-4 gap-3 flex-1 auto-rows-min"
         role="list"
       >
-        {rendered.map((c) => (
-          <div key={c.modelKey} role="listitem">
-            <ModelCard stats={c} />
-          </div>
-        ))}
+        {rendered.map((c) => {
+          const isActive = activeSet ? activeSet.has(c.modelKey) : true;
+          return (
+            <div key={c.modelKey} role="listitem">
+              <ModelCard stats={c} active={isActive} />
+            </div>
+          );
+        })}
       </div>
     </section>
   );

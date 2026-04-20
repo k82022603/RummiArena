@@ -144,6 +144,7 @@ export default function TournamentPageClient({
         bottomLeft={
           <ModelCardGrid
             cards={filteredCards.map(toCardEntry)}
+            selectedModelKeys={filters.selectedModels}
           />
         }
         bottomRight={
