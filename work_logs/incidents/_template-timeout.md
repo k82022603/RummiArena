@@ -84,7 +84,7 @@ kubectl logs -n rummikub deploy/game-server --since=2m | grep -iE "fallback|time
 
 - 해당 Run 통계 유효성 (fallback 1건 포함 계산 가능 / 재실측 필요)
 - 다른 Run 에 영향 (shaper env 의 흔적 등)
-- 본실측 (Task #19) turn 80 × 3N 에의 영향
+- 본실측 (Task #19) turn 80 × 3N 에의 영향 *(2026-04-21 사후 주: Task #19 는 v6 Kill 로 종료. 향후 본실측 명칭은 Plan B 본실측 으로 갱신할 것)*
 
 ## 9. 의사결정 기록
 

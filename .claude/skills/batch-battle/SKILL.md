@@ -86,6 +86,74 @@ python3 scripts/ai-battle-3model-r4.py --models deepseek --max-turns 80 --dry-ru
 - [ ] **비용 한도 2건 실 적용 값 (DAILY_COST_LIMIT_USD / HOURLY_USER_COST_LIMIT_USD)**
 - [ ] **예상 Day 총 지출 + 모델별 시간당 rate 계산 → 한도 상향 필요 여부 판단 (Phase 1b)**
 - [ ] **실측 스크립트 `--help` + `--dry-run` 통과** (wrapper 의 인자가 실제로 존재하는지 검증 — 2026-04-19 false success 사고 재발 방지)
+- [ ] **DNS 검증 통과** (Phase 1c — 2026-04-20 DNS 장애 3건 재발 방지)
+
+### Phase 1c: DNS/네트워크 사전 검증 (2026-04-20 반성 4 반영)
+
+> **배경**: 2026-04-20 네트워크 변경 후 WSL2 `/etc/resolv.conf` 동기화 지연으로 Run 7/9/10 DNS 장애 발생 (총 30턴 오염). 배치 시작 전 DNS 해상도를 명시적으로 점검하면 오염 Run 을 사전 차단할 수 있다.
+
+**실행 위치**: 배치 스크립트 Phase 1 마지막, Round 1 호출 직전.
+
+```bash
+# DNS 사전 검증 — LLM 엔드포인트 3개 동시 점검
+echo "[DNS] === LLM 엔드포인트 DNS 해상도 검증 ==="
+
+DNS_FAIL=0
+
+for HOST in api.deepseek.com api.openai.com api.anthropic.com; do
+  RESULT=$(getent hosts "$HOST" 2>&1)
+  RC=$?
+  if [ $RC -eq 0 ]; then
+    IP=$(echo "$RESULT" | awk '{print $1}')
+    echo "[DNS] OK    $HOST → $IP"
+  else
+    echo "[DNS] FAIL  $HOST → getaddrinfo 실패 (RC=$RC)"
+    DNS_FAIL=$((DNS_FAIL + 1))
+  fi
+done
+
+# K8s 내부 DNS 점검 (ai-adapter Pod 에서 외부 도달 가능성 확인)
+K8S_DNS=$(kubectl exec -n rummikub deploy/ai-adapter -- getent hosts api.deepseek.com 2>&1 || echo "FAIL")
+if echo "$K8S_DNS" | grep -qE "^[0-9]"; then
+  echo "[DNS] OK    K8s ai-adapter → api.deepseek.com 도달 가능"
+else
+  echo "[DNS] FAIL  K8s ai-adapter → api.deepseek.com 도달 불가: $K8S_DNS"
+  DNS_FAIL=$((DNS_FAIL + 1))
+fi
+
+# HTTP 수준 도달 가능성 (401/403/200 이면 DNS+라우팅 정상)
+DS_HTTP=$(curl -sS -m 10 https://api.deepseek.com/ -o /dev/null -w "%{http_code}" 2>/dev/null || echo "000")
+if [[ "$DS_HTTP" =~ ^[234] ]]; then
+  echo "[DNS] OK    https://api.deepseek.com/ HTTP=$DS_HTTP (DNS+TLS 정상)"
+else
+  echo "[DNS] WARN  https://api.deepseek.com/ HTTP=$DS_HTTP (라우팅 확인 필요)"
+  # HTTP 레벨 실패는 WARN — DNS 는 됐을 수도 있으므로 즉시 중단하지 않음
+fi
+
+echo "[DNS] === 검증 완료: FAIL=$DNS_FAIL ==="
+
+if [ "$DNS_FAIL" -gt 0 ]; then
+  echo "[ERROR] DNS 검증 실패 ($DNS_FAIL 건). 배치 중단."
+  echo "  조치:"
+  echo "    1. 네트워크 변경 직후라면 10분 대기 후 재시도 (WSL2 resolv.conf 동기화)"
+  echo "    2. sudo systemctl restart systemd-resolved  (호스트 DNS 재시작)"
+  echo "    3. kubectl rollout restart deploy/ai-adapter -n rummikub  (K8s DNS 재시작)"
+  echo "    4. 재검증 후 배치 재개"
+  exit 1
+fi
+```
+
+**중요 운영 규칙**:
+- 네트워크 변경(공유기 전환, 테더링, VPN 등) 후에는 **최소 10분 유예** 후 배치 시작
+- DNS 검증 실패 시 배치 중단 + 위 조치 후 재검증 → 통과 시 재개
+- 사용자가 네트워크 변경을 요청할 때: "~하지 마세요" 단정 금지, 아래 형식으로 답변:
+  ```
+  현재 실험 상태: [Run N/M, Kill/Pivot/GO 판정 근거 이미 확보 여부]
+  변경 시 영향: [최악 시나리오, 예: Run N 오염 가능성]
+  선택지: ① 지금 바꾸고 10분 대기 후 재개 / ② 현 Run 완료 후 변경 / ③ 변경 안 함
+  권고: [실험적 권고 vs 생활 제약 명시 분리]
+  → 최종 판단은 사용자에게 위임
+  ```
 
 ### Phase 1b: 비용 한도 사전 상향 (필요 시)
 
@@ -143,9 +211,91 @@ kubectl exec -n rummikub deploy/redis -- redis-cli keys "game:*"
 kubectl logs -n rummikub deploy/ai-adapter --tail=5 | grep "MoveController"
 # → 0건이어야 함
 
-# 3. 기존 배틀 프로세스 없음 확인
+# 3. 기존 배틀 프로세스 없음 확인 + pstree 로 자식 프로세스 잔존 확인
 ps aux | grep "ai-battle" | grep -v grep
-# → 없어야 함. 있으면 kill
+# → 없어야 함. 있으면 아래 Cleanup 절차 실행
+
+PREV_PIDS=$(pgrep -f "ai-battle" 2>/dev/null)
+if [ -n "$PREV_PIDS" ]; then
+  echo "[WARN] 잔존 ai-battle 프로세스 발견: $PREV_PIDS"
+  echo "[INFO] 프로세스 트리 (pstree 없으면 ps --forest 사용):"
+  for PID in $PREV_PIDS; do
+    pstree -p "$PID" 2>/dev/null || ps --forest -p "$PID" 2>/dev/null || true
+  done
+  echo "[ACTION] 프로세스 트리 전체 kill (Phase 2 Cleanup 절차):"
+  pkill -TERM -f "ai-battle" 2>/dev/null || true
+  sleep 5
+  # 잔존 확인 후 KILL
+  REMAINING=$(pgrep -f "ai-battle" 2>/dev/null)
+  if [ -n "$REMAINING" ]; then
+    echo "[WARN] TERM 후 잔존: $REMAINING → KILL 강제"
+    pkill -KILL -f "ai-battle" 2>/dev/null || true
+    sleep 2
+  fi
+  echo "[OK] 프로세스 정리 완료"
+fi
+```
+
+### Phase 2 Cleanup 체크리스트 (배치 중단/장애 시 필수)
+
+배치가 **정상 완료 / 실패 / 수동 중단** 어느 경로로 끝나든 다음 절차를 실행한다. (2026-04-20 반성 3: cleanup 미흡으로 자식 Python 프로세스 잔존 → DNS 불안정 구간에 진입)
+
+```bash
+# == 즉시 중단 시 프로세스 트리 전체 kill ==
+
+# 1. 현재 배치 PID 확인 (배치 시작 시 기록해둔 BATCH_PID 사용)
+echo "배치 PID: $BATCH_PID"
+
+# 2. pstree 로 자식 프로세스 트리 확인
+pstree -p "$BATCH_PID" 2>/dev/null || ps --forest -p "$BATCH_PID" 2>/dev/null || true
+
+# 3. 프로세스 그룹 전체 kill (bash orchestrator + 자식 Python 동시 종료)
+kill -- -"$BATCH_PID" 2>/dev/null || true   # 프로세스 그룹 kill
+pkill -TERM -f "ai-battle" 2>/dev/null || true
+pkill -TERM -f "python3 scripts" 2>/dev/null || true
+sleep 5
+
+# 4. 잔존 확인
+REMAINING=$(pgrep -f "ai-battle" 2>/dev/null)
+if [ -n "$REMAINING" ]; then
+  echo "[WARN] 잔존 PID=$REMAINING → KILL"
+  pkill -KILL -f "ai-battle" 2>/dev/null || true
+  pkill -KILL -f "python3 scripts" 2>/dev/null || true
+fi
+
+# 5. Redis game:* 잔존 키 정리
+GAME_KEYS=$(kubectl exec -n rummikub deploy/redis -- redis-cli --scan --pattern "game:*" 2>/dev/null | wc -l || echo "0")
+echo "Redis game:* 잔존 키: $GAME_KEYS"
+if [ "$GAME_KEYS" -gt 0 ]; then
+  kubectl exec -n rummikub deploy/redis -- sh -c \
+    'redis-cli --scan --pattern "game:*" | xargs -r redis-cli DEL' 2>/dev/null || true
+  echo "Redis game:* 키 정리 완료"
+fi
+
+# 6. 최종 확인
+echo "=== Cleanup 완료 확인 ==="
+echo "잔존 ai-battle 프로세스: $(pgrep -f 'ai-battle' 2>/dev/null | wc -l)개"
+echo "Redis game:* 키: $(kubectl exec -n rummikub deploy/redis -- redis-cli --scan --pattern 'game:*' 2>/dev/null | wc -l)개"
+```
+
+**배치 스크립트 trap 핸들러 필수 패턴** (orchestrator 재작성 시 반드시 포함):
+
+```bash
+# 스크립트 최상단에 배치 — EXIT/INT/TERM 어느 경로로 종료되든 cleanup 보장
+cleanup_all() {
+  local EXIT_CODE=$?
+  echo "[Cleanup] 배치 종료 (exit=$EXIT_CODE) — 프로세스 트리 정리 시작"
+  pkill -TERM -f "ai-battle" 2>/dev/null || true
+  pkill -TERM -f "python3 scripts" 2>/dev/null || true
+  sleep 3
+  pkill -KILL -f "ai-battle" 2>/dev/null || true
+  pkill -KILL -f "python3 scripts" 2>/dev/null || true
+  # Redis game:* 정리
+  kubectl exec -n rummikub deploy/redis -- sh -c \
+    'redis-cli --scan --pattern "game:*" | xargs -r redis-cli DEL' 2>/dev/null || true
+  echo "[Cleanup] 완료"
+}
+trap 'cleanup_all' EXIT INT TERM
 ```
 
 ---
@@ -163,6 +313,34 @@ python3 scripts/ai-battle-multirun.py --model claude --runs 3 --include-historic
 # 또는 단일 모델
 python3 scripts/ai-battle-3model-r4.py --models deepseek
 ```
+
+### 배치 시작 시 PID 기록 (pstree 추적용)
+
+배치 스크립트 실행 후 즉시 PID 를 기록해둔다. 중단/장애 시 `pstree -p <BATCH_PID>` 로 자식 프로세스 잔존 여부를 확인한다.
+
+```bash
+# nohup 으로 실행한 경우 PID 기록
+nohup bash scripts/ai-battle-v6-smoke-10runs.sh > /tmp/batch-nohup.log 2>&1 &
+BATCH_PID=$!
+echo "BATCH_PID=$BATCH_PID" | tee /tmp/batch-pid.txt
+disown "$BATCH_PID"
+
+# 배치 프로세스 트리 확인 (시작 직후 / 이상 감지 시)
+pstree -p "$BATCH_PID" 2>/dev/null || ps --forest "$BATCH_PID" 2>/dev/null
+# 출력 예시:
+#   bash(13721)─┬─bash(13755)
+#               └─python3(25482)─┬─python3(25489)  ← 자식 잔존 주의 대상
+#                                └─{python3}(25491)
+
+# /tmp/batch-pid.txt 가 있으면 세션 재접속 후에도 PID 복원 가능
+BATCH_PID=$(cat /tmp/batch-pid.txt | grep BATCH_PID | cut -d= -f2)
+```
+
+**pstree 스냅샷 타이밍**:
+- 배치 시작 직후 1회 (기준 트리 확인)
+- 이상 징후 감지 시 (프로세스 부재 또는 좀비 의심 시)
+- 배치 수동 중단 직전 (kill 대상 PID 확인용)
+- Phase 4 cleanup 완료 후 1회 (잔존 프로세스 0개 확인)
 
 ### Wrapper/Orchestrator 스크립트 실패 감지 (2026-04-19 false success 사고 반영)
 
@@ -411,8 +589,36 @@ ls -la scripts/ai-battle-3model-r4-results*.json
 # 3. 비용 확인
 curl -s https://api.deepseek.com/user/balance -H "Authorization: Bearer $DEEPSEEK_API_KEY"
 
-# 4. 프로세스 정리
-ps aux | grep "ai-battle" | grep -v grep
+# 4. 프로세스 트리 전체 정리 (2026-04-20 반성 3 반영 — 자식 잔존 방지)
+echo "=== Phase 4 프로세스 정리 ==="
+
+# 4-a. 잔존 ai-battle / python3 scripts 프로세스 확인
+REMAINING_PIDS=$(pgrep -f "ai-battle\|python3 scripts/ai-battle" 2>/dev/null)
+if [ -n "$REMAINING_PIDS" ]; then
+  echo "[Phase4] 잔존 프로세스 발견:"
+  pstree -p $REMAINING_PIDS 2>/dev/null || ps --forest -p $REMAINING_PIDS 2>/dev/null || true
+  pkill -TERM -f "ai-battle" 2>/dev/null || true
+  pkill -TERM -f "python3 scripts/ai-battle" 2>/dev/null || true
+  sleep 5
+  pkill -KILL -f "ai-battle" 2>/dev/null || true
+  pkill -KILL -f "python3 scripts/ai-battle" 2>/dev/null || true
+  echo "[Phase4] 프로세스 정리 완료"
+else
+  echo "[Phase4] 잔존 프로세스 없음 (정상)"
+fi
+
+# 4-b. 최종 pstree 확인 (잔존 0개 확인)
+AFTER_PIDS=$(pgrep -f "ai-battle" 2>/dev/null | wc -l)
+echo "[Phase4] 정리 후 잔존 ai-battle 프로세스: ${AFTER_PIDS}개"
+
+# 4-c. Redis game:* 잔존 키 최종 확인
+GAME_KEYS=$(kubectl exec -n rummikub deploy/redis -- redis-cli --scan --pattern "game:*" 2>/dev/null | wc -l || echo "0")
+echo "[Phase4] Redis game:* 잔존 키: ${GAME_KEYS}개"
+if [ "$GAME_KEYS" -gt 0 ]; then
+  kubectl exec -n rummikub deploy/redis -- sh -c \
+    'redis-cli --scan --pattern "game:*" | xargs -r redis-cli DEL' 2>/dev/null || true
+  echo "[Phase4] Redis game:* 정리 완료"
+fi
 
 # 5. 비용 한도 복구 (Phase 1b 에서 상향했을 경우 반드시)
 kubectl -n rummikub exec deploy/ai-adapter -- printenv | grep COST_LIMIT
@@ -422,7 +628,18 @@ kubectl -n rummikub set env deploy/ai-adapter \
   HOURLY_USER_COST_LIMIT_USD=5
 # 복구 후 재확인 필수
 kubectl -n rummikub exec deploy/ai-adapter -- printenv | grep COST_LIMIT
+
+# 6. /tmp/batch-pid.txt 정리 (다음 배치에서 stale PID 참조 방지)
+rm -f /tmp/batch-pid.txt
+echo "[Phase4] 임시 PID 파일 정리 완료"
 ```
+
+**Phase 4 완료 체크리스트**:
+- [ ] ai-battle 프로세스 0개 잔존
+- [ ] Redis game:* 키 0개 잔존
+- [ ] DAILY_COST_LIMIT_USD / HOURLY_USER_COST_LIMIT_USD 평상시 값 복구
+- [ ] /tmp/batch-pid.txt 삭제
+- [ ] 결과 JSON 파일 존재 확인
 
 ---
 
@@ -463,3 +680,6 @@ kubectl -n rummikub exec deploy/ai-adapter -- printenv | grep COST_LIMIT
 10. ❌ **Python 실측 스크립트 인자 검증 (`--help` + `--dry-run`) 없이 wrapper/orchestrator kickoff** (2026-04-19 Smoke 10회 false success 사고 재발 방지 — argparse error 가 tee pipe 에 의해 마스킹되면 Pass 10/10 로 보고됨)
 11. ❌ **`tee` 로 pipe 한 실행에서 PIPESTATUS 체크 없이 `$?` 만 사용** — tee 성공이 Python 실패를 숨김. `${PIPESTATUS[0]}` 로 실행 명령 자체의 exit code 확인 필수
 12. ❌ **80턴 실측 kickoff 후 5분 검증 생략** — 정상은 Run 1 이 T02~T04 단계에 있어야 함. Run 2+ 로 넘어갔으면 false success 징후
+13. ❌ **배치 시작 전 DNS 검증(Phase 1c) 없이 kickoff** — 네트워크 변경 후 WSL2/K8s DNS 불안정 구간에서 배치를 시작하면 Run 전체가 auto-draw 오염됨. `getent hosts api.deepseek.com` 이 IP 를 반환해야만 배치 시작 (2026-04-20 Run 7/9/10 DNS 오염 3건 재발 방지)
+14. ❌ **배치 중단 시 bash orchestrator PID 만 kill** — bash 자식 Python 프로세스가 잔존하여 DNS 불안정 구간에 자동 진입함. 반드시 `pkill -TERM -f "ai-battle"` + `pkill -TERM -f "python3 scripts"` 로 자식 트리 전체 종료 (2026-04-20 반성 3: cleanup 미흡 사고)
+15. ❌ **orchestrator 에 `trap 'cleanup_all' EXIT INT TERM` 없이 배포** — 예외 종료/사용자 Ctrl-C 시 자식 프로세스가 leak 됨. Phase 2 의 trap 핸들러 패턴 적용 필수

@@ -464,5 +464,66 @@ Sprint 5 종료 보고서 7.4절에서 확정한 6가지 인계 사항을 Sprint
 
 ---
 
-*작성: PM (애벌레의 자리에서) — 2026-04-13*
+## 14. Day 11 갱신 부록 (2026-04-21) — Plan B 발동에 따른 잔여 일정 재편
+
+> 본 부록은 2026-04-13 킥오프 이후 발생한 v6 ContextShaper 실험 (Task #20) 결과를 반영하여 Day 11~14 잔여 4일 일정을 재정의한다. 원본 §1~13 은 변경하지 않고 사후 갱신 형태로 추가한다.
+> 근거: `work_logs/decisions/2026-04-21-01-plan-b-activation.md`
+
+### 14.1 결정 트리거
+
+| 항목 | 결정 |
+|---|---|
+| Task #20 v6 ContextShaper | **Kill** (Smoke 10회 결과 3 shaper 모두 `\|Δ\|<2%p`, 리포트 63) |
+| Task #21 A안 (Round 11 N=3 + 블로그 2차) | **Kill** → Plan B 자동 발동 |
+| Task #19 (gpt-5-mini turn 80 × 3N 본실측) | **Kill** (marginal value=0 확정) |
+| timeout 1100s 체인 업그레이드 | **회피** (KDP #7 SSOT 보호) |
+
+### 14.2 Day 11~14 (2026-04-21~24) 잔여 일정 (Plan B = D안 + B안 병행)
+
+| Day | 핵심 작업 | Owner | 마일스톤 |
+|---|---|---|---|
+| 월 04-21 | **Plan B 결정문 공식화** + Task #19 마킹 sweep + 일정 재편 | PM | 결정문 merge |
+| 월 04-21 | PR 4 ModelCardGrid 마감 (90→100%) 착수 | Frontend Dev | — |
+| 화 04-22 | PR 4 Merge / PR 5 RoundHistoryTable 착수 / batch-battle SKILL 강화 (DNS+pstree+cleanup) | Frontend Dev / AIE+DevOps | PR 4 Merge |
+| 수 04-23 | PR 5 컴포넌트 + PG 마이그 스키마 초안 (`prompt_variant_id` + `shaper_id`) / Plan B ADR 초안 착수 | Frontend Dev / Go Dev / Architect+AIE | 스키마 초안 commit |
+| 목 04-24 | PR 5 E2E 5건 + Plan B ADR 리뷰 확정 (`docs/02-design/46-*`, Day 10 초안 → AIE/QA/PM 보강) + 블로그 2차 초안 (리포트 63 외부 공개 버전) | Frontend Dev+QA / Architect+AIE+QA+PM / AIE | PR 5 Merge, ADR-046 확정 commit |
+
+### 14.3 KILLED 작업 공식 종료
+
+- ~~Task #19~~ — gpt-5-mini turn 80 × 3N 본실측 (KILLED 2026-04-21)
+- ~~Task #21 A안~~ — Round 11 N=3 + 블로그 2차 (KILLED 2026-04-21, Plan B 로 대체)
+- ~~Task #20 Phase 5 추가 N=3 보강~~ — Smoke 10회로 Kill 충족, 추가 실측 불필요 (KILLED 2026-04-20)
+
+### 14.4 Sprint 7 첫 주 (2026-04-26~05-02) 연결
+
+| 작업 | Owner | 비고 |
+|---|---|---|
+| PostgreSQL 실제 마이그레이션 실행 | Go Dev | Day 13 스키마 초안 기반 |
+| 대시보드 안정화 + Playwright E2E 추가 | Frontend Dev + QA | PR 4/5 후속 |
+| Plan B ADR 리뷰 + 본실측 일정 확정 | PM + Architect | Sprint 8 본실측 진입 결정 |
+| DashScope 실제 API 키 발급 (production) | DevOps | P2, 후순위 |
+
+### 14.5 Sprint 8 후보 (2026-05-03~05-16)
+
+- **Plan B 본실측** — Claude Sonnet 4 / GPT-5-mini / DeepSeek Reasoner × v2 × passthrough × N=3 = 9 run
+  - 비용 추정 $3.90, 소요 ~18h (야간 배치 2일)
+  - 가설: H1 (3 모델 모두 28% 천장) / H2 (모델별 천장 분산) / H3 (한 모델만 outlier)
+  - 어느 결과든 블로그 3차 explanatory 서사로 활용
+- 상세: `work_logs/decisions/2026-04-21-01-plan-b-activation.md` §5
+
+### 14.6 Sprint 6 종료일 + 성공 기준 갱신
+
+- **종료일**: 2026-04-26 유지 (Day 11~14 4일 충분)
+- **성공 기준 추가**:
+  - v6 Kill 결정문 + ADR 44 + 리포트 63 = 두 축 동시 확증 산출물 완결
+  - Plan B ADR 초안 (`docs/02-design/45-*`) 작성
+  - PostgreSQL 마이그 스키마 초안
+- **성공 기준 변경/제외**:
+  - ~~Round 11 N=3 본실측~~ → KILLED
+  - ~~v3 프롬프트 실전 적용 (BL-S6-009)~~ → Sprint 7+ 이월 (v6 Kill 결론으로 v3 적용 가치 재검토 필요)
+
+---
+
+*초판 작성: PM (애벌레의 자리에서) — 2026-04-13*
+*Day 11 부록 갱신: PM — 2026-04-21*
 *검토: 애벌레 (PO)*

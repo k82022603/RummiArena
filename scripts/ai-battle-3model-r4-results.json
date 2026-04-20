@@ -1,0 +1,49 @@
+{
+  "tournament": "3-model Round 4",
+  "timestamp": "2026-04-20 13:46:58",
+  "config": {
+    "maxTurns": 80,
+    "persona": "calculator",
+    "difficulty": "expert",
+    "psychologyLevel": 2
+  },
+  "models": [
+    {
+      "modelKey": "deepseek",
+      "modelName": "DeepSeek Reasoner",
+      "totalTurns": 80,
+      "aiTurns": 39,
+      "aiPlace": 0,
+      "aiTilesPlaced": 0,
+      "aiDraw": 39,
+      "aiFallback": 0,
+      "placeRate": 0.0,
+      "elapsed": 438.2,
+      "estimatedCost": 0.039,
+      "result": "TIMEOUT",
+      "responseTime": {
+        "avg": 2.0,
+        "p50": 1.9,
+        "min": 1.8,
+        "max": 2.2
+      },
+      "placeDetails": [],
+      "fallbackReasons": [],
+      "errors": [
+        "[RATE_LIMITED] 메시지 전송 빈도 제한을 초과했습니다 (type:DRAW_TILE). 40초 후에 다시 시도하세요.",
+        "[RATE_LIMITED] 메시지 전송 빈도 제한을 초과했습니다 (type:DRAW_TILE). 40초 후에 다시 시도하세요.",
+        "[RATE_LIMITED] 메시지 전송 빈도 제한을 초과했습니다 (type:DRAW_TILE). 40초 후에 다시 시도하세요."
+      ],
+      "round2Baseline": {
+        "place": 2,
+        "tiles": 14,
+        "draw": 38,
+        "rate": 5.0,
+        "elapsed": 1995,
+        "cost": 0.04,
+        "fallback": 0
+      },
+      "deltaPlaceRate": -5.0
+    }
+  ]
+}

@@ -40,6 +40,27 @@ BATCH_TAG="r11-smoke-20260419-153217"
 LOG_DIR="$REPO_ROOT/work_logs/battles/$BATCH_TAG"
 MASTER_LOG="$LOG_DIR/phase2-master.log"
 
+# === Phase 4 Cleanup trap (batch-battle SKILL §Phase 2 Cleanup, 2026-04-20) ===
+# EXIT/INT/TERM 어느 경로로 종료되든 자식 프로세스 + Redis game:* 정리 보장
+cleanup_all() {
+  local EXIT_CODE=$?
+  echo "[Cleanup] 배치 종료 (exit=$EXIT_CODE) — 프로세스 트리 정리 시작" | tee -a "${MASTER_LOG:-/dev/stderr}" 2>/dev/null || true
+  pkill -TERM -f "ai-battle" 2>/dev/null || true
+  pkill -TERM -f "python3 scripts/ai-battle" 2>/dev/null || true
+  sleep 3
+  pkill -KILL -f "ai-battle" 2>/dev/null || true
+  pkill -KILL -f "python3 scripts/ai-battle" 2>/dev/null || true
+  kubectl exec -n rummikub deploy/redis -- sh -c \
+    'redis-cli --scan --pattern "game:*" | xargs -r redis-cli DEL' 2>/dev/null || true
+  rm -f /tmp/batch-pid.txt 2>/dev/null || true
+  echo "[Cleanup] 완료 (exit=$EXIT_CODE)" | tee -a "${MASTER_LOG:-/dev/stderr}" 2>/dev/null || true
+}
+trap 'cleanup_all' EXIT INT TERM
+
+# 배치 PID 기록 (pstree 추적 + 수동 중단 시 참조용)
+echo "BATCH_PID=$$" > /tmp/batch-pid.txt
+echo "[INFO] 배치 PID=$$ (pstree -p $$ 로 자식 트리 확인 가능)" >&2
+
 # pair-warmup x4: Run 7~10
 SEQUENCE=("pair-warmup" "pair-warmup" "pair-warmup" "pair-warmup")
 START_RUN=7
@@ -127,8 +148,52 @@ if [ "$DRY_RC" -ne 0 ] || echo "$DRY_OUT" | grep -qE "unrecognized arguments|Arg
 fi
 echo "[$(date '+%F %T')] dry-run OK" | tee -a "$MASTER_LOG"
 
+# Phase 1c: DNS 사전 검증 (batch-battle SKILL §Phase 1c, 2026-04-20 DNS 장애 3건 재발 방지)
 {
-  echo "[$(date '+%F %T')] ===== Phase 1 Resume 완료 ====="
+  echo "[$(date '+%F %T')] ===== Phase 1c: DNS/네트워크 사전 검증 ====="
+} | tee -a "$MASTER_LOG"
+
+DNS_FAIL=0
+for HOST in api.deepseek.com api.openai.com api.anthropic.com; do
+  DNS_RESULT=$(getent hosts "$HOST" 2>&1)
+  DNS_RC=$?
+  if [ "$DNS_RC" -eq 0 ]; then
+    DNS_IP=$(echo "$DNS_RESULT" | awk '{print $1}')
+    echo "[$(date '+%F %T')] [DNS] OK    $HOST → $DNS_IP" | tee -a "$MASTER_LOG"
+  else
+    echo "[$(date '+%F %T')] [DNS] FAIL  $HOST → getaddrinfo 실패 (RC=$DNS_RC)" | tee -a "$MASTER_LOG"
+    DNS_FAIL=$((DNS_FAIL + 1))
+  fi
+done
+
+# K8s 내부 DNS 점검
+K8S_DNS=$(kubectl exec -n rummikub deploy/ai-adapter -- getent hosts api.deepseek.com 2>&1 || echo "FAIL")
+if echo "$K8S_DNS" | grep -qE "^[0-9]"; then
+  echo "[$(date '+%F %T')] [DNS] OK    K8s ai-adapter → api.deepseek.com 도달 가능" | tee -a "$MASTER_LOG"
+else
+  echo "[$(date '+%F %T')] [DNS] FAIL  K8s ai-adapter → api.deepseek.com: $K8S_DNS" | tee -a "$MASTER_LOG"
+  DNS_FAIL=$((DNS_FAIL + 1))
+fi
+
+# HTTP 수준 도달 확인 (401/403/200 이면 정상)
+DS_HTTP=$(curl -sS -m 10 https://api.deepseek.com/ -o /dev/null -w "%{http_code}" 2>/dev/null || echo "000")
+if [[ "$DS_HTTP" =~ ^[234] ]]; then
+  echo "[$(date '+%F %T')] [DNS] OK    https://api.deepseek.com/ HTTP=$DS_HTTP" | tee -a "$MASTER_LOG"
+else
+  echo "[$(date '+%F %T')] [DNS] WARN  https://api.deepseek.com/ HTTP=$DS_HTTP (라우팅 확인 권장)" | tee -a "$MASTER_LOG"
+fi
+
+if [ "$DNS_FAIL" -gt 0 ]; then
+  {
+    echo "[$(date '+%F %T')] [ERROR] DNS 검증 실패 (${DNS_FAIL}건). 배치 중단."
+    echo "  조치: 네트워크 변경 후 10분 대기 또는 sudo systemctl restart systemd-resolved"
+    echo "  재검증 후 배치 재개할 것"
+  } | tee -a "$MASTER_LOG"
+  exit 1
+fi
+
+{
+  echo "[$(date '+%F %T')] ===== Phase 1 Resume 완료 (DNS OK) ====="
   echo ""
 } | tee -a "$MASTER_LOG"
 

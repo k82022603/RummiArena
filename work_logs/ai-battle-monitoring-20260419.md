@@ -252,6 +252,7 @@
 
 **주의**: Run 1 잔여 T64-T80 = AI 9턴에서 PLACE 안 나오면 최종 sanity 이탈 (≤24%). Run 2 passthrough 에서 교차 확인 필요.
 **긍정**: 후반 p95=331s 는 700s timeout 체인 대비 여유 큼. Task #19 timeout 유지 가능 방향.
+> **[KILLED 2026-04-21 — v6 결론으로 불필요]** Task #19 (gpt-5-mini turn 80 × 3N 본실측) 는 Day 9~10 v6 두 축 동시 확증으로 marginal value=0 확정, Kill 처리. 근거: `work_logs/decisions/2026-04-21-01-plan-b-activation.md` §4.
 
 ### 스냅샷 [2026-04-19 17:54 KST]
 
@@ -293,7 +294,7 @@
 | 활성 게임 | 1 |
 | DeepSeek 누적 | $0.0977 (38 req) |
 | sanity 판정 | PASS 하단 복귀 (27.0% ∈ 26.6~31.5%) |
-| **🚨 timeout signal** | **후반 p95=513s > 500s 임계** → 본실측 turn 80×3N 에는 1100s 체인 권고 |
+| **🚨 timeout signal** | **후반 p95=513s > 500s 임계** → 본실측 turn 80×3N 에는 1100s 체인 권고 *[KILLED 2026-04-21 — v6 결론으로 본실측 자체 불필요, 1100s 체인 조정 회피]* |
 
 **새 턴 (+3 AI 턴, 후반 p95 임계 돌파)**:
 - T70: **513.1s DRAW** ⚠ (700s timeout 대비 73%, fallback 미발생)
@@ -301,6 +302,7 @@
 - T74: 288.2s DRAW
 
 **분석**: T70 이 DeepSeek 역대 max 349s 를 훨씬 초과 (513s). DeepSeek Reasoner 후반 자율추론 확장 극대화 관찰. **fallback 은 미발생**, timeout 700s 한도 내 정상 완료. 다만 본실측 (turn 80 × 3N = 9 runs) 에서 **최소 1 run 은 700s 초과 fallback 가능성** 존재. **Task #19 timeout 1100s 체인 조정 권고**.
+> **[KILLED 2026-04-21]** Task #19 본실측 자체가 v6 Kill 결론으로 불필요 확정. 700s timeout 체인 변경도 회피 (KDP #7 SSOT 보호). 근거: `work_logs/decisions/2026-04-21-01-plan-b-activation.md`.
 
 장애 보고서 기준: fallback 1건 발생 조건에 해당 X (p95 초과는 signal 레벨). 
 
@@ -542,7 +544,7 @@ Run 2 남은: T46-T80 = AI 18턴 × avg 270s ≈ 81분 → **Run 2 완료 ~21:00
 **타임아웃 신호 강화**:
 - Run 1: 중반 max 394s (T36), 후반 max 513s (T70)
 - Run 2: 중반 max 419s (T52), 후반 첫 턴 384s (T56)
-- Run 2 후반에서도 500s+ 재발 매우 유력 → **Task #19 1100s 체인 확증 방향**
+- Run 2 후반에서도 500s+ 재발 매우 유력 → **Task #19 1100s 체인 확증 방향** *[KILLED 2026-04-21 — Task #19 자체 Kill]*
 
 **Run 2 예상 완료**: T60-T80 = AI 11턴 × avg 300s ≈ 55분 → **~21:05 KST**
 
@@ -603,6 +605,7 @@ Run 2 남은: T46-T80 = AI 18턴 × avg 270s ≈ 81분 → **Run 2 완료 ~21:00
 - T70: 205.9s DRAW
 
 **근본 원인**: adapter_floor=700s 가 DeepSeek Reasoner 후반 자율 추론 확장 최대 시간에 부족. PassthroughShaper (v2 bitwise) 문제 아님. **Task #19 본실측 kickoff 전 1100s 체인 업그레이드 필수**.
+> **[KILLED 2026-04-21]** v6 Kill 로 Task #19 본실측 불필요. 1100s 체인 업그레이드는 회피 (`work_logs/decisions/2026-04-21-01-plan-b-activation.md` §4.2-4).
 
 **결정**: 배치 계속 진행 (연속 3건 아님). 애벌레 즉시 알림.
 
