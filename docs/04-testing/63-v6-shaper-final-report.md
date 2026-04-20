@@ -288,10 +288,10 @@ flowchart TB
         PW1["avg 195s / max 416s (Run8)"]
         PW2["long-tail 가장 공격적으로 압축"]
     end
-    PT --> Summary["3축 모두\nplace_rate Δ<2%p"]
+    PT --> Summary["3축 모두<br/>place_rate 절댓값 Δ &lt; 2%p"]
     JH --> Summary
     PW --> Summary
-    Summary --> Verdict["Kill 판정\n(ADR-044 §10.3)"]
+    Summary --> Verdict["Kill 판정<br/>(ADR-044 §10.3)"]
 ```
 
 ### 5.2 해석
@@ -341,17 +341,17 @@ F5 가설 대응 목적은 "pair-warmup 이 firstPlaceTurn 을 단축" 이었으
 
 ```mermaid
 flowchart TB
-    Start[Phase 2 Smoke 10 Run 완료] --> Validity{유효 N 확인}
-    Validity -->|passthrough N=2\njoker-hinter N=3\npair-warmup N=1| Delta{Δ 계산}
-    Delta -->|joker-hinter Δ=-0.9%p| D1[|Δ| < 2%p]
-    Delta -->|pair-warmup Δ=+0.7%p| D2[|Δ| < 2%p]
-    D1 --> Kill1[Kill 조건 충족]
-    D2 --> Kill2[Kill 조건 충족]
-    Kill1 --> Verdict[Kill 최종 판정]
+    Start["Phase 2 Smoke 10 Run 완료"] --> Validity{"유효 N 확인"}
+    Validity -->|"passthrough N=2<br/>joker-hinter N=3<br/>pair-warmup N=1"| Delta{"Δ 계산"}
+    Delta -->|"joker-hinter Δ=-0.9%p"| D1["절댓값 Δ &lt; 2%p"]
+    Delta -->|"pair-warmup Δ=+0.7%p"| D2["절댓값 Δ &lt; 2%p"]
+    D1 --> Kill1["Kill 조건 충족"]
+    D2 --> Kill2["Kill 조건 충족"]
+    Kill1 --> Verdict["Kill 최종 판정"]
     Kill2 --> Verdict
-    Verdict --> PlanB[Plan B 자동 발동]
-    PlanB --> D안[D안 대시보드 PR 4/5]
-    PlanB --> B안[B안 PostgreSQL shaper_id 마이그레이션]
+    Verdict --> PlanB["Plan B 자동 발동"]
+    PlanB --> DPlan["D안 대시보드 PR 4/5"]
+    PlanB --> BPlan["B안 PostgreSQL shaper_id 마이그레이션"]
     style Verdict fill:#f99,stroke:#c00
     style PlanB fill:#ff9,stroke:#cc0
 ```
@@ -429,22 +429,22 @@ Plan B 완료 후 블로그 2차 리포트는 다음 3부로 구성 권고.
 ```mermaid
 flowchart LR
     subgraph Day8["Day 8 — 텍스트 축"]
-        v2["v2 N=3\n29.07% ± 2.45%p"]
-        v3["v3 N=3\n29.03% ± 3.20%p"]
-        Text_Delta["Δ = 0.04%p\n구분 불가"]
+        v2["v2 N=3<br/>29.07% ± 2.45%p"]
+        v3["v3 N=3<br/>29.03% ± 3.20%p"]
+        Text_Delta["Δ = 0.04%p<br/>구분 불가"]
         v2 --> Text_Delta
         v3 --> Text_Delta
     end
     subgraph Day9_10["Day 9-10 — 구조 축"]
-        PT["passthrough N=2\n28.2%"]
-        JH["joker-hinter N=3\n27.3%"]
-        PW["pair-warmup N=1\n28.9%"]
-        Struct_Delta["Δ max = 1.6%p\n(JH vs PW)\n구분 불가"]
+        PT["passthrough N=2<br/>28.2%"]
+        JH["joker-hinter N=3<br/>27.3%"]
+        PW["pair-warmup N=1<br/>28.9%"]
+        Struct_Delta["Δ max = 1.6%p<br/>(JH vs PW)<br/>구분 불가"]
         PT --> Struct_Delta
         JH --> Struct_Delta
         PW --> Struct_Delta
     end
-    Text_Delta --> Ceiling["DeepSeek Reasoner\n28%~29% 천장\n(모든 축 수렴)"]
+    Text_Delta --> Ceiling["DeepSeek Reasoner<br/>28%~29% 천장<br/>(모든 축 수렴)"]
     Struct_Delta --> Ceiling
     style Ceiling fill:#fcc,stroke:#c00,stroke-width:2px
 ```
@@ -455,16 +455,25 @@ flowchart LR
 stateDiagram-v2
     [*] --> Phase2Smoke
     Phase2Smoke: Phase 2 Smoke 10 Run
-    Phase2Smoke --> Delta평가: 배치 완료
-    Delta평가 --> Kill: |Δ| < 2%p (3축 모두)
-    Delta평가 --> Pivot: 2%p ≤ |Δ| < 5%p (해당 없음)
-    Delta평가 --> GO: |Δ| ≥ 5%p (해당 없음)
-    Kill --> PlanB자동발동
-    PlanB자동발동 --> D안_대시보드
-    PlanB자동발동 --> B안_PostgreSQL
-    D안_대시보드 --> Sprint6마감
-    B안_PostgreSQL --> Sprint6마감
-    Sprint6마감 --> [*]
+    DeltaEval: Δ 평가
+    Kill: Kill 판정
+    Pivot: Pivot
+    GO: GO
+    PlanB: Plan B 자동 발동
+    DashPlan: D안 대시보드
+    DBPlan: B안 PostgreSQL
+    Sprint6End: Sprint 6 마감
+
+    Phase2Smoke --> DeltaEval: 배치 완료
+    DeltaEval --> Kill: 절댓값 Δ 2pct 미만 (3축 모두)
+    DeltaEval --> Pivot: 2pct 이상 5pct 미만 (해당 없음)
+    DeltaEval --> GO: 5pct 이상 (해당 없음)
+    Kill --> PlanB
+    PlanB --> DashPlan
+    PlanB --> DBPlan
+    DashPlan --> Sprint6End
+    DBPlan --> Sprint6End
+    Sprint6End --> [*]
 ```
 
 ---
