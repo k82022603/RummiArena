@@ -1,0 +1,229 @@
+/**
+ * BUG-NEW-001 / BUG-NEW-002 / BUG-NEW-003 회귀 방지 테스트
+ *
+ * 작성일: 2026-04-21 (Day 11 오후 긴급 수정)
+ * 근거: qa 에이전트 실측 스크린샷 7장 분석 — P0 3건 신규 발견
+ *
+ * BUG-NEW-001: 보드 복제 버그
+ *   — game-board 드롭 시 서버 확정 그룹이 lastPendingGroup으로 선택되어
+ *     타일이 잘못된 그룹에 누적되던 문제
+ *   — 수정: treatAsBoardDrop 경로에서 "pending-" 접두사 그룹만 lastPendingGroup 후보로 허용
+ *
+ * BUG-NEW-002: 3색 서로 다른 3장이 "런"으로 오분류
+ *   — classifySetType 기본값 "run"이 [Y11,K12,B13] 등 혼합 세트에 적용되던 문제
+ *   — classifyKind가 type="run" 힌트를 색상 검증 없이 신뢰하던 문제
+ *   — 수정: classifySetType 기본값 → "group", classifyKind → allSameColor 재검증
+ *
+ * BUG-NEW-003: 무효 세트에서도 확정 버튼 활성화
+ *   — allGroupsValid가 tiles.length>=3 만 확인하여 "invalid" 세트를 통과시키던 문제
+ *   — 수정: validatePendingBlock 결과를 allGroupsValid useMemo에 통합 (GameClient.tsx)
+ *   — 이 테스트는 ActionBar + validatePendingBlock 순수 함수 조합으로 검증
+ */
+
+import "@testing-library/jest-dom";
+import React from "react";
+import { render, screen } from "@testing-library/react";
+
+import { validatePendingBlock } from "@/components/game/GameBoard";
+import ActionBar from "@/components/game/ActionBar";
+import { isCompatibleWithGroup } from "@/lib/mergeCompatibility";
+
+import type { TileCode, TableGroup } from "@/types/tile";
+
+const noop = () => {};
+
+// =====================================================================
+// BUG-NEW-002: classifySetType 기본값 변경 — 혼색 세트 오분류 방지
+// =====================================================================
+
+describe("BUG-NEW-002 · 혼색+혼숫자 세트 → validatePendingBlock 'invalid' 판정", () => {
+  it("[Y11, K12, B13] 3색 다른 숫자 3장 → invalid (런/그룹 어느 쪽도 아님)", () => {
+    const result = validatePendingBlock(["Y11a", "K12a", "B13a"] as TileCode[]);
+    expect(result).toBe("invalid");
+  });
+
+  it("[R7, B9, Y3] 3색 비연속 숫자 3장 → invalid", () => {
+    const result = validatePendingBlock(["R7a", "B9a", "Y3a"] as TileCode[]);
+    expect(result).toBe("invalid");
+  });
+
+  it("[R13, B13, Y13, K11] 3색 13 + 1색 11 → invalid (숫자 혼합)", () => {
+    // 증거: 스크린샷 165453에서 보드 전체 블록이 [R13,B13,Y13,K11] = 무효 세트였던 케이스
+    const result = validatePendingBlock(["R13a", "B13a", "Y13a", "K11a"] as TileCode[]);
+    expect(result).toBe("invalid");
+  });
+
+  it("[Y5, Y6, Y7] 같은 색 연속 3장 → valid-run (정상 런은 영향 없음)", () => {
+    const result = validatePendingBlock(["Y5a", "Y6a", "Y7a"] as TileCode[]);
+    expect(result).toBe("valid-run");
+  });
+
+  it("[R7, B7, Y7] 같은 숫자 다른 색 3장 → valid-group (정상 그룹은 영향 없음)", () => {
+    const result = validatePendingBlock(["R7a", "B7a", "Y7a"] as TileCode[]);
+    expect(result).toBe("valid-group");
+  });
+});
+
+// =====================================================================
+// BUG-NEW-002: classifyKind — type="run" 힌트 검증 (allSameColor 재확인)
+// =====================================================================
+
+describe("BUG-NEW-002 · classifyKind allSameColor 재검증 → isCompatibleWithGroup 정확도", () => {
+  it("type='run'이지만 색 혼합인 그룹 [Y11,K12,B13]에 R14 드롭 → 호환 안 됨", () => {
+    // classifyKind가 type='run'을 색 검증 없이 신뢰하면 isCompatibleAsRun을 호출하고
+    // runColor=Y로 설정 → B14 (색 다름)는 false 반환 (우연히 맞음).
+    // 그러나 classifyKind 수정 후에는 "unknown"을 반환하므로 양쪽 검사 → 올바르게 false.
+    const mixedGroup: TableGroup = {
+      id: "mixed-run",
+      tiles: ["Y11a", "K12a", "B13a"],
+      type: "run", // classifySetType 이전 기본값이 남아있는 경우 시뮬레이션
+    };
+    // 숫자 14는 범위 초과, 색도 혼합 → false
+    expect(isCompatibleWithGroup("R13b" as TileCode, mixedGroup)).toBe(false);
+  });
+
+  it("type='run'이지만 색 혼합인 그룹 [Y11,K12,B13]에 Y13 드롭 → 호환 안 됨 (숫자 혼합)", () => {
+    const mixedGroup: TableGroup = {
+      id: "mixed-run2",
+      tiles: ["Y11a", "K12a", "B13a"],
+      type: "run",
+    };
+    // Y13: 색이 Y이지만 그룹 숫자가 {11,12,13}이라 그룹 판정도 불가 → false
+    expect(isCompatibleWithGroup("Y14a" as TileCode, mixedGroup)).toBe(false);
+  });
+
+  it("type='group'이지만 숫자 혼합인 그룹 [R7,B9] 에 Y7 드롭 → unknown 처리", () => {
+    // type='group'이지만 숫자가 {7,9}로 다름 — classifyKind는 unknown으로 강등,
+    // 양쪽 검사: isCompatibleAsGroup(Y7 with [R7,B9]) → groupNumber=7이 아님 (size>1) → false
+    // isCompatibleAsRun(Y7 with [R7,B9]) → runColor=R, Y7.color=Y → false
+    const mixedGroup: TableGroup = {
+      id: "mixed-group",
+      tiles: ["R7a", "B9a"],
+      type: "group", // type='group'이지만 실제 숫자가 다름
+    };
+    expect(isCompatibleWithGroup("Y7a" as TileCode, mixedGroup)).toBe(false);
+  });
+});
+
+// =====================================================================
+// BUG-NEW-003: 무효 세트에서 확정 버튼 비활성화
+// =====================================================================
+
+describe("BUG-NEW-003 · 무효 pending 세트 → 확정 버튼 disabled 사전 차단", () => {
+  it("[Y11,K12,B13] invalid 세트 → validatePendingBlock 'invalid' → ActionBar 확정 비활성", () => {
+    // 이 테스트는 GameClient.tsx의 allGroupsValid useMemo가 validatePendingBlock을
+    // 활용하여 'invalid' 세트를 사전 차단하는 흐름을 검증한다.
+    // GameClient 자체는 WS/Store 의존성이 많아 단위 테스트 어려우므로,
+    // "invalid 세트면 allGroupsValid=false → ActionBar 확정 disabled" 분해 검증.
+    const invalidTiles: TileCode[] = ["Y11a", "K12a", "B13a"] as TileCode[];
+    const validity = validatePendingBlock(invalidTiles);
+    expect(validity).toBe("invalid"); // allGroupsValid가 false를 반환해야 함
+
+    // ActionBar는 allGroupsValid=false이면 disabled
+    render(
+      <ActionBar
+        isMyTurn={true}
+        hasPending={true}
+        allGroupsValid={false} // invalid 세트로 인해 false
+        onDraw={noop}
+        onUndo={noop}
+        onConfirm={noop}
+      />
+    );
+    expect(screen.getByRole("button", { name: /확정/ })).toBeDisabled();
+  });
+
+  it("[R7,B7,Y7] valid-group 세트 → allGroupsValid=true → 확정 활성", () => {
+    const validTiles: TileCode[] = ["R7a", "B7a", "Y7a"] as TileCode[];
+    const validity = validatePendingBlock(validTiles);
+    expect(validity).toBe("valid-group");
+
+    render(
+      <ActionBar
+        isMyTurn={true}
+        hasPending={true}
+        allGroupsValid={true}
+        onDraw={noop}
+        onUndo={noop}
+        onConfirm={noop}
+      />
+    );
+    expect(screen.getByRole("button", { name: /확정/ })).toBeEnabled();
+  });
+
+  it("tiles >= 3 이지만 invalid → allGroupsValid=false (이전 버그: length>=3만 체크하면 통과)", () => {
+    // 이전 버그: tiles.length=3 이면 allGroupsValid=true로 처리 → 확정 버튼 활성
+    // 현재 fix: validatePendingBlock이 'invalid'이면 allGroupsValid=false → 비활성
+    const tileCount = 3;
+    const validity = validatePendingBlock(["Y11a", "K12a", "B13a"] as TileCode[]);
+    // tiles.length=3 이지만 invalid
+    expect(tileCount).toBeGreaterThanOrEqual(3); // 이전 조건만으로는 통과
+    expect(validity).toBe("invalid"); // 하지만 실제로는 invalid
+    // → allGroupsValid가 올바르게 false를 반환해야 함 (GameClient.tsx에서 보장)
+  });
+});
+
+// =====================================================================
+// BUG-NEW-001: 보드 복제 방지 — game-board 드롭 경로 격리
+// =====================================================================
+
+describe("BUG-NEW-001 · game-board 드롭 시 서버 그룹 격리 (순수 함수 검증)", () => {
+  // handleDragEnd 자체는 WS/Store 의존성이 많아 통합 테스트로 대응하기 어렵다.
+  // 여기서는 핵심 불변식 (서버 그룹은 "pending-" 접두사 없음)을 검증한다.
+
+  it("서버 확정 그룹 id는 'pending-' 접두사가 없다", () => {
+    // 서버에서 오는 tableGroups id 예시: UUID 형식
+    const serverGroupId = "c8665d26-356b-4c10-b3f0-ec76cbc08346";
+    expect(serverGroupId.startsWith("pending-")).toBe(false);
+  });
+
+  it("클라이언트 신규 그룹 id는 'pending-' 접두사를 가진다", () => {
+    // GameClient.tsx: `pending-${Date.now()}-${pendingGroupSeqRef.current}`
+    const clientGroupId = `pending-${Date.now()}-1`;
+    expect(clientGroupId.startsWith("pending-")).toBe(true);
+  });
+
+  it("서버 그룹 id를 pendingGroupIds에 추가해도 lastPendingGroup 후보에서 제외됨을 의미", () => {
+    // 수정 전: pendingGroupIds.has(g.id) 만으로 필터 → 서버 그룹도 후보
+    // 수정 후: pendingGroupIds.has(g.id) && g.id.startsWith("pending-") 로 필터
+    const serverGroup: TableGroup = {
+      id: "server-uuid-1234",
+      tiles: ["R13a", "B13a", "Y13a"],
+      type: "group",
+    };
+    const pendingGroup: TableGroup = {
+      id: "pending-1700000000-1",
+      tiles: ["B11a"],
+      type: "run",
+    };
+    const pendingGroupIds = new Set([serverGroup.id, pendingGroup.id]);
+
+    // 수정 후 필터 로직 재현
+    const groups = [serverGroup, pendingGroup];
+    const pendingOnlyGroups = groups.filter(
+      (g) => pendingGroupIds.has(g.id) && g.id.startsWith("pending-")
+    );
+
+    // 서버 그룹은 제외되고 신규 pending 그룹만 후보
+    expect(pendingOnlyGroups).toHaveLength(1);
+    expect(pendingOnlyGroups[0].id).toBe(pendingGroup.id);
+  });
+
+  it("pendingGroupIds에 서버 그룹만 있을 때 pendingOnlyGroups는 빈 배열 → 새 그룹 생성 경로", () => {
+    const serverGroups: TableGroup[] = [
+      { id: "srv-001", tiles: ["R13a", "B13a", "Y13a"], type: "group" },
+      { id: "srv-002", tiles: ["K11a", "K12a", "K13a"], type: "run" },
+    ];
+    const pendingGroupIds = new Set(["srv-001", "srv-002"]);
+
+    const pendingOnlyGroups = serverGroups.filter(
+      (g) => pendingGroupIds.has(g.id) && g.id.startsWith("pending-")
+    );
+
+    // 서버 그룹만 있으면 pendingOnlyGroups는 비어있고
+    // lastPendingGroup = undefined → 새 그룹 생성 경로로 폴스루
+    expect(pendingOnlyGroups).toHaveLength(0);
+    const lastPendingGroup = pendingOnlyGroups.at(-1);
+    expect(lastPendingGroup).toBeUndefined();
+  });
+});

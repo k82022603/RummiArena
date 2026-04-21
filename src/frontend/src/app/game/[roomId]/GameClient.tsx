@@ -36,6 +36,7 @@ import type { TileCode, TileNumber, TableGroup, GroupType } from "@/types/tile";
 import { parseTileCode } from "@/types/tile";
 import { calculateScore } from "@/lib/practice/practice-engine";
 import { computeValidMergeGroups, isCompatibleWithGroup } from "@/lib/mergeCompatibility";
+import { validatePendingBlock } from "@/components/game/GameBoard";
 import { detectDuplicateTileCodes } from "@/lib/tileStateHelpers";
 import type { GameOverPayload } from "@/types/websocket";
 import type { Player } from "@/types/game";
@@ -43,12 +44,18 @@ import type { Player } from "@/types/game";
 // ------------------------------------------------------------------
 // BUG-UI-005: 타일 목록으로 그룹/런 자동 분류
 // 같은 숫자 + 다른 색상 → "group", 같은 색상 + 연속 숫자 → "run"
-// 조커 제외 후 나머지 타일로 판단, 판단 불가 시 기본 "run"
+// 조커 제외 후 나머지 타일로 판단, 판단 불가 시 기본 "group"
 //
 // B-NEW 수정: regular 타일이 1장 이하일 때는 그룹/런 분류 불가 → "run" 반환
 // (isGroupCandidate && isRunCandidate 모두 참인 단일 타일에 "group"을 붙이면
 //  mergeCompatibility.ts classifyKind가 "group"으로 고정해 다른 숫자의 같은 색
 //  타일을 isCompatibleAsGroup 로만 검사 → K12 그룹에 K13 드롭 거절 버그 유발)
+//
+// BUG-NEW-002 수정: 색상이 섞인(allSameColor=false) 타일을 기본값 "run"으로
+// 분류하면 [Y11,K12,B13] 같은 무효 세트가 "런"으로 표시되는 버그 발생.
+// 기본값을 "group"으로 변경 — 판단 불가 세트는 validatePendingBlock에서
+// "invalid"로 정확히 감지되므로 "run"/"group" 기본값은 표시 라벨에 영향 없음.
+// (pending 그룹 라벨은 validatePendingBlock 결과를 사용하므로 type 필드는 무관)
 // ------------------------------------------------------------------
 function classifySetType(tiles: TileCode[]): GroupType {
   const regular = tiles.filter((t) => t !== "JK1" && t !== "JK2");
@@ -65,8 +72,10 @@ function classifySetType(tiles: TileCode[]): GroupType {
   if (colors.size === 1) return "run";
   // 모든 숫자가 같으면 → 그룹 (같은 숫자, 다른 색상)
   if (numbers.size === 1) return "group";
-  // 판단 불가 시 기본값
-  return "run";
+  // BUG-NEW-002: 색 혼합 + 숫자 혼합 → 판단 불가. 기본값 "group" 반환.
+  // 이전 "run" 기본값은 [Y11,K12,B13] 같은 세트를 "런"으로 오분류했다.
+  // pending 라벨은 validatePendingBlock이 "invalid"로 잡으므로 기본값은 표시에 무영향.
+  return "group";
 }
 
 /**
@@ -568,11 +577,20 @@ export default function GameClient({ roomId }: GameClientProps) {
     [pendingMyTiles, myTiles]
   );
 
-  // C-3: 모든 pending 그룹이 3개 이상 타일을 가지는지 검증
+  // C-3 + BUG-NEW-003: 모든 pending 그룹이 3개 이상 타일을 가지며
+  // 유효한 세트(런/그룹)인지 검증한다.
+  // 이전 구현은 tiles.length >= 3 만 확인했으므로 [Y11,K12,B13] 같은
+  // 무효 세트(색 혼합 + 숫자 혼합)에서도 확정 버튼이 활성화되는 버그가 있었다.
+  // validatePendingBlock을 통해 "invalid" 판정 세트를 사전에 차단한다.
   const allGroupsValid = useMemo(() => {
     if (!pendingTableGroups) return true;
-    return pendingTableGroups.every((g) => g.tiles.length >= 3);
-  }, [pendingTableGroups]);
+    const pendingOnly = pendingTableGroups.filter((g) => pendingGroupIds.has(g.id));
+    return pendingOnly.every((g) => {
+      if (g.tiles.length < 3) return false;
+      const validity = validatePendingBlock(g.tiles as TileCode[]);
+      return validity !== "invalid";
+    });
+  }, [pendingTableGroups, pendingGroupIds]);
 
   // 이번 턴 pending 그룹들의 배치 점수 (최초 등록 30점 안내용)
   const pendingPlacementScore = useMemo(() => {
@@ -810,8 +828,12 @@ export default function GameClient({ roomId }: GameClientProps) {
 
       if (treatAsBoardDrop) {
         // 보드 빈 공간에 드롭
+        // BUG-NEW-001 수정: game-board 드롭 시 lastPendingGroup으로 서버 확정 그룹을
+        // 사용하면 안 된다. 서버 확정 그룹에 타일을 추가하는 경로는 명시적 그룹 드롭존을
+        // 통해야 한다 (targetServerGroup 분기). 여기서는 "pending-" 접두사로 생성된
+        // 순수 신규 그룹만 고려하여 의도치 않은 서버 그룹 오염을 방지한다.
         const pendingOnlyGroups = pendingTableGroups?.filter((g) =>
-          pendingGroupIds.has(g.id)
+          pendingGroupIds.has(g.id) && g.id.startsWith("pending-")
         );
         const lastPendingGroup = pendingOnlyGroups?.at(-1);
 
