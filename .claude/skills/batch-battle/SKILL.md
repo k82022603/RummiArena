@@ -445,6 +445,129 @@ done
 
 구간별 통계(초반/중반/후반) 및 5분 주기 스냅샷도 기록.
 
+### Phase 3c: 15분 주기 능동 보고 + 10개 지표 고정 테이블 (2026-04-20 리포트 63 반성 2·6 반영)
+
+> **배경**: Day 9 14~17시 3시간 동안 메인 Claude 가 ScheduleWakeup 으로 내부 체크만 하고 사용자에게 능동 보고를 하지 않았다 (반성 2). Day 10 에는 각 Run 완료 시 20~50줄 장황 분석을 덧붙여 "간결하게" 요청 전까지 보고가 부풀었다 (반성 6). 이 두 실수는 같은 뿌리 — **보고 지표 미정의 + 포맷 규범 미강제** — 에서 나왔다. 아래 규격은 두 실수를 동시에 차단한다.
+
+**원칙**:
+1. **15분 주기 능동 보고 (Push)** — 사용자 요청을 기다리지 않고 `ScheduleWakeup(delaySeconds=900)` 로 예약된 시점에 메인 Claude 가 사용자에게 먼저 tick 보고를 낸다. 사용자 수면 중이거나 "조용히" 를 명시한 시간대는 예외.
+2. **10개 지표 고정 테이블** — 매 tick 은 아래 고정 표를 채운다. 지표를 빼거나 추가하지 않는다. "이번엔 할 말이 없다" 라면 해당 셀을 `-` 로 둔다.
+3. **terse 포맷 강제 (≤ 15줄)** — 기본은 고정 표 + 특이사항 2줄. 사용자가 "자세히" 요청 시에만 30~80줄 상세 확장. 기본 tick 에서 "잘 분석했다" 를 보여주려 길게 쓰지 않는다.
+4. **블로커 즉시 보고 (Interrupt)** — 15분 주기와 별개로, 아래 조건 중 하나라도 감지되면 tick 주기를 깨고 즉시 보고한다:
+   - DNS 해상도 실패 (`getent hosts api.{deepseek,openai,anthropic}.com` 중 1건 이상 FAIL)
+   - K8s Pod 상태 변화 (Running → CrashLoopBackOff/Error/Pending)
+   - fallback 누적 1건 이상 (연속 3건이 아니라 **1건** 부터 — 2026-04-19 애벌레 지시)
+   - 비용 quota 80% 초과 (`$16 / $20` 도달 시점)
+
+**보고 파일 경로 규칙**:
+
+```
+work_logs/monitoring/YYYY-MM-DD-<session-id>/
+  tick-001.md         # 첫 tick (배치 kickoff 직후 ~15분)
+  tick-002.md         # 두 번째 tick (~30분)
+  tick-003.md
+  ...
+  incidents.md        # blocker 감지 시 누적 기록 (timestamp 기반 append)
+  summary.md          # 배치 완료 시 전체 tick 요약 (Phase 5 최종 보고 입력)
+```
+
+- `<session-id>` = 배치 태그. 예: `r6-fix`, `r11-smoke`, `r12-v6-shaper`
+- 디렉토리는 배치 kickoff 직후 **Phase 2 마지막** 에 생성 (`mkdir -p work_logs/monitoring/$(date +%F)-$SESSION_ID`)
+- tick 번호는 001 부터 3자리 zero-padding. 15분 × 999 = 약 10일 배치까지 커버
+
+**10개 지표 고정 테이블 (매 tick 필수)**:
+
+| # | 지표 | 단위/형식 | 예시 | 비고 |
+|---|------|----------|------|------|
+| 1 | `elapsed_time` | HH:MM | `02:37` | 배치 kickoff 부터 경과 |
+| 2 | `turn_count` | N/80 (현재 Run) | `T34/80` | 현재 진행 중 Run 기준 |
+| 3 | `model` | 문자열 | `deepseek` | 현재 Run 의 모델 |
+| 4 | `variant/shaper` | `<variant>/<shaper>` | `v2/passthrough` | 프롬프트 variant + context shaper (v6 에서 도입) |
+| 5 | `place_rate` | `%` (현재 Run 기준) | `28.2%` | AI place tiles / AI total actions |
+| 6 | `fallback_count` | 누적 N | `0` | 현재 Run 의 auto-draw / timeout fallback 누적 |
+| 7 | `avg_latency / max_latency` | `XXXs / YYYs` | `176s / 349s` | 최근 10턴 기준 |
+| 8 | `cost_spent` | `$X.XX / $20` | `$0.88 / $20` | 금일 `quota:daily:{YYYY-MM-DD}.total_cost_usd` |
+| 9 | `eta` | HH:MM (로컬) | `03:15` | (남은 turn × avg_latency) + Run 간 sleep 반영 |
+| 10 | `status` | enum | `running` | `running` / `blocked` / `dns_error` / `timeout` / `cost_exceeded` / `completed` |
+
+**terse 마크다운 포맷 (매 tick — work_logs/monitoring/.../tick-NNN.md)**:
+
+```markdown
+# tick-034 · 2026-04-21 02:37 KST
+
+| 지표 | 값 |
+|------|-----|
+| elapsed_time | 02:37 |
+| turn_count | T34/80 (Run 2/3) |
+| model | deepseek |
+| variant/shaper | v2/passthrough |
+| place_rate | 28.2% |
+| fallback_count | 0 |
+| avg_latency / max_latency | 176s / 349s |
+| cost_spent | $0.88 / $20 (4.4%) |
+| eta | 03:15 KST |
+| status | running |
+
+특이사항: (없으면 "정상")
+다음 tick: 02:52 KST
+```
+
+**사용자 채팅 tick 보고 포맷 (≤ 10줄, push)**:
+
+```
+tick-034 · 02:37 · Run 2/3 T34/80 · deepseek v2/passthrough
+place=28.2% fallback=0 avg/max=176s/349s
+cost=$0.88/$20 (4.4%) eta=03:15 status=running
+특이사항: 정상
+다음 tick: 02:52
+```
+
+**blocker 보고 포맷 (≤ 15줄, interrupt, work_logs/monitoring/.../incidents.md 에도 append)**:
+
+```
+[BLOCKER] tick-034 · 02:37 · dns_error
+감지: api.deepseek.com getaddrinfo 실패 (RC=2)
+영향: Run 2 T34~ 진행 중단, auto-draw 오염 위험
+현재 지표: turn=T34/80 place=28.2% fallback=0 cost=$0.88
+권장 조치:
+  ① 10분 대기 후 DNS 재검증 (WSL2 resolv.conf 동기화)
+  ② sudo systemctl restart systemd-resolved
+  ③ kubectl rollout restart deploy/ai-adapter -n rummikub
+배치 상태: 일시 중지 (Phase 2 Cleanup 대기)
+사용자 개입: 네트워크 변경 직후인지 확인 요청
+```
+
+**장황 확장 요청 대응 (사용자가 "자세히" 명시 시)**:
+- 30~80줄 허용. 턴별 place/draw 분포, latency 히스토그램, 토큰 분포, 최근 3 Run 비교 Δ 등 포함 가능.
+- 단, 사용자가 요청하지 않으면 **절대** 확장 금지 (반성 6 재발 방지).
+
+**tick 자동화 (ScheduleWakeup 패턴)**:
+
+```python
+# 배치 kickoff 직후 최초 예약
+ScheduleWakeup(
+  delaySeconds=900,  # 15분
+  prompt="""
+  batch-battle Phase 3c tick 보고 시점이다.
+  절차:
+  1. work_logs/monitoring/<date>-<session-id>/ 의 최신 상태 확인
+  2. master.log + 현재 Run log tail 읽기
+  3. 10개 지표 수집 (kubectl redis HGETALL quota:daily + ai-adapter metrics)
+  4. tick-NNN.md 작성 (고정 테이블 포맷)
+  5. 사용자 채팅에 push (≤ 10줄 terse)
+  6. blocker 미감지면 다음 ScheduleWakeup(900s) 예약
+  7. blocker 감지 시 즉시 incidents.md append + interrupt 보고
+  """,
+  reason="Phase 3c 15분 주기 능동 보고"
+)
+```
+
+**금지**:
+- 사용자 요청 없이 tick 에서 30줄 이상 분석 덧붙이기 (반성 6)
+- 10개 지표 중 일부 생략 (지표는 고정, 값이 없으면 `-` 표기)
+- ScheduleWakeup 없이 사용자가 물을 때까지 조용히 대기 (반성 2 — 능동성 부재)
+- blocker 감지 후 "다음 tick 에서 보고" 로 미루기 (반성 2 — 즉시 보고가 원칙)
+
 ---
 
 ## Phase 3b: 메인 Claude 비동기 모니터링 (ScheduleWakeup 패턴)
@@ -519,6 +642,8 @@ work_logs/battles/<round-tag>/
 | 3 Run 전부 완료 | 총평 작성 | 애벌레 아침 리뷰용 요약 생성, git commit 은 보류 |
 
 ### 보고 형식 (매 wake-up, terse ≤ 10줄)
+
+> **권장**: Phase 3c 의 **10개 지표 고정 테이블** 을 사용한다. 아래 간이 포맷은 후방 호환용. 신규 배치는 Phase 3c 포맷 + `work_logs/monitoring/<date>-<session-id>/tick-NNN.md` 파일 생성을 함께 적용.
 
 ```
 Run N/3 · 경과 XXm · 현재 Turn YY/80
