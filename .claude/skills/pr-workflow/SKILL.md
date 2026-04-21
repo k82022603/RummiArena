@@ -162,6 +162,83 @@ PR 관련 작업 prompt 를 만들기 전에 사용자에게 **다음 4가지를
 
 ---
 
+## Phase 3: PR 후속 정리 (사용자 수동 스크립트)
+
+Merge 후 로컬·원격 정리는 사용자가 직접 수동 실행한다. 자동화(remote cron·hook) 는 구현 비용 대비 실효성 낮아 보류.
+
+### 스크립트
+
+**경로**: `scripts/check-merged-pr.sh`
+
+**사용법**:
+```bash
+# 실행 권한 1회만 필요
+chmod +x scripts/check-merged-pr.sh
+
+# 실제 정리 실행
+./scripts/check-merged-pr.sh
+
+# 삭제 없이 현재 상태만 확인 (dry-run)
+./scripts/check-merged-pr.sh --dry-run
+```
+
+**동작 순서 (4단계)**:
+
+1. `git fetch --all --prune` — 원격 상태 동기화
+2. 로컬 branch 순회:
+   - 내가 만든 PR (gh api user 기반 author) 중 **merged 상태**인 branch 감지
+   - 해당 branch checkout 중이면 main 으로 먼저 전환
+   - 로컬 삭제 (`git branch -D`)
+   - 원격 삭제 (`git push origin --delete`, 이미 없으면 무시)
+3. `main` 으로 checkout + `git pull --ff-only origin main`
+4. 현재 내 열린 PR 목록 출력 (번호·제목·URL·리뷰 상태·생성일)
+
+**예시 출력**:
+```
+===============================================
+ PR Status Check — 2026-04-21 19:33:22
+ User: k82022603
+===============================================
+[1/4] git fetch --all --prune
+  ✓ 완료
+[2/4] 로컬 branch 중 merged 탐지
+  ✓ chore/day11-wrap-up — PR #35 merged
+    → 로컬 삭제
+    → 원격 삭제
+  · feat/sprint7-closestcenter — 작업 중 (merged PR 없음)
+[3/4] main 동기화
+  ✓ main pull --ff-only 완료
+[4/4] 현재 열린 PR (author=k82022603)
+  #42 [fix/day12-p01-persistence] 게임 영속저장 복구
+    https://github.com/.../pull/42
+    review: APPROVED, 생성: 2026-04-22
+===============================================
+ 요약: merged 정리 1 개 / 열린 PR 1 개
+===============================================
+```
+
+### 언제 실행하는가
+
+- 사용자가 GitHub 웹에서 PR 을 merge 한 직후
+- 새 세션 시작해서 main 최신화 하고 싶을 때
+- 로컬에 오래된 branch 잔재 정리하고 싶을 때
+
+### Claude 메인 세션 연동
+
+사용자가 PR merge 를 한 뒤 Claude 에게 "정리해줘" / "체크" 같은 요청 시:
+- Claude 가 `./scripts/check-merged-pr.sh` 실행
+- 결과를 사용자에게 보고
+- 이미 정리된 상태면 "정리할 것 없음" 출력
+
+### 제약
+
+- **PC 켜져 있을 때만 감지 의미** — 사용자가 수동 실행하므로 당연
+- **remote cron 자동화는 최소 주기 1시간이라 실효성 낮음** — 수동 스크립트가 더 빠름
+- 다중 사용자 프로젝트 (k82022603 외 contributor) 에서는 author 필터 확장 필요
+
+---
+
 ## 변경 이력
 
 - **2026-04-21 v1.0**: 최초 작성. PR #33/#34 사고 (사용자 통제권 누락) 반영.
+- **2026-04-21 v1.1**: Phase 3 추가. `scripts/check-merged-pr.sh` 수동 스크립트 기반 후속 정리 문서화. remote cron 자동화 (1시간 최소 주기) 는 실효성 낮아 보류.
