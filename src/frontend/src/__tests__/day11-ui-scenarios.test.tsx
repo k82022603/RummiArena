@@ -612,3 +612,36 @@ describe("S-20 · Tile SIZE_CLASS rack/table", () => {
     expect(tableCls).toContain("w-[44px]");
   });
 });
+
+// =====================================================================
+// S-21 · A3 회귀 방지 — 단일 타일 pending 그룹 aria-label "미확정 그룹"
+// collisionDetection 교체(pointerWithinThenClosest)로 단일 타일 드롭이
+// 새 그룹으로 생성될 때 aria-label 이 "미확정 그룹"으로 통일되는지 확인한다.
+// =====================================================================
+describe("S-21 · A3/A5 — 단일 타일 pending 그룹 aria-label 회귀 방지", () => {
+  it("tiles.length=1 pending 그룹 → aria-label '미확정 그룹 (제출 대기 중)'", () => {
+    const group: TableGroup = {
+      id: "single-tile",
+      tiles: ["R7a"],
+      type: "group",
+    };
+    const { container } = renderPendingBoard({ group });
+
+    // motion.div aria-label 확인
+    const el = container.querySelector('[aria-label="미확정 그룹 (제출 대기 중)"]');
+    expect(el).not.toBeNull();
+  });
+
+  it("tiles.length=1 pending 그룹에 '런 (미확정)' 문자열 노출 금지", () => {
+    const group: TableGroup = {
+      id: "single-tile-run",
+      tiles: ["Y9a"],
+      type: "run",
+    };
+    renderPendingBoard({ group });
+
+    // 단일 타일이므로 런/그룹 분류 불가 → "미확정" 라벨만 표시, "런 (미확정)" 노출 금지
+    expect(screen.queryByText("런 (미확정)")).toBeNull();
+    expect(screen.getByText("미확정")).toBeInTheDocument();
+  });
+});

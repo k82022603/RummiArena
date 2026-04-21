@@ -371,7 +371,9 @@ const GameBoard = memo(function GameBoard({
                   className="flex flex-col gap-1"
                   aria-label={
                     isPending
-                      ? `미확정 ${group.type === "run" ? "런" : "그룹"} (제출 대기 중)`
+                      ? group.tiles.length === 1
+                        ? "미확정 그룹 (제출 대기 중)"
+                        : `미확정 ${group.type === "run" ? "런" : "그룹"} (제출 대기 중)`
                       : undefined
                   }
                 >
@@ -445,7 +447,7 @@ const GameBoard = memo(function GameBoard({
                           code={code}
                           size="table"
                           highlightVariant={isRecent ? recentTileVariant : null}
-                          aria-label={`${group.type} 그룹의 ${code} 타일${isPending ? " (미확정)" : ""}${isRecent ? " (방금 배치됨)" : ""}`}
+                          aria-label={`${isPending && group.tiles.length === 1 ? "미확정 그룹" : group.type === "run" ? "런" : "그룹"} 그룹의 ${code} 타일${isPending ? " (미확정)" : ""}${isRecent ? " (방금 배치됨)" : ""}`}
                         />
                       );
                     })}

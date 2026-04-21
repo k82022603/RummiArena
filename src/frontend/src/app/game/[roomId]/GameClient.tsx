@@ -10,7 +10,9 @@ import {
   useSensor,
   useSensors,
   closestCenter,
+  pointerWithin,
 } from "@dnd-kit/core";
+import type { CollisionDetection } from "@dnd-kit/core";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useWebSocket } from "@/hooks/useWebSocket";
@@ -406,6 +408,22 @@ function GameEndedOverlay({
 }
 
 // ------------------------------------------------------------------
+// A3: 커스텀 collisionDetection — pointerWithin 우선, null 시 closestCenter fallback
+//
+// 근거: closestCenter 는 포인터가 빈 공간에 있을 때도 "가장 가까운" 드롭 타겟을
+// 선택하여 의도하지 않은 그룹 오매핑을 유발한다.
+// pointerWithin 은 실제 포인터가 드롭존 rect 안에 있을 때만 매칭하므로
+// 빈 공간 드롭 시 null 을 반환 → 새 그룹 생성 경로(game-board fallback)로 정확히 진입한다.
+// null 을 그대로 반환하면 DndContext 가 over=null 로 처리하여 handleDragEnd 에서
+// "드롭 위치 없음" 안내 토스트(A4)를 띄운다.
+// ------------------------------------------------------------------
+const pointerWithinThenClosest: CollisionDetection = (args) => {
+  const pointerCollisions = pointerWithin(args);
+  if (pointerCollisions.length > 0) return pointerCollisions;
+  return closestCenter(args);
+};
+
+// ------------------------------------------------------------------
 // GameClient
 // ------------------------------------------------------------------
 
@@ -649,7 +667,13 @@ export default function GameClient({ roomId }: GameClientProps) {
       activeDragSourceRef.current = null;
       setActiveDragCode(null);
       const { active, over } = event;
-      if (!over || !isMyTurn) return;
+      // 내 턴이 아니면 조용히 return (드래그 자체가 UI에서 막혀 있어야 하지만 방어)
+      if (!isMyTurn) return;
+      // A4: 내 턴인데 유효한 드롭 위치가 없으면 사용자에게 안내 토스트 표시
+      if (!over) {
+        useWSStore.getState().setLastError("드롭 위치를 확인하세요");
+        return;
+      }
 
       const tileCode = active.data.current?.tileCode as TileCode | undefined;
       if (!tileCode) return;
@@ -1199,7 +1223,7 @@ export default function GameClient({ roomId }: GameClientProps) {
       {/* RateLimitToast는 layout.tsx에서 전역 마운트 */}
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCenter}
+      collisionDetection={pointerWithinThenClosest}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
