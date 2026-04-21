@@ -146,6 +146,71 @@ npx playwright test --workers=4
 
 ---
 
+## Phase 3.5: Pre-deploy Claude Playbook (사용자 역할 대리 수행)
+
+> **원칙**: 사용자가 테스트하기 전에 Claude 가 사용자 역할로 실제 플레이한다. 사용자가 "게임 못 하겠다" 발견하는 프로세스를 끝낸다.
+
+### 3.5.1 언제 발동
+
+- Pod 재배포 직후 (devops 에이전트 완료 알림 수신 시)
+- PR 머지 직전 (배포 명령 실행 전)
+- 사용자에게 "테스트해보세요" 전달 **직전**
+
+### 3.5.2 실행 절차 (Playwright 기반)
+
+1. **로그인 흐름**:
+   - 로컬 혹은 Pod endpoint 에 Playwright 로 접속
+   - `src/frontend/e2e/auth.json` storageState 로 로그인 상태 복원
+   - `/lobby` 진입 성공 확인
+
+2. **방 생성 + AI 대전 진입**:
+   - 방 생성 폼 작성 (2인전, GPT, persona=rookie, difficulty=beginner, 턴 120초)
+   - 대기실 진입 → 게임 시작
+   - 내 턴 시작 확인
+
+3. **플레이 시퀀스 (최소)**:
+   - 타일 드래그 → 빈 보드 드롭 (새 그룹) — **3회 이상**
+   - 타일 드래그 → 기존 블록 확장 (같은 색 연속 런, 같은 숫자 그룹) — **각 1회 이상**
+   - 조커 포함 런 구성 — **1회 이상**
+   - 확정 시도 → 성공 확인 — **2회 이상**
+   - 드로우 — **2회 이상**
+   - 턴 10회 이상 진행
+
+4. **실측 단언**:
+   - 모든 드롭이 **보드에 반영** (랙 복귀 아님)
+   - 미확정 블록 라벨이 **실제 타입** (런/그룹/무효) 과 일치
+   - 턴 히스토리에 한글 표기 (`드로우` / `강제 드로우` 등)
+   - 플레이어 카드의 `난이도` / `페르소나` 정상 표시
+   - 내 타일 수가 **rack 실제 수와 일치** (drift 없음)
+
+5. **실패 시**:
+   - **배포 게이트 차단**. 사용자에게 "테스트해보세요" 전달 금지
+   - 실패 지점 스크린샷 + 로그 수집 → `src/frontend/test-results/pre-deploy-playbook/` 저장
+   - incident-response SKILL 호출 또는 즉시 수정 spawn
+
+### 3.5.3 커맨드 패턴
+
+```bash
+cd src/frontend
+npx playwright test e2e/pre-deploy-playbook.spec.ts --headed=false --workers=1
+```
+
+신규 스펙: `src/frontend/e2e/pre-deploy-playbook.spec.ts` — 본 SKILL 에서 최초 호출 시 자동 작성
+
+### 3.5.4 성공 기준
+
+- Playbook 5분 내 완주 (턴 10회 이상)
+- 단언 전부 PASS
+- 모든 드래그·드롭·확정 동작 반영됨
+
+### 3.5.5 금지 사항
+
+- **Pre-deploy Playbook 미완료 상태에서 "사용자 확인해보세요" 메시지 금지**
+- Playbook 실패를 "flaky" 로 치부 금지
+- 네트워크·CI 이슈가 의심되면 **2회 재시도 후 판정**
+
+---
+
 ## Phase 4: Report
 
 ### 4.1 결과 요약 포맷
@@ -202,6 +267,29 @@ npx playwright test --workers=4
 3. 신규 Jest/E2E 테스트를 **수정 커밋과 함께** 동반 커밋
 4. MEMORY 에 일시적 주의사항이면 `feedback_*.md` 추가
 
+### 5.1 사용자 실측 → E2E 전환 24h 의무
+
+**원칙**: 사용자가 이미지·설명으로 버그 리포트하면, **24시간 이내에 해당 시나리오를 E2E 로 편입**. 예외 없음.
+
+절차:
+1. 사용자 리포트 수신 직후: 이미지·로그를 `src/frontend/test-results/user-reports/YYYY-MM-DD/` 에 아카이브
+2. 시나리오를 given/when/then 으로 재구성해 `docs/04-testing/65-*.md` 등록
+3. Playwright E2E 작성 (`e2e/user-reported/YYYY-MM-DD-<slug>.spec.ts`)
+4. 수정 커밋과 **별도 커밋** 으로 E2E 먼저 추가 (Red 상태) → 수정 커밋 후 Green 확인 (TDD 성격)
+5. 동일 버그 재발 시 즉시 감지
+
+**효과**:
+- "같은 실수가 반복" 패턴 제거
+- 사용자 실측 → 자동화로 영구 이동
+- 사용자가 같은 버그를 두 번 찾는 일 없음
+
+### 5.2 사용자가 테스트하지 않아도 되게 (원칙)
+
+본 SKILL 의 최종 목표:
+- Phase 3.5 Playbook 으로 **배포 전 Claude 가 사용자 역할 수행**
+- Phase 5.1 전환 의무로 **한 번 발견된 버그는 절대 재발 불가능**
+- 사용자에게 "테스트해주세요" 전달은 **Claude 가 최선을 다한 후 최종 검증** 차원에서만. 1차 QA 책임은 Claude 에게.
+
 ---
 
 ## Anti-patterns (금지)
@@ -226,12 +314,13 @@ npx playwright test --workers=4
 
 ## 오늘 (2026-04-21) 세션 반영 항목
 
-본 SKILL 초안은 Day 11 실측 세션에서 드러난 4가지 구조적 실패에 대응:
+본 SKILL 초안은 Day 11 실측 세션에서 드러난 5가지 구조적 실패에 대응:
 
 1. **F-2 `abcec27` regression** → Phase 0 반사실적 체크리스트로 방지
 2. **G-3 불완전 수정 (서버 확정 그룹 경로 누락)** → Phase 0 의 "계층 분산 검증" 규칙
 3. **`closestCenter` 빈 공간 매핑** → Phase 3 E2E 드래그 좌표 시나리오 필수
 4. **K12+K13 런 자동 인식 실패** → Phase 2 Integration 필수 시나리오에 등록
+5. **사용자 실측 의존 패턴 (오늘 수차례)** → Phase 3.5 Claude Playbook + Phase 5.1 24h 전환 의무로 차단. 사용자가 "게임 못 하겠다" 발견 전에 Claude 가 먼저 발견
 
 ---
 
