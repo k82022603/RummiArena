@@ -12,9 +12,17 @@ function isJoker(code: TileCode): boolean {
 type ClassifiedKind = "group" | "run" | "unknown";
 
 function classifyKind(group: TableGroup): ClassifiedKind {
-  if (group.type === "group" || group.type === "run") return group.type;
+  // B-NEW 수정: group.type が "group"/"run" であっても、実際のタイル数が 2 枚未満なら
+  // 判断不能 ("unknown") として扱い、両方の互換チェックを実行させる。
+  // classifySetType は单一タイル に対して "run" を返すが、
+  // 以前は "group" を返していたため、K12 一枚グループに K13 をドロップすると
+  // isCompatibleAsGroup のみ実行されて拒否されていた (B-NEW バグ根本原因)。
+  //
+  // B-NEW fix: even if group.type is "group"/"run", treat groups with fewer than
+  // 2 regular tiles as "unknown" so both group and run compatibility are checked.
   const regular = group.tiles.filter((t) => !isJoker(t));
   if (regular.length < 2) return "unknown";
+  if (group.type === "group" || group.type === "run") return group.type;
   const parsed = regular.map((t) => parseTileCode(t));
   const numbers = new Set(parsed.map((t) => t.number));
   const colors = new Set(parsed.map((t) => t.color));

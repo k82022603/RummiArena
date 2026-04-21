@@ -44,19 +44,27 @@ import type { Player } from "@/types/game";
 // BUG-UI-005: 타일 목록으로 그룹/런 자동 분류
 // 같은 숫자 + 다른 색상 → "group", 같은 색상 + 연속 숫자 → "run"
 // 조커 제외 후 나머지 타일로 판단, 판단 불가 시 기본 "run"
+//
+// B-NEW 수정: regular 타일이 1장 이하일 때는 그룹/런 분류 불가 → "run" 반환
+// (isGroupCandidate && isRunCandidate 모두 참인 단일 타일에 "group"을 붙이면
+//  mergeCompatibility.ts classifyKind가 "group"으로 고정해 다른 숫자의 같은 색
+//  타일을 isCompatibleAsGroup 로만 검사 → K12 그룹에 K13 드롭 거절 버그 유발)
 // ------------------------------------------------------------------
 function classifySetType(tiles: TileCode[]): GroupType {
   const regular = tiles.filter((t) => t !== "JK1" && t !== "JK2");
   if (regular.length === 0) return "run"; // 조커만으로 구성 → 기본 run
+  // B-NEW: 단일 타일은 그룹/런 판정 불가 → 중립값 "run" 반환
+  // classifyKind()가 "run"을 보면 regular.length<2 조건과 함께 "unknown"으로 처리됨
+  if (regular.length === 1) return "run";
 
   const parsed = regular.map((t) => parseTileCode(t));
   const numbers = new Set(parsed.map((t) => t.number));
   const colors = new Set(parsed.map((t) => t.color));
 
+  // 모든 색상이 같으면 → 런 (같은 색상, 연속 숫자) — 런 판정 우선
+  if (colors.size === 1) return "run";
   // 모든 숫자가 같으면 → 그룹 (같은 숫자, 다른 색상)
   if (numbers.size === 1) return "group";
-  // 모든 색상이 같으면 → 런 (같은 색상, 연속 숫자)
-  if (colors.size === 1) return "run";
   // 판단 불가 시 기본값
   return "run";
 }
@@ -792,7 +800,15 @@ export default function GameClient({ roomId }: GameClientProps) {
         return;
       }
 
-      if (over.id === "game-board") {
+      // B-1 수정: closestCenter 알고리즘이 빈 보드 영역 드롭을 기존 서버 그룹에
+      // 매핑하는 경우 (hasInitialMeld=false → 위 블록에서 return 안 됨), 새 그룹
+      // 생성 로직으로 폴스루한다. over.id가 "game-board"가 아니어도 서버 그룹을
+      // 찾지 못하면 같은 경로로 들어오므로 변수는 함께 재사용한다.
+      const treatAsBoardDrop =
+        (over.id === "game-board") ||
+        (targetServerGroup !== undefined && !hasInitialMeld);
+
+      if (treatAsBoardDrop) {
         // 보드 빈 공간에 드롭
         const pendingOnlyGroups = pendingTableGroups?.filter((g) =>
           pendingGroupIds.has(g.id)
@@ -912,6 +928,27 @@ export default function GameClient({ roomId }: GameClientProps) {
           // forceNewGroup은 false로 리셋하지 않음 - 사용자가 수동 토글하도록 유지
           if (forceNewGroup) setForceNewGroup(false);
         }
+      } else if (over.id === "game-board-new-group") {
+        // G-5: 새 그룹 드롭존에 직접 드롭 → 무조건 새 그룹 생성
+        // (game-board의 shouldCreateNewGroup 조건 판단을 우회하여 즉시 새 그룹)
+        pendingGroupSeqRef.current += 1;
+        const newGroupId = `pending-${Date.now()}-${pendingGroupSeqRef.current}`;
+        const newGroup: TableGroup = {
+          id: newGroupId,
+          tiles: [tileCode],
+          type: classifySetType([tileCode]),
+        };
+        const nextTableGroups = [...currentTableGroups, newGroup];
+        if (process.env.NODE_ENV !== "production") {
+          const ids = nextTableGroups.map((g) => g.id);
+          if (new Set(ids).size !== ids.length) {
+            console.error("[BUG-UI-REARRANGE-002] 그룹 ID 중복 감지 (new-group-dropzone)", ids);
+          }
+        }
+        const nextMyTiles = removeFirstOccurrence(currentMyTiles, tileCode);
+        setPendingTableGroups(nextTableGroups);
+        setPendingMyTiles(nextMyTiles);
+        addPendingGroupId(newGroupId);
       } else if (over.id === "player-rack") {
         // 보드 -> 랙: pending 그룹에 실제로 있는 타일만 회수
         // (랙->랙 오드롭 시 서버 그룹 타일을 삭제하는 버그 방지)
@@ -1196,13 +1233,20 @@ export default function GameClient({ roomId }: GameClientProps) {
             className="w-48 flex-shrink-0 bg-panel-bg border-r border-border p-3 flex flex-col gap-3"
             aria-label="내 정보 패널"
           >
-            {/* 내 플레이어 카드 */}
+            {/* 내 플레이어 카드
+                G-4: pendingMyTiles가 있으면 tileCount를 currentMyTiles.length로 override.
+                player.tileCount는 서버 기준값이어서 pending 배치 중 drift가 발생함.
+                PlayerRack 헤더와 동일한 값(currentMyTiles.length)을 보여줌으로써 일관성 유지.
+            */}
             {players
               .filter((p) => p.seat === effectiveMySeat)
               .map((player) => (
                 <PlayerCard
                   key={player.seat}
-                  player={player}
+                  player={{
+                    ...player,
+                    tileCount: currentMyTiles.length,
+                  }}
                   isCurrentTurn={isMyTurn}
                   isAIThinking={false}
                 />
@@ -1274,25 +1318,32 @@ export default function GameClient({ roomId }: GameClientProps) {
               groupsDroppable={isMyTurn && (isDragging || !!pendingTableGroups)}
               tilesDraggable={isMyTurn}
               validMergeGroupIds={validMergeGroupIds}
+              showNewGroupDropZone={isMyTurn}
               className="flex-1"
             />
 
-            {/* 새 그룹 버튼: pending 그룹이 있을 때만 표시 */}
-            {pendingTableGroups && isMyTurn && (
+            {/* G-5: 새 그룹 버튼 — 내 턴이면 항상 표시 (pending 여부 무관)
+                사용자가 drag 전에도 "새 그룹 모드"를 미리 활성화할 수 있게 한다.
+                버튼 크기와 색상을 강화하여 가시성 향상.
+            */}
+            {isMyTurn && (
               <div className="flex items-center justify-between flex-shrink-0">
                 <span className="text-tile-sm text-text-secondary/60 whitespace-nowrap">
-                  숫자/색상이 다른 타일은 자동으로 새 그룹이 됩니다
+                  {pendingTableGroups
+                    ? "숫자/색상이 다른 타일은 자동으로 새 그룹이 됩니다"
+                    : "타일을 드래그해 테이블에 배치하세요"}
                 </span>
                 <button
                   type="button"
                   onClick={() => setForceNewGroup(!forceNewGroup)}
                   className={[
-                    "px-4 py-2 rounded-lg text-sm font-semibold border-2 transition-all",
+                    "px-4 py-2.5 rounded-lg text-sm font-bold border-2 transition-all min-w-[120px]",
                     forceNewGroup
                       ? "border-warning text-warning bg-warning/15 shadow-[0_0_8px_rgba(234,179,8,0.3)]"
-                      : "border-green-500/50 text-green-400 bg-green-500/10 hover:border-green-400 hover:bg-green-500/20",
+                      : "border-green-500/70 text-green-300 bg-green-500/15 hover:border-green-400 hover:bg-green-500/25 hover:text-green-200",
                   ].join(" ")}
                   aria-label="다음 드롭 시 새 그룹 생성"
+                  aria-pressed={forceNewGroup}
                   title="다음 타일 드롭 시 새 그룹을 만듭니다"
                 >
                   {forceNewGroup ? "[ 새 그룹 모드 ON ]" : "+ 새 그룹"}

@@ -128,6 +128,12 @@ interface GameBoardProps {
    * 드래그 중일 때만 의미 있으며, 포함된 그룹은 녹색 pulse ring으로 강조된다.
    */
   validMergeGroupIds?: Set<string>;
+  /**
+   * G-5: 드래그 중 새 그룹 드롭존 표시 여부.
+   * true이면 보드 하단에 점선 드롭존이 나타나고, 사용자가 새 그룹을 생성할 수 있다.
+   * 드롭 ID는 "game-board-new-group"이며 GameClient handleDragEnd에서 처리한다.
+   */
+  showNewGroupDropZone?: boolean;
   className?: string;
 }
 
@@ -135,21 +141,56 @@ interface GameBoardProps {
 function DroppableGroupWrapper({
   groupId,
   isCompatible,
+  isDragging,
   children,
 }: {
   groupId: string;
   isCompatible?: boolean;
+  /** 현재 드래그 중인지 여부 — 드래그 중일 때만 비호환 ring 표시 */
+  isDragging?: boolean;
   children: React.ReactNode;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: groupId });
+  // G-5: hover 시 호환 → 초록, 비호환 → 빨간, 호환 대기 → 초록 pulse
   const ringClass = isOver
-    ? "ring-2 ring-green-400/80 rounded-lg"
+    ? (isCompatible ? "ring-2 ring-green-400/80 rounded-lg" : "ring-2 ring-red-400/80 rounded-lg")
     : isCompatible
       ? "ring-2 ring-green-400/40 rounded-lg animate-pulse"
-      : undefined;
+      : (isDragging ? "ring-1 ring-red-400/20 rounded-lg" : undefined);
   return (
     <div ref={setNodeRef} className={ringClass}>
       {children}
+    </div>
+  );
+}
+
+/** G-5: 새 그룹 드롭존 (드래그 중 항상 표시) */
+const NEW_GROUP_DROP_ID = "game-board-new-group";
+
+function NewGroupDropZone() {
+  const { setNodeRef, isOver } = useDroppable({ id: NEW_GROUP_DROP_ID });
+  return (
+    <div
+      ref={setNodeRef}
+      className={[
+        "flex items-center justify-center gap-2",
+        "h-16 rounded-xl border-2 border-dashed transition-all duration-150",
+        isOver
+          ? "border-yellow-400 bg-yellow-400/10 shadow-[0_0_8px_rgba(234,179,8,0.25)]"
+          : "border-border/40 bg-transparent hover:border-border/60",
+      ].join(" ")}
+      role="region"
+      aria-label="새 그룹 드롭존"
+    >
+      <span
+        className={[
+          "text-tile-xs font-medium select-none",
+          isOver ? "text-yellow-300" : "text-text-secondary/50",
+        ].join(" ")}
+        aria-hidden="true"
+      >
+        + 새 그룹 생성
+      </span>
     </div>
   );
 }
@@ -174,6 +215,7 @@ const GameBoard = memo(function GameBoard({
   groupsDroppable = false,
   tilesDraggable = false,
   validMergeGroupIds,
+  showNewGroupDropZone = false,
   className = "",
 }: GameBoardProps) {
   const { setNodeRef, isOver } = useDroppable({ id: BOARD_DROP_ID });
@@ -283,11 +325,20 @@ const GameBoard = memo(function GameBoard({
               const showErrorRing = isPending && (isInvalidBlock || isExplicitlyInvalid);
 
               // G-1: 라벨 텍스트 결정
+              // B-NEW 수정: partial 상태에서 타일이 1개이면 "그룹/런"을 확정할 수 없으므로
+              // "그룹 (미확정)" 대신 "미확정"으로 표시한다.
+              // (K12 단일 타일에 "그룹 (미확정)" 라벨이 붙으면 사용자가 K13을 병합하려
+              // 할 때 시각적으로 혼란을 주고, 라벨이 잘못된 분류를 암시함)
               const pendingLabelText = (() => {
                 if (!isPending) return null;
                 if (validity === "valid-run") return "런 (미확정)";
                 if (validity === "valid-group") return "그룹 (미확정)";
                 if (validity === "partial") {
+                  // 타일 1개 (조커 포함 최대 2장 미만) → "미확정"
+                  const nonJokerCount = group.tiles.filter(
+                    (t) => t !== "JK1" && t !== "JK2"
+                  ).length;
+                  if (nonJokerCount <= 1) return "미확정";
                   return group.type === "run" ? "런 (미확정)" : "그룹 (미확정)";
                 }
                 return "무효 세트";
@@ -427,6 +478,7 @@ const GameBoard = memo(function GameBoard({
                   isCompatible={
                     isDragging && !!validMergeGroupIds?.has(group.id)
                   }
+                  isDragging={isDragging}
                 >
                   {groupContent}
                 </DroppableGroupWrapper>
@@ -437,6 +489,22 @@ const GameBoard = memo(function GameBoard({
           </AnimatePresence>
         </div>
       )}
+
+      {/* G-5: 드래그 중 새 그룹 드롭존 — 내 턴이고 드래그 중일 때만 표시 */}
+      <AnimatePresence>
+        {showNewGroupDropZone && isDragging && isMyTurn && (
+          <motion.div
+            key="new-group-dropzone"
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 4 }}
+            transition={{ duration: 0.15 }}
+            className="mt-3"
+          >
+            <NewGroupDropZone />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </section>
   );
 });
