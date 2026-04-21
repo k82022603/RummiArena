@@ -389,7 +389,7 @@ docs/
 ### Task #20/#21 판정
 - **Task #20 v6 구조 재설계**: 구현 완결 + 실측 완결 → **Kill 확정**
 - **Task #21 A안 (v6 Round 11 + 블로그 2차)**: Kill → **Plan B 자동 발동** (D안 대시보드 + B안 PostgreSQL 마이그)
-- **Task #19 본실측 turn 80 × 3N**: 불필요 확정 (Smoke 결과로 충분)
+- **Task #19 본실측 turn 80 × 3N**: ~~진행 예정~~ **Kill 확정 2026-04-21** — v6 두 축(텍스트 Δ=0.04%p + 구조 Δ<2%p) 동시 확증, marginal value=0. 근거: [`work_logs/decisions/2026-04-21-01-plan-b-activation.md`](./work_logs/decisions/2026-04-21-01-plan-b-activation.md) §4
 
 ### Sprint 6 Day 1+2 당일 성과 (2026-04-13, 참고)
 - **24건 커밋** origin/main 반영

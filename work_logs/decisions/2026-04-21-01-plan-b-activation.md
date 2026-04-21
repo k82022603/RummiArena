@@ -219,11 +219,49 @@ gantt
 
 ---
 
+## 8.1 Sweep 이력 (2026-04-21 오후)
+
+본 결정문 §4.3 + §6.1 P0 에 따라 Day 11 오후 (PM) 가 repo 전수를 sweep 하여 Task #19 Kill 표기를 반영했다.
+
+### 이미 Kill 마킹 완료 (확인만)
+
+- `docs/01-planning/17-sprint6-kickoff-directives.md` §14 (L478, L493) — Sprint 6 킥오프 부록, Kill 표 + KILLED 취소선
+- `docs/04-testing/63-v6-shaper-final-report.md` §7.1 (L380) — v6 종합 리포트 결론
+- `work_logs/ai-battle-monitoring-20260419.md` 4개소 (L254-255, L304-305, L547, L607-608) — 모니터링 문서 KILLED 인라인 주석
+- `work_logs/incidents/2026-04-19-01-timeout.md` 3개소 (L90, L97, L115) — 장애보고서 KILLED 마킹 + 사후 결정
+- `work_logs/incidents/_template-timeout.md` (L87) — 템플릿 사후 주석
+
+### 본 sweep 에서 신규 반영
+
+| 파일 | 변경 |
+|---|---|
+| `PLAN.md` L392 | "불필요 확정" → "Kill 확정 2026-04-21" + 결정문 §4 링크 |
+| `work_logs/sessions/2026-04-21-01.md` L128 | `[ ]` → `[x]` + 완료 링크 |
+| `work_logs/scrums/2026-04-21-01.md` L49, L131 | todo 행에 "✓ 완료" + 결정문 링크 |
+| `scripts/ai-battle-v6-monitor-loop.sh` L233 직전 | Kill 주석 3줄 (메시지 문자열은 Plan B 본실측 재사용 고려 보존) |
+
+### 수정 제외 (이력 보존)
+
+- `docs/02-design/39-prompt-registry-architecture.md`, `docs/02-design/40-agent-commit-queue-design.md` 의 "Task #19 SP2 작업 A/B" 는 Sprint 6 초반 (2026-04-14, Day 3 오후) architect-1 작업자 이력. 본 결정에서 Kill 한 "gpt-5-mini 본실측" 과 문맥이 다름. 편집 시 무결성 손상 위험으로 보존.
+- `work_logs/scrums/2026-04-20-01.md`, `work_logs/scrums/2026-04-20-02.md` — 4월 20일 스크럼 발화 기록. 역사적 기록은 시점 그대로 보존 원칙.
+
+### GitHub Issues
+
+- `gh issue list --state all --search "Task #19"` 결과 open 이슈 0건 (CLOSED 1건 unrelated: S2-02 SonarQube)
+- 별도 close 액션 불필요
+
+### 발견된 일관성 문제
+
+없음. §4.3 이 예측한 sweep 대상 3개 파일은 이미 결정문 작성 시 동시에 마킹되었고, 본 sweep 은 결정문 미포함 대상 4개 파일 (B 그룹) 에 후속 반영을 완료한다.
+
+---
+
 ## 9. 변경 이력
 
 | 일자 | 내용 | 담당 |
 |---|---|---|
 | 2026-04-21 | 초판 작성 — A안 Kill + Task #19 Kill + Plan B 발동 공식 기록 | PM |
+| 2026-04-21 오후 | §8.1 Sweep 이력 섹션 추가 — repo 전수 Kill 마킹 sweep 완료 (PLAN.md, 세션/스크럼 로그, monitor-loop.sh 주석) | PM |
 
 ---
 
