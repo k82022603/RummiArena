@@ -802,8 +802,32 @@ export default function GameClient({ roomId }: GameClientProps) {
       // 기존 구현은 pending 그룹에만 머지를 허용했고, 서버 확정 그룹은 드롭이 무시되거나
       // board로 fallback되어 새 그룹으로 만들어졌다. 루미큐브 규칙 §6.2(합병)을 지원하기 위해
       // 최초 등록 완료 상태에서는 서버 확정 그룹도 머지 가능하도록 확장한다.
+      //
+      // A2: 호환성 사전 필터 (잡종 생성 차단)
+      // closestCenter 알고리즘이 빈 공간 드롭을 인접 서버 그룹으로 오매핑하거나,
+      // 사용자가 의도치 않게 호환되지 않는 타일을 서버 그룹 위로 드롭한 경우
+      // isCompatibleWithGroup 검증 없이 merge하면 잡종 그룹이 생성된다.
+      // 예: {R13,B13,K13} 에 B11 드롭 → [R13,B13,K13,B11] 잡종 (스크린샷 170801 증거)
+      // 호환 안 되면 새 그룹 생성 경로(옵션 A)로 폴스루 — 사용자 의도에 더 가까움.
       const targetServerGroup = currentTableGroups.find((g) => g.id === over.id);
       if (targetServerGroup && hasInitialMeld) {
+        if (!isCompatibleWithGroup(tileCode, targetServerGroup)) {
+          // 호환 안 됨: 새 그룹 생성 (옵션 A 폴스루)
+          // pendingGroupSeqRef는 이 분기 아래에서도 같은 패턴을 사용한다
+          pendingGroupSeqRef.current += 1;
+          const newGroupId = `pending-${Date.now()}-${pendingGroupSeqRef.current}`;
+          const newGroup: TableGroup = {
+            id: newGroupId,
+            tiles: [tileCode],
+            type: classifySetType([tileCode]),
+          };
+          const nextTableGroups = [...currentTableGroups, newGroup];
+          const nextMyTiles = removeFirstOccurrence(currentMyTiles, tileCode);
+          setPendingTableGroups(nextTableGroups);
+          setPendingMyTiles(nextMyTiles);
+          addPendingGroupId(newGroupId);
+          return;
+        }
         const updatedTiles = [...targetServerGroup.tiles, tileCode];
         const nextTableGroups = currentTableGroups.map((g) =>
           g.id === targetServerGroup.id
