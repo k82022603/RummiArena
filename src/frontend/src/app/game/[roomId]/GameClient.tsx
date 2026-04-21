@@ -36,6 +36,7 @@ import type { TileCode, TileNumber, TableGroup, GroupType } from "@/types/tile";
 import { parseTileCode } from "@/types/tile";
 import { calculateScore } from "@/lib/practice/practice-engine";
 import { computeValidMergeGroups, isCompatibleWithGroup } from "@/lib/mergeCompatibility";
+import { detectDuplicateTileCodes } from "@/lib/tileStateHelpers";
 import type { GameOverPayload } from "@/types/websocket";
 import type { Player } from "@/types/game";
 
@@ -442,6 +443,8 @@ export default function GameClient({ roomId }: GameClientProps) {
   const isDragging = activeDragCode !== null;
   // BUG-UI-LAYOUT-001: 히스토리 패널 토글 (기본 펼침)
   const [historyCollapsed, setHistoryCollapsed] = useState(false);
+  // G-2: 확정 실패 시 무효로 판정된 pending 그룹 ID 세트 (사용자가 수정 전까지 유지)
+  const [invalidPendingGroupIds, setInvalidPendingGroupIds] = useState<Set<string>>(new Set());
   // P2-1: 드래그 원점 추적. 테이블 타일 드래그 시 원본 그룹/인덱스를 보존해
   // handleDragEnd에서 분할/이동 분기를 결정한다.
   type ActiveDragSource =
@@ -484,6 +487,25 @@ export default function GameClient({ roomId }: GameClientProps) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // G-2: pendingTableGroups가 변경될 때 무효 ID 세트 자동 정리
+  // 사용자가 타일을 추가/제거해 그룹이 수정되면 해당 그룹의 에러 강조를 해제한다.
+  useEffect(() => {
+    if (invalidPendingGroupIds.size === 0) return;
+    if (!pendingTableGroups) {
+      setInvalidPendingGroupIds(new Set());
+      return;
+    }
+    const existingIds = new Set(pendingTableGroups.map((g) => g.id));
+    setInvalidPendingGroupIds((prev) => {
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (existingIds.has(id)) next.add(id);
+      }
+      return next.size === prev.size ? prev : next;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingTableGroups]);
 
   // ------------------------------------------------------------------
   // Task 2: 연결 끊김 플레이어 카운트다운 (1초 갱신)
@@ -894,13 +916,20 @@ export default function GameClient({ roomId }: GameClientProps) {
         // 보드 -> 랙: pending 그룹에 실제로 있는 타일만 회수
         // (랙->랙 오드롭 시 서버 그룹 타일을 삭제하는 버그 방지)
         if (pendingTableGroups) {
-          const tileInPending = pendingTableGroups
-            .filter((g) => pendingGroupIds.has(g.id))
-            .some((g) => g.tiles.includes(tileCode));
-          if (!tileInPending) return;
+          // pending 그룹 중 해당 tileCode를 포함하는 첫 번째 그룹 인덱스를 탐색
+          const sourceGroupIdx = pendingTableGroups.findIndex(
+            (g) => pendingGroupIds.has(g.id) && g.tiles.includes(tileCode)
+          );
+          if (sourceGroupIdx < 0) return;
 
+          // BUG-UI-006(G-3): filter((t) => t !== tileCode)는 ALL 그룹의 ALL 일치를
+          // 제거해 고스트 타일 잔존 / 타일 소멸을 유발한다.
+          // removeFirstOccurrence로 원본 그룹에서 1개만 정확히 제거한다.
           const updated = pendingTableGroups
-            .map((g) => ({ ...g, tiles: g.tiles.filter((t) => t !== tileCode) }))
+            .map((g, idx) => {
+              if (idx !== sourceGroupIdx) return g;
+              return { ...g, tiles: removeFirstOccurrence(g.tiles, tileCode) };
+            })
             .filter((g) => g.tiles.length > 0);
 
           const stillHasPending = updated.some((g) => pendingGroupIds.has(g.id));
@@ -960,9 +989,14 @@ export default function GameClient({ roomId }: GameClientProps) {
     }
 
     // C-3: 클라이언트 측 사전 검증 -- 서버 전송 전 기본 유효성 확인
-    for (const group of pendingTableGroups) {
+    // G-2: 무효 블록 ID를 수집하여 UI 강조에 사용
+    const pendingOnlyGroups = pendingTableGroups.filter((g) => pendingGroupIds.has(g.id));
+    for (let blockIdx = 0; blockIdx < pendingOnlyGroups.length; blockIdx++) {
+      const group = pendingOnlyGroups[blockIdx];
+      const blockLabel = `${blockIdx + 1}번째 블록`;
       if (group.tiles.length < 3) {
-        useWSStore.getState().setLastError("세트는 최소 3개 타일이 필요합니다");
+        setInvalidPendingGroupIds(new Set([group.id]));
+        useWSStore.getState().setLastError(`${blockLabel}이 유효하지 않습니다 (최소 3개 타일 필요)`);
         return;
       }
       const nonJokerTiles = group.tiles.filter((t) => t !== "JK1" && t !== "JK2");
@@ -974,7 +1008,8 @@ export default function GameClient({ roomId }: GameClientProps) {
         if (numbers.size === 1) {
           // 그룹: 같은 숫자, 다른 색 -- 색상 중복 검사
           if (colors.size !== nonJokerTiles.length) {
-            useWSStore.getState().setLastError("같은 색상 타일이 중복됩니다");
+            setInvalidPendingGroupIds(new Set([group.id]));
+            useWSStore.getState().setLastError(`${blockLabel}이 유효하지 않습니다 (같은 색상 타일 중복)`);
             return;
           }
         } else if (colors.size === 1) {
@@ -982,17 +1017,34 @@ export default function GameClient({ roomId }: GameClientProps) {
           const sortedNums = Array.from(numbers).filter((n): n is TileNumber => n !== null).sort((a, b) => a - b);
           for (let i = 1; i < sortedNums.length; i++) {
             if (sortedNums[i] - sortedNums[i - 1] !== 1) {
-              useWSStore.getState().setLastError("유효하지 않은 조합입니다 (연속된 숫자가 아닙니다)");
+              setInvalidPendingGroupIds(new Set([group.id]));
+              useWSStore.getState().setLastError(`${blockLabel}이 유효하지 않습니다 (연속된 숫자가 아닙니다)`);
               return;
             }
           }
         } else {
-          useWSStore.getState().setLastError("유효하지 않은 세트입니다");
+          setInvalidPendingGroupIds(new Set([group.id]));
+          useWSStore.getState().setLastError(`${blockLabel}이 유효하지 않습니다 (색 혼합 세트)`);
           return;
         }
       }
     }
 
+    // BUG-UI-006(G-3): 고스트 타일 무결성 검사
+    // pendingTableGroups에 동일 tile code가 2번 이상 등장하면 V-03(중복) 위반.
+    // 이 검사는 서버 전송 전 마지막 방어선이다.
+    {
+      const duplicateCodes = detectDuplicateTileCodes(pendingTableGroups);
+      if (duplicateCodes.length > 0) {
+        useWSStore.getState().setLastError(
+          `타일 중복 감지: ${duplicateCodes.join(", ")} — 되돌리기 후 다시 배치하세요`
+        );
+        return;
+      }
+    }
+
+    // tilesFromRack: 원본 랙에서 이번 턴에 보드로 이동한 타일 목록
+    // pendingMyTiles에 남아있지 않은 타일 = 보드로 배치된 타일
     const tilesFromRack = myTiles.filter(
       (t) => !pendingMyTiles.includes(t)
     );
@@ -1010,6 +1062,7 @@ export default function GameClient({ roomId }: GameClientProps) {
     pendingTableGroups,
     pendingMyTiles,
     pendingRecoveredJokers,
+    pendingGroupIds,
     myTiles,
     send,
   ]);
@@ -1022,6 +1075,7 @@ export default function GameClient({ roomId }: GameClientProps) {
     clearPendingGroupIds();
     clearRecoveredJokers();
     setForceNewGroup(false);
+    setInvalidPendingGroupIds(new Set());
   }, [
     send,
     setPendingTableGroups,
@@ -1214,6 +1268,7 @@ export default function GameClient({ roomId }: GameClientProps) {
               isMyTurn={isMyTurn}
               isDragging={isDragging}
               pendingGroupIds={pendingGroupIds}
+              invalidPendingGroupIds={invalidPendingGroupIds}
               recentTileCodes={recentTileCodes}
               recentTileVariant={recentTileVariant}
               groupsDroppable={isMyTurn && (isDragging || !!pendingTableGroups)}
