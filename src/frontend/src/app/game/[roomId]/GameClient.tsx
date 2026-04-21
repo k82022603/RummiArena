@@ -35,7 +35,7 @@ import Tile from "@/components/tile/Tile";
 import type { TileCode, TileNumber, TableGroup, GroupType } from "@/types/tile";
 import { parseTileCode } from "@/types/tile";
 import { calculateScore } from "@/lib/practice/practice-engine";
-import { computeValidMergeGroups } from "@/lib/mergeCompatibility";
+import { computeValidMergeGroups, isCompatibleWithGroup } from "@/lib/mergeCompatibility";
 import type { GameOverPayload } from "@/types/websocket";
 import type { Player } from "@/types/game";
 
@@ -720,6 +720,25 @@ export default function GameClient({ roomId }: GameClientProps) {
 
       if (existingPendingGroup) {
         // 랙 -> pending 그룹: 해당 그룹에 타일 추가 + BUG-UI-005: 타입 재분류
+        // BUG-UI-009(F-2): 직접 드롭 시에도 isCompatibleWithGroup 호환성 검증.
+        // 이전 코드는 색상/숫자 체크 없이 무조건 병합 → 파랑 타일이 노랑 런에 합쳐지는 버그.
+        // 호환되지 않으면 새 그룹으로 생성한다.
+        if (!isCompatibleWithGroup(tileCode, existingPendingGroup)) {
+          // 호환되지 않으면 새 그룹 생성
+          pendingGroupSeqRef.current += 1;
+          const newGroupId = `pending-${Date.now()}-${pendingGroupSeqRef.current}`;
+          const newGroup: TableGroup = {
+            id: newGroupId,
+            tiles: [tileCode],
+            type: classifySetType([tileCode]),
+          };
+          const nextTableGroups = [...currentTableGroups, newGroup];
+          const nextMyTiles = removeFirstOccurrence(currentMyTiles, tileCode);
+          setPendingTableGroups(nextTableGroups);
+          setPendingMyTiles(nextMyTiles);
+          addPendingGroupId(newGroupId);
+          return;
+        }
         const nextTableGroups = currentTableGroups.map((g) => {
           if (g.id !== existingPendingGroup.id) return g;
           const updatedTiles = [...g.tiles, tileCode];
