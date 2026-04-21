@@ -146,68 +146,15 @@ npx playwright test --workers=4
 
 ---
 
-## Phase 3.5: Pre-deploy Claude Playbook (사용자 역할 대리 수행)
+## Phase 3.5: Pre-deploy Playbook (별도 SKILL 참조)
 
-> **원칙**: 사용자가 테스트하기 전에 Claude 가 사용자 역할로 실제 플레이한다. 사용자가 "게임 못 하겠다" 발견하는 프로세스를 끝낸다.
+> 배포 전 Claude 가 사용자 역할을 대리 수행하여 게임 1판 완주 검증을 수행한다. 이 단계는 별도 SKILL `pre-deploy-playbook` 으로 분리되어 있다.
 
-### 3.5.1 언제 발동
+- **호출**: `.claude/skills/pre-deploy-playbook/SKILL.md` 참조
+- **트리거**: Pod 재배포 직후 / PR 머지 전 / 사용자 전달 직전
+- **게이트**: Playbook 통과 시에만 사용자에게 "확인 부탁드립니다" 가능
 
-- Pod 재배포 직후 (devops 에이전트 완료 알림 수신 시)
-- PR 머지 직전 (배포 명령 실행 전)
-- 사용자에게 "테스트해보세요" 전달 **직전**
-
-### 3.5.2 실행 절차 (Playwright 기반)
-
-1. **로그인 흐름**:
-   - 로컬 혹은 Pod endpoint 에 Playwright 로 접속
-   - `src/frontend/e2e/auth.json` storageState 로 로그인 상태 복원
-   - `/lobby` 진입 성공 확인
-
-2. **방 생성 + AI 대전 진입**:
-   - 방 생성 폼 작성 (2인전, GPT, persona=rookie, difficulty=beginner, 턴 120초)
-   - 대기실 진입 → 게임 시작
-   - 내 턴 시작 확인
-
-3. **플레이 시퀀스 (최소)**:
-   - 타일 드래그 → 빈 보드 드롭 (새 그룹) — **3회 이상**
-   - 타일 드래그 → 기존 블록 확장 (같은 색 연속 런, 같은 숫자 그룹) — **각 1회 이상**
-   - 조커 포함 런 구성 — **1회 이상**
-   - 확정 시도 → 성공 확인 — **2회 이상**
-   - 드로우 — **2회 이상**
-   - 턴 10회 이상 진행
-
-4. **실측 단언**:
-   - 모든 드롭이 **보드에 반영** (랙 복귀 아님)
-   - 미확정 블록 라벨이 **실제 타입** (런/그룹/무효) 과 일치
-   - 턴 히스토리에 한글 표기 (`드로우` / `강제 드로우` 등)
-   - 플레이어 카드의 `난이도` / `페르소나` 정상 표시
-   - 내 타일 수가 **rack 실제 수와 일치** (drift 없음)
-
-5. **실패 시**:
-   - **배포 게이트 차단**. 사용자에게 "테스트해보세요" 전달 금지
-   - 실패 지점 스크린샷 + 로그 수집 → `src/frontend/test-results/pre-deploy-playbook/` 저장
-   - incident-response SKILL 호출 또는 즉시 수정 spawn
-
-### 3.5.3 커맨드 패턴
-
-```bash
-cd src/frontend
-npx playwright test e2e/pre-deploy-playbook.spec.ts --headed=false --workers=1
-```
-
-신규 스펙: `src/frontend/e2e/pre-deploy-playbook.spec.ts` — 본 SKILL 에서 최초 호출 시 자동 작성
-
-### 3.5.4 성공 기준
-
-- Playbook 5분 내 완주 (턴 10회 이상)
-- 단언 전부 PASS
-- 모든 드래그·드롭·확정 동작 반영됨
-
-### 3.5.5 금지 사항
-
-- **Pre-deploy Playbook 미완료 상태에서 "사용자 확인해보세요" 메시지 금지**
-- Playbook 실패를 "flaky" 로 치부 금지
-- 네트워크·CI 이슈가 의심되면 **2회 재시도 후 판정**
+ui-regression 본 SKILL 의 Phase 3 E2E 는 **개별 시나리오** 검증, Phase 3.5 는 **연속 플레이** 검증. 상호 보완.
 
 ---
 
