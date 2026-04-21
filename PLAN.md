@@ -372,6 +372,33 @@ docs/
 
 ## 현재 진행 상황
 
+**Sprint 6 Day 11 UI 실측 대응 + Sprint 7 이관 선제 해소** (2026-04-21) — "실측 피드백 기반 당일 수정 + Sprint 7 잔여 소진"
+
+### Sprint 6 Day 11 성과
+- **PR 3건 모두 merged** (main 에 반영 완료):
+  - **PR #34** — RoundHistoryTable E2E 10건 (admin 대시보드)
+  - **PR #35** — Day 11 UI 대규모 수정 (G-1~G-12 + H-1~H-3, 릴리즈 노트 `work_logs/releases/2026-04-21-day11-ui-fixes.md`)
+  - **PR #36** — Sprint 7 이관 A3/A4/A5/A6 + SEC-REV-013 + pr-workflow trigger (5 커밋)
+- **실측 플레이테스트 버그 12건 당일 수정**: K12+K13 런 인식, 9Y-12Y+1B 자동 새 그룹, 고스트 타일 중복, PENALTY_DRAW 노출, 무효 조합 라벨, 블록 번호 토스트
+- **Sprint 7 이관 과제 5건 중 4건 선제 해소**: A3 (pointerWithinThenClosest 커스텀 collisionDetection), A4 (드롭 실패 토스트), A5 (aria-label 미확정 통일), A6 (E2E 3 시나리오 신규)
+- **SEC-REV-013 의존성 감사 완료**: `docs/04-testing/70-sec-rev-013-dependency-audit-report.md` (389줄). Critical 0 / High 11 (runtime 3). Sprint 7 Day 1 패치 PR 3개 권장
+- **DeepSeek backoff 3파일 확인 결과 이미 수정 완료**: base.adapter.ts max 60000, deepseek.adapter.ts L109-113 backoff 호출, ws_handler.go MaxRetries=5
+- **Jest 182/182 PASS** (기존 143 + 신규 39), Playwright 신규 4 시나리오
+- **Opus 4.7 외부 공개 문서 2건**: `ACCOUNTABILITY_REPORT_2026-04-21.md` (영문) + `work_logs/vibe/2026-04-21.md` (한글 반성문)
+- **블로그 2차 초안 100% 완성** (28% ceiling)
+- **신규 SKILL 2건 + 개정 1건**: pre-deploy-playbook (LLaMA 기본화), ui-regression, pr-workflow v1.1 (Phase 3 + Trigger 확장)
+- **PR 자동화 스크립트**: `scripts/check-merged-pr.sh` 수동 실행. 1시간 remote cron 실효성 낮아 manual 채택
+- **Pod 4차 재배포**: BUILD_ID `ChjgQYuMuVI6mSEfAH7FW`
+
+### Sprint 6 Day 12~13 (내일부터) 의제
+- **SEC-REV-013 패치 PR 3개**: Go toolchain 1.24.1→1.25.9 + go-redis v9.7.3 / next bump / npm audit fix
+- **Day 12 backend P0-1/P0-2**: game_results persistence 설계·구현 + WS `game_over` broadcast 점검
+- **V-13a/V-13e**: orphan 리팩터 + 조커 재드래그 UX
+- **PostgreSQL 001 마이그 실행**: prompt_variant_id + shaper_id (staging 먼저)
+- **PR #36 merge 후 A6 SC3 skip 해제**
+
+---
+
 **Sprint 6 Day 9~10 v6 ContextShaper 실험 완결** (2026-04-19~20) — "프롬프트 엔지니어링 두 축 수확체감 이중 확증"
 
 ### Sprint 6 Day 9~10 성과
