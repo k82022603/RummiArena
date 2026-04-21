@@ -35,29 +35,47 @@ import Tile from "@/components/tile/Tile";
 import type { TileCode, TileNumber, TableGroup, GroupType } from "@/types/tile";
 import { parseTileCode } from "@/types/tile";
 import { calculateScore } from "@/lib/practice/practice-engine";
-import { computeValidMergeGroups } from "@/lib/mergeCompatibility";
+import { computeValidMergeGroups, isCompatibleWithGroup } from "@/lib/mergeCompatibility";
+import { validatePendingBlock } from "@/components/game/GameBoard";
+import { detectDuplicateTileCodes } from "@/lib/tileStateHelpers";
 import type { GameOverPayload } from "@/types/websocket";
 import type { Player } from "@/types/game";
 
 // ------------------------------------------------------------------
 // BUG-UI-005: 타일 목록으로 그룹/런 자동 분류
 // 같은 숫자 + 다른 색상 → "group", 같은 색상 + 연속 숫자 → "run"
-// 조커 제외 후 나머지 타일로 판단, 판단 불가 시 기본 "run"
+// 조커 제외 후 나머지 타일로 판단, 판단 불가 시 기본 "group"
+//
+// B-NEW 수정: regular 타일이 1장 이하일 때는 그룹/런 분류 불가 → "run" 반환
+// (isGroupCandidate && isRunCandidate 모두 참인 단일 타일에 "group"을 붙이면
+//  mergeCompatibility.ts classifyKind가 "group"으로 고정해 다른 숫자의 같은 색
+//  타일을 isCompatibleAsGroup 로만 검사 → K12 그룹에 K13 드롭 거절 버그 유발)
+//
+// BUG-NEW-002 수정: 색상이 섞인(allSameColor=false) 타일을 기본값 "run"으로
+// 분류하면 [Y11,K12,B13] 같은 무효 세트가 "런"으로 표시되는 버그 발생.
+// 기본값을 "group"으로 변경 — 판단 불가 세트는 validatePendingBlock에서
+// "invalid"로 정확히 감지되므로 "run"/"group" 기본값은 표시 라벨에 영향 없음.
+// (pending 그룹 라벨은 validatePendingBlock 결과를 사용하므로 type 필드는 무관)
 // ------------------------------------------------------------------
 function classifySetType(tiles: TileCode[]): GroupType {
   const regular = tiles.filter((t) => t !== "JK1" && t !== "JK2");
   if (regular.length === 0) return "run"; // 조커만으로 구성 → 기본 run
+  // B-NEW: 단일 타일은 그룹/런 판정 불가 → 중립값 "run" 반환
+  // classifyKind()가 "run"을 보면 regular.length<2 조건과 함께 "unknown"으로 처리됨
+  if (regular.length === 1) return "run";
 
   const parsed = regular.map((t) => parseTileCode(t));
   const numbers = new Set(parsed.map((t) => t.number));
   const colors = new Set(parsed.map((t) => t.color));
 
+  // 모든 색상이 같으면 → 런 (같은 색상, 연속 숫자) — 런 판정 우선
+  if (colors.size === 1) return "run";
   // 모든 숫자가 같으면 → 그룹 (같은 숫자, 다른 색상)
   if (numbers.size === 1) return "group";
-  // 모든 색상이 같으면 → 런 (같은 색상, 연속 숫자)
-  if (colors.size === 1) return "run";
-  // 판단 불가 시 기본값
-  return "run";
+  // BUG-NEW-002: 색 혼합 + 숫자 혼합 → 판단 불가. 기본값 "group" 반환.
+  // 이전 "run" 기본값은 [Y11,K12,B13] 같은 세트를 "런"으로 오분류했다.
+  // pending 라벨은 validatePendingBlock이 "invalid"로 잡으므로 기본값은 표시에 무영향.
+  return "group";
 }
 
 /**
@@ -442,6 +460,8 @@ export default function GameClient({ roomId }: GameClientProps) {
   const isDragging = activeDragCode !== null;
   // BUG-UI-LAYOUT-001: 히스토리 패널 토글 (기본 펼침)
   const [historyCollapsed, setHistoryCollapsed] = useState(false);
+  // G-2: 확정 실패 시 무효로 판정된 pending 그룹 ID 세트 (사용자가 수정 전까지 유지)
+  const [invalidPendingGroupIds, setInvalidPendingGroupIds] = useState<Set<string>>(new Set());
   // P2-1: 드래그 원점 추적. 테이블 타일 드래그 시 원본 그룹/인덱스를 보존해
   // handleDragEnd에서 분할/이동 분기를 결정한다.
   type ActiveDragSource =
@@ -484,6 +504,25 @@ export default function GameClient({ roomId }: GameClientProps) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // G-2: pendingTableGroups가 변경될 때 무효 ID 세트 자동 정리
+  // 사용자가 타일을 추가/제거해 그룹이 수정되면 해당 그룹의 에러 강조를 해제한다.
+  useEffect(() => {
+    if (invalidPendingGroupIds.size === 0) return;
+    if (!pendingTableGroups) {
+      setInvalidPendingGroupIds(new Set());
+      return;
+    }
+    const existingIds = new Set(pendingTableGroups.map((g) => g.id));
+    setInvalidPendingGroupIds((prev) => {
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (existingIds.has(id)) next.add(id);
+      }
+      return next.size === prev.size ? prev : next;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingTableGroups]);
 
   // ------------------------------------------------------------------
   // Task 2: 연결 끊김 플레이어 카운트다운 (1초 갱신)
@@ -538,11 +577,20 @@ export default function GameClient({ roomId }: GameClientProps) {
     [pendingMyTiles, myTiles]
   );
 
-  // C-3: 모든 pending 그룹이 3개 이상 타일을 가지는지 검증
+  // C-3 + BUG-NEW-003: 모든 pending 그룹이 3개 이상 타일을 가지며
+  // 유효한 세트(런/그룹)인지 검증한다.
+  // 이전 구현은 tiles.length >= 3 만 확인했으므로 [Y11,K12,B13] 같은
+  // 무효 세트(색 혼합 + 숫자 혼합)에서도 확정 버튼이 활성화되는 버그가 있었다.
+  // validatePendingBlock을 통해 "invalid" 판정 세트를 사전에 차단한다.
   const allGroupsValid = useMemo(() => {
     if (!pendingTableGroups) return true;
-    return pendingTableGroups.every((g) => g.tiles.length >= 3);
-  }, [pendingTableGroups]);
+    const pendingOnly = pendingTableGroups.filter((g) => pendingGroupIds.has(g.id));
+    return pendingOnly.every((g) => {
+      if (g.tiles.length < 3) return false;
+      const validity = validatePendingBlock(g.tiles as TileCode[]);
+      return validity !== "invalid";
+    });
+  }, [pendingTableGroups, pendingGroupIds]);
 
   // 이번 턴 pending 그룹들의 배치 점수 (최초 등록 30점 안내용)
   const pendingPlacementScore = useMemo(() => {
@@ -720,6 +768,25 @@ export default function GameClient({ roomId }: GameClientProps) {
 
       if (existingPendingGroup) {
         // 랙 -> pending 그룹: 해당 그룹에 타일 추가 + BUG-UI-005: 타입 재분류
+        // BUG-UI-009(F-2): 직접 드롭 시에도 isCompatibleWithGroup 호환성 검증.
+        // 이전 코드는 색상/숫자 체크 없이 무조건 병합 → 파랑 타일이 노랑 런에 합쳐지는 버그.
+        // 호환되지 않으면 새 그룹으로 생성한다.
+        if (!isCompatibleWithGroup(tileCode, existingPendingGroup)) {
+          // 호환되지 않으면 새 그룹 생성
+          pendingGroupSeqRef.current += 1;
+          const newGroupId = `pending-${Date.now()}-${pendingGroupSeqRef.current}`;
+          const newGroup: TableGroup = {
+            id: newGroupId,
+            tiles: [tileCode],
+            type: classifySetType([tileCode]),
+          };
+          const nextTableGroups = [...currentTableGroups, newGroup];
+          const nextMyTiles = removeFirstOccurrence(currentMyTiles, tileCode);
+          setPendingTableGroups(nextTableGroups);
+          setPendingMyTiles(nextMyTiles);
+          addPendingGroupId(newGroupId);
+          return;
+        }
         const nextTableGroups = currentTableGroups.map((g) => {
           if (g.id !== existingPendingGroup.id) return g;
           const updatedTiles = [...g.tiles, tileCode];
@@ -735,8 +802,32 @@ export default function GameClient({ roomId }: GameClientProps) {
       // 기존 구현은 pending 그룹에만 머지를 허용했고, 서버 확정 그룹은 드롭이 무시되거나
       // board로 fallback되어 새 그룹으로 만들어졌다. 루미큐브 규칙 §6.2(합병)을 지원하기 위해
       // 최초 등록 완료 상태에서는 서버 확정 그룹도 머지 가능하도록 확장한다.
+      //
+      // A2: 호환성 사전 필터 (잡종 생성 차단)
+      // closestCenter 알고리즘이 빈 공간 드롭을 인접 서버 그룹으로 오매핑하거나,
+      // 사용자가 의도치 않게 호환되지 않는 타일을 서버 그룹 위로 드롭한 경우
+      // isCompatibleWithGroup 검증 없이 merge하면 잡종 그룹이 생성된다.
+      // 예: {R13,B13,K13} 에 B11 드롭 → [R13,B13,K13,B11] 잡종 (스크린샷 170801 증거)
+      // 호환 안 되면 새 그룹 생성 경로(옵션 A)로 폴스루 — 사용자 의도에 더 가까움.
       const targetServerGroup = currentTableGroups.find((g) => g.id === over.id);
       if (targetServerGroup && hasInitialMeld) {
+        if (!isCompatibleWithGroup(tileCode, targetServerGroup)) {
+          // 호환 안 됨: 새 그룹 생성 (옵션 A 폴스루)
+          // pendingGroupSeqRef는 이 분기 아래에서도 같은 패턴을 사용한다
+          pendingGroupSeqRef.current += 1;
+          const newGroupId = `pending-${Date.now()}-${pendingGroupSeqRef.current}`;
+          const newGroup: TableGroup = {
+            id: newGroupId,
+            tiles: [tileCode],
+            type: classifySetType([tileCode]),
+          };
+          const nextTableGroups = [...currentTableGroups, newGroup];
+          const nextMyTiles = removeFirstOccurrence(currentMyTiles, tileCode);
+          setPendingTableGroups(nextTableGroups);
+          setPendingMyTiles(nextMyTiles);
+          addPendingGroupId(newGroupId);
+          return;
+        }
         const updatedTiles = [...targetServerGroup.tiles, tileCode];
         const nextTableGroups = currentTableGroups.map((g) =>
           g.id === targetServerGroup.id
@@ -751,10 +842,22 @@ export default function GameClient({ roomId }: GameClientProps) {
         return;
       }
 
-      if (over.id === "game-board") {
+      // B-1 수정: closestCenter 알고리즘이 빈 보드 영역 드롭을 기존 서버 그룹에
+      // 매핑하는 경우 (hasInitialMeld=false → 위 블록에서 return 안 됨), 새 그룹
+      // 생성 로직으로 폴스루한다. over.id가 "game-board"가 아니어도 서버 그룹을
+      // 찾지 못하면 같은 경로로 들어오므로 변수는 함께 재사용한다.
+      const treatAsBoardDrop =
+        (over.id === "game-board") ||
+        (targetServerGroup !== undefined && !hasInitialMeld);
+
+      if (treatAsBoardDrop) {
         // 보드 빈 공간에 드롭
+        // BUG-NEW-001 수정: game-board 드롭 시 lastPendingGroup으로 서버 확정 그룹을
+        // 사용하면 안 된다. 서버 확정 그룹에 타일을 추가하는 경로는 명시적 그룹 드롭존을
+        // 통해야 한다 (targetServerGroup 분기). 여기서는 "pending-" 접두사로 생성된
+        // 순수 신규 그룹만 고려하여 의도치 않은 서버 그룹 오염을 방지한다.
         const pendingOnlyGroups = pendingTableGroups?.filter((g) =>
-          pendingGroupIds.has(g.id)
+          pendingGroupIds.has(g.id) && g.id.startsWith("pending-")
         );
         const lastPendingGroup = pendingOnlyGroups?.at(-1);
 
@@ -871,17 +974,45 @@ export default function GameClient({ roomId }: GameClientProps) {
           // forceNewGroup은 false로 리셋하지 않음 - 사용자가 수동 토글하도록 유지
           if (forceNewGroup) setForceNewGroup(false);
         }
+      } else if (over.id === "game-board-new-group") {
+        // G-5: 새 그룹 드롭존에 직접 드롭 → 무조건 새 그룹 생성
+        // (game-board의 shouldCreateNewGroup 조건 판단을 우회하여 즉시 새 그룹)
+        pendingGroupSeqRef.current += 1;
+        const newGroupId = `pending-${Date.now()}-${pendingGroupSeqRef.current}`;
+        const newGroup: TableGroup = {
+          id: newGroupId,
+          tiles: [tileCode],
+          type: classifySetType([tileCode]),
+        };
+        const nextTableGroups = [...currentTableGroups, newGroup];
+        if (process.env.NODE_ENV !== "production") {
+          const ids = nextTableGroups.map((g) => g.id);
+          if (new Set(ids).size !== ids.length) {
+            console.error("[BUG-UI-REARRANGE-002] 그룹 ID 중복 감지 (new-group-dropzone)", ids);
+          }
+        }
+        const nextMyTiles = removeFirstOccurrence(currentMyTiles, tileCode);
+        setPendingTableGroups(nextTableGroups);
+        setPendingMyTiles(nextMyTiles);
+        addPendingGroupId(newGroupId);
       } else if (over.id === "player-rack") {
         // 보드 -> 랙: pending 그룹에 실제로 있는 타일만 회수
         // (랙->랙 오드롭 시 서버 그룹 타일을 삭제하는 버그 방지)
         if (pendingTableGroups) {
-          const tileInPending = pendingTableGroups
-            .filter((g) => pendingGroupIds.has(g.id))
-            .some((g) => g.tiles.includes(tileCode));
-          if (!tileInPending) return;
+          // pending 그룹 중 해당 tileCode를 포함하는 첫 번째 그룹 인덱스를 탐색
+          const sourceGroupIdx = pendingTableGroups.findIndex(
+            (g) => pendingGroupIds.has(g.id) && g.tiles.includes(tileCode)
+          );
+          if (sourceGroupIdx < 0) return;
 
+          // BUG-UI-006(G-3): filter((t) => t !== tileCode)는 ALL 그룹의 ALL 일치를
+          // 제거해 고스트 타일 잔존 / 타일 소멸을 유발한다.
+          // removeFirstOccurrence로 원본 그룹에서 1개만 정확히 제거한다.
           const updated = pendingTableGroups
-            .map((g) => ({ ...g, tiles: g.tiles.filter((t) => t !== tileCode) }))
+            .map((g, idx) => {
+              if (idx !== sourceGroupIdx) return g;
+              return { ...g, tiles: removeFirstOccurrence(g.tiles, tileCode) };
+            })
             .filter((g) => g.tiles.length > 0);
 
           const stillHasPending = updated.some((g) => pendingGroupIds.has(g.id));
@@ -941,9 +1072,14 @@ export default function GameClient({ roomId }: GameClientProps) {
     }
 
     // C-3: 클라이언트 측 사전 검증 -- 서버 전송 전 기본 유효성 확인
-    for (const group of pendingTableGroups) {
+    // G-2: 무효 블록 ID를 수집하여 UI 강조에 사용
+    const pendingOnlyGroups = pendingTableGroups.filter((g) => pendingGroupIds.has(g.id));
+    for (let blockIdx = 0; blockIdx < pendingOnlyGroups.length; blockIdx++) {
+      const group = pendingOnlyGroups[blockIdx];
+      const blockLabel = `${blockIdx + 1}번째 블록`;
       if (group.tiles.length < 3) {
-        useWSStore.getState().setLastError("세트는 최소 3개 타일이 필요합니다");
+        setInvalidPendingGroupIds(new Set([group.id]));
+        useWSStore.getState().setLastError(`${blockLabel}이 유효하지 않습니다 (최소 3개 타일 필요)`);
         return;
       }
       const nonJokerTiles = group.tiles.filter((t) => t !== "JK1" && t !== "JK2");
@@ -955,7 +1091,8 @@ export default function GameClient({ roomId }: GameClientProps) {
         if (numbers.size === 1) {
           // 그룹: 같은 숫자, 다른 색 -- 색상 중복 검사
           if (colors.size !== nonJokerTiles.length) {
-            useWSStore.getState().setLastError("같은 색상 타일이 중복됩니다");
+            setInvalidPendingGroupIds(new Set([group.id]));
+            useWSStore.getState().setLastError(`${blockLabel}이 유효하지 않습니다 (같은 색상 타일 중복)`);
             return;
           }
         } else if (colors.size === 1) {
@@ -963,17 +1100,34 @@ export default function GameClient({ roomId }: GameClientProps) {
           const sortedNums = Array.from(numbers).filter((n): n is TileNumber => n !== null).sort((a, b) => a - b);
           for (let i = 1; i < sortedNums.length; i++) {
             if (sortedNums[i] - sortedNums[i - 1] !== 1) {
-              useWSStore.getState().setLastError("유효하지 않은 조합입니다 (연속된 숫자가 아닙니다)");
+              setInvalidPendingGroupIds(new Set([group.id]));
+              useWSStore.getState().setLastError(`${blockLabel}이 유효하지 않습니다 (연속된 숫자가 아닙니다)`);
               return;
             }
           }
         } else {
-          useWSStore.getState().setLastError("유효하지 않은 세트입니다");
+          setInvalidPendingGroupIds(new Set([group.id]));
+          useWSStore.getState().setLastError(`${blockLabel}이 유효하지 않습니다 (색 혼합 세트)`);
           return;
         }
       }
     }
 
+    // BUG-UI-006(G-3): 고스트 타일 무결성 검사
+    // pendingTableGroups에 동일 tile code가 2번 이상 등장하면 V-03(중복) 위반.
+    // 이 검사는 서버 전송 전 마지막 방어선이다.
+    {
+      const duplicateCodes = detectDuplicateTileCodes(pendingTableGroups);
+      if (duplicateCodes.length > 0) {
+        useWSStore.getState().setLastError(
+          `타일 중복 감지: ${duplicateCodes.join(", ")} — 되돌리기 후 다시 배치하세요`
+        );
+        return;
+      }
+    }
+
+    // tilesFromRack: 원본 랙에서 이번 턴에 보드로 이동한 타일 목록
+    // pendingMyTiles에 남아있지 않은 타일 = 보드로 배치된 타일
     const tilesFromRack = myTiles.filter(
       (t) => !pendingMyTiles.includes(t)
     );
@@ -991,6 +1145,7 @@ export default function GameClient({ roomId }: GameClientProps) {
     pendingTableGroups,
     pendingMyTiles,
     pendingRecoveredJokers,
+    pendingGroupIds,
     myTiles,
     send,
   ]);
@@ -1003,6 +1158,7 @@ export default function GameClient({ roomId }: GameClientProps) {
     clearPendingGroupIds();
     clearRecoveredJokers();
     setForceNewGroup(false);
+    setInvalidPendingGroupIds(new Set());
   }, [
     send,
     setPendingTableGroups,
@@ -1123,13 +1279,20 @@ export default function GameClient({ roomId }: GameClientProps) {
             className="w-48 flex-shrink-0 bg-panel-bg border-r border-border p-3 flex flex-col gap-3"
             aria-label="내 정보 패널"
           >
-            {/* 내 플레이어 카드 */}
+            {/* 내 플레이어 카드
+                G-4: pendingMyTiles가 있으면 tileCount를 currentMyTiles.length로 override.
+                player.tileCount는 서버 기준값이어서 pending 배치 중 drift가 발생함.
+                PlayerRack 헤더와 동일한 값(currentMyTiles.length)을 보여줌으로써 일관성 유지.
+            */}
             {players
               .filter((p) => p.seat === effectiveMySeat)
               .map((player) => (
                 <PlayerCard
                   key={player.seat}
-                  player={player}
+                  player={{
+                    ...player,
+                    tileCount: currentMyTiles.length,
+                  }}
                   isCurrentTurn={isMyTurn}
                   isAIThinking={false}
                 />
@@ -1195,30 +1358,38 @@ export default function GameClient({ roomId }: GameClientProps) {
               isMyTurn={isMyTurn}
               isDragging={isDragging}
               pendingGroupIds={pendingGroupIds}
+              invalidPendingGroupIds={invalidPendingGroupIds}
               recentTileCodes={recentTileCodes}
               recentTileVariant={recentTileVariant}
               groupsDroppable={isMyTurn && (isDragging || !!pendingTableGroups)}
               tilesDraggable={isMyTurn}
               validMergeGroupIds={validMergeGroupIds}
+              showNewGroupDropZone={isMyTurn}
               className="flex-1"
             />
 
-            {/* 새 그룹 버튼: pending 그룹이 있을 때만 표시 */}
-            {pendingTableGroups && isMyTurn && (
+            {/* G-5: 새 그룹 버튼 — 내 턴이면 항상 표시 (pending 여부 무관)
+                사용자가 drag 전에도 "새 그룹 모드"를 미리 활성화할 수 있게 한다.
+                버튼 크기와 색상을 강화하여 가시성 향상.
+            */}
+            {isMyTurn && (
               <div className="flex items-center justify-between flex-shrink-0">
                 <span className="text-tile-sm text-text-secondary/60 whitespace-nowrap">
-                  숫자/색상이 다른 타일은 자동으로 새 그룹이 됩니다
+                  {pendingTableGroups
+                    ? "숫자/색상이 다른 타일은 자동으로 새 그룹이 됩니다"
+                    : "타일을 드래그해 테이블에 배치하세요"}
                 </span>
                 <button
                   type="button"
                   onClick={() => setForceNewGroup(!forceNewGroup)}
                   className={[
-                    "px-4 py-2 rounded-lg text-sm font-semibold border-2 transition-all",
+                    "px-4 py-2.5 rounded-lg text-sm font-bold border-2 transition-all min-w-[120px]",
                     forceNewGroup
                       ? "border-warning text-warning bg-warning/15 shadow-[0_0_8px_rgba(234,179,8,0.3)]"
-                      : "border-green-500/50 text-green-400 bg-green-500/10 hover:border-green-400 hover:bg-green-500/20",
+                      : "border-green-500/70 text-green-300 bg-green-500/15 hover:border-green-400 hover:bg-green-500/25 hover:text-green-200",
                   ].join(" ")}
                   aria-label="다음 드롭 시 새 그룹 생성"
+                  aria-pressed={forceNewGroup}
                   title="다음 타일 드롭 시 새 그룹을 만듭니다"
                 >
                   {forceNewGroup ? "[ 새 그룹 모드 ON ]" : "+ 새 그룹"}

@@ -12,12 +12,41 @@ function isJoker(code: TileCode): boolean {
 type ClassifiedKind = "group" | "run" | "unknown";
 
 function classifyKind(group: TableGroup): ClassifiedKind {
-  if (group.type === "group" || group.type === "run") return group.type;
+  // B-NEW 수정: group.type が "group"/"run" であっても、実際のタイル数が 2 枚未満なら
+  // 判断不能 ("unknown") として扱い、両方の互換チェックを実行させる。
+  // classifySetType は单一タイル に対して "run" を返すが、
+  // 以前は "group" を返していたため、K12 一枚グループに K13 をドロップすると
+  // isCompatibleAsGroup のみ実行されて拒否されていた (B-NEW バグ根本原因)。
+  //
+  // B-NEW fix: even if group.type is "group"/"run", treat groups with fewer than
+  // 2 regular tiles as "unknown" so both group and run compatibility are checked.
+  //
+  // BUG-NEW-002 수정: group.type이 "run"으로 표시되더라도 실제 타일 색상이
+  // 모두 같지 않으면 런으로 신뢰하지 않는다. classifySetType이 기본값으로
+  // "run"을 반환했을 때 [Y11,K12,B13] 같은 혼색 세트가 "런"으로 오분류되어
+  // isCompatibleAsRun만 호출되는 문제를 방지한다. 색상이 섞인 경우 "unknown"을
+  // 반환하여 그룹/런 양쪽 호환성을 모두 검사한다.
   const regular = group.tiles.filter((t) => !isJoker(t));
   if (regular.length < 2) return "unknown";
   const parsed = regular.map((t) => parseTileCode(t));
   const numbers = new Set(parsed.map((t) => t.number));
   const colors = new Set(parsed.map((t) => t.color));
+  // group.type 힌트를 사용하되 실제 타일 내용으로 검증한다
+  if (group.type === "run") {
+    // 런 조건: 모든 타일이 같은 색상이어야 한다. 그렇지 않으면 unknown으로 강등.
+    if (colors.size === 1) return "run";
+    // 색상이 섞인 경우 — type 힌트를 무시하고 그룹 가능성도 확인
+    if (numbers.size === 1) return "group";
+    return "unknown";
+  }
+  if (group.type === "group") {
+    // 그룹 조건: 모든 타일이 같은 숫자이어야 한다. 그렇지 않으면 unknown으로 강등.
+    if (numbers.size === 1) return "group";
+    // 숫자가 다른 경우 — type 힌트를 무시하고 런 가능성도 확인
+    if (colors.size === 1) return "run";
+    return "unknown";
+  }
+  // type 힌트 없이 직접 분류
   if (numbers.size === 1 && colors.size === regular.length) return "group";
   if (colors.size === 1) return "run";
   return "unknown";

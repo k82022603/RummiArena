@@ -5,6 +5,7 @@ import type { TileCode } from "@/types/tile";
 import type { Player } from "@/types/game";
 import type { TurnPlacement } from "@/store/gameStore";
 import Tile from "@/components/tile/Tile";
+import { getTurnActionLabel } from "@/lib/turn-action-label";
 
 interface TurnHistoryPanelProps {
   history: TurnPlacement[];
@@ -122,13 +123,7 @@ const TurnHistoryPanel = memo(function TurnHistoryPanel({
                   </>
                 ) : (
                   <p className="text-[10px] text-text-secondary/70 italic">
-                    {entry.action === "draw"
-                      ? "드로우"
-                      : entry.action === "timeout"
-                        ? "시간 초과 → 자동 드로우"
-                        : entry.action === "forfeit"
-                          ? "기권"
-                          : entry.action}
+                    {getTurnActionLabel(entry.action)}
                   </p>
                 )}
               </div>

@@ -92,7 +92,7 @@ export abstract class BaseAdapter implements AiAdapterInterface {
    * 테스트에서 오버라이드하여 대기 시간을 제거할 수 있도록 protected 로 분리.
    */
   protected async backoff(attempt: number): Promise<void> {
-    const backoffMs = Math.min(1000 * Math.pow(2, attempt), 10000);
+    const backoffMs = Math.min(1000 * Math.pow(2, attempt), 60000);
     await new Promise((resolve) => setTimeout(resolve, backoffMs));
   }
 

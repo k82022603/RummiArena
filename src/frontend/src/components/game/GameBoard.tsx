@@ -3,7 +3,7 @@
 import React, { memo, useMemo } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { motion, AnimatePresence } from "framer-motion";
-import type { TableGroup, TileCode } from "@/types/tile";
+import type { TableGroup, TileCode, TileNumber } from "@/types/tile";
 import { parseTileCode } from "@/types/tile";
 import Tile, { type TileHighlightVariant } from "@/components/tile/Tile";
 import DraggableTile from "@/components/tile/DraggableTile";
@@ -38,6 +38,61 @@ function detectDuplicateColors(tiles: string[]): string | null {
   return null;
 }
 
+// ------------------------------------------------------------------
+// G-1: pending 블록 실시간 유효성 판정
+//
+// 반환 값:
+//   "valid-run"   — 유효한 런 (같은 색, 연속 숫자, 3개 이상)
+//   "valid-group" — 유효한 그룹 (같은 숫자, 다른 색, 3~4개)
+//   "partial"     — 2개 이하 (아직 판정 불가, 미완성 상태)
+//   "invalid"     — 규칙 위반 (색 혼합+비연속, 색 중복, 숫자 비일치 등)
+// ------------------------------------------------------------------
+export type PendingBlockValidity = "valid-run" | "valid-group" | "partial" | "invalid";
+
+export function validatePendingBlock(tiles: TileCode[]): PendingBlockValidity {
+  const regular = tiles.filter((t) => t !== "JK1" && t !== "JK2");
+
+  // 타일이 2개 이하면 partial (조커 포함 2장 = 아직 판단 불가)
+  if (tiles.length < 3) return "partial";
+
+  // 조커만으로 구성된 경우는 partial
+  if (regular.length === 0) return "partial";
+
+  const parsed = regular.map((t) => parseTileCode(t));
+  const numbers = parsed.map((t) => t.number).filter((n): n is TileNumber => n !== null);
+  const colors = parsed.map((t) => t.color);
+  const uniqueNumbers = new Set(numbers);
+  const uniqueColors = new Set(colors);
+
+  // 그룹 판정: 모든 비조커 타일의 숫자가 같아야 함
+  if (uniqueNumbers.size === 1) {
+    // 그룹: 색상 중복이 있으면 무효
+    if (uniqueColors.size !== colors.length) return "invalid";
+    // 그룹 최대 4개
+    if (tiles.length > 4) return "invalid";
+    return "valid-group";
+  }
+
+  // 런 판정: 모든 비조커 타일의 색상이 같아야 함
+  if (uniqueColors.size === 1) {
+    // 런: 조커를 고려하여 연속 숫자 검증
+    const sortedNums = numbers.slice().sort((a, b) => a - b);
+    const jokerCount = tiles.length - regular.length;
+    // 최소~최대 범위가 (타일 수 - 1) 이하이면 연속 (조커가 빈 슬롯을 채움)
+    const span = sortedNums[sortedNums.length - 1] - sortedNums[0];
+    if (span > tiles.length - 1) return "invalid";
+    // 중복 숫자 검사 (조커 제외)
+    if (uniqueNumbers.size < numbers.length) return "invalid";
+    // 조커 개수가 범위 내 빈 슬롯 수보다 많은지 확인
+    const gaps = span + 1 - numbers.length;
+    if (jokerCount < gaps) return "invalid";
+    return "valid-run";
+  }
+
+  // 색도 숫자도 일치하지 않으면 무효
+  return "invalid";
+}
+
 interface GameBoardProps {
   tableGroups: TableGroup[];
   isMyTurn: boolean;
@@ -48,6 +103,12 @@ interface GameBoardProps {
    * 여기에 포함된 그룹은 반투명 + 노란 점선 테두리(프리뷰)로 표시된다.
    */
   pendingGroupIds?: Set<string>;
+  /**
+   * G-2: 확정 실패 시 무효로 판정된 pending 그룹 ID 세트.
+   * 포함된 그룹은 빨간 ring + shake 애니메이션으로 강조된다.
+   * 사용자가 해당 그룹을 수정하기 전까지 유지된다.
+   */
+  invalidPendingGroupIds?: Set<string>;
   /**
    * 최근 턴에 배치된 타일 코드 세트 (UX 개선: 누가 방금 놓았는지 시각화).
    * 여기에 포함된 타일은 highlightVariant에 따라 glow 효과가 적용된다.
@@ -67,6 +128,12 @@ interface GameBoardProps {
    * 드래그 중일 때만 의미 있으며, 포함된 그룹은 녹색 pulse ring으로 강조된다.
    */
   validMergeGroupIds?: Set<string>;
+  /**
+   * G-5: 드래그 중 새 그룹 드롭존 표시 여부.
+   * true이면 보드 하단에 점선 드롭존이 나타나고, 사용자가 새 그룹을 생성할 수 있다.
+   * 드롭 ID는 "game-board-new-group"이며 GameClient handleDragEnd에서 처리한다.
+   */
+  showNewGroupDropZone?: boolean;
   className?: string;
 }
 
@@ -74,21 +141,56 @@ interface GameBoardProps {
 function DroppableGroupWrapper({
   groupId,
   isCompatible,
+  isDragging,
   children,
 }: {
   groupId: string;
   isCompatible?: boolean;
+  /** 현재 드래그 중인지 여부 — 드래그 중일 때만 비호환 ring 표시 */
+  isDragging?: boolean;
   children: React.ReactNode;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: groupId });
+  // G-5: hover 시 호환 → 초록, 비호환 → 빨간, 호환 대기 → 초록 pulse
   const ringClass = isOver
-    ? "ring-2 ring-green-400/80 rounded-lg"
+    ? (isCompatible ? "ring-2 ring-green-400/80 rounded-lg" : "ring-2 ring-red-400/80 rounded-lg")
     : isCompatible
       ? "ring-2 ring-green-400/40 rounded-lg animate-pulse"
-      : undefined;
+      : (isDragging ? "ring-1 ring-red-400/20 rounded-lg" : undefined);
   return (
     <div ref={setNodeRef} className={ringClass}>
       {children}
+    </div>
+  );
+}
+
+/** G-5: 새 그룹 드롭존 (드래그 중 항상 표시) */
+const NEW_GROUP_DROP_ID = "game-board-new-group";
+
+function NewGroupDropZone() {
+  const { setNodeRef, isOver } = useDroppable({ id: NEW_GROUP_DROP_ID });
+  return (
+    <div
+      ref={setNodeRef}
+      className={[
+        "flex items-center justify-center gap-2",
+        "h-16 rounded-xl border-2 border-dashed transition-all duration-150",
+        isOver
+          ? "border-yellow-400 bg-yellow-400/10 shadow-[0_0_8px_rgba(234,179,8,0.25)]"
+          : "border-border/40 bg-transparent hover:border-border/60",
+      ].join(" ")}
+      role="region"
+      aria-label="새 그룹 드롭존"
+    >
+      <span
+        className={[
+          "text-tile-xs font-medium select-none",
+          isOver ? "text-yellow-300" : "text-text-secondary/50",
+        ].join(" ")}
+        aria-hidden="true"
+      >
+        + 새 그룹 생성
+      </span>
     </div>
   );
 }
@@ -107,11 +209,13 @@ const GameBoard = memo(function GameBoard({
   isMyTurn,
   isDragging = false,
   pendingGroupIds = new Set<string>(),
+  invalidPendingGroupIds = new Set<string>(),
   recentTileCodes,
   recentTileVariant = null,
   groupsDroppable = false,
   tilesDraggable = false,
   validMergeGroupIds,
+  showNewGroupDropZone = false,
   className = "",
 }: GameBoardProps) {
   const { setNodeRef, isOver } = useDroppable({ id: BOARD_DROP_ID });
@@ -129,6 +233,16 @@ const GameBoard = memo(function GameBoard({
     }
     return warnings;
   }, [tableGroups]);
+
+  // G-1: pending 블록별 실시간 유효성 판정 맵
+  const pendingBlockValidity = useMemo(() => {
+    const result: Record<string, PendingBlockValidity> = {};
+    for (const group of tableGroups) {
+      if (!pendingGroupIds.has(group.id)) continue;
+      result[group.id] = validatePendingBlock(group.tiles as TileCode[]);
+    }
+    return result;
+  }, [tableGroups, pendingGroupIds]);
 
   // 드롭 존 테두리 상태 계산
   // - 드래그 중 + 내 턴 + 오버: 초록 강조
@@ -199,14 +313,61 @@ const GameBoard = memo(function GameBoard({
               const isPending = pendingGroupIds.has(group.id);
               const tileCount = group.tiles.length;
               const colorWarning = duplicateColorWarnings[group.id] ?? null;
+
+              // G-1: pending 블록 유효성 판정
+              const validity = isPending
+                ? (pendingBlockValidity[group.id] ?? "partial")
+                : null;
+              const isInvalidBlock = validity === "invalid";
+
+              // G-2: 확정 실패로 명시적으로 무효 지정된 그룹
+              const isExplicitlyInvalid = invalidPendingGroupIds.has(group.id);
+              const showErrorRing = isPending && (isInvalidBlock || isExplicitlyInvalid);
+
+              // G-1: 라벨 텍스트 결정
+              // B-NEW 수정: partial 상태에서 타일이 1개이면 "그룹/런"을 확정할 수 없으므로
+              // "그룹 (미확정)" 대신 "미확정"으로 표시한다.
+              // (K12 단일 타일에 "그룹 (미확정)" 라벨이 붙으면 사용자가 K13을 병합하려
+              // 할 때 시각적으로 혼란을 주고, 라벨이 잘못된 분류를 암시함)
+              const pendingLabelText = (() => {
+                if (!isPending) return null;
+                if (validity === "valid-run") return "런 (미확정)";
+                if (validity === "valid-group") return "그룹 (미확정)";
+                if (validity === "partial") {
+                  // 타일 1개 (조커 포함 최대 2장 미만) → "미확정"
+                  const nonJokerCount = group.tiles.filter(
+                    (t) => t !== "JK1" && t !== "JK2"
+                  ).length;
+                  if (nonJokerCount <= 1) return "미확정";
+                  return group.type === "run" ? "런 (미확정)" : "그룹 (미확정)";
+                }
+                return "무효 세트";
+              })();
+
               const groupContent = (
                 <motion.div
                   key={group.id}
                   layout
                   initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: isPending ? 0.55 : 1, scale: 1 }}
+                  animate={
+                    showErrorRing
+                      ? {
+                          opacity: 1,
+                          scale: 1,
+                          x: [0, -6, 6, -4, 4, -2, 2, 0],
+                        }
+                      : { opacity: isPending ? 0.55 : 1, scale: 1, x: 0 }
+                  }
                   exit={{ opacity: 0, scale: 0.8 }}
-                  transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                  transition={
+                    showErrorRing
+                      ? {
+                          x: { duration: 0.3, ease: "easeInOut" },
+                          opacity: { duration: 0 },
+                          scale: { duration: 0 },
+                        }
+                      : { type: "spring", stiffness: 300, damping: 25 }
+                  }
                   className="flex flex-col gap-1"
                   aria-label={
                     isPending
@@ -219,23 +380,26 @@ const GameBoard = memo(function GameBoard({
                     <span
                       className={[
                         "text-tile-xs uppercase tracking-wider",
-                        isPending
+                        isPending && isInvalidBlock
+                          ? "text-red-400 font-semibold"
+                          : isPending
                           ? "text-yellow-400 font-semibold"
                           : "text-text-secondary",
                       ].join(" ")}
                     >
-                      {group.type === "run" ? "런" : "그룹"}
-                      {isPending && (
-                        <span className="ml-1 text-[9px] normal-case tracking-normal">
-                          (미확정)
-                        </span>
-                      )}
+                      {isPending
+                        ? pendingLabelText
+                        : group.type === "run"
+                        ? "런"
+                        : "그룹"}
                     </span>
                     {/* 타일 수 배지 */}
                     <span
                       className={[
                         "text-[9px] font-bold px-1 py-0.5 rounded-full leading-none min-w-[18px] text-center",
-                        isPending
+                        isPending && isInvalidBlock
+                          ? "bg-red-400/20 text-red-300"
+                          : isPending
                           ? "bg-yellow-400/20 text-yellow-300"
                           : "bg-board-border/30 text-text-secondary",
                       ].join(" ")}
@@ -249,7 +413,9 @@ const GameBoard = memo(function GameBoard({
                   <div
                     className={[
                       "flex gap-0.5 p-1.5 rounded-lg",
-                      isPending && colorWarning
+                      showErrorRing
+                        ? "bg-red-500/10 border-2 border-red-400/60 ring-2 ring-red-400"
+                        : isPending && colorWarning
                         ? "bg-red-500/10 border-2 border-red-500/70"
                         : isPending
                         ? "bg-yellow-400/10 border border-dashed border-yellow-400"
@@ -285,13 +451,22 @@ const GameBoard = memo(function GameBoard({
                     })}
                   </div>
 
-                  {/* 동일 색상 중복 경고: m-3: pending 그룹에서만 표시 */}
-                  {isPending && colorWarning && (
+                  {/* 동일 색상 중복 경고: m-3: pending 그룹에서만 표시 (invalid 라벨과 중복 방지) */}
+                  {isPending && colorWarning && !isInvalidBlock && (
                     <span
                       className="text-[10px] text-red-400 font-medium"
                       role="alert"
                     >
                       {colorWarning}
+                    </span>
+                  )}
+                  {/* G-1: 무효 세트 상세 경고 */}
+                  {isPending && isInvalidBlock && (
+                    <span
+                      className="text-[10px] text-red-400 font-medium"
+                      role="alert"
+                    >
+                      색 혼합 또는 숫자 불연속
                     </span>
                   )}
                 </motion.div>
@@ -303,6 +478,7 @@ const GameBoard = memo(function GameBoard({
                   isCompatible={
                     isDragging && !!validMergeGroupIds?.has(group.id)
                   }
+                  isDragging={isDragging}
                 >
                   {groupContent}
                 </DroppableGroupWrapper>
@@ -313,6 +489,22 @@ const GameBoard = memo(function GameBoard({
           </AnimatePresence>
         </div>
       )}
+
+      {/* G-5: 드래그 중 새 그룹 드롭존 — 내 턴이고 드래그 중일 때만 표시 */}
+      <AnimatePresence>
+        {showNewGroupDropZone && isDragging && isMyTurn && (
+          <motion.div
+            key="new-group-dropzone"
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 4 }}
+            transition={{ duration: 0.15 }}
+            className="mt-3"
+          >
+            <NewGroupDropZone />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </section>
   );
 });

@@ -231,6 +231,9 @@ while true; do
 
   # 12. 긴급 flag 조건
   # 12a. 후반 p95 > 500s
+  # NOTE (2026-04-21): Task #19 (gpt-5-mini turn 80 × 3N 본실측) 은 Kill 확정.
+  # 이 경고는 Plan B 본실측 등 향후 배치에도 재사용될 수 있도록 메시지 문자열은 보존한다.
+  # 근거: work_logs/decisions/2026-04-21-01-plan-b-activation.md §4
   if echo "$LATE" | grep -qE "p95=[5-9][0-9]{2}s|p95=[0-9]{4,}s" 2>/dev/null; then
     echo "[$TS] WARN: 후반 p95 > 500s ($LATE) — Task #19 timeout 조정 필요 신호" | tee -a "$MONITOR_LOG"
   fi
