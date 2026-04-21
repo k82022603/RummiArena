@@ -1,10 +1,18 @@
-# DeepSeek Adapter retry backoff 누락 수정 계획
+# DeepSeek Adapter retry backoff 누락 + 전체 어댑터 backoff 강화 수정 계획
 
-- **작성일**: 2026-04-21 Day 11 저녁
-- **담당**: **node-dev** (NestJS/TypeScript ai-adapter 담당)
-- **실행 시점**: pre-deploy-playbook (qa, 진행 중) 완료 후
-- **우선순위**: P1 (프로덕션 안정성 — API 레이트리밋·일시 장애 대응)
-- **근거**: 애벌레 실측 지적 "retry 있는데 sleep 없는 것 같다"
+- **작성일**: 2026-04-21 Day 11 저녁 (v1.1 — A안 반영)
+- **담당**: **node-dev** (NestJS/TypeScript ai-adapter) + **go-dev** (game-server MaxRetries 상수)
+- **실행 시점**: pre-deploy-playbook (qa, 진행 중) 완료 + 애벌레 네트워크 교체 이후
+- **우선순위**: P1 (프로덕션 안정성 — API 레이트리밋·wifi 전환 대응)
+- **근거**:
+  - 애벌레 실측 지적 v1: "retry 있는데 sleep 없는 것 같다"
+  - 애벌레 실측 지적 v2: "wifi 교체가 생각보다 쉽지 않다 — 30~60초 버틸 수 있게"
+
+## 선택된 안: A (보수)
+
+- MaxRetries 3 → 5 (game-server)
+- backoff max 10s → 60s (ai-adapter)
+- 결과 대기: attempt 1~4 = 2s + 4s + 8s + 16s = **30s** (wifi 전환 경계선)
 
 ## 1. 문제 요약
 
@@ -61,80 +69,141 @@ grep 결과: `deepseek.adapter.ts` 에 `backoff` 매치 **0건**.
 - **일시 네트워크 장애 복구 실패**: 1초 이내 3회 실패면 같은 네트워크 이벤트에 세 번 모두 걸려 실패 확정
 - **Round 4/5 실측 영향**: 오늘 세션에 이 버그가 DeepSeek 대전 결과에 영향 줬을 가능성은 낮음 (대부분 성공). 하지만 프로덕션 안정성 관점 P1
 
-## 3. 수정안 (옵션 A, 최소 변경)
+## 3. 수정안 (A안 — 3개 파일 수정)
 
-`deepseek.adapter.ts` L108-168 루프 내부에 `base.adapter.backoff()` 호출 추가:
+### 3.1 ai-adapter `base.adapter.ts` — backoff max 10s → 60s
 
 ```ts
+// L94-96 수정
+protected async backoff(attempt: number): Promise<void> {
+  const backoffMs = Math.min(1000 * Math.pow(2, attempt), 60000);  // 10000 → 60000
+  await new Promise((resolve) => setTimeout(resolve, backoffMs));
+}
+```
+
+### 3.2 ai-adapter `deepseek.adapter.ts` — backoff 호출 추가
+
+```ts
+// L108 루프 진입 직후 추가
 for (let attempt = 0; attempt < request.maxRetries; attempt++) {
   if (attempt > 0) {
     this.logger.log(
       `[DeepSeek-Reasoner] 재시도 대기 (attempt=${attempt + 1})`,
     );
-    await this.backoff(attempt);  // ← 신규 추가
+    await this.backoff(attempt);  // ← 신규 3줄
   }
   const attemptStartTime = Date.now();
   // ... (기존 로직 그대로)
 }
 ```
 
-### 변경 범위
+### 3.3 game-server `ws_handler.go` — MaxRetries 3 → 5
 
-- `src/ai-adapter/src/adapter/deepseek.adapter.ts` 3~5줄 추가
-- 나머지 로직 무변경
+```go
+// L902 수정
+MaxRetries: 5,  // 3 → 5. wifi 전환(30s) 대응
+```
 
-### 옵션 B (근본 리팩터) 는 Sprint 7 이관
+### 변경 범위 (총 3 파일, 약 10줄)
 
-`deepseek.adapter` 의 자체 retry 루프를 `base.adapter.execute()` 로 통합하는 리팩터는 복잡도 크고 (reasoner 특수 처리, prompt variant 선택 분기) 이번 수정 범위 밖. Sprint 7 에 별도 ADR 로.
+| 파일 | 변경 | 담당 |
+|------|------|------|
+| `src/ai-adapter/src/adapter/base.adapter.ts` L95 | `10000` → `60000` | node-dev |
+| `src/ai-adapter/src/adapter/deepseek.adapter.ts` L108 직후 | if/await 3줄 추가 | node-dev |
+| `src/game-server/internal/handler/ws_handler.go` L902 | `3` → `5` | go-dev |
+
+### 계수는 현재 유지 (`2^attempt`)
+
+- `2^attempt` 계수로 충분 (attempt 1~4 = 2s, 4s, 8s, 16s). 60s cap 은 attempt ≥6 에서만 걸림 (maxRetries 5 이므로 실질 도달 안 함)
+- 공격적 계수 변경(B안 `2^(attempt+2)`) 은 보류
+
+### 옵션 B/C 는 이번 수정 범위 밖
+
+- **B안 (공격적 계수 증가)**: 116s 버티지만 한 번 타임아웃 길어 사용자 체감 나쁨. 보류
+- **C안 (max 단독 변경)**: 실효 없음 (maxRetries=3 에선 max 도달 안 함)
+- **근본 리팩터 (deepseek 를 base.execute() 로 통합)**: 복잡도 크고 이번 범위 밖. Sprint 7 ADR
 
 ## 4. 검증
 
-### 4.1 단위 테스트 신규 (의무)
+### 4.1 ai-adapter 단위 테스트 신규 (의무)
 
-`src/ai-adapter/src/adapter/deepseek.adapter.spec.ts` 에 추가:
+**`base.adapter.spec.ts`** (max 60s 반영):
+- attempt 1~6 각각 대기 시간 단언 (2s, 4s, 8s, 16s, 32s, 60s capped)
+- Math.min 경계값 (attempt=6 에서 exactly 60000ms)
 
-1. **backoff 호출 확인**: `attempt=0` 은 즉시, `attempt>=1` 은 `backoff(attempt)` 호출
-2. **대기 시간 단언**: jest fake timer 또는 sinon 으로 1000ms, 2000ms, 4000ms 확인
-3. **기존 테스트 호환**: 428개 PASS 유지
+**`deepseek.adapter.spec.ts`**:
+- backoff 호출 확인 (attempt=0 즉시, attempt>=1 backoff 호출)
+- 전체 retry 흐름 (maxRetries=5 시 4회 backoff)
+- jest fake timer 또는 sinon 사용
 
 ### 4.2 기존 suite
 
 - `npm run test` — ai-adapter 전체 (428/428 현재)
-- 신규 테스트 3개 추가 → 431/431 예상
+- 신규 테스트 ~6개 추가 → 434/434 예상
 - `npm run build` — exit 0
 
-### 4.3 통합 테스트 (선택)
+### 4.3 game-server 단위 테스트
 
-- 실제 DeepSeek API 호출로 429 Rate Limit 재현 → backoff 적용 후 재시도 성공 확인
-- 비용 발생 우려 있어 manual smoke 로만
+- `go test ./internal/handler/...` — MaxRetries=5 반영 후 회귀 없는지
+- ai_client_test.go 의 `MaxRetries: 3` 값도 업데이트 검토
+
+### 4.4 통합 테스트 (선택, Sprint 7)
+
+- 실제 wifi 전환 시나리오 재현 → 30s 안에 재연결되면 retry 성공 확인
+- 비용 발생 우려로 manual smoke
 
 ## 5. 역할 분담
 
 | 단계 | 담당 | 시간 |
 |------|------|------|
-| 코드 수정 (3~5줄) | node-dev | 15분 |
-| 단위 테스트 신규 작성 | node-dev | 30분 |
-| 빌드/테스트 검증 | node-dev | 5분 |
-| 커밋 + push | node-dev | 5분 |
-| **합계** | **55분** |  |
+| `base.adapter.ts` max 10s→60s (L95, 한 숫자) | node-dev | 5분 |
+| `deepseek.adapter.ts` backoff 호출 추가 (3줄) | node-dev | 10분 |
+| `ws_handler.go` MaxRetries 3→5 (L902) + ai_client_test.go 동기화 | go-dev | 10분 |
+| ai-adapter 단위 테스트 신규 | node-dev | 40분 |
+| game-server 회귀 테스트 실행 | go-dev | 10분 |
+| 커밋 + push | 각자 | 10분 |
+| **합계** | **85분** (병렬 약 50분) |  |
 
-## 6. 커밋 전략
+node-dev 와 go-dev 가 병렬로 각 서비스 수정 가능.
 
+## 6. 커밋 전략 (2개 커밋, 서비스별 분리)
+
+### 커밋 1 (node-dev): ai-adapter
 ```
-fix(ai-adapter): deepseek retry 루프에 exponential backoff 추가
+fix(ai-adapter): retry backoff 강화 — max 10s→60s + deepseek 누락 수정
 
-P1 버그 수정. DeepSeek 자체 retry 루프(base.execute override)에서
-backoff() 호출이 누락되어 API 오류 시 즉시 재시도 → 레이트리밋 유발.
-base.adapter 의 기존 backoff() (1→2→4→8s, max 10s) 호출 추가.
+P1 버그 2건 + wifi 전환(30s) 대응:
 
+1. deepseek.adapter retry 루프에 backoff 호출 누락 — exponential
+   적용 (이전 대기 0s → 2s, 4s, 8s, 16s)
+2. base.adapter backoff max 10s → 60s — wifi 전환 시 attempt 5~6
+   에서 최대 60s 버팀
+
+- base.adapter.ts L95: 10000 → 60000
 - deepseek.adapter.ts L108 루프에 if(attempt>0) backoff 3줄 추가
-- 단위 테스트 3개 신규 (backoff 호출·시간 단언)
-- openai/claude/ollama 는 base 상속이라 영향 없음
+- openai/claude/ollama 는 base 상속이라 자동 반영
 
-담당: node-dev
-근거: 2026-04-21 Day 11 애벌레 실측 지적
-상세: work_logs/plans/2026-04-21-deepseek-adapter-backoff-fix.md
+테스트: 신규 ~5개 (base backoff 시간, deepseek retry 흐름)
 ```
+
+### 커밋 2 (go-dev): game-server
+```
+feat(game-server): AI 호출 MaxRetries 3 → 5 (wifi 전환 30s 대응)
+
+ai-adapter backoff 강화(base.adapter max 60s)와 동반 수정.
+maxRetries 3 으로는 backoff 상한에 도달 못해 실효 없음.
+5 회로 늘려 attempt 1~4 에서 2+4+8+16=30s 버팀.
+
+- ws_handler.go L902: 3 → 5
+- DTO 상한 @Max(5) 가 이미 ai-adapter 에 있어 범위 내
+- ai_client_test.go MaxRetries 기댓값 동기화
+
+ai-adapter 커밋과 순서 무관하게 적용 가능.
+```
+
+### Co-Authored-By
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 
 ## 7. 롤백
 
