@@ -1,0 +1,93 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - button "스테이지 목록으로 돌아가기" [ref=e5] [cursor=pointer]: ←
+        - 'heading "Stage 1: 그룹 만들기" [level=1] [ref=e6]'
+        - navigation "스테이지 진행도" [ref=e8]:
+          - generic "Stage 1 (현재)" [ref=e9]:
+            - generic [ref=e10]: "1"
+          - generic "Stage 2" [ref=e11]:
+            - generic [ref=e12]: "2"
+          - generic "Stage 3" [ref=e13]:
+            - generic [ref=e14]: "3"
+          - generic "Stage 4" [ref=e15]:
+            - generic [ref=e16]: "4"
+          - generic "Stage 5" [ref=e17]:
+            - generic [ref=e18]: "5"
+          - generic "Stage 6" [ref=e19]:
+            - generic [ref=e20]: "6"
+        - button "튜토리얼 다시 보기" [ref=e21] [cursor=pointer]: 도움말
+    - paragraph [ref=e23]: 같은 숫자, 3가지 이상 색상으로 그룹을 만드세요
+    - generic [ref=e24]:
+      - main [ref=e25]:
+        - generic [ref=e26]:
+          - generic [ref=e27]:
+            - generic [ref=e29]:
+              - generic [ref=e30]: STAGE 1
+              - generic [ref=e31]: 0점
+            - region "게임 테이블" [ref=e32]:
+              - heading "게임 테이블 (0개 그룹)" [level=2] [ref=e33]
+              - generic:
+                - generic:
+                  - generic: +
+                - paragraph: 타일을 여기에 드롭하세요
+                - paragraph: 랙에서 타일을 끌어다 테이블에 올려놓으세요
+            - generic [ref=e34]:
+              - generic [ref=e35]:
+                - generic [ref=e36]:
+                  - text: 내 패
+                  - generic [ref=e37]: (6개)
+                - generic [ref=e38]: 유효한 그룹 1개 이상 배치
+              - region "내 타일 랙" [ref=e39]:
+                - heading "내 타일 (6개)" [level=2] [ref=e40]
+                - generic [ref=e41]:
+                  - generic [ref=e42]:
+                    - text: 내 타일
+                    - generic [ref=e43]: (6개)
+                  - button "타일 숫자 오름차순 정렬" [ref=e44] [cursor=pointer]:
+                    - generic [ref=e45]: ↑↓
+                    - text: 정렬
+                - generic [ref=e46]:
+                  - button "R7a 타일 (드래그 가능)" [ref=e47] [cursor=pointer]:
+                    - img "R7a 타일 (드래그 가능)" [ref=e48]:
+                      - generic [ref=e49]: "7"
+                      - generic [ref=e50]: ◆
+                  - button "B7a 타일 (드래그 가능)" [ref=e51] [cursor=pointer]:
+                    - img "B7a 타일 (드래그 가능)" [ref=e52]:
+                      - generic [ref=e53]: "7"
+                      - generic [ref=e54]: ●
+                  - button "Y7a 타일 (드래그 가능)" [ref=e55] [cursor=pointer]:
+                    - img "Y7a 타일 (드래그 가능)" [ref=e56]:
+                      - generic [ref=e57]: "7"
+                      - generic [ref=e58]: ▲
+                  - button "K7a 타일 (드래그 가능)" [ref=e59] [cursor=pointer]:
+                    - img "K7a 타일 (드래그 가능)" [ref=e60]:
+                      - generic [ref=e61]: "7"
+                      - generic [ref=e62]: ■
+                  - button "R3a 타일 (드래그 가능)" [ref=e63] [cursor=pointer]:
+                    - img "R3a 타일 (드래그 가능)" [ref=e64]:
+                      - generic [ref=e65]: "3"
+                      - generic [ref=e66]: ◆
+                  - button "B5a 타일 (드래그 가능)" [ref=e67] [cursor=pointer]:
+                    - img "B5a 타일 (드래그 가능)" [ref=e68]:
+                      - generic [ref=e69]: "5"
+                      - generic [ref=e70]: ●
+              - generic [ref=e71]:
+                - button "타일 배치 초기화" [ref=e72] [cursor=pointer]: 초기화
+                - button "스테이지 클리어 확정" [disabled] [ref=e73]: 확정
+          - status [ref=e74]
+      - complementary [ref=e75]:
+        - complementary "힌트 패널" [ref=e76]:
+          - generic [ref=e77]:
+            - heading "클리어 조건" [level=3] [ref=e78]
+            - paragraph [ref=e79]: 유효한 그룹 1개 이상 배치
+          - separator [ref=e80]
+          - generic [ref=e81]:
+            - heading "힌트" [level=3] [ref=e82]
+            - status [ref=e83]: 같은 숫자, 서로 다른 색상 3~4개를 함께 올려놓으세요.
+  - alert [ref=e84]
+```

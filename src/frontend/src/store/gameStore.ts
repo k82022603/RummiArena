@@ -219,6 +219,32 @@ export const useGameStore = create<GameStore>()(
   }))
 );
 
+// ---------------------------------------------------------------------------
+// Selector: 내 플레이어의 실제 타일 수
+//
+// 문제: PlayerCard 배지(player.tileCount)는 서버 기준값.
+//       미확정 배치(pendingMyTiles)가 있으면 rack 실제 수와 다를 수 있음.
+// 해결: 내 시트에 한해 pendingMyTiles 길이를 우선 사용.
+//       여러 WS 이벤트(TURN_ENDED/DRAW_TILE/PLACE_COMMIT)에서 drift 방지.
+// ---------------------------------------------------------------------------
+
+/**
+ * 내 플레이어의 실제 타일 수 selector.
+ *
+ * - pendingMyTiles 가 있으면 그 길이를 우선 반환 (rack과 동기화)
+ * - 없으면 서버 기준 player.tileCount 반환
+ */
+export function selectMyTileCount(
+  state: ReturnType<typeof useGameStore.getState>
+): number {
+  const { mySeat, players, pendingMyTiles } = state;
+  if (pendingMyTiles !== null) {
+    return pendingMyTiles.length;
+  }
+  const me = players.find((p) => (p as { seat?: number }).seat === mySeat);
+  return me?.tileCount ?? 0;
+}
+
 // E2E 테스트 브릿지: Zustand 스토어를 window에 노출
 // Playwright page.evaluate에서 window.__gameStore.getState() / setState() 사용 가능
 // NEXT_PUBLIC_E2E_BRIDGE=true 일 때 활성화 (빌드 타임 환경변수, 프로덕션 빌드에서도 사용 가능)

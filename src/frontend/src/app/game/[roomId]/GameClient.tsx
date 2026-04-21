@@ -1206,7 +1206,7 @@ export default function GameClient({ roomId }: GameClientProps) {
             {/* 새 그룹 버튼: pending 그룹이 있을 때만 표시 */}
             {pendingTableGroups && isMyTurn && (
               <div className="flex items-center justify-between flex-shrink-0">
-                <span className="text-tile-xs text-text-secondary/60">
+                <span className="text-tile-sm text-text-secondary/60 whitespace-nowrap">
                   숫자/색상이 다른 타일은 자동으로 새 그룹이 됩니다
                 </span>
                 <button
@@ -1237,7 +1237,7 @@ export default function GameClient({ roomId }: GameClientProps) {
             <div className="flex-shrink-0">
               {/* 랙 헤더 */}
               <div className="flex items-center justify-between mb-1.5">
-                <span className="text-tile-xs text-text-secondary">
+                <span className="text-tile-sm text-text-secondary">
                   내 패{" "}
                   <span className="text-text-primary font-medium">
                     ({currentMyTiles.length}장)
@@ -1264,7 +1264,7 @@ export default function GameClient({ roomId }: GameClientProps) {
                   <motion.span
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
-                    className="text-tile-xs bg-warning/20 text-warning px-2 py-0.5 rounded-full font-medium"
+                    className="text-tile-sm bg-warning/20 text-warning px-2 py-0.5 rounded-full font-medium"
                   >
                     내 차례
                   </motion.span>

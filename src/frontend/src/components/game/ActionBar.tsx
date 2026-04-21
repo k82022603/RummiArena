@@ -117,11 +117,11 @@ const ActionBar = memo(function ActionBar({
               <span aria-hidden="true">&#x21BA;</span> 초기화
             </button>
 
-            {/* 확정 버튼: C-3: hasPending이고 모든 그룹이 3개 이상 타일일 때만 활성 */}
+            {/* 확정 버튼: C-3: 내 턴이고, pending 배치가 있고, 모든 그룹이 유효할 때만 활성 */}
             <button
               type="button"
               onClick={onConfirm}
-              disabled={!hasPending || !allGroupsValid}
+              disabled={!isMyTurn || !hasPending || !allGroupsValid}
               className={[
                 "flex-1 py-2.5 rounded-xl font-bold text-tile-sm",
                 "bg-warning text-gray-900 hover:bg-yellow-400",

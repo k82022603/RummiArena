@@ -6,6 +6,7 @@ import type { Player } from "@/types/game";
 import TileBack from "@/components/tile/TileBack";
 import { TierBadge } from "@/components/rankings/TierBadge";
 import type { Tier } from "@/lib/rankings-api";
+import { getPlayerDisplayName, AI_PERSONA_LABEL } from "@/lib/player-display";
 
 interface PlayerCardProps {
   player: Player;
@@ -17,22 +18,6 @@ interface PlayerCardProps {
   disconnectCountdown?: number;
   className?: string;
 }
-
-const AI_TYPE_LABEL: Record<string, string> = {
-  AI_OPENAI: "GPT",
-  AI_CLAUDE: "Claude",
-  AI_DEEPSEEK: "DeepSeek",
-  AI_LLAMA: "LLaMA",
-};
-
-const AI_PERSONA_LABEL: Record<string, string> = {
-  rookie: "루키",
-  calculator: "계산기",
-  shark: "샤크",
-  fox: "폭스",
-  wall: "벽",
-  wildcard: "와일드카드",
-};
 
 /**
  * 플레이어 카드 컴포넌트
@@ -58,9 +43,15 @@ const PlayerCard = memo(function PlayerCard({
   const isForfeited = playerStatus === "FORFEITED";
   const isDisconnected = !isForfeited && !isAI && playerStatus === "DISCONNECTED";
 
-  const displayName = isHuman
-    ? (player as { displayName: string }).displayName
-    : `${AI_TYPE_LABEL[player.type] ?? player.type} (${AI_PERSONA_LABEL[(player as { persona: string }).persona] ?? ""})`;
+  const displayName = getPlayerDisplayName(
+    {
+      type: player.type,
+      seat: (player as { seat?: number }).seat,
+      displayName: (player as { displayName?: string }).displayName,
+      persona: (player as { persona?: string }).persona,
+    },
+    `Seat ${(player as { seat?: number }).seat ?? "?"}`
+  );
 
   const tileCount = player.tileCount ?? 0;
   const hasInitialMeld = player.hasInitialMeld ?? false;
@@ -238,12 +229,13 @@ const PlayerCard = memo(function PlayerCard({
             ] ?? ""}
           </span>
           <span className="text-[9px] text-text-secondary">
-            {(player as { difficulty: string }).difficulty === "beginner"
-              ? "하수"
-              : (player as { difficulty: string }).difficulty ===
-                "intermediate"
-              ? "중수"
-              : "고수"}
+            {(() => {
+              const diff = (player as { difficulty?: string }).difficulty;
+              return diff === "beginner" ? "하수"
+                : diff === "intermediate" ? "중수"
+                : diff === "expert" ? "고수"
+                : "—";
+            })()}
           </span>
         </div>
       )}

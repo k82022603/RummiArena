@@ -32,11 +32,11 @@ interface TileProps {
 }
 
 const SIZE_CLASS: Record<TileSize, string> = {
-  rack: "w-[42px] h-[58px] text-tile-xl",
-  table: "w-[34px] h-[46px] text-tile-lg",
-  mini: "w-[10px] h-[16px] text-[6px]",
-  quad: "w-[28px] h-[38px] text-tile-base",
-  icon: "w-[20px] h-[26px] text-[10px]",
+  rack: "w-[52px] h-[72px] text-tile-2xl",   // 42x58 → 52x72 (+24%)
+  table: "w-[44px] h-[60px] text-tile-xl",   // 34x46 → 44x60 (+24%)
+  mini: "w-[10px] h-[16px] text-[6px]",      // 유지
+  quad: "w-[34px] h-[46px] text-tile-lg",    // 28x38 → 34x46 (+24%)
+  icon: "w-[24px] h-[32px] text-[12px]",     // 20x26 → 24x32 (+24%)
 };
 
 /**
@@ -124,7 +124,7 @@ const Tile = memo(function Tile({
       {selected && size !== "mini" && (
         <span
           aria-hidden="true"
-          className="absolute -top-1 -right-1 text-[8px] bg-border-active text-white rounded-full w-3.5 h-3.5 flex items-center justify-center leading-none z-10"
+          className="absolute -top-1 -right-1 text-[10px] bg-border-active text-white rounded-full w-4 h-4 flex items-center justify-center leading-none z-10"
         >
           ⬆
         </span>
@@ -134,7 +134,7 @@ const Tile = memo(function Tile({
       {tile.isJoker && size !== "mini" && (
         <span
           aria-hidden="true"
-          className="absolute -top-1 -right-1 text-[9px] text-yellow-300 drop-shadow-[0_0_4px_rgba(253,224,71,0.8)] z-10"
+          className="absolute -top-1 -right-1 text-[11px] text-yellow-300 drop-shadow-[0_0_4px_rgba(253,224,71,0.8)] z-10"
         >
           ★
         </span>
@@ -154,7 +154,7 @@ const Tile = memo(function Tile({
         <span
           aria-hidden="true"
           className={[
-            "absolute bottom-0.5 left-0.5 text-[8px] opacity-60",
+            "absolute bottom-0.5 left-0.5 text-[10px] opacity-75",
             tile.isJoker ? "text-yellow-200 opacity-80" : "",
           ]
             .filter(Boolean)
@@ -168,7 +168,7 @@ const Tile = memo(function Tile({
       {tile.set === "b" && size !== "mini" && size !== "icon" && (
         <span
           aria-hidden="true"
-          className="absolute bottom-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-current opacity-50"
+          className="absolute bottom-0.5 right-0.5 w-2 h-2 rounded-full bg-current opacity-65"
           title="b 세트"
         />
       )}

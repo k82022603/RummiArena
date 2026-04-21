@@ -52,18 +52,18 @@ const config: Config = {
         "tile-3xl": "30px",
       },
       spacing: {
-        // 타일 크기 (랙)
-        "tile-w": "42px",
-        "tile-h": "58px",
+        // 타일 크기 (랙) — SIZE_CLASS 와 동기화 (+24%)
+        "tile-w": "52px",
+        "tile-h": "72px",
         // 타일 크기 (테이블)
-        "tile-table-w": "34px",
-        "tile-table-h": "46px",
+        "tile-table-w": "44px",
+        "tile-table-h": "60px",
         // 타일 크기 (미니)
         "tile-mini-w": "10px",
         "tile-mini-h": "16px",
         // 타일 크기 (4분할 뷰)
-        "tile-quad-w": "28px",
-        "tile-quad-h": "38px",
+        "tile-quad-w": "34px",
+        "tile-quad-h": "46px",
       },
       animation: {
         "ai-pulse": "aiPulse 1.5s ease-in-out infinite",
