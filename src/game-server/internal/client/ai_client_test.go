@@ -30,7 +30,7 @@ func buildMoveRequest() *client.MoveRequest {
 			TurnNumber:      5,
 			InitialMeldDone: false,
 		},
-		MaxRetries: 3,
+		MaxRetries: 5, // ws_handler.go MaxRetries 기본값과 동기화
 		TimeoutMs:  30000,
 	}
 }

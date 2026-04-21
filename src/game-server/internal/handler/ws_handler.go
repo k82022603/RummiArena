@@ -899,7 +899,7 @@ func (h *WSHandler) handleAITurn(roomID, gameID string, player *model.PlayerStat
 		Persona:         strings.ToLower(player.AIPersona),
 		Difficulty:      normalizeDifficulty(player.AIDifficulty),
 		PsychologyLevel: player.AIPsychLevel,
-		MaxRetries:      3,
+		MaxRetries:      5,  // wifi 전환(30s) 대응. ai-adapter base.adapter backoff max 60s 와 동반
 		TimeoutMs:       h.aiAdapterTimeoutSec * 1000, // ConfigMap AI_ADAPTER_TIMEOUT_SEC (ms 단위로 전달)
 		GameState: client.MoveGameState{
 			TableGroups:     tableGroups,
