@@ -63,11 +63,30 @@ description: 배포 전 Claude가 사용자 역할로 실제 게임을 플레이
 - `/room/create` 이동
 - 방 생성 폼 작성:
   - 플레이어 수: 2인전
-  - AI 모델: GPT (OpenAI)
+  - **AI 모델: LLaMA (Ollama)** — **기본값 (비용 $0, 속도 5~15s, 완주 검증 목적 최적)**
   - Persona: rookie
   - 난이도: 하수 (beginner)
   - 턴 제한 시간: 120초
   - 심리전 레벨: 2 (default)
+
+**AI 모델 선택 원칙** (2026-04-21 기본값 LLaMA 로 확정):
+
+| 모델 | 비용/턴 | 속도 | Playbook 적합도 |
+|------|--------|------|----------------|
+| **LLaMA (Ollama qwen2.5:3b)** | **$0** | 5~15s | **기본값** — 완주 검증이 목적이므로 AI 응답 품질 무관 |
+| GPT (OpenAI gpt-5-mini) | $0.025 | 25~45s | 비용 발생 실측 재현이 필요한 특수 케이스에만 |
+| Claude Sonnet 4 | $0.074 | 30~60s | 동일 |
+| DeepSeek Reasoner | $0.001 | 30~350s | 속도 느려 Playbook 완주 리스크, 사용 지양 |
+
+**Ollama cold start 대응** (2026-04-21 신규 발견):
+- Ollama Pod 첫 호출 시 `llama runner started in 50s` 발생 가능
+- Playbook 실행 **전** 사전 warmup 권장:
+  ```bash
+  kubectl exec -n rummikub deploy/ollama -- \
+    curl -s -X POST http://localhost:11434/api/generate \
+    -d '{"model":"qwen2.5:3b","prompt":"ready","stream":false}' > /dev/null
+  ```
+- devops 에 자동 warmup 스크립트 추가 검토 (Sprint 7 후속 권고)
 - `방 만들기` 클릭 → 대기실 진입
 - `게임 시작` 클릭 → 게임 진입
 - 내 차례 배지 확인
@@ -210,3 +229,7 @@ npx playwright test e2e/pre-deploy-playbook.spec.ts --workers=1 --reporter=list
 ## 변경 이력
 
 - **2026-04-21 v1.0**: 최초 신설. `ui-regression` SKILL Phase 3.5 에서 분리. 사용자 지시 "코딩 잘못하면 테스트라도 잘하자" + "B 별도 SKILL 분리" 반영.
+- **2026-04-21 v1.1**: 첫 실전 발동(qa 에이전트, 170801 잡종 방지 PASS) 결과 반영.
+  - 기본 AI 모델 GPT → **LLaMA (Ollama)** 로 변경. 비용 $0, 속도 5~15s, Playbook 완주 검증 목적에 최적. 사용자(애벌레) 지시 반영.
+  - Ollama cold start 대응 섹션 추가. 첫 실행 시 50s 지연 실측됨.
+  - Sprint 7 후속 권고 2건: E2E bridge 이미지 태그 (`NEXT_PUBLIC_E2E_BRIDGE=true`) + Ollama 자동 warmup 스크립트.
