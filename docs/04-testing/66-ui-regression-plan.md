@@ -187,11 +187,17 @@ Smoke 실패 (배포 후) → Pod rollback
 2. **반사실적 검증 의무**: UI 수정 프롬프트에 "이 변경이 영향 줄 수 있는 다른 경로 3개를 먼저 나열" 강제. 오늘 F-2 가 이 단계를 건너뛰어 발생
 3. **계층 분리 검증**: 같은 규칙이 `mergeCompatibility.ts`, `GameClient.handleDragEnd`, `GameBoard.validatePendingBlock`, 서버 엔진 4곳에 분산 구현됨. 한 곳 수정 시 나머지 3곳 영향 체크 — `docs/02-design/31` 매트릭스로 강제
 
-### 12.4 Sprint 7 선행 과제
+### 12.4 실행 타임라인 (시점 분리)
 
-- 클라이언트 규칙 검증을 `src/frontend/src/lib/clientRuleValidator.ts` 단일 모듈로 통합 (architect §4.3 권고)
-- `closestCenter` → 게임보드 특화 custom collision detection (architect §4.2)
+**오늘 (Sprint 6 Day 11, 즉시)** — architect 1차 분석 §3 "즉시 조치":
+- `closestCenter` → `pointerWithin` 또는 게임보드 특화 custom collision detection — **B-1 "빈 공간 드롭 실패" 의 직접 해결책**. frontend-dev B-1 수정 작업에 포함되어야 함
+- `GameClient.tsx:788` 서버 확정 그룹 merge 경로에 `isCompatibleWithGroup` 사전 필터 추가
+- `over === null` silent return 대신 드롭 실패 토스트
+
+**Sprint 7 (리팩토링·인프라)** — architect §4 "장기 조치":
+- 클라이언트 규칙 검증을 `src/frontend/src/lib/clientRuleValidator.ts` 단일 모듈로 통합 (architect §4.3)
 - 실측 스크린샷 자동 업로드 파이프라인 (Sentry 또는 자체 WS telemetry, architect §4.7)
+- WS 이벤트 ↔ UI state 계약 테스트 매트릭스 (architect §4.1)
 
 ## 11. 변경 이력
 
