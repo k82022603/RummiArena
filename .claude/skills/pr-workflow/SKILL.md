@@ -145,6 +145,7 @@ PR 관련 작업 prompt 를 만들기 전에 사용자에게 **다음 4가지를
 - "merge 해줘", "머지"
 - "branch 파서", "branch 만들어"
 - "push 해줘"
+- **"PR 체크", "PR 정리", "정리해줘", "체크해줘"** (Phase 3 — merged PR 정리 스크립트 실행)
 - 에이전트 prompt 안에 PR/branch/merge 동작이 포함될 때
 
 ---
