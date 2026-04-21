@@ -106,6 +106,12 @@ export class DeepSeekAdapter extends BaseAdapter {
     let lastErrorReason = '';
 
     for (let attempt = 0; attempt < request.maxRetries; attempt++) {
+      if (attempt > 0) {
+        this.logger.log(
+          `[DeepSeek-Reasoner] 재시도 대기 (attempt=${attempt + 1})`,
+        );
+        await this.backoff(attempt);
+      }
       const attemptStartTime = Date.now();
 
       const userPrompt = variant

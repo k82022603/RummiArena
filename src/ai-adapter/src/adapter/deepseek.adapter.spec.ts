@@ -745,6 +745,79 @@ describe('DeepSeekAdapter', () => {
   });
 
   // -----------------------------------------------------------------------
+  // Reasoner 모드: backoff 호출 횟수 검증 (fix: 누락 수정 확인)
+  // -----------------------------------------------------------------------
+  describe('Reasoner 모드 - backoff 호출 횟수 (fix 검증)', () => {
+    let reasonerAdapter: DeepSeekAdapter;
+    let backoffSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      reasonerAdapter = makeReasonerAdapter();
+      jest.clearAllMocks();
+      backoffSpy = jest
+        .spyOn(reasonerAdapter as any, 'backoff')
+        .mockResolvedValue(undefined);
+    });
+
+    it('attempt=0 (첫 시도) 는 backoff 를 호출하지 않는다', async () => {
+      const content = JSON.stringify({ action: 'draw', reasoning: 'ok' });
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(makeReasonerResponse(content, ''));
+
+      await reasonerAdapter.generateMove(makeMoveRequest({ maxRetries: 3 }));
+
+      expect(backoffSpy).not.toHaveBeenCalled();
+    });
+
+    it('maxRetries=3 에서 모두 실패하면 backoff 가 2회 호출된다 (attempt 1, 2)', async () => {
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValue(makeReasonerResponse('invalid', 'bad'));
+
+      const response = await reasonerAdapter.generateMove(
+        makeMoveRequest({ maxRetries: 3 }),
+      );
+
+      expect(response.metadata.isFallbackDraw).toBe(true);
+      expect(backoffSpy).toHaveBeenCalledTimes(2);
+      expect(backoffSpy).toHaveBeenNthCalledWith(1, 1);
+      expect(backoffSpy).toHaveBeenNthCalledWith(2, 2);
+    });
+
+    it('maxRetries=5 에서 모두 실패하면 backoff 가 4회 호출된다', async () => {
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValue(makeReasonerResponse('invalid', 'bad'));
+
+      await reasonerAdapter.generateMove(makeMoveRequest({ maxRetries: 5 }));
+
+      expect(backoffSpy).toHaveBeenCalledTimes(4);
+    });
+
+    it('첫 시도 실패, 두 번째 성공 시 backoff 가 1회 호출된다', async () => {
+      const failResponse = makeReasonerResponse('bad json', 'thinking');
+      const successResponse = makeReasonerResponse(
+        JSON.stringify({ action: 'draw', reasoning: 'ok' }),
+        'done',
+      );
+
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(failResponse)
+        .mockResolvedValueOnce(successResponse);
+
+      const response = await reasonerAdapter.generateMove(
+        makeMoveRequest({ maxRetries: 3 }),
+      );
+
+      expect(response.metadata.isFallbackDraw).toBe(false);
+      expect(backoffSpy).toHaveBeenCalledTimes(1);
+      expect(backoffSpy).toHaveBeenCalledWith(1);
+    });
+  });
+
+  // -----------------------------------------------------------------------
   // DeepSeek 프롬프트 최적화 검증 (Round 3 -> Round 4)
   //
   // 목적:
