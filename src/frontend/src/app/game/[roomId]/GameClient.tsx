@@ -824,6 +824,17 @@ export default function GameClient({ roomId }: GameClientProps) {
           const updatedTiles = [...g.tiles, tileCode];
           return { ...g, tiles: updatedTiles, type: classifySetType(updatedTiles) };
         });
+        // I-1 핫픽스: setPendingTableGroups 호출 직전 중복 타일 감지
+        // 드롭 반복/잔상 클릭으로 같은 타일이 여러 그룹에 복제되면 즉시 거부한다.
+        {
+          const dupes = detectDuplicateTileCodes(nextTableGroups);
+          if (dupes.length > 0) {
+            useWSStore.getState().setLastError(
+              `타일 중복 감지: ${dupes.join(", ")} — 되돌리기 후 다시 배치하세요`
+            );
+            return;
+          }
+        }
         const nextMyTiles = removeFirstOccurrence(currentMyTiles, tileCode);
         setPendingTableGroups(nextTableGroups);
         setPendingMyTiles(nextMyTiles);
@@ -866,6 +877,16 @@ export default function GameClient({ roomId }: GameClientProps) {
             ? { ...g, tiles: updatedTiles, type: classifySetType(updatedTiles) }
             : g
         );
+        // I-1 핫픽스: 서버 확정 그룹 append 경로에도 중복 감지 방어
+        {
+          const dupes = detectDuplicateTileCodes(nextTableGroups);
+          if (dupes.length > 0) {
+            useWSStore.getState().setLastError(
+              `타일 중복 감지: ${dupes.join(", ")} — 되돌리기 후 다시 배치하세요`
+            );
+            return;
+          }
+        }
         const nextMyTiles = removeFirstOccurrence(currentMyTiles, tileCode);
         setPendingTableGroups(nextTableGroups);
         setPendingMyTiles(nextMyTiles);
