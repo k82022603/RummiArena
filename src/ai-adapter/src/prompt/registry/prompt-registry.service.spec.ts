@@ -19,7 +19,7 @@ const makeRegistry = (env: Record<string, string> = {}): PromptRegistry => {
 
 describe('PromptRegistry', () => {
   describe('builtin variant registration', () => {
-    it('onModuleInit 후 v2/v2-zh/v3/v3-tuned/v4/v4.1/v5/character-ko 8개 변형이 모두 등록된다', () => {
+    it('onModuleInit 후 v2/v2-zh/v3/v3-tuned/v4/v4.1/v5/v7-ollama-meld/character-ko 9개 변형이 모두 등록된다', () => {
       const registry = makeRegistry();
       const ids = registry.list().map((v) => v.id);
       expect(ids).toEqual(
@@ -31,10 +31,11 @@ describe('PromptRegistry', () => {
           'v4',
           'v4.1',
           'v5',
+          'v7-ollama-meld',
           'character-ko',
         ]),
       );
-      expect(ids.length).toBeGreaterThanOrEqual(8);
+      expect(ids.length).toBeGreaterThanOrEqual(9);
     });
 
     it('v4.1 은 v4 와 동일한 recommendedModels 를 가진다 (single-variable A/B)', () => {
@@ -187,10 +188,11 @@ describe('PromptRegistry', () => {
     it('list() 는 등록된 모든 변형 반환', () => {
       const registry = makeRegistry();
       const list = registry.list();
-      expect(list.length).toBeGreaterThanOrEqual(8);
+      expect(list.length).toBeGreaterThanOrEqual(9);
       expect(list.find((v) => v.id === 'v3-tuned')).toBeDefined();
       expect(list.find((v) => v.id === 'v5')).toBeDefined();
       expect(list.find((v) => v.id === 'v2-zh')).toBeDefined();
+      expect(list.find((v) => v.id === 'v7-ollama-meld')).toBeDefined();
     });
 
     it('getActiveVariant() — env-global source 정확 표기', () => {
@@ -344,6 +346,133 @@ describe('PromptRegistry', () => {
       // 다른 모델은 기본값 유지
       expect(registry.resolve('openai').id).toBe('v2');
       expect(registry.resolve('claude').id).toBe('v2');
+    });
+  });
+
+  describe('v7-ollama-meld — qwen2.5:3b 전용 하드코딩 variant', () => {
+    it('v7-ollama-meld 는 Ollama 전용 + baseVariant=v2', () => {
+      const registry = makeRegistry();
+      const v = registry.resolve('ollama', { variantId: 'v7-ollama-meld' });
+      expect(v.id).toBe('v7-ollama-meld');
+      expect(v.metadata.recommendedModels).toEqual(['ollama']);
+      expect(v.baseVariant).toBe('v2');
+      expect(v.metadata.warnIfOffRecommendation).toBe(true);
+    });
+
+    it('v7-ollama-meld system prompt 는 4-step 절차 + hand-holding few-shot 포함', () => {
+      const registry = makeRegistry();
+      const sys = registry
+        .resolve('ollama', { variantId: 'v7-ollama-meld' })
+        .systemPromptBuilder();
+      // 4-step 절차 키워드
+      expect(sys).toMatch(/4-STEP DECISION PROCEDURE/);
+      expect(sys).toMatch(/Step 1.*GROUP/);
+      expect(sys).toMatch(/Step 2.*RUN/);
+      expect(sys).toMatch(/Step 3.*Combine/);
+      expect(sys).toMatch(/Step 4/);
+      // few-shot 6개 예시 (최소 Example 1 ~ Example 6)
+      expect(sys).toMatch(/Example 1/);
+      expect(sys).toMatch(/Example 6/);
+      // 초기 등록 30점 규칙 최상단 강조
+      expect(sys).toMatch(/30 or more points/);
+      expect(sys).toMatch(/ONLY tiles from your rack/);
+      // 점수 계산 패턴 (Pattern A/B/C/D)
+      expect(sys).toMatch(/Pattern A/);
+      expect(sys).toMatch(/Pattern D/);
+    });
+
+    it('v7-ollama-meld user prompt 는 by-color / group-candidates 힌트를 포함', () => {
+      const registry = makeRegistry();
+      const variant = registry.resolve('ollama', {
+        variantId: 'v7-ollama-meld',
+      });
+      const user = variant.userPromptBuilder({
+        tableGroups: [],
+        myTiles: ['R10a', 'B10a', 'K10a', 'R5a', 'B7b', 'Y2a'],
+        turnNumber: 1,
+        drawPileCount: 80,
+        initialMeldDone: false,
+        opponents: [{ playerId: 'p2', remainingTiles: 14 }],
+      });
+      // 상태 강조
+      expect(user).toMatch(/Initial Meld: NOT DONE/);
+      expect(user).toMatch(/30\+ points/);
+      // by-color 힌트
+      expect(user).toMatch(/By color:/);
+      expect(user).toMatch(/R=\[R10a,R5a\]/);
+      // group candidates (10 은 3장 — 표시되어야 함)
+      expect(user).toMatch(/Group candidates.*10:\[R10a,B10a,K10a\]/);
+    });
+
+    it('v7-ollama-meld user prompt — 초기 등록 DONE 분기', () => {
+      const registry = makeRegistry();
+      const variant = registry.resolve('ollama', {
+        variantId: 'v7-ollama-meld',
+      });
+      const user = variant.userPromptBuilder({
+        tableGroups: [{ tiles: ['R3a', 'R4a', 'R5a'] }],
+        myTiles: ['R6a', 'B10a'],
+        turnNumber: 5,
+        drawPileCount: 60,
+        initialMeldDone: true,
+        opponents: [],
+      });
+      expect(user).toMatch(/Initial Meld: DONE/);
+      expect(user).toMatch(/include all existing table groups/);
+      expect(user).toMatch(/Group1: \[R3a, R4a, R5a\]/);
+    });
+
+    it('v7-ollama-meld 는 Ollama 외 모델 적용 시 warn (warnIfOffRecommendation=true)', () => {
+      const registry = makeRegistry({
+        OPENAI_PROMPT_VARIANT: 'v7-ollama-meld',
+      });
+      const warnSpy = jest
+        .spyOn(registry['logger'], 'warn')
+        .mockImplementation();
+      registry.resolve('openai');
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('v7-ollama-meld 는 openai 에 권장되지 않음'),
+      );
+      warnSpy.mockRestore();
+    });
+
+    it('OLLAMA_PROMPT_VARIANT=v7-ollama-meld 설정 시 Ollama 만 v7-ollama-meld', () => {
+      const registry = makeRegistry({
+        OLLAMA_PROMPT_VARIANT: 'v7-ollama-meld',
+      });
+      expect(registry.resolve('ollama').id).toBe('v7-ollama-meld');
+      // 다른 모델은 기본값 유지
+      expect(registry.resolve('openai').id).toBe('v2');
+      expect(registry.resolve('claude').id).toBe('v2');
+    });
+
+    it('OLLAMA_PROMPT_VARIANT 없고 USE_V2_PROMPT=true 면 Ollama 는 v2 유지 (기본 경로 무영향 검증)', () => {
+      const registry = makeRegistry({ USE_V2_PROMPT: 'true' });
+      // opt-in 하지 않으면 기존 v2 베이스라인 그대로
+      expect(registry.resolve('ollama').id).toBe('v2');
+    });
+
+    it('v7-ollama-meld retry prompt 는 base user prompt + 에러 이유 + retry 힌트', () => {
+      const registry = makeRegistry();
+      const variant = registry.resolve('ollama', {
+        variantId: 'v7-ollama-meld',
+      });
+      const retry = variant.retryPromptBuilder(
+        {
+          tableGroups: [],
+          myTiles: ['R10a', 'B10a', 'K10a'],
+          turnNumber: 1,
+          drawPileCount: 80,
+          initialMeldDone: false,
+          opponents: [],
+        },
+        'ERR_GROUP_COLOR_DUP',
+        1,
+      );
+      expect(retry).toMatch(/# RETRY 2/);
+      expect(retry).toMatch(/Previous error: ERR_GROUP_COLOR_DUP/);
+      expect(retry).toMatch(/Sets with 2 tiles/);
+      expect(retry).toMatch(/action.*draw.*retry fallback/);
     });
   });
 
