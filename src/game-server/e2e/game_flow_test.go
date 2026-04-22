@@ -44,7 +44,7 @@ func buildTestRouter(t *testing.T, appEnv string) *gin.Engine {
 	gameStateRepo := repository.NewMemoryGameStateRepoAdapter()
 	roomRepo := repository.NewMemoryRoomRepo()
 
-	roomSvc := service.NewRoomService(roomRepo, gameStateRepo)
+	roomSvc := service.NewRoomService(roomRepo, gameStateRepo, nil)
 	gameSvc := service.NewGameService(gameStateRepo)
 	turnSvc := service.NewTurnService(gameStateRepo, gameSvc)
 

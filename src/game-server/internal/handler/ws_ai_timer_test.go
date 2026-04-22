@@ -54,7 +54,7 @@ func newAITimerTestEnv(aiClient client.AIClientInterface) (*WSHandler, repositor
 	turnSvc := service.NewTurnService(gameRepo, gameSvc)
 	h := &WSHandler{
 		hub:           NewHub(zap.NewNop()),
-		roomSvc:       service.NewRoomService(repository.NewMemoryRoomRepo(), repository.NewMemoryGameStateRepoAdapter()),
+		roomSvc:       service.NewRoomService(repository.NewMemoryRoomRepo(), repository.NewMemoryGameStateRepoAdapter(), nil),
 		gameSvc:       gameSvc,
 		turnSvc:       turnSvc,
 		aiClient:      aiClient,

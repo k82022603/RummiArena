@@ -100,7 +100,13 @@ func buildRouter(
 	gameStateRepo repository.MemoryGameStateRepository,
 	roomRepo repository.MemoryRoomRepository,
 ) *gin.Engine {
-	roomSvc := service.NewRoomService(roomRepo, gameStateRepo)
+	// D-03: Dual-Write — DB 연결 존재 시 pgRoomRepo 주입, 없으면 nil (best-effort 비활성)
+	var pgRoomRepo repository.GameRepository
+	if db != nil {
+		pgRoomRepo = repository.NewPostgresGameRepo(db)
+		logger.Info("rooms dual-write enabled (D-03 Phase 1)")
+	}
+	roomSvc := service.NewRoomService(roomRepo, gameStateRepo, pgRoomRepo)
 	// SEC-RL-002: Redis가 가용하면 AI 게임 생성 쿨다운 활성화
 	if infra.IsRedisAvailable(redisClient) {
 		service.SetCooldownChecker(roomSvc, service.NewRedisCooldownChecker(redisClient))
