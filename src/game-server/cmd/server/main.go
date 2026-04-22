@@ -152,6 +152,13 @@ func buildRouter(
 		rankingHandler = handler.NewRankingHandler(eloRepo, logger)
 		wsHandler.WithEloRepo(eloRepo)
 
+		// I-14: 게임 영속저장 레포지터리 주입 (games / game_players / game_events)
+		pgGameRepo := repository.NewPostgresGameRepo(db)
+		pgGamePlayerRepo := repository.NewPostgresGamePlayerRepo(db)
+		pgGameEventRepo := repository.NewPostgresGameEventRepo(db)
+		wsHandler.WithPersistenceRepos(pgGameRepo, pgGamePlayerRepo, pgGameEventRepo)
+		logger.Info("game persistence repos injected")
+
 		userRepo := repository.NewPostgresUserRepo(db)
 		authHandler.WithUserRepo(userRepo)
 
@@ -162,6 +169,7 @@ func buildRouter(
 		logger.Warn("postgres unavailable — practice API disabled")
 		logger.Warn("postgres unavailable — ranking API disabled")
 		logger.Warn("postgres unavailable — admin API disabled")
+		logger.Warn("postgres unavailable — game persistence disabled")
 	}
 
 	// Redis가 가용하면 ELO Sorted Set 업데이트 활성화

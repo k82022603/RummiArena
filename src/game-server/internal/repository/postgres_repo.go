@@ -171,3 +171,34 @@ func (r *postgresGamePlayerRepo) UpdateGamePlayer(ctx context.Context, gp *model
 	}
 	return nil
 }
+
+// GameEventRepository defines persistent game-event operations backed by PostgreSQL.
+type GameEventRepository interface {
+	CreateGameEvent(ctx context.Context, ev *model.GameEvent) error
+	ListGameEvents(ctx context.Context, gameID string) ([]*model.GameEvent, error)
+}
+
+// postgresGameEventRepo implements GameEventRepository.
+type postgresGameEventRepo struct {
+	db *gorm.DB
+}
+
+// NewPostgresGameEventRepo creates a PostgreSQL-backed GameEventRepository.
+func NewPostgresGameEventRepo(db *gorm.DB) GameEventRepository {
+	return &postgresGameEventRepo{db: db}
+}
+
+func (r *postgresGameEventRepo) CreateGameEvent(ctx context.Context, ev *model.GameEvent) error {
+	if err := r.db.WithContext(ctx).Create(ev).Error; err != nil {
+		return fmt.Errorf("postgres_repo: create game_event: %w", err)
+	}
+	return nil
+}
+
+func (r *postgresGameEventRepo) ListGameEvents(ctx context.Context, gameID string) ([]*model.GameEvent, error) {
+	var events []*model.GameEvent
+	if err := r.db.WithContext(ctx).Where("game_id = ?", gameID).Order("created_at ASC").Find(&events).Error; err != nil {
+		return nil, fmt.Errorf("postgres_repo: list game_events for game %q: %w", gameID, err)
+	}
+	return events, nil
+}

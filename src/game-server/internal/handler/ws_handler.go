@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
@@ -87,6 +88,10 @@ type WSHandler struct {
 	aiClient      client.AIClientInterface // nil이면 AI 기능 비활성화
 	eloRepo       repository.EloRepository // nil이면 ELO 업데이트 건너뜀
 	redisClient   *redis.Client            // nil이면 Redis Sorted Set 업데이트 건너뜀
+	// I-14: 게임 영속저장 — nil이면 DB 쓰기 건너뜀 (postgres 미연결 시)
+	pgGameRepo       repository.GameRepository       // games + rooms 테이블
+	pgGamePlayerRepo repository.GamePlayerRepository // game_players 테이블
+	pgGameEventRepo  repository.GameEventRepository  // game_events 테이블
 	jwtSecret     string
 	logger        *zap.Logger
 	timers        map[string]*turnTimer  // key: gameID
@@ -135,6 +140,18 @@ func (h *WSHandler) WithEloRepo(eloRepo repository.EloRepository) {
 // nil이면 Redis Sorted Set 업데이트가 비활성화된다.
 func (h *WSHandler) WithRedisClient(rc *redis.Client) {
 	h.redisClient = rc
+}
+
+// WithPersistenceRepos I-14: 게임 영속저장용 PostgreSQL 레포지터리를 주입한다.
+// nil이면 DB 쓰기를 건너뛰고 경고만 기록한다 (postgres 미연결 허용).
+func (h *WSHandler) WithPersistenceRepos(
+	gameRepo repository.GameRepository,
+	playerRepo repository.GamePlayerRepository,
+	eventRepo repository.GameEventRepository,
+) {
+	h.pgGameRepo = gameRepo
+	h.pgGamePlayerRepo = playerRepo
+	h.pgGameEventRepo = eventRepo
 }
 
 // HandleWS GET /ws?roomId={roomId}
@@ -807,29 +824,22 @@ func (h *WSHandler) broadcastGameOver(conn *Connection, state *model.GameStateRe
 	h.cancelTurnTimer(conn.gameID)
 	h.cleanupGame(conn.gameID)
 
+	endType := "NORMAL"
+	if state.IsStalemate {
+		endType = "STALEMATE"
+	}
+
+	// I-15: resolveWinnerFromState로 stalemate 시에도 올바른 승자 판정
+	winnerID, winnerSeat := resolveWinnerFromState(state)
+
 	results := make([]WSPlayerResult, len(state.Players))
 	for i, p := range state.Players {
 		results[i] = WSPlayerResult{
 			Seat:           p.SeatOrder,
 			PlayerType:     p.PlayerType,
 			RemainingTiles: p.Rack,
-			IsWinner:       len(p.Rack) == 0,
+			IsWinner:       p.UserID == winnerID && winnerID != "",
 		}
-	}
-
-	winnerSeat := -1
-	winnerID := ""
-	for _, p := range state.Players {
-		if len(p.Rack) == 0 {
-			winnerSeat = p.SeatOrder
-			winnerID = p.UserID
-			break
-		}
-	}
-
-	endType := "NORMAL"
-	if state.IsStalemate {
-		endType = "STALEMATE"
 	}
 
 	h.hub.BroadcastToRoom(conn.roomID, &WSMessage{
@@ -841,6 +851,17 @@ func (h *WSHandler) broadcastGameOver(conn *Connection, state *model.GameStateRe
 			Results:    results,
 		},
 	})
+
+	h.logger.Info("ws: GAME_OVER broadcast",
+		zap.String("gameID", conn.gameID),
+		zap.String("roomID", conn.roomID),
+		zap.String("endType", endType),
+		zap.String("winnerID", winnerID),
+		zap.Int("winnerSeat", winnerSeat),
+	)
+
+	// I-14: 게임 결과 DB 영속화 (비동기)
+	go h.persistGameResult(state, endType)
 
 	// ELO 업데이트 (비동기)
 	go h.updateElo(state)
@@ -1559,10 +1580,19 @@ func (h *WSHandler) broadcastTurnEndFromState(roomID string, seat int, state *mo
 
 // broadcastGameOverFromState Connection 없이 roomID 기반으로 GAME_OVER를 브로드캐스트한다.
 // AI 턴에서 게임이 종료될 때 사용한다.
+// I-15: stalemate/forfeit 종료 시 winner 판정이 len(Rack)==0 이외의 경우에도 올바르게 동작하도록
+//       resolveWinnerFromState 헬퍼를 사용하여 교착 종료 시 최소 타일 보유자를 승자로 반환한다.
 func (h *WSHandler) broadcastGameOverFromState(roomID string, state *model.GameStateRedis) {
 	// 게임 종료 시 진행 중인 타이머 취소 + AI goroutine 취소 + Redis 정리
 	h.cancelTurnTimer(state.GameID)
 	h.cleanupGame(state.GameID)
+
+	endType := "NORMAL"
+	if state.IsStalemate {
+		endType = "STALEMATE"
+	}
+
+	winnerID, winnerSeat := resolveWinnerFromState(state)
 
 	results := make([]WSPlayerResult, len(state.Players))
 	for i, p := range state.Players {
@@ -1570,23 +1600,8 @@ func (h *WSHandler) broadcastGameOverFromState(roomID string, state *model.GameS
 			Seat:           p.SeatOrder,
 			PlayerType:     p.PlayerType,
 			RemainingTiles: p.Rack,
-			IsWinner:       len(p.Rack) == 0,
+			IsWinner:       p.UserID == winnerID && winnerID != "",
 		}
-	}
-
-	winnerSeat := -1
-	winnerID := ""
-	for _, p := range state.Players {
-		if len(p.Rack) == 0 {
-			winnerSeat = p.SeatOrder
-			winnerID = p.UserID
-			break
-		}
-	}
-
-	endType := "NORMAL"
-	if state.IsStalemate {
-		endType = "STALEMATE"
 	}
 
 	h.hub.BroadcastToRoom(roomID, &WSMessage{
@@ -1599,6 +1614,17 @@ func (h *WSHandler) broadcastGameOverFromState(roomID string, state *model.GameS
 		},
 	})
 
+	h.logger.Info("ws: GAME_OVER broadcast",
+		zap.String("gameID", state.GameID),
+		zap.String("roomID", roomID),
+		zap.String("endType", endType),
+		zap.String("winnerID", winnerID),
+		zap.Int("winnerSeat", winnerSeat),
+	)
+
+	// I-14: 게임 결과 DB 영속화 (비동기)
+	go h.persistGameResult(state, endType)
+
 	// ELO 업데이트 (비동기)
 	go h.updateElo(state)
 
@@ -1609,6 +1635,91 @@ func (h *WSHandler) broadcastGameOverFromState(roomID string, state *model.GameS
 			zap.Error(err),
 		)
 	}
+}
+
+// resolveWinnerFromState 게임 상태에서 승자 userID와 seat을 결정한다.
+// 1) 타일 0장인 플레이어 → 정상 승리
+// 2) Stalemate → 최소 점수(낮은 쪽) 플레이어 (service.finishGameStalemate 와 동일 로직)
+// 3) 무승부 / FORFEITED만 남은 경우 → winnerID=""
+func resolveWinnerFromState(state *model.GameStateRedis) (winnerID string, winnerSeat int) {
+	// 1. 정상 승리: rack 0장
+	for _, p := range state.Players {
+		if len(p.Rack) == 0 {
+			return p.UserID, p.SeatOrder
+		}
+	}
+
+	// 2. stalemate: 최소 점수 플레이어
+	if state.IsStalemate {
+		type scored struct {
+			userID string
+			seat   int
+			score  int
+			count  int
+		}
+		scores := make([]scored, 0, len(state.Players))
+		for _, p := range state.Players {
+			if p.Status == model.PlayerStatusForfeited {
+				continue
+			}
+			total := 0
+			for _, code := range p.Rack {
+				total += tileScoreFromCode(code)
+			}
+			scores = append(scores, scored{userID: p.UserID, seat: p.SeatOrder, score: total, count: len(p.Rack)})
+		}
+		if len(scores) == 0 {
+			return "", -1
+		}
+		best := scores[0]
+		for _, sc := range scores[1:] {
+			if sc.score < best.score || (sc.score == best.score && sc.count < best.count) {
+				best = sc
+			}
+		}
+		// 동점 확인
+		for _, sc := range scores {
+			if sc.userID != best.userID && sc.score == best.score && sc.count == best.count {
+				return "", -1 // 무승부
+			}
+		}
+		return best.userID, best.seat
+	}
+
+	return "", -1
+}
+
+// tileScoreFromCode 타일 코드에서 점수를 계산한다 (handler 내부 사용).
+// service.tileScore와 동일 로직이지만 handler 패키지가 service에 의존하지 않도록 복사한다.
+func tileScoreFromCode(code string) int {
+	if len(code) >= 2 && code[:2] == "JK" {
+		return 30 // 조커: engine.JokerScore와 동일
+	}
+	if len(code) < 2 {
+		return 0
+	}
+	// 숫자 부분 파싱: R7a → "7", B13b → "13"
+	num := 0
+	for i := 1; i < len(code); i++ {
+		c := code[i]
+		if c >= '0' && c <= '9' {
+			num = num*10 + int(c-'0')
+		} else {
+			break
+		}
+	}
+	return num
+}
+
+// isValidUUID s가 RFC 4122 UUID 형식인지 확인한다.
+// game_players.user_id / game_events.player_id 처럼 UUID 타입 컬럼에 삽입하기 전에
+// 게스트 ID("qa-테스터-xxx" 등 자유 문자열) 를 걸러내기 위해 사용한다.
+func isValidUUID(s string) bool {
+	if s == "" {
+		return false
+	}
+	_, err := uuid.Parse(s)
+	return err == nil
 }
 
 // updateElo 게임 종료 후 ELO 레이팅을 업데이트한다.
@@ -1800,6 +1911,135 @@ func (h *WSHandler) updateEloRedis(ctx context.Context, ch engine.EloChange) {
 		zap.String("userID", ch.UserID),
 		zap.String("newTier", ch.NewTier),
 		zap.Int("newRating", ch.NewRating),
+	)
+}
+
+// persistGameResult I-14: 게임 종료 시 games / game_players / game_events 테이블에 영속화한다.
+// pgGameRepo / pgGamePlayerRepo / pgGameEventRepo 중 하나라도 nil이면 해당 테이블은 건너뛴다.
+// 비동기 goroutine에서 호출된다 — 에러는 경고 로그로 처리하고 WS 흐름을 차단하지 않는다.
+func (h *WSHandler) persistGameResult(state *model.GameStateRedis, endType string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if h.pgGameRepo == nil && h.pgGamePlayerRepo == nil && h.pgGameEventRepo == nil {
+		return // postgres 미연결 — 조용히 건너뜀
+	}
+
+	// 승자 결정
+	winnerID := ""
+	winnerSeat := -1
+	for _, p := range state.Players {
+		if len(p.Rack) == 0 {
+			winnerID = p.UserID
+			winnerSeat = p.SeatOrder
+			break
+		}
+	}
+	// stalemate 시 ErrorCode="STALEMATE"를 기반으로 endType을 재지정한다
+	if state.IsStalemate {
+		endType = "STALEMATE"
+	}
+
+	// 1. games 테이블 삽입
+	if h.pgGameRepo != nil {
+		now := time.Now().UTC()
+		var wIDPtr *string
+		if winnerID != "" {
+			wIDPtr = &winnerID
+		}
+		var wSeatPtr *int
+		if winnerSeat >= 0 {
+			wSeatPtr = &winnerSeat
+		}
+		game := &model.Game{
+			ID:          state.GameID,
+			Status:      model.GameStatusFinished,
+			PlayerCount: len(state.Players),
+			WinnerID:    wIDPtr,
+			WinnerSeat:  wSeatPtr,
+			TurnCount:   state.TurnCount,
+			Settings:    "{}",
+			StartedAt:   nil, // 시작 시각 미기록 (향후 개선)
+			EndedAt:     &now,
+		}
+		if err := h.pgGameRepo.CreateGame(ctx, game); err != nil {
+			h.logger.Warn("ws: persistGameResult: create game failed",
+				zap.String("gameID", state.GameID),
+				zap.Error(err),
+			)
+			// games INSERT 실패해도 game_players / game_events 는 계속 시도
+		}
+	}
+
+	// 2. game_players 테이블 삽입
+	if h.pgGamePlayerRepo != nil {
+		for _, p := range state.Players {
+			finalTiles := len(p.Rack)
+			isWinner := p.UserID == winnerID && winnerID != ""
+			// Bug 1 fix: game_players.user_id is UUID type — only set when p.UserID is a valid UUID.
+			// 게스트 ID ("qa-테스터-xxx" 등 자유 문자열)는 NULL로 저장한다 (컬럼이 NULLABLE).
+			var userIDPtr *string
+			if isValidUUID(p.UserID) {
+				uid := p.UserID
+				userIDPtr = &uid
+			}
+			gp := &model.GamePlayer{
+				GameID:       state.GameID,
+				UserID:       userIDPtr,
+				PlayerType:   model.PlayerType(p.PlayerType),
+				AIModel:      p.AIModel,
+				AIPersona:    p.AIPersona,
+				AIDifficulty: p.AIDifficulty,
+				SeatOrder:    p.SeatOrder,
+				InitialTiles: 14,
+				FinalTiles:   &finalTiles,
+				IsWinner:     isWinner,
+			}
+			if err := h.pgGamePlayerRepo.CreateGamePlayer(ctx, gp); err != nil {
+				h.logger.Warn("ws: persistGameResult: create game_player failed",
+					zap.String("gameID", state.GameID),
+					zap.Int("seat", p.SeatOrder),
+					zap.Error(err),
+				)
+			}
+		}
+	}
+
+	// 3. game_events 테이블 — GAME_END 이벤트 1건 삽입
+	if h.pgGameEventRepo != nil {
+		actorSeat := 0
+		if winnerSeat >= 0 {
+			actorSeat = winnerSeat
+		}
+		// Bug 2 fix: game_events.player_id is UUID NOT NULL.
+		// winnerID가 빈 문자열이거나 UUID 형식이 아닌 경우(forfeit/stalemate 무승부 또는 게스트)
+		// uuid.Nil("00000000-0000-0000-0000-000000000000") 을 시스템 센티넬로 사용한다.
+		actorID := winnerID
+		if !isValidUUID(actorID) {
+			actorID = uuid.Nil.String()
+		}
+		payload := fmt.Sprintf(`{"endType":"%s","turnCount":%d}`, endType, state.TurnCount)
+		ev := &model.GameEvent{
+			GameID:     state.GameID,
+			PlayerID:   actorID,
+			TurnNumber: state.TurnCount,
+			Seat:       actorSeat,
+			EventType:  model.EventTypeGameEnd,
+			Payload:    payload,
+		}
+		if err := h.pgGameEventRepo.CreateGameEvent(ctx, ev); err != nil {
+			h.logger.Warn("ws: persistGameResult: create game_event failed",
+				zap.String("gameID", state.GameID),
+				zap.Error(err),
+			)
+		}
+	}
+
+	h.logger.Info("ws: game persisted",
+		zap.String("gameID", state.GameID),
+		zap.String("endType", endType),
+		zap.Int("turnCount", state.TurnCount),
+		zap.String("winnerID", winnerID),
 	)
 }
 
@@ -2026,6 +2266,9 @@ func (h *WSHandler) forfeitAndBroadcast(roomID, gameID string, seat int, userID,
 				Results:    results,
 			},
 		})
+
+		// I-14: 게임 결과 DB 영속화 (비동기)
+		go h.persistGameResult(state, endType)
 
 		go h.updateElo(state)
 
