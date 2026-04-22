@@ -13,6 +13,7 @@ import { v3TunedVariant } from './variants/v3-tuned.variant';
 import { v4Variant } from './variants/v4.variant';
 import { v4_1Variant } from './variants/v4-1.variant';
 import { v5Variant } from './variants/v5.variant';
+import { v7OllamaMeldVariant } from './variants/v7-ollama-meld.variant';
 import { characterKoVariant } from './variants/character-ko.variant';
 
 /**
@@ -130,6 +131,7 @@ export class PromptRegistry implements OnModuleInit {
     this.register(v4Variant);
     this.register(v4_1Variant);
     this.register(v5Variant);
+    this.register(v7OllamaMeldVariant);
     this.register(characterKoVariant);
   }
 

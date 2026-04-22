@@ -25,9 +25,12 @@ env:
   DAILY_COST_LIMIT_USD: "20"
   HOURLY_USER_COST_LIMIT_USD: "5"
   # PromptRegistry (SP3 / docs/02-design/39 §6.5) — 빈 값 = default-recommendation
+  # 운영 기준: docs/02-design/42-prompt-variant-standard.md §2 표 B (SSOT)
   # PROMPT_VARIANT="v3" 1줄로 5개 모델 전부 v3 전환 가능.
   # v2-zh: DeepSeek Reasoner 전용 중문 variant. Day 7 A/B 실험용.
   # 활성화: kubectl -n rummikub set env deployment/ai-adapter DEEPSEEK_REASONER_PROMPT_VARIANT=v2-zh
+  # v7-ollama-meld: Ollama(qwen2.5:3b) 전용 하드코딩 프롬프트 (Sprint 7 hotfix, 2026-04-22)
+  # 활성화: kubectl -n rummikub set env deployment/ai-adapter OLLAMA_PROMPT_VARIANT=v7-ollama-meld
   PROMPT_VARIANT: ""
   OPENAI_PROMPT_VARIANT: ""
   CLAUDE_PROMPT_VARIANT: ""
