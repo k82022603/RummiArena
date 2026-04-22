@@ -35,7 +35,7 @@ func newTurnLimitTestEnv(t *testing.T, maxTurns int) (*WSHandler, repository.Mem
 	gameSvc := service.NewGameService(gameRepo, service.WithMaxTurnsLimit(maxTurns))
 	turnSvc := service.NewTurnService(gameRepo, gameSvc)
 	roomRepo := repository.NewMemoryRoomRepo()
-	roomSvc := service.NewRoomService(roomRepo, repository.NewMemoryGameStateRepoAdapter())
+	roomSvc := service.NewRoomService(roomRepo, repository.NewMemoryGameStateRepoAdapter(), nil)
 	h := &WSHandler{
 		hub:           NewHub(zap.NewNop()),
 		roomSvc:       roomSvc,

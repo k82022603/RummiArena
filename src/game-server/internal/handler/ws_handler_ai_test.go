@@ -43,7 +43,7 @@ func newAITestHandler(aiClient client.AIClientInterface, gameSvc service.GameSer
 	hub := NewHub(zap.NewNop())
 	roomRepo := repository.NewMemoryRoomRepo()
 	gameStateRepo := repository.NewMemoryGameStateRepoAdapter()
-	roomSvc := service.NewRoomService(roomRepo, gameStateRepo)
+	roomSvc := service.NewRoomService(roomRepo, gameStateRepo, nil)
 	turnSvc := service.NewTurnService(gameStateRepo, gameSvc)
 
 	return &WSHandler{

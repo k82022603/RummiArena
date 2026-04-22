@@ -91,7 +91,7 @@ func newPersistTestHandler() (*WSHandler, *mockGameRepo, *mockGamePlayerRepo, *m
 	gameSvc := service.NewGameService(gameStateRepo)
 	turnSvc := service.NewTurnService(gameStateRepo, gameSvc)
 	roomRepo := repository.NewMemoryRoomRepo()
-	roomSvc := service.NewRoomService(roomRepo, repository.NewMemoryGameStateRepoAdapter())
+	roomSvc := service.NewRoomService(roomRepo, repository.NewMemoryGameStateRepoAdapter(), nil)
 
 	pgGame := &mockGameRepo{}
 	pgPlayer := &mockGamePlayerRepo{}
@@ -150,7 +150,7 @@ func TestPersistGameResult_NormalWin(t *testing.T) {
 	h, pgGame, pgPlayer, pgEvent := newPersistTestHandler()
 
 	state := makeFinishedState("game-001", testWinnerUUID, 0)
-	h.persistGameResult(state, "NORMAL")
+	h.persistGameResult(state, "NORMAL", "")
 
 	require.Len(t, pgGame.games, 1, "games 테이블 1건 삽입")
 	assert.Equal(t, "game-001", pgGame.games[0].ID)
@@ -192,7 +192,7 @@ func TestPersistGameResult_Stalemate(t *testing.T) {
 	}
 
 	// endType 인자가 "NORMAL"이어도 IsStalemate=true면 STALEMATE로 덮임
-	h.persistGameResult(state, "NORMAL")
+	h.persistGameResult(state, "NORMAL", "")
 
 	require.Len(t, pgGame.games, 1)
 	assert.Nil(t, pgGame.games[0].WinnerID, "교착 시 winner 없음 (타일 동점)")
@@ -211,7 +211,7 @@ func TestPersistGameResult_Forfeit(t *testing.T) {
 
 	state := makeFinishedState("game-003", testWinnerUUID, 0)
 
-	h.persistGameResult(state, "FORFEIT")
+	h.persistGameResult(state, "FORFEIT", "")
 
 	require.Len(t, pgGame.games, 1)
 	require.Len(t, pgEvent.events, 1)
@@ -232,7 +232,7 @@ func TestPersistGameResult_NilRepos(t *testing.T) {
 	state := makeFinishedState("game-004", testWinnerUUID, 0)
 
 	assert.NotPanics(t, func() {
-		h.persistGameResult(state, "NORMAL")
+		h.persistGameResult(state, "NORMAL", "")
 	})
 }
 
@@ -341,7 +341,7 @@ func TestPersistGameResult_AsyncSafe(t *testing.T) {
 		go func(gid string) {
 			defer wg.Done()
 			state := makeFinishedState(gid, testWinnerUUID, 0)
-			h.persistGameResult(state, "NORMAL")
+			h.persistGameResult(state, "NORMAL", "")
 		}(gameID)
 	}
 	wg.Wait()
@@ -394,7 +394,7 @@ func TestPersistGameResult_GuestUserID_NullInDB(t *testing.T) {
 		IsStalemate: false,
 	}
 
-	h.persistGameResult(state, "NORMAL")
+	h.persistGameResult(state, "NORMAL", "")
 
 	require.Len(t, pgPlayer.players, 2, "game_players 2건 삽입")
 	for _, gp := range pgPlayer.players {
@@ -436,7 +436,7 @@ func TestPersistGameResult_EmptyWinnerID_GameEventUsesNilUUID(t *testing.T) {
 		IsStalemate: false,
 	}
 
-	h.persistGameResult(state, "FORFEIT")
+	h.persistGameResult(state, "FORFEIT", "")
 
 	require.Len(t, pgEvent.events, 1)
 	playerID := pgEvent.events[0].PlayerID
@@ -473,7 +473,7 @@ func TestPersistGameResult_MixedPlayers_UUIDAndGuest(t *testing.T) {
 		IsStalemate: false,
 	}
 
-	h.persistGameResult(state, "NORMAL")
+	h.persistGameResult(state, "NORMAL", "")
 
 	require.Len(t, pgPlayer.players, 2)
 	for _, gp := range pgPlayer.players {

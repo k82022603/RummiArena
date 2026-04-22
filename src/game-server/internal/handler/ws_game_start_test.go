@@ -23,7 +23,7 @@ func TestNotifyGameStarted_SendsGameStateAndTurnStart(t *testing.T) {
 	gameStateRepo := repository.NewMemoryGameStateRepoAdapter()
 	roomRepo := repository.NewMemoryRoomRepo()
 	gameSvc := service.NewGameService(gameStateRepo)
-	roomSvc := service.NewRoomService(roomRepo, gameStateRepo)
+	roomSvc := service.NewRoomService(roomRepo, gameStateRepo, nil)
 	turnSvc := service.NewTurnService(gameStateRepo, gameSvc)
 
 	wsHandler := &WSHandler{
@@ -122,7 +122,7 @@ func TestNotifyGameStarted_SetsConnectionGameID(t *testing.T) {
 	gameStateRepo := repository.NewMemoryGameStateRepoAdapter()
 	roomRepo := repository.NewMemoryRoomRepo()
 	gameSvc := service.NewGameService(gameStateRepo)
-	roomSvc := service.NewRoomService(roomRepo, gameStateRepo)
+	roomSvc := service.NewRoomService(roomRepo, gameStateRepo, nil)
 	turnSvc := service.NewTurnService(gameStateRepo, gameSvc)
 
 	wsHandler := &WSHandler{
@@ -175,7 +175,7 @@ func TestNotifyGameStarted_TurnStartHasCorrectSeat(t *testing.T) {
 	gameStateRepo := repository.NewMemoryGameStateRepoAdapter()
 	roomRepo := repository.NewMemoryRoomRepo()
 	gameSvc := service.NewGameService(gameStateRepo)
-	roomSvc := service.NewRoomService(roomRepo, gameStateRepo)
+	roomSvc := service.NewRoomService(roomRepo, gameStateRepo, nil)
 	turnSvc := service.NewTurnService(gameStateRepo, gameSvc)
 
 	wsHandler := &WSHandler{
@@ -251,6 +251,7 @@ func TestRoomHandler_WithGameStartNotifier(t *testing.T) {
 	roomSvc := service.NewRoomService(
 		repository.NewMemoryRoomRepo(),
 		repository.NewMemoryGameStateRepoAdapter(),
+		nil,
 	)
 	rh := NewRoomHandler(roomSvc)
 

@@ -52,7 +52,7 @@ func TestRoomLifecycle_FinishRoom_StatusBecomesFinished(t *testing.T) {
 	// (HTTP 엔드포인트가 없으므로 서비스 레이어를 직접 테스트)
 	roomRepo := repository.NewMemoryRoomRepo()
 	gameStateRepo := repository.NewMemoryGameStateRepoAdapter()
-	roomSvc := service.NewRoomService(roomRepo, gameStateRepo)
+	roomSvc := service.NewRoomService(roomRepo, gameStateRepo, nil)
 
 	// 별도 방을 만들어 FinishRoom 단위 동작 확인
 	finishRoom, err := roomSvc.CreateRoom(&service.CreateRoomRequest{
@@ -81,7 +81,7 @@ func TestRoomLifecycle_FinishRoom_StatusBecomesFinished(t *testing.T) {
 func TestRoomLifecycle_FinishRoom_Idempotent(t *testing.T) {
 	roomRepo := repository.NewMemoryRoomRepo()
 	gameStateRepo := repository.NewMemoryGameStateRepoAdapter()
-	roomSvc := service.NewRoomService(roomRepo, gameStateRepo)
+	roomSvc := service.NewRoomService(roomRepo, gameStateRepo, nil)
 
 	room, err := roomSvc.CreateRoom(&service.CreateRoomRequest{
 		Name:           "멱등성 테스트 방",
@@ -109,7 +109,7 @@ func TestRoomLifecycle_FinishRoom_Idempotent(t *testing.T) {
 func TestRoomLifecycle_FinishRoom_CancelledIsNoOp(t *testing.T) {
 	roomRepo := repository.NewMemoryRoomRepo()
 	gameStateRepo := repository.NewMemoryGameStateRepoAdapter()
-	roomSvc := service.NewRoomService(roomRepo, gameStateRepo)
+	roomSvc := service.NewRoomService(roomRepo, gameStateRepo, nil)
 
 	room, err := roomSvc.CreateRoom(&service.CreateRoomRequest{
 		Name:           "취소된 방",
@@ -142,7 +142,7 @@ func TestRoomLifecycle_FinishRoom_CancelledIsNoOp(t *testing.T) {
 func TestRoomLifecycle_FinishRoom_NotFound(t *testing.T) {
 	roomRepo := repository.NewMemoryRoomRepo()
 	gameStateRepo := repository.NewMemoryGameStateRepoAdapter()
-	roomSvc := service.NewRoomService(roomRepo, gameStateRepo)
+	roomSvc := service.NewRoomService(roomRepo, gameStateRepo, nil)
 
 	err := roomSvc.FinishRoom("non-existent-room-id")
 	require.Error(t, err)
@@ -160,7 +160,7 @@ func TestRoomLifecycle_ListRooms_ExcludesFinished(t *testing.T) {
 	// (중복 방 참가 제한으로 동일 사용자가 여러 방을 만들 수 없으므로 HTTP 부분은 생략)
 	roomRepo := repository.NewMemoryRoomRepo()
 	gameStateRepo := repository.NewMemoryGameStateRepoAdapter()
-	roomSvc := service.NewRoomService(roomRepo, gameStateRepo)
+	roomSvc := service.NewRoomService(roomRepo, gameStateRepo, nil)
 
 	activeRoom, err := roomSvc.CreateRoom(&service.CreateRoomRequest{
 		Name:           "활성 방",

@@ -860,8 +860,8 @@ func (h *WSHandler) broadcastGameOver(conn *Connection, state *model.GameStateRe
 		zap.Int("winnerSeat", winnerSeat),
 	)
 
-	// I-14: 게임 결과 DB 영속화 (비동기)
-	go h.persistGameResult(state, endType)
+	// I-14 + D-03: 게임 결과 DB 영속화 (비동기, roomID 전달)
+	go h.persistGameResult(state, endType, conn.roomID)
 
 	// ELO 업데이트 (비동기)
 	go h.updateElo(state)
@@ -1622,8 +1622,8 @@ func (h *WSHandler) broadcastGameOverFromState(roomID string, state *model.GameS
 		zap.Int("winnerSeat", winnerSeat),
 	)
 
-	// I-14: 게임 결과 DB 영속화 (비동기)
-	go h.persistGameResult(state, endType)
+	// I-14 + D-03: 게임 결과 DB 영속화 (비동기, roomID 전달)
+	go h.persistGameResult(state, endType, roomID)
 
 	// ELO 업데이트 (비동기)
 	go h.updateElo(state)
@@ -1914,10 +1914,11 @@ func (h *WSHandler) updateEloRedis(ctx context.Context, ch engine.EloChange) {
 	)
 }
 
-// persistGameResult I-14: 게임 종료 시 games / game_players / game_events 테이블에 영속화한다.
+// persistGameResult I-14 + D-03: 게임 종료 시 games / game_players / game_events 테이블에 영속화한다.
 // pgGameRepo / pgGamePlayerRepo / pgGameEventRepo 중 하나라도 nil이면 해당 테이블은 건너뛴다.
+// roomID: rooms 테이블에 이미 존재하는 방 ID — games.room_id FK 정상화 (D-03).
 // 비동기 goroutine에서 호출된다 — 에러는 경고 로그로 처리하고 WS 흐름을 차단하지 않는다.
-func (h *WSHandler) persistGameResult(state *model.GameStateRedis, endType string) {
+func (h *WSHandler) persistGameResult(state *model.GameStateRedis, endType string, roomID string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -1951,8 +1952,20 @@ func (h *WSHandler) persistGameResult(state *model.GameStateRedis, endType strin
 		if winnerSeat >= 0 {
 			wSeatPtr = &winnerSeat
 		}
+		// D-03: rooms 테이블에 row가 있으면 FK 정상화 (roomID가 빈 문자열이면 nil 유지)
+		var roomIDPtr *string
+		roomCode := ""
+		if roomID != "" {
+			roomIDPtr = &roomID
+			// roomCode 조회: rooms 테이블에서 조회하거나 roomSvc를 통해 메모리에서 조회
+			if room, err := h.roomSvc.GetRoom(roomID); err == nil {
+				roomCode = room.RoomCode
+			}
+		}
 		game := &model.Game{
 			ID:          state.GameID,
+			RoomID:      roomIDPtr,
+			RoomCode:    roomCode,
 			Status:      model.GameStatusFinished,
 			PlayerCount: len(state.Players),
 			WinnerID:    wIDPtr,
@@ -2267,8 +2280,8 @@ func (h *WSHandler) forfeitAndBroadcast(roomID, gameID string, seat int, userID,
 			},
 		})
 
-		// I-14: 게임 결과 DB 영속화 (비동기)
-		go h.persistGameResult(state, endType)
+		// I-14 + D-03: 게임 결과 DB 영속화 (비동기, roomID 전달)
+		go h.persistGameResult(state, endType, roomID)
 
 		go h.updateElo(state)
 

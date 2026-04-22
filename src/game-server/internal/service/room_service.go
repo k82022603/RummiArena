@@ -1,7 +1,9 @@
 package service
 
 import (
+	"context"
 	"fmt"
+	"log"
 	"math/rand"
 	"time"
 
@@ -47,22 +49,26 @@ type CreateRoomRequest struct {
 }
 
 type roomService struct {
-	roomRepo  repository.MemoryRoomRepository
-	gameRepo  repository.MemoryGameStateRepository
-	gameState *gameService        // 게임 시작 시 gameService 사용
-	cooldown  CooldownChecker     // AI 게임 생성 쿨다운 (nil이면 비활성)
+	roomRepo      repository.MemoryRoomRepository
+	gameStateRepo repository.MemoryGameStateRepository // 인메모리 게임 상태 레포 (정본)
+	pgGameRepo    repository.GameRepository             // PostgreSQL best-effort 레포 (nil 허용)
+	gameState     *gameService                          // 게임 시작 시 gameService 사용
+	cooldown      CooldownChecker                       // AI 게임 생성 쿨다운 (nil이면 비활성)
 }
 
-// NewRoomService RoomService 구현체 생성자
+// NewRoomService RoomService 구현체 생성자.
+// pgGameRepo: nil이면 Dual-Write를 비활성화한다 (테스트/DB 미연결 환경에서 기존 동작 유지).
 func NewRoomService(
 	roomRepo repository.MemoryRoomRepository,
-	gameRepo repository.MemoryGameStateRepository,
+	gameStateRepo repository.MemoryGameStateRepository,
+	pgGameRepo repository.GameRepository,
 ) RoomService {
-	gs := &gameService{gameRepo: gameRepo, snapshots: make(map[string]*turnSnapshot)}
+	gs := &gameService{gameRepo: gameStateRepo, snapshots: make(map[string]*turnSnapshot)}
 	return &roomService{
-		roomRepo:  roomRepo,
-		gameRepo:  gameRepo,
-		gameState: gs,
+		roomRepo:      roomRepo,
+		gameStateRepo: gameStateRepo,
+		pgGameRepo:    pgGameRepo,
+		gameState:     gs,
 	}
 }
 
@@ -71,6 +77,42 @@ func NewRoomService(
 func SetCooldownChecker(svc RoomService, checker CooldownChecker) {
 	if rs, ok := svc.(*roomService); ok {
 		rs.cooldown = checker
+	}
+}
+
+// pgBestEffortCreateRoom PostgreSQL에 방 생성을 best-effort로 기록한다.
+// pgGameRepo가 nil이거나 HostID가 유효 UUID가 아니면 조용히 건너뛴다.
+// 실패 시 log.Printf로 기록하고 반환값은 없다 (게임 진행을 차단하지 않음).
+func (s *roomService) pgBestEffortCreateRoom(room *model.RoomState) {
+	if s.pgGameRepo == nil {
+		return
+	}
+	dbRoom := roomStateToModel(room)
+	if dbRoom == nil {
+		return // 비-UUID 호스트 → FK 위반 방지
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := s.pgGameRepo.CreateRoom(ctx, dbRoom); err != nil {
+		log.Printf("room_service: postgres create room best-effort failed (roomID=%s): %v", room.ID, err)
+	}
+}
+
+// pgBestEffortUpdateRoom PostgreSQL에 방 상태 변경을 best-effort로 기록한다.
+// pgGameRepo가 nil이거나 HostID가 유효 UUID가 아니면 조용히 건너뛴다.
+// 실패 시 log.Printf로 기록하고 반환값은 없다.
+func (s *roomService) pgBestEffortUpdateRoom(room *model.RoomState) {
+	if s.pgGameRepo == nil {
+		return
+	}
+	dbRoom := roomStateToModel(room)
+	if dbRoom == nil {
+		return // 비-UUID 호스트 → FK 위반 방지
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := s.pgGameRepo.UpdateRoom(ctx, dbRoom); err != nil {
+		log.Printf("room_service: postgres update room best-effort failed (roomID=%s): %v", room.ID, err)
 	}
 }
 
@@ -167,6 +209,9 @@ func (s *roomService) CreateRoom(req *CreateRoomRequest) (*model.RoomState, erro
 	// 사용자-방 매핑 설정
 	_ = s.roomRepo.SetActiveRoomForUser(req.HostUserID, roomID)
 
+	// Dual-Write: PostgreSQL best-effort 기록 (메모리 저장 성공 후)
+	s.pgBestEffortCreateRoom(room)
+
 	// AI 게임 생성 쿨다운 설정 (성공 후에만)
 	if len(req.AIPlayers) > 0 && s.cooldown != nil {
 		s.cooldown.SetCooldown(req.HostUserID)
@@ -245,6 +290,9 @@ func (s *roomService) JoinRoom(roomID, userID, displayName string) error {
 	// 사용자-방 매핑 설정
 	_ = s.roomRepo.SetActiveRoomForUser(userID, roomID)
 
+	// Dual-Write: PostgreSQL best-effort 업데이트
+	s.pgBestEffortUpdateRoom(room)
+
 	return nil
 }
 
@@ -294,6 +342,10 @@ func (s *roomService) LeaveRoom(roomID, userID string) (*model.RoomState, error)
 	if err := s.roomRepo.SaveRoom(room); err != nil {
 		return nil, fmt.Errorf("room_service: save room after leave: %w", err)
 	}
+
+	// Dual-Write: PostgreSQL best-effort 업데이트
+	s.pgBestEffortUpdateRoom(room)
+
 	return room, nil
 }
 
@@ -341,6 +393,9 @@ func (s *roomService) StartGame(roomID, hostUserID string) (*model.GameStateRedi
 		return nil, fmt.Errorf("room_service: save room after start: %w", err)
 	}
 
+	// Dual-Write: PostgreSQL best-effort 업데이트 (Status=PLAYING, GameID 설정됨)
+	s.pgBestEffortUpdateRoom(room)
+
 	return gameState, nil
 }
 
@@ -378,7 +433,14 @@ func (s *roomService) FinishRoom(roomID string) error {
 		}
 	}
 
-	return s.roomRepo.SaveRoom(room)
+	if err := s.roomRepo.SaveRoom(room); err != nil {
+		return err
+	}
+
+	// Dual-Write: PostgreSQL best-effort 업데이트 (Status=FINISHED)
+	s.pgBestEffortUpdateRoom(room)
+
+	return nil
 }
 
 // ClearActiveRoomForUser 특정 사용자의 활성 방 매핑을 제거한다.

@@ -26,7 +26,7 @@ func newCleanupTestEnv(aiClient client.AIClientInterface) (*WSHandler, repositor
 	gameSvc := service.NewGameService(gameRepo)
 	turnSvc := service.NewTurnService(gameRepo, gameSvc)
 	roomRepo := repository.NewMemoryRoomRepo()
-	roomSvc := service.NewRoomService(roomRepo, repository.NewMemoryGameStateRepoAdapter())
+	roomSvc := service.NewRoomService(roomRepo, repository.NewMemoryGameStateRepoAdapter(), nil)
 	h := &WSHandler{
 		hub:           NewHub(zap.NewNop()),
 		roomSvc:       roomSvc,
