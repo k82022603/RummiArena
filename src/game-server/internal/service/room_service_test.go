@@ -1,11 +1,15 @@
 package service
 
 import (
+	"context"
+	"errors"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/k82022603/RummiArena/game-server/internal/model"
 	"github.com/k82022603/RummiArena/game-server/internal/repository"
 )
 
@@ -13,7 +17,7 @@ func newRoomService(t *testing.T) RoomService {
 	t.Helper()
 	roomRepo := repository.NewMemoryRoomRepo()
 	gameRepo := repository.NewMemoryGameStateRepo()
-	return NewRoomService(roomRepo, gameRepo)
+	return NewRoomService(roomRepo, gameRepo, nil)
 }
 
 // ============================================================
@@ -317,7 +321,7 @@ func newRoomServiceWithCooldown(t *testing.T, checker CooldownChecker) RoomServi
 	t.Helper()
 	roomRepo := repository.NewMemoryRoomRepo()
 	gameRepo := repository.NewMemoryGameStateRepo()
-	svc := NewRoomService(roomRepo, gameRepo)
+	svc := NewRoomService(roomRepo, gameRepo, nil)
 	SetCooldownChecker(svc, checker)
 	return svc
 }
@@ -505,4 +509,198 @@ func TestAICooldown_DifferentUsers_Independent(t *testing.T) {
 		AIPlayers:      []AIPlayerRequest{{Type: "AI_CLAUDE", Difficulty: "hard"}},
 	})
 	require.NoError(t, err, "다른 사용자의 쿨다운은 서로 독립적이어야 한다")
+}
+
+// ============================================================
+// D-03 Phase 1: Dual-Write 단위 테스트
+// ============================================================
+
+// mockPgGameRepo D-03 테스트용 GameRepository mock.
+type mockPgGameRepo struct {
+	mu              sync.Mutex
+	createRoomCalls []*model.Room
+	updateRoomCalls []*model.Room
+	failCreateRoom  bool
+	failUpdateRoom  bool
+}
+
+func (m *mockPgGameRepo) CreateGame(_ context.Context, _ *model.Game) error { return nil }
+func (m *mockPgGameRepo) GetGame(_ context.Context, _ string) (*model.Game, error) {
+	return nil, nil
+}
+func (m *mockPgGameRepo) UpdateGame(_ context.Context, _ *model.Game) error { return nil }
+
+func (m *mockPgGameRepo) CreateRoom(_ context.Context, room *model.Room) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.failCreateRoom {
+		m.failCreateRoom = false
+		return errors.New("simulated postgres create room failure")
+	}
+	cp := *room
+	m.createRoomCalls = append(m.createRoomCalls, &cp)
+	return nil
+}
+
+func (m *mockPgGameRepo) GetRoom(_ context.Context, _ string) (*model.Room, error) {
+	return nil, nil
+}
+
+func (m *mockPgGameRepo) UpdateRoom(_ context.Context, room *model.Room) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.failUpdateRoom {
+		m.failUpdateRoom = false
+		return errors.New("simulated postgres update room failure")
+	}
+	cp := *room
+	m.updateRoomCalls = append(m.updateRoomCalls, &cp)
+	return nil
+}
+
+func (m *mockPgGameRepo) ListRooms(_ context.Context) ([]*model.Room, error) { return nil, nil }
+
+// newRoomServiceWithMockPg UUID 호스트 + mockPgGameRepo로 RoomService를 생성한다.
+func newRoomServiceWithMockPg(t *testing.T, mock repository.GameRepository) RoomService {
+	t.Helper()
+	roomRepo := repository.NewMemoryRoomRepo()
+	gameRepo := repository.NewMemoryGameStateRepo()
+	return NewRoomService(roomRepo, gameRepo, mock)
+}
+
+// TestRoomService_CreateRoom_WritesToPostgres CreateRoom 후 PostgreSQL에 방이 기록되는지 확인.
+func TestRoomService_CreateRoom_WritesToPostgres(t *testing.T) {
+	mock := &mockPgGameRepo{}
+	svc := newRoomServiceWithMockPg(t, mock)
+
+	// HostUserID는 유효 UUID여야 FK 방어를 통과한다.
+	hostID := "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+	room, err := svc.CreateRoom(&CreateRoomRequest{
+		Name:           "테스트 방",
+		PlayerCount:    2,
+		TurnTimeoutSec: 60,
+		HostUserID:     hostID,
+	})
+	require.NoError(t, err)
+
+	mock.mu.Lock()
+	defer mock.mu.Unlock()
+	require.Len(t, mock.createRoomCalls, 1, "PostgreSQL CreateRoom 1회 호출")
+	dbRoom := mock.createRoomCalls[0]
+	assert.Equal(t, room.ID, dbRoom.ID)
+	assert.Equal(t, hostID, dbRoom.HostUserID, "HostID → HostUserID 매핑 확인")
+	assert.Equal(t, 60, dbRoom.TurnTimeout, "TurnTimeoutSec → TurnTimeout 매핑 확인")
+	assert.Equal(t, model.RoomStatusWaiting, dbRoom.Status)
+}
+
+// TestRoomService_StartGame_UpdatesRoomStatus StartGame 후 PostgreSQL에 PLAYING 상태로 업데이트 확인.
+func TestRoomService_StartGame_UpdatesRoomStatus(t *testing.T) {
+	mock := &mockPgGameRepo{}
+	svc := newRoomServiceWithMockPg(t, mock)
+
+	hostID := "11111111-1111-1111-1111-111111111111"
+	guestID := "22222222-2222-2222-2222-222222222222"
+
+	// 방 생성 (CreateRoom → 1회 CreateRoom 호출)
+	room, err := svc.CreateRoom(&CreateRoomRequest{
+		Name:           "게임 시작 테스트 방",
+		PlayerCount:    2,
+		TurnTimeoutSec: 60,
+		HostUserID:     hostID,
+	})
+	require.NoError(t, err)
+
+	// 게스트 참가 (JoinRoom → 1회 UpdateRoom 호출)
+	err = svc.JoinRoom(room.ID, guestID, "게스트")
+	require.NoError(t, err)
+
+	// 게임 시작 (StartGame → 1회 UpdateRoom 호출)
+	_, err = svc.StartGame(room.ID, hostID)
+	require.NoError(t, err)
+
+	mock.mu.Lock()
+	defer mock.mu.Unlock()
+
+	// UpdateRoom 호출 중 마지막이 PLAYING 상태여야 한다
+	require.GreaterOrEqual(t, len(mock.updateRoomCalls), 1, "UpdateRoom 최소 1회 호출 (StartGame)")
+	lastUpdate := mock.updateRoomCalls[len(mock.updateRoomCalls)-1]
+	assert.Equal(t, model.RoomStatusPlaying, lastUpdate.Status, "StartGame 후 상태는 PLAYING")
+	assert.NotNil(t, lastUpdate.GameID, "GameID가 설정되어야 한다")
+}
+
+// TestRoomService_FinishRoom_UpdatesRoomStatusFinished FinishRoom 후 FINISHED 상태 업데이트 확인.
+func TestRoomService_FinishRoom_UpdatesRoomStatusFinished(t *testing.T) {
+	mock := &mockPgGameRepo{}
+	svc := newRoomServiceWithMockPg(t, mock)
+
+	hostID := "33333333-3333-3333-3333-333333333333"
+	room, err := svc.CreateRoom(&CreateRoomRequest{
+		Name:           "종료 테스트 방",
+		PlayerCount:    2,
+		TurnTimeoutSec: 60,
+		HostUserID:     hostID,
+	})
+	require.NoError(t, err)
+
+	// FinishRoom 호출
+	err = svc.FinishRoom(room.ID)
+	require.NoError(t, err)
+
+	mock.mu.Lock()
+	defer mock.mu.Unlock()
+
+	require.GreaterOrEqual(t, len(mock.updateRoomCalls), 1, "UpdateRoom 최소 1회 호출 (FinishRoom)")
+	lastUpdate := mock.updateRoomCalls[len(mock.updateRoomCalls)-1]
+	assert.Equal(t, model.RoomStatusFinished, lastUpdate.Status, "FinishRoom 후 상태는 FINISHED")
+}
+
+// TestRoomService_DualWrite_PostgresFailure_MemoryStillSucceeds
+// PostgreSQL 쓰기 실패 시 메모리 저장은 성공 (best-effort 원칙).
+func TestRoomService_DualWrite_PostgresFailure_MemoryStillSucceeds(t *testing.T) {
+	mock := &mockPgGameRepo{failCreateRoom: true} // 첫 번째 CreateRoom 호출 실패
+	svc := newRoomServiceWithMockPg(t, mock)
+
+	hostID := "44444444-4444-4444-4444-444444444444"
+	room, err := svc.CreateRoom(&CreateRoomRequest{
+		Name:           "PG 실패 테스트 방",
+		PlayerCount:    2,
+		TurnTimeoutSec: 60,
+		HostUserID:     hostID,
+	})
+	// PostgreSQL 실패에도 메모리 저장은 성공해야 한다
+	require.NoError(t, err, "PostgreSQL best-effort 실패해도 CreateRoom은 성공해야 한다")
+	require.NotNil(t, room)
+
+	// 메모리에서 조회 가능
+	fetched, err := svc.GetRoom(room.ID)
+	require.NoError(t, err, "메모리에서 방 조회 가능")
+	assert.Equal(t, room.ID, fetched.ID)
+
+	// PostgreSQL mock에는 기록 없음 (실패했으므로)
+	mock.mu.Lock()
+	defer mock.mu.Unlock()
+	assert.Len(t, mock.createRoomCalls, 0, "PG 실패 시 createRoomCalls에 기록 없음")
+}
+
+// TestRoomService_DualWrite_GuestHost_SkipsDB
+// 비-UUID 호스트(게스트)가 방을 생성하면 DB 쓰기를 스킵한다.
+func TestRoomService_DualWrite_GuestHost_SkipsDB(t *testing.T) {
+	mock := &mockPgGameRepo{}
+	svc := newRoomServiceWithMockPg(t, mock)
+
+	// 게스트 ID (UUID 형식 아님) — FK 위반 방지를 위해 DB 쓰기 스킵해야 함
+	guestHostID := "qa-테스터-1234567890"
+	room, err := svc.CreateRoom(&CreateRoomRequest{
+		Name:           "게스트 호스트 방",
+		PlayerCount:    2,
+		TurnTimeoutSec: 60,
+		HostUserID:     guestHostID,
+	})
+	require.NoError(t, err, "게스트 호스트도 메모리 방 생성 성공")
+	require.NotNil(t, room)
+
+	// DB 쓰기는 스킵됨
+	mock.mu.Lock()
+	defer mock.mu.Unlock()
+	assert.Len(t, mock.createRoomCalls, 0, "비-UUID 호스트는 DB 쓰기 스킵")
 }
