@@ -175,14 +175,18 @@ test.describe("TC-RR: 재배치 합병 (§6.2 유형 2)", () => {
   });
 
   // ==================================================================
-  // Case 2: I-2 핫픽스 이후 기대치 — hasInitialMeld=false 에서도 호환 시 append 허용
+  // Case 2: FINDING-01 수정 후 기대치 — hasInitialMeld=false 에서 서버 그룹 드롭은
+  //         호환 여부와 무관하게 새 pending 그룹으로 분리 (append 금지)
   // ==================================================================
 
-  test("TC-RR-02: 최초 등록 전이라도 호환 타일(Y9a→[R9 B9 K9])은 append 허용됨 (I-2 핫픽스 이후 기대치)", async ({
+  test("TC-RR-02: 최초 등록 전 서버 그룹 드롭(Y9a→[R9 B9 K9])은 새 pending 그룹으로 분리됨 (FINDING-01 수정 후 기대치)", async ({
     page,
   }) => {
-    // I-2 핫픽스(commit eef2bbc): hasInitialMeld 와 무관하게 호환성 통과 시 append 허용.
-    // 구 동작(차단)을 검증하던 기대치를 새 동작(허용)으로 갱신.
+    // FINDING-01 (Issue #46): hasInitialMeld=false 상태에서 서버 확정 그룹에
+    // 타일을 드롭하면 호환 여부와 무관하게 새 pending 그룹이 생성된다.
+    // 근거: 서버 V-04(초기 등록 30점 검증)가 append된 세트를 거절하고
+    // 패널티 3장 드로우를 부과하는 실제 피해 방지 (RCA: docs/04-testing/73).
+    // I-2 핫픽스(eef2bbc)의 append 허용 기대치는 이 수정으로 대체된다.
     await createRoomAndStart(page, {
       playerCount: 2,
       aiCount: 1,
@@ -190,7 +194,7 @@ test.describe("TC-RR: 재배치 합병 (§6.2 유형 2)", () => {
     });
     await waitForGameReady(page);
 
-    // hasInitialMeld=false — I-2 이후에는 호환 시 append 가드가 제거됨
+    // hasInitialMeld=false — FINDING-01: 서버 그룹 드롭 시 반드시 새 그룹 생성
     await setupMergeScenario(page, { hasInitialMeld: false });
 
     // 사전 조건: 보드에 1개 그룹(3타일)
@@ -208,15 +212,48 @@ test.describe("TC-RR: 재배치 합병 (§6.2 유형 2)", () => {
     await expect(r9).toBeVisible({ timeout: 5000 });
 
     await dndDrag(page, y9, r9);
+    await page.waitForTimeout(500);
 
-    // 기대(I-2 핫픽스 이후):
-    //   - Y9a는 숫자 9로 [R9 B9 K9]와 호환 → append 성공 → 4타일 pending 그룹 생성
-    //   - 3타일 그룹은 더 이상 존재하지 않아야 함
-    await expect(
-      page.locator('span[aria-label="4개 타일"]')
-    ).toHaveCount(1, { timeout: 5000 });
+    // 기대(FINDING-01 수정 후):
+    //   - Y9a는 호환이지만 hasInitialMeld=false → append 금지 → 새 1타일 pending 그룹 생성
+    //   - 서버 그룹 [R9 B9 K9]는 3타일 그대로 유지
+    //   - 그룹 총 2개 (서버 그룹 3타일 + Y9a 신규 pending 그룹 1타일)
+    const result = await page.evaluate(() => {
+      const store = (
+        window as unknown as Record<
+          string,
+          { getState: () => Record<string, unknown> }
+        >
+      ).__gameStore;
+      const state = store.getState();
+      const pending = state.pendingTableGroups as
+        | { id: string; tiles: string[] }[]
+        | null;
+      const gs = state.gameState as
+        | { tableGroups?: { id: string; tiles: string[] }[] }
+        | null;
+      const groups = pending ?? gs?.tableGroups ?? [];
+      const srvGroup = groups.find((g: { id: string }) => g.id === "srv-group-9");
+      return {
+        groupCount: groups.length,
+        srvGroupTiles: srvGroup?.tiles ?? [],
+        y9InSrvGroup: (srvGroup?.tiles ?? []).includes("Y9a"),
+        y9InNewGroup: groups.some(
+          (g: { id: string; tiles: string[] }) =>
+            g.id !== "srv-group-9" && g.tiles.includes("Y9a")
+        ),
+      };
+    });
 
-    // 머지된 그룹은 "미확정" 마커가 붙음
+    // 서버 그룹은 3타일 그대로 유지 (append 금지)
+    expect(result.srvGroupTiles.length).toBe(3);
+    expect(result.y9InSrvGroup).toBe(false);
+    // Y9a는 새 pending 그룹에 배치
+    expect(result.y9InNewGroup).toBe(true);
+    // 그룹 총 2개
+    expect(result.groupCount).toBe(2);
+
+    // 새 pending 그룹이 "미확정" 마커가 붙음
     await expect(
       page.locator("text=미확정").first()
     ).toBeVisible({ timeout: 3000 });

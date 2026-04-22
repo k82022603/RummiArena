@@ -853,6 +853,35 @@ export default function GameClient({ roomId }: GameClientProps) {
       // 예: {R13,B13,K13} 에 B11 드롭 → [R13,B13,K13,B11] 잡종 (스크린샷 170801 증거)
       // 호환 안 되면 새 그룹 생성 경로(옵션 A)로 폴스루 — 사용자 의도에 더 가까움.
       const targetServerGroup = currentTableGroups.find((g) => g.id === over.id);
+
+      // FINDING-01 (Issue #46) — I-18 완전 롤백: hasInitialMeld=false 상태에서
+      // 서버 확정 그룹 영역에 드롭된 경우는 반드시 새 pending 그룹을 생성한다.
+      //
+      // 근거:
+      //   - 서버 V-04 (초기 등록 30점 검증) 가 서버 그룹에 append 된 세트를 거절하고
+      //     플레이어에게 패널티 3장 드로우를 부과 (QA 보고서 72 §4.2.2).
+      //   - 이전 I-18 롤백은 이 경로를 treatAsBoardDrop 복합 분기에 의존하여
+      //     처리하려 했으나, 실측 결과 어떤 경로로든 line 874-894 (append) 가
+      //     실행되는 증상이 재현됨 (RCA: docs/04-testing/73).
+      //   - 의존성 제거: "서버 그룹이 targeted 되었고 초기 등록 전이면"
+      //     무조건 단일 타일의 새 pending 그룹을 만든다. 조커는 line 763-794
+      //     swapCandidate 분기가 선행 처리하므로 여기 도달 시 조커 없음.
+      if (targetServerGroup && !hasInitialMeld) {
+        pendingGroupSeqRef.current += 1;
+        const newGroupId = `pending-${Date.now()}-${pendingGroupSeqRef.current}`;
+        const newGroup: TableGroup = {
+          id: newGroupId,
+          tiles: [tileCode],
+          type: classifySetType([tileCode]),
+        };
+        const nextTableGroups = [...currentTableGroups, newGroup];
+        const nextMyTiles = removeFirstOccurrence(currentMyTiles, tileCode);
+        setPendingTableGroups(nextTableGroups);
+        setPendingMyTiles(nextMyTiles);
+        addPendingGroupId(newGroupId);
+        return;
+      }
+
       if (targetServerGroup && hasInitialMeld) {
         if (!isCompatibleWithGroup(tileCode, targetServerGroup)) {
           // 호환 안 됨: 새 그룹 생성 (옵션 A 폴스루)
@@ -895,22 +924,11 @@ export default function GameClient({ roomId }: GameClientProps) {
         return;
       }
 
-      // I-18 롤백 (2026-04-22): I-2 핫픽스 블록 제거.
-      // hasInitialMeld=false 상태에서 서버 확정 런에 직접 append 를 허용하면
-      // 서버 V-04(초기 등록 30점 검증) 가 해당 세트를 거절하고 플레이어는
-      // 패널티 3장 드로우를 받는 실제 피해가 발생한다.
-      // Day 11 A3 커밋(b7b6457) 의 pointerWithinThenClosest collision detection 이
-      // 이미 원 collision 문제를 해결했으므로 이 블록은 불필요하고 유해하다.
-      // hasInitialMeld=false + 서버 그룹 드롭은 아래 treatAsBoardDrop 분기를 통해
-      // "새 pending 그룹 생성" 으로 안전하게 폴스루된다.
-
       // B-1 수정: closestCenter 알고리즘이 빈 보드 영역 드롭을 기존 서버 그룹에
-      // 매핑하는 경우 (hasInitialMeld=false + 호환 불가), 새 그룹 생성 로직으로 폴스루한다.
-      // over.id가 "game-board"가 아니어도 서버 그룹을 찾지 못하면 같은 경로로 들어오므로
-      // 변수는 함께 재사용한다.
-      const treatAsBoardDrop =
-        (over.id === "game-board") ||
-        (targetServerGroup !== undefined && !hasInitialMeld);
+      // 매핑하는 경우, 새 그룹 생성 로직으로 폴스루한다.
+      // targetServerGroup && !hasInitialMeld 케이스는 위 FINDING-01 early-return 이
+      // 전담하므로 여기서는 game-board 직접 드롭만 처리한다.
+      const treatAsBoardDrop = over.id === "game-board";
 
       if (treatAsBoardDrop) {
         // 보드 빈 공간에 드롭
