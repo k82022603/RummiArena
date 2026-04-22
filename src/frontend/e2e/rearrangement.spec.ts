@@ -175,12 +175,14 @@ test.describe("TC-RR: 재배치 합병 (§6.2 유형 2)", () => {
   });
 
   // ==================================================================
-  // Case 2: Negative Path — 최초 등록 전 합병 거부
+  // Case 2: I-2 핫픽스 이후 기대치 — hasInitialMeld=false 에서도 호환 시 append 허용
   // ==================================================================
 
-  test("TC-RR-02: 최초 등록 전 합병 시도는 머지되지 않고 그룹이 분리됨", async ({
+  test("TC-RR-02: 최초 등록 전이라도 호환 타일(Y9a→[R9 B9 K9])은 append 허용됨 (I-2 핫픽스 이후 기대치)", async ({
     page,
   }) => {
+    // I-2 핫픽스(commit eef2bbc): hasInitialMeld 와 무관하게 호환성 통과 시 append 허용.
+    // 구 동작(차단)을 검증하던 기대치를 새 동작(허용)으로 갱신.
     await createRoomAndStart(page, {
       playerCount: 2,
       aiCount: 1,
@@ -188,7 +190,7 @@ test.describe("TC-RR: 재배치 합병 (§6.2 유형 2)", () => {
     });
     await waitForGameReady(page);
 
-    // hasInitialMeld=false → handleDragEnd line 517 분기 차단
+    // hasInitialMeld=false — I-2 이후에는 호환 시 append 가드가 제거됨
     await setupMergeScenario(page, { hasInitialMeld: false });
 
     // 사전 조건: 보드에 1개 그룹(3타일)
@@ -207,20 +209,24 @@ test.describe("TC-RR: 재배치 합병 (§6.2 유형 2)", () => {
 
     await dndDrag(page, y9, r9);
 
-    // 기대: 머지가 일어나지 않으므로
-    //   - 서버 그룹 [R9 B9 K9]는 여전히 3타일로 유지 (또는 board fallthrough로
-    //     Y9a가 별도 pending 그룹이 됐을 수 있음)
-    //   - 4타일 합병 그룹은 존재하지 않아야 함
+    // 기대(I-2 핫픽스 이후):
+    //   - Y9a는 숫자 9로 [R9 B9 K9]와 호환 → append 성공 → 4타일 pending 그룹 생성
+    //   - 3타일 그룹은 더 이상 존재하지 않아야 함
     await expect(
       page.locator('span[aria-label="4개 타일"]')
-    ).toHaveCount(0, { timeout: 2000 });
+    ).toHaveCount(1, { timeout: 5000 });
 
-    // 서버 그룹은 그대로 3타일 유지
-    // (참고: §6.1 즉시 조치 1 완료 후 등록 전에는 드롭 자체가 비활성화될 수도 있다.
-    //  현재는 handleDragEnd의 가드만으로 합병이 차단되는 동작을 검증한다.)
+    // 머지된 그룹은 "미확정" 마커가 붙음
     await expect(
-      page.locator('span[aria-label="3개 타일"]')
-    ).toHaveCount(1, { timeout: 2000 });
+      page.locator("text=미확정").first()
+    ).toBeVisible({ timeout: 3000 });
+
+    // 랙에서 Y9a 소거 확인 (pendingMyTiles 로 이동)
+    await expect(
+      page.locator(
+        'section[aria-label="내 타일 랙"] [aria-label="Y9a 타일 (드래그 가능)"]'
+      )
+    ).toHaveCount(0, { timeout: 3000 });
   });
 });
 

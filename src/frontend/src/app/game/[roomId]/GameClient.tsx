@@ -774,9 +774,17 @@ export default function GameClient({ roomId }: GameClientProps) {
                   ? { ...g, tiles: swap.nextTiles, type: classifySetType(swap.nextTiles) }
                   : g
               );
-              const nextMyTiles = removeFirstOccurrence(currentMyTiles, tileCode);
+              // I-4 핫픽스 (옵션 B): 회수된 조커를 pendingMyTiles 에 즉시 append하여
+              // 기존 랙 UI 에서 드래그 가능하게 한다.
+              // addRecoveredJoker 는 "경고 배너 only (§6.2 유형 4 의무 안내)" 역할 유지.
+              // nextMyTilesAfterSwap 에서 랙 타일을 제거한 뒤 조커를 추가하면
+              // 사용자는 JokerSwapIndicator 배너를 보면서도 랙에서 조커를 끌 수 있다.
+              const nextMyTilesAfterSwap = [
+                ...removeFirstOccurrence(currentMyTiles, tileCode),
+                swap.recoveredJoker,
+              ];
               setPendingTableGroups(nextTableGroups);
-              setPendingMyTiles(nextMyTiles);
+              setPendingMyTiles(nextMyTilesAfterSwap);
               addPendingGroupId(swapCandidate.id);
               addRecoveredJoker(swap.recoveredJoker);
               return;
@@ -816,6 +824,17 @@ export default function GameClient({ roomId }: GameClientProps) {
           const updatedTiles = [...g.tiles, tileCode];
           return { ...g, tiles: updatedTiles, type: classifySetType(updatedTiles) };
         });
+        // I-1 핫픽스: setPendingTableGroups 호출 직전 중복 타일 감지
+        // 드롭 반복/잔상 클릭으로 같은 타일이 여러 그룹에 복제되면 즉시 거부한다.
+        {
+          const dupes = detectDuplicateTileCodes(nextTableGroups);
+          if (dupes.length > 0) {
+            useWSStore.getState().setLastError(
+              `타일 중복 감지: ${dupes.join(", ")} — 되돌리기 후 다시 배치하세요`
+            );
+            return;
+          }
+        }
         const nextMyTiles = removeFirstOccurrence(currentMyTiles, tileCode);
         setPendingTableGroups(nextTableGroups);
         setPendingMyTiles(nextMyTiles);
@@ -858,6 +877,16 @@ export default function GameClient({ roomId }: GameClientProps) {
             ? { ...g, tiles: updatedTiles, type: classifySetType(updatedTiles) }
             : g
         );
+        // I-1 핫픽스: 서버 확정 그룹 append 경로에도 중복 감지 방어
+        {
+          const dupes = detectDuplicateTileCodes(nextTableGroups);
+          if (dupes.length > 0) {
+            useWSStore.getState().setLastError(
+              `타일 중복 감지: ${dupes.join(", ")} — 되돌리기 후 다시 배치하세요`
+            );
+            return;
+          }
+        }
         const nextMyTiles = removeFirstOccurrence(currentMyTiles, tileCode);
         setPendingTableGroups(nextTableGroups);
         setPendingMyTiles(nextMyTiles);
@@ -866,10 +895,36 @@ export default function GameClient({ roomId }: GameClientProps) {
         return;
       }
 
+      // I-2 핫픽스 (Option A): closestCenter fallback 이 서버 확정 런 그룹을 선택했고
+      // 드래그 타일이 그 런의 앞/뒤에 붙을 수 있으면, hasInitialMeld 여부와 무관하게
+      // 직접 append 한다.
+      //
+      // 근본 원인: pointerWithin 이 런 가장자리 바깥 드롭 시 null 을 반환하고,
+      // closestCenter fallback 이 런 그룹 ID 를 over.id 로 선택하더라도
+      // hasInitialMeld=false 조건 때문에 treatAsBoardDrop=true 로 분기되어
+      // 서버 런 그룹 대신 새 pending 그룹을 만들어버렸다.
+      // isCompatibleWithGroup 검증으로 append 가 실제로 가능할 때만 허용하므로
+      // 잡종 세트 생성 위험은 없다.
+      if (targetServerGroup !== undefined && !hasInitialMeld) {
+        if (isCompatibleWithGroup(tileCode, targetServerGroup)) {
+          const updatedTiles = [...targetServerGroup.tiles, tileCode];
+          const nextTableGroups = currentTableGroups.map((g) =>
+            g.id === targetServerGroup.id
+              ? { ...g, tiles: updatedTiles, type: classifySetType(updatedTiles) }
+              : g
+          );
+          const nextMyTiles = removeFirstOccurrence(currentMyTiles, tileCode);
+          setPendingTableGroups(nextTableGroups);
+          setPendingMyTiles(nextMyTiles);
+          addPendingGroupId(targetServerGroup.id);
+          return;
+        }
+      }
+
       // B-1 수정: closestCenter 알고리즘이 빈 보드 영역 드롭을 기존 서버 그룹에
-      // 매핑하는 경우 (hasInitialMeld=false → 위 블록에서 return 안 됨), 새 그룹
-      // 생성 로직으로 폴스루한다. over.id가 "game-board"가 아니어도 서버 그룹을
-      // 찾지 못하면 같은 경로로 들어오므로 변수는 함께 재사용한다.
+      // 매핑하는 경우 (hasInitialMeld=false + 호환 불가), 새 그룹 생성 로직으로 폴스루한다.
+      // over.id가 "game-board"가 아니어도 서버 그룹을 찾지 못하면 같은 경로로 들어오므로
+      // 변수는 함께 재사용한다.
       const treatAsBoardDrop =
         (over.id === "game-board") ||
         (targetServerGroup !== undefined && !hasInitialMeld);
