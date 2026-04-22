@@ -823,29 +823,22 @@ func (h *WSHandler) broadcastGameOver(conn *Connection, state *model.GameStateRe
 	h.cancelTurnTimer(conn.gameID)
 	h.cleanupGame(conn.gameID)
 
+	endType := "NORMAL"
+	if state.IsStalemate {
+		endType = "STALEMATE"
+	}
+
+	// I-15: resolveWinnerFromState로 stalemate 시에도 올바른 승자 판정
+	winnerID, winnerSeat := resolveWinnerFromState(state)
+
 	results := make([]WSPlayerResult, len(state.Players))
 	for i, p := range state.Players {
 		results[i] = WSPlayerResult{
 			Seat:           p.SeatOrder,
 			PlayerType:     p.PlayerType,
 			RemainingTiles: p.Rack,
-			IsWinner:       len(p.Rack) == 0,
+			IsWinner:       p.UserID == winnerID && winnerID != "",
 		}
-	}
-
-	winnerSeat := -1
-	winnerID := ""
-	for _, p := range state.Players {
-		if len(p.Rack) == 0 {
-			winnerSeat = p.SeatOrder
-			winnerID = p.UserID
-			break
-		}
-	}
-
-	endType := "NORMAL"
-	if state.IsStalemate {
-		endType = "STALEMATE"
 	}
 
 	h.hub.BroadcastToRoom(conn.roomID, &WSMessage{
@@ -857,6 +850,14 @@ func (h *WSHandler) broadcastGameOver(conn *Connection, state *model.GameStateRe
 			Results:    results,
 		},
 	})
+
+	h.logger.Info("ws: GAME_OVER broadcast",
+		zap.String("gameID", conn.gameID),
+		zap.String("roomID", conn.roomID),
+		zap.String("endType", endType),
+		zap.String("winnerID", winnerID),
+		zap.Int("winnerSeat", winnerSeat),
+	)
 
 	// I-14: 게임 결과 DB 영속화 (비동기)
 	go h.persistGameResult(state, endType)
@@ -1578,10 +1579,19 @@ func (h *WSHandler) broadcastTurnEndFromState(roomID string, seat int, state *mo
 
 // broadcastGameOverFromState Connection 없이 roomID 기반으로 GAME_OVER를 브로드캐스트한다.
 // AI 턴에서 게임이 종료될 때 사용한다.
+// I-15: stalemate/forfeit 종료 시 winner 판정이 len(Rack)==0 이외의 경우에도 올바르게 동작하도록
+//       resolveWinnerFromState 헬퍼를 사용하여 교착 종료 시 최소 타일 보유자를 승자로 반환한다.
 func (h *WSHandler) broadcastGameOverFromState(roomID string, state *model.GameStateRedis) {
 	// 게임 종료 시 진행 중인 타이머 취소 + AI goroutine 취소 + Redis 정리
 	h.cancelTurnTimer(state.GameID)
 	h.cleanupGame(state.GameID)
+
+	endType := "NORMAL"
+	if state.IsStalemate {
+		endType = "STALEMATE"
+	}
+
+	winnerID, winnerSeat := resolveWinnerFromState(state)
 
 	results := make([]WSPlayerResult, len(state.Players))
 	for i, p := range state.Players {
@@ -1589,23 +1599,8 @@ func (h *WSHandler) broadcastGameOverFromState(roomID string, state *model.GameS
 			Seat:           p.SeatOrder,
 			PlayerType:     p.PlayerType,
 			RemainingTiles: p.Rack,
-			IsWinner:       len(p.Rack) == 0,
+			IsWinner:       p.UserID == winnerID && winnerID != "",
 		}
-	}
-
-	winnerSeat := -1
-	winnerID := ""
-	for _, p := range state.Players {
-		if len(p.Rack) == 0 {
-			winnerSeat = p.SeatOrder
-			winnerID = p.UserID
-			break
-		}
-	}
-
-	endType := "NORMAL"
-	if state.IsStalemate {
-		endType = "STALEMATE"
 	}
 
 	h.hub.BroadcastToRoom(roomID, &WSMessage{
@@ -1617,6 +1612,14 @@ func (h *WSHandler) broadcastGameOverFromState(roomID string, state *model.GameS
 			Results:    results,
 		},
 	})
+
+	h.logger.Info("ws: GAME_OVER broadcast",
+		zap.String("gameID", state.GameID),
+		zap.String("roomID", roomID),
+		zap.String("endType", endType),
+		zap.String("winnerID", winnerID),
+		zap.Int("winnerSeat", winnerSeat),
+	)
 
 	// I-14: 게임 결과 DB 영속화 (비동기)
 	go h.persistGameResult(state, endType)
@@ -1631,6 +1634,80 @@ func (h *WSHandler) broadcastGameOverFromState(roomID string, state *model.GameS
 			zap.Error(err),
 		)
 	}
+}
+
+// resolveWinnerFromState 게임 상태에서 승자 userID와 seat을 결정한다.
+// 1) 타일 0장인 플레이어 → 정상 승리
+// 2) Stalemate → 최소 점수(낮은 쪽) 플레이어 (service.finishGameStalemate 와 동일 로직)
+// 3) 무승부 / FORFEITED만 남은 경우 → winnerID=""
+func resolveWinnerFromState(state *model.GameStateRedis) (winnerID string, winnerSeat int) {
+	// 1. 정상 승리: rack 0장
+	for _, p := range state.Players {
+		if len(p.Rack) == 0 {
+			return p.UserID, p.SeatOrder
+		}
+	}
+
+	// 2. stalemate: 최소 점수 플레이어
+	if state.IsStalemate {
+		type scored struct {
+			userID string
+			seat   int
+			score  int
+			count  int
+		}
+		scores := make([]scored, 0, len(state.Players))
+		for _, p := range state.Players {
+			if p.Status == model.PlayerStatusForfeited {
+				continue
+			}
+			total := 0
+			for _, code := range p.Rack {
+				total += tileScoreFromCode(code)
+			}
+			scores = append(scores, scored{userID: p.UserID, seat: p.SeatOrder, score: total, count: len(p.Rack)})
+		}
+		if len(scores) == 0 {
+			return "", -1
+		}
+		best := scores[0]
+		for _, sc := range scores[1:] {
+			if sc.score < best.score || (sc.score == best.score && sc.count < best.count) {
+				best = sc
+			}
+		}
+		// 동점 확인
+		for _, sc := range scores {
+			if sc.userID != best.userID && sc.score == best.score && sc.count == best.count {
+				return "", -1 // 무승부
+			}
+		}
+		return best.userID, best.seat
+	}
+
+	return "", -1
+}
+
+// tileScoreFromCode 타일 코드에서 점수를 계산한다 (handler 내부 사용).
+// service.tileScore와 동일 로직이지만 handler 패키지가 service에 의존하지 않도록 복사한다.
+func tileScoreFromCode(code string) int {
+	if len(code) >= 2 && code[:2] == "JK" {
+		return 30 // 조커: engine.JokerScore와 동일
+	}
+	if len(code) < 2 {
+		return 0
+	}
+	// 숫자 부분 파싱: R7a → "7", B13b → "13"
+	num := 0
+	for i := 1; i < len(code); i++ {
+		c := code[i]
+		if c >= '0' && c <= '9' {
+			num = num*10 + int(c-'0')
+		} else {
+			break
+		}
+	}
+	return num
 }
 
 // updateElo 게임 종료 후 ELO 레이팅을 업데이트한다.

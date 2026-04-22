@@ -234,6 +234,86 @@ func TestWithPersistenceRepos(t *testing.T) {
 	assert.Equal(t, pgEvent, h.pgGameEventRepo)
 }
 
+// ============================================================
+// I-15: resolveWinnerFromState 단위 테스트
+// ============================================================
+
+// TestResolveWinnerFromState_NormalWin 타일 0장 플레이어 → 정상 승리
+func TestResolveWinnerFromState_NormalWin(t *testing.T) {
+	state := &model.GameStateRedis{
+		Players: []model.PlayerState{
+			{SeatOrder: 0, UserID: "loser", Rack: []string{"R1a", "B2b"}},
+			{SeatOrder: 1, UserID: "winner", Rack: []string{}},
+		},
+	}
+	wID, wSeat := resolveWinnerFromState(state)
+	assert.Equal(t, "winner", wID)
+	assert.Equal(t, 1, wSeat)
+}
+
+// TestResolveWinnerFromState_Stalemate_MinScore 교착 종료: 점수 낮은 쪽 승리
+func TestResolveWinnerFromState_Stalemate_MinScore(t *testing.T) {
+	state := &model.GameStateRedis{
+		IsStalemate: true,
+		Players: []model.PlayerState{
+			{SeatOrder: 0, UserID: "player-A", Rack: []string{"R10a", "B10b"}}, // score=20
+			{SeatOrder: 1, UserID: "player-B", Rack: []string{"R1a"}},           // score=1
+		},
+	}
+	wID, wSeat := resolveWinnerFromState(state)
+	assert.Equal(t, "player-B", wID)
+	assert.Equal(t, 1, wSeat)
+}
+
+// TestResolveWinnerFromState_Stalemate_Tie 교착 종료: 동점 → 무승부
+func TestResolveWinnerFromState_Stalemate_Tie(t *testing.T) {
+	state := &model.GameStateRedis{
+		IsStalemate: true,
+		Players: []model.PlayerState{
+			{SeatOrder: 0, UserID: "player-A", Rack: []string{"R5a"}}, // score=5
+			{SeatOrder: 1, UserID: "player-B", Rack: []string{"B5b"}}, // score=5
+		},
+	}
+	wID, wSeat := resolveWinnerFromState(state)
+	assert.Equal(t, "", wID, "동점이면 무승부 (winnerId 빈 문자열)")
+	assert.Equal(t, -1, wSeat)
+}
+
+// TestResolveWinnerFromState_NoWinner 승자 없음 (모든 랙 비지 않고 stalemate 아님)
+func TestResolveWinnerFromState_NoWinner(t *testing.T) {
+	state := &model.GameStateRedis{
+		IsStalemate: false,
+		Players: []model.PlayerState{
+			{SeatOrder: 0, UserID: "player-A", Rack: []string{"R1a"}},
+			{SeatOrder: 1, UserID: "player-B", Rack: []string{"B2a"}},
+		},
+	}
+	wID, wSeat := resolveWinnerFromState(state)
+	assert.Equal(t, "", wID)
+	assert.Equal(t, -1, wSeat)
+}
+
+// TestTileScoreFromCode 타일 코드 점수 계산 검증
+func TestTileScoreFromCode(t *testing.T) {
+	tests := []struct {
+		code     string
+		expected int
+	}{
+		{"JK1", 30},
+		{"JK2", 30},
+		{"R7a", 7},
+		{"B13b", 13},
+		{"Y1a", 1},
+		{"K9b", 9},
+		{"", 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.code, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tileScoreFromCode(tt.code))
+		})
+	}
+}
+
 // TestPersistGameResult_AsyncSafe persistGameResult를 고루틴으로 동시 호출해도 race 없음
 func TestPersistGameResult_AsyncSafe(t *testing.T) {
 	h, pgGame, pgPlayer, pgEvent := newPersistTestHandler()
