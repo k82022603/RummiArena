@@ -895,31 +895,14 @@ export default function GameClient({ roomId }: GameClientProps) {
         return;
       }
 
-      // I-2 핫픽스 (Option A): closestCenter fallback 이 서버 확정 런 그룹을 선택했고
-      // 드래그 타일이 그 런의 앞/뒤에 붙을 수 있으면, hasInitialMeld 여부와 무관하게
-      // 직접 append 한다.
-      //
-      // 근본 원인: pointerWithin 이 런 가장자리 바깥 드롭 시 null 을 반환하고,
-      // closestCenter fallback 이 런 그룹 ID 를 over.id 로 선택하더라도
-      // hasInitialMeld=false 조건 때문에 treatAsBoardDrop=true 로 분기되어
-      // 서버 런 그룹 대신 새 pending 그룹을 만들어버렸다.
-      // isCompatibleWithGroup 검증으로 append 가 실제로 가능할 때만 허용하므로
-      // 잡종 세트 생성 위험은 없다.
-      if (targetServerGroup !== undefined && !hasInitialMeld) {
-        if (isCompatibleWithGroup(tileCode, targetServerGroup)) {
-          const updatedTiles = [...targetServerGroup.tiles, tileCode];
-          const nextTableGroups = currentTableGroups.map((g) =>
-            g.id === targetServerGroup.id
-              ? { ...g, tiles: updatedTiles, type: classifySetType(updatedTiles) }
-              : g
-          );
-          const nextMyTiles = removeFirstOccurrence(currentMyTiles, tileCode);
-          setPendingTableGroups(nextTableGroups);
-          setPendingMyTiles(nextMyTiles);
-          addPendingGroupId(targetServerGroup.id);
-          return;
-        }
-      }
+      // I-18 롤백 (2026-04-22): I-2 핫픽스 블록 제거.
+      // hasInitialMeld=false 상태에서 서버 확정 런에 직접 append 를 허용하면
+      // 서버 V-04(초기 등록 30점 검증) 가 해당 세트를 거절하고 플레이어는
+      // 패널티 3장 드로우를 받는 실제 피해가 발생한다.
+      // Day 11 A3 커밋(b7b6457) 의 pointerWithinThenClosest collision detection 이
+      // 이미 원 collision 문제를 해결했으므로 이 블록은 불필요하고 유해하다.
+      // hasInitialMeld=false + 서버 그룹 드롭은 아래 treatAsBoardDrop 분기를 통해
+      // "새 pending 그룹 생성" 으로 안전하게 폴스루된다.
 
       // B-1 수정: closestCenter 알고리즘이 빈 보드 영역 드롭을 기존 서버 그룹에
       // 매핑하는 경우 (hasInitialMeld=false + 호환 불가), 새 그룹 생성 로직으로 폴스루한다.
@@ -1140,10 +1123,19 @@ export default function GameClient({ roomId }: GameClientProps) {
     // M-4: pendingMyTiles가 null이면 확정 차단
     if (!pendingMyTiles) return;
 
-    // P3: 조커 교체로 회수한 조커가 있으면 같은 턴 내에 다른 세트에 사용 필수
-    // (§6.2 유형 4, 엔진 V-07). 미사용 시 서버가 INVALID_MOVE로 거절하기 전에
-    // 클라이언트에서 차단하여 빠른 피드백 제공.
-    if (pendingRecoveredJokers.length > 0) {
+    // P3 / I-19 수정: 조커 교체로 회수한 조커가 있으면 같은 턴 내에 다른 세트에 사용 필수
+    // (§6.2 유형 4, 엔진 V-07).
+    //
+    // 이전 구현 문제(I-19): pendingRecoveredJokers.length > 0 로 차단하면,
+    // 조커를 이미 보드에 배치해서 pendingMyTiles 에서 제거한 경우에도 차단이 유지됨
+    // → 완전한 데드락. 사용자가 조커를 보드에 정상 배치했더라도 확정 불가.
+    //
+    // 수정(옵션 c): "회수된 조커 코드 중 pendingMyTiles 에 아직 남아있는 것" 을 기준으로 차단.
+    // 조커가 보드에 드롭되면 pendingMyTiles 에서 제거되므로 자동으로 차단 해제된다.
+    const unplacedRecoveredJokers = pendingRecoveredJokers.filter((jkCode) =>
+      pendingMyTiles.includes(jkCode)
+    );
+    if (unplacedRecoveredJokers.length > 0) {
       useWSStore
         .getState()
         .setLastError("회수한 조커(JK)를 같은 턴에 다른 세트에 사용해야 합니다");
