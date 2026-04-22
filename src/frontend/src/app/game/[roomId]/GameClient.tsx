@@ -874,10 +874,36 @@ export default function GameClient({ roomId }: GameClientProps) {
         return;
       }
 
+      // I-2 핫픽스 (Option A): closestCenter fallback 이 서버 확정 런 그룹을 선택했고
+      // 드래그 타일이 그 런의 앞/뒤에 붙을 수 있으면, hasInitialMeld 여부와 무관하게
+      // 직접 append 한다.
+      //
+      // 근본 원인: pointerWithin 이 런 가장자리 바깥 드롭 시 null 을 반환하고,
+      // closestCenter fallback 이 런 그룹 ID 를 over.id 로 선택하더라도
+      // hasInitialMeld=false 조건 때문에 treatAsBoardDrop=true 로 분기되어
+      // 서버 런 그룹 대신 새 pending 그룹을 만들어버렸다.
+      // isCompatibleWithGroup 검증으로 append 가 실제로 가능할 때만 허용하므로
+      // 잡종 세트 생성 위험은 없다.
+      if (targetServerGroup !== undefined && !hasInitialMeld) {
+        if (isCompatibleWithGroup(tileCode, targetServerGroup)) {
+          const updatedTiles = [...targetServerGroup.tiles, tileCode];
+          const nextTableGroups = currentTableGroups.map((g) =>
+            g.id === targetServerGroup.id
+              ? { ...g, tiles: updatedTiles, type: classifySetType(updatedTiles) }
+              : g
+          );
+          const nextMyTiles = removeFirstOccurrence(currentMyTiles, tileCode);
+          setPendingTableGroups(nextTableGroups);
+          setPendingMyTiles(nextMyTiles);
+          addPendingGroupId(targetServerGroup.id);
+          return;
+        }
+      }
+
       // B-1 수정: closestCenter 알고리즘이 빈 보드 영역 드롭을 기존 서버 그룹에
-      // 매핑하는 경우 (hasInitialMeld=false → 위 블록에서 return 안 됨), 새 그룹
-      // 생성 로직으로 폴스루한다. over.id가 "game-board"가 아니어도 서버 그룹을
-      // 찾지 못하면 같은 경로로 들어오므로 변수는 함께 재사용한다.
+      // 매핑하는 경우 (hasInitialMeld=false + 호환 불가), 새 그룹 생성 로직으로 폴스루한다.
+      // over.id가 "game-board"가 아니어도 서버 그룹을 찾지 못하면 같은 경로로 들어오므로
+      // 변수는 함께 재사용한다.
       const treatAsBoardDrop =
         (over.id === "game-board") ||
         (targetServerGroup !== undefined && !hasInitialMeld);
