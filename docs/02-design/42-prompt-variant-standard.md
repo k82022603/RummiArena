@@ -42,7 +42,7 @@
 | `deepseek` (deepseek-chat) | **v2** | 2단계 미설정 → 3단계 globalVariantId | `USE_V2_PROMPT=true` 강제 | 운영 제외 (deepseek-chat 은 현재 대전 미사용) | passthrough (운영) | deepseek-chat 사용 시 v2 에 고정됨 |
 | `deepseek-reasoner` | **v4** (현행) / **v2** (ADR 44 shaper 실험 시) | 2단계 per-model override | `DEEPSEEK_REASONER_PROMPT_VARIANT=v4` (현행) | 본대전 주력 (Run × 3) | passthrough (현행) / **joker-hinter** (Phase 4 실험 타깃, v2 조합) / **pair-warmup** (Phase 5 실험 타깃, v2 조합) | Day 4 plan 핵심 변경사항. ADR 44 §6.2 에 따라 shaper 축 실험 시 **variant 는 v2 로 고정** (confound control, Principle 1 "v2 텍스트 불변") |
 | `dashscope` (qwen3 thinking) | **v4** | 2단계 per-model override | `DASHSCOPE_PROMPT_VARIANT=v4` | 본대전 참가 (Run × 3) | passthrough (운영) / joker-hinter · pair-warmup (DashScope 실제 API 키 발급 후 결정) | DashScope API 키 발급 전까지 stub |
-| `ollama` (qwen2.5:3b) | **v2** | 2단계 미설정 → 3단계 globalVariantId | `USE_V2_PROMPT=true` 강제 | 운영 제외 (클라우드 전용 대전) | passthrough (운영) | 로컬 전용, v4 적용 대상 아님 (소형 모델). joker-hinter/pair-warmup 은 토큰 예산 위험으로 **비권장** (ADR 44 §6.2) |
+| `ollama` (qwen2.5:3b) | **v2** (기본) / **v7-ollama-meld** (opt-in 시) | 기본: 3단계 globalVariantId / opt-in: 2단계 per-model override | `USE_V2_PROMPT=true` 강제 (기본) 또는 `OLLAMA_PROMPT_VARIANT=v7-ollama-meld` (Sprint 7 hotfix) | 운영 제외 (클라우드 전용 대전) | passthrough (운영) | 로컬 전용, v4 적용 대상 아님 (소형 모델). joker-hinter/pair-warmup 은 토큰 예산 위험으로 **비권장** (ADR 44 §6.2). **Sprint 7 hotfix (2026-04-22)**: qwen2.5:3b place rate 0% 대응으로 하드코딩 variant `v7-ollama-meld` 추가. 명시 opt-in 시에만 활성화, GPT/Claude/DeepSeek 무영향. Sprint 8 qwen2.5:7b 교체 예정 |
 
 **핵심**: `defaultForModel()` 의 권장 매핑(openai→v2, deepseek-reasoner→v3, dashscope→v3 등)은 **현재 단 한 건도 live 에서 적용되지 않는다** — 이는 관찰가능성(observability) 이슈이지 운영 결함이 아니다. 이유:
 - per-model override 가 있는 모델(claude/deepseek-reasoner/dashscope) = 2단계에서 v4 결정
@@ -55,7 +55,7 @@
 
 ## 3. variant 레지스트리 (표 A) — 등록된 variant 전체
 
-> `src/ai-adapter/src/prompt/registry/variants/` 에서 `PromptRegistry.registerBuiltinVariants()` 가 부팅 시 등록하는 7개.
+> `src/ai-adapter/src/prompt/registry/variants/` 에서 `PromptRegistry.registerBuiltinVariants()` 가 부팅 시 등록하는 9개.
 
 | variant id | 파일 | version | recommendedModels | warnIfOffRecommendation | deprecated | 권장 용도 |
 |---|---|---|---|---|---|---|
@@ -66,6 +66,7 @@
 | `v4` | `variants/v4.variant.ts` | 1.0.0 | deepseek-reasoner, claude, dashscope | **true** | 아님 (2026-04-14 도입) | reasoner 3모델 공통 body + Thinking Budget + 5축 평가 + Action Bias. Day 4 활성화 |
 | `v4.1` | `variants/v4-1.variant.ts` | 1.0.0 | deepseek-reasoner, claude, dashscope | **true** | 아님 (2026-04-16 도입) | v4 − Thinking Budget 단일 제거 (single-variable A/B). Round 7 실증 20.5% |
 | `v5` | `variants/v5.variant.ts` | 1.0.0 | deepseek-reasoner, claude, openai | **true** | 아님 (2026-04-17 도입) | Zero-shot reasoning (Nature 논문 준수). 규칙 + 상태 + JSON 포맷만. ~350 토큰 |
+| `v7-ollama-meld` | `variants/v7-ollama-meld.variant.ts` | 1.0.0 | ollama | **true** | 아님 (2026-04-22 도입) | **qwen2.5:3b 전용 하드코딩 프롬프트** — 4-step 절차(Group → Run → Combine → Draw) + hand-holding few-shot 6개 + 색/숫자 힌트. Sprint 7 hotfix: place rate 0% → 목표 >=20%. OLLAMA_PROMPT_VARIANT=v7-ollama-meld opt-in 시에만 활성화 |
 | `character-ko` | `variants/character-ko.variant.ts` | 1.0.0 | ollama | **true** | 아님 (legacy placeholder) | 한국어 페르소나 — 실제 생성은 `PromptBuilderService` 경로, variant 는 metrics 태깅용 |
 
 **체크**: `v4.variant.ts` 의 recommendedModels 는 `openai` 를 포함하지 않으므로, Sprint 6 Day 5 이후 `OPENAI_PROMPT_VARIANT=v4` 로 강제 override 하면 `warnIfOffRecommendation=true` 에 의해 warn 로그가 발생한다. 이는 정상 동작 — GPT v4.1 branch 는 별도 variant 로 분리 예정(`docs/03-development/20` §6.3).
@@ -207,6 +208,7 @@ flowchart TB
 | 2026-04-17 | §3 표 A 에 v4.1 + v5 행 추가, 등록 수 5→7 갱신 | ai-engineer | v5 zero-shot 구현 완료 (24/24 테스트 PASS) |
 | 2026-04-17 | §3 표 A 에 v2-zh (DeepSeek-R1 전용 중문 variant) 행 추가, 등록 수 7→8 갱신 | node-dev | Day 7 A/B 실험 "DeepSeek reasoning 언어 가설" (v2 vs v2-zh single-variable) 착수 |
 | 2026-04-19 | §2 표 B 에 `compatible_shapers` 컬럼 추가 + §2 상단에 "두 축의 분리" 설명문 추가 + §6.1 체크리스트 9 번 항목 (shaper 축 교차 영향) 추가 + §6 서문에 shaper 축 ADR 44 참조 지시 추가 | architect | ADR 44 (`docs/02-design/44-context-shaper-v6-architecture.md`) §6.1 SSOT 정합성 요구사항 이행. variant (텍스트 축) 과 shaper (구조 축) 를 orthogonal 로 명시하여 "v6 를 variant 표에 추가" 오류 방지 (ADR 44 Principle 3). AI Engineer Day 9 지적 반영. variant 정의·env 우선순위 규칙 변경 없음 (SSOT-safe 편집) |
+| 2026-04-22 | §3 표 A 에 `v7-ollama-meld` 행 추가 (등록 수 8→9), §2 표 B ollama 행에 opt-in variant 설명 추가 | ai-engineer | Sprint 7 hotfix (branch `hotfix/ollama-initial-meld-2026-04-22`). qwen2.5:3b place rate 0% 대응 — 모델 교체(Sprint 8) 전까지 프롬프트만으로 초기 등록 0 → 목표 >=20%. Ollama 전용 opt-in (`OLLAMA_PROMPT_VARIANT=v7-ollama-meld`), warnIfOffRecommendation=true. USE_V2_PROMPT 기본 경로 및 GPT/Claude/DeepSeek 무영향 (§6.1 체크리스트 9단계 전부 확인) |
 
 ---
 
