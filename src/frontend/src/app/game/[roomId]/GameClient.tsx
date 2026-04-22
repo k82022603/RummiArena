@@ -774,9 +774,17 @@ export default function GameClient({ roomId }: GameClientProps) {
                   ? { ...g, tiles: swap.nextTiles, type: classifySetType(swap.nextTiles) }
                   : g
               );
-              const nextMyTiles = removeFirstOccurrence(currentMyTiles, tileCode);
+              // I-4 핫픽스 (옵션 B): 회수된 조커를 pendingMyTiles 에 즉시 append하여
+              // 기존 랙 UI 에서 드래그 가능하게 한다.
+              // addRecoveredJoker 는 "경고 배너 only (§6.2 유형 4 의무 안내)" 역할 유지.
+              // nextMyTilesAfterSwap 에서 랙 타일을 제거한 뒤 조커를 추가하면
+              // 사용자는 JokerSwapIndicator 배너를 보면서도 랙에서 조커를 끌 수 있다.
+              const nextMyTilesAfterSwap = [
+                ...removeFirstOccurrence(currentMyTiles, tileCode),
+                swap.recoveredJoker,
+              ];
               setPendingTableGroups(nextTableGroups);
-              setPendingMyTiles(nextMyTiles);
+              setPendingMyTiles(nextMyTilesAfterSwap);
               addPendingGroupId(swapCandidate.id);
               addRecoveredJoker(swap.recoveredJoker);
               return;
