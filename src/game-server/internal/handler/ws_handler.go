@@ -87,6 +87,10 @@ type WSHandler struct {
 	aiClient      client.AIClientInterface // nil이면 AI 기능 비활성화
 	eloRepo       repository.EloRepository // nil이면 ELO 업데이트 건너뜀
 	redisClient   *redis.Client            // nil이면 Redis Sorted Set 업데이트 건너뜀
+	// I-14: 게임 영속저장 — nil이면 DB 쓰기 건너뜀 (postgres 미연결 시)
+	pgGameRepo       repository.GameRepository       // games + rooms 테이블
+	pgGamePlayerRepo repository.GamePlayerRepository // game_players 테이블
+	pgGameEventRepo  repository.GameEventRepository  // game_events 테이블
 	jwtSecret     string
 	logger        *zap.Logger
 	timers        map[string]*turnTimer  // key: gameID
@@ -135,6 +139,18 @@ func (h *WSHandler) WithEloRepo(eloRepo repository.EloRepository) {
 // nil이면 Redis Sorted Set 업데이트가 비활성화된다.
 func (h *WSHandler) WithRedisClient(rc *redis.Client) {
 	h.redisClient = rc
+}
+
+// WithPersistenceRepos I-14: 게임 영속저장용 PostgreSQL 레포지터리를 주입한다.
+// nil이면 DB 쓰기를 건너뛰고 경고만 기록한다 (postgres 미연결 허용).
+func (h *WSHandler) WithPersistenceRepos(
+	gameRepo repository.GameRepository,
+	playerRepo repository.GamePlayerRepository,
+	eventRepo repository.GameEventRepository,
+) {
+	h.pgGameRepo = gameRepo
+	h.pgGamePlayerRepo = playerRepo
+	h.pgGameEventRepo = eventRepo
 }
 
 // HandleWS GET /ws?roomId={roomId}
@@ -841,6 +857,9 @@ func (h *WSHandler) broadcastGameOver(conn *Connection, state *model.GameStateRe
 			Results:    results,
 		},
 	})
+
+	// I-14: 게임 결과 DB 영속화 (비동기)
+	go h.persistGameResult(state, endType)
 
 	// ELO 업데이트 (비동기)
 	go h.updateElo(state)
@@ -1599,6 +1618,9 @@ func (h *WSHandler) broadcastGameOverFromState(roomID string, state *model.GameS
 		},
 	})
 
+	// I-14: 게임 결과 DB 영속화 (비동기)
+	go h.persistGameResult(state, endType)
+
 	// ELO 업데이트 (비동기)
 	go h.updateElo(state)
 
@@ -1800,6 +1822,127 @@ func (h *WSHandler) updateEloRedis(ctx context.Context, ch engine.EloChange) {
 		zap.String("userID", ch.UserID),
 		zap.String("newTier", ch.NewTier),
 		zap.Int("newRating", ch.NewRating),
+	)
+}
+
+// persistGameResult I-14: 게임 종료 시 games / game_players / game_events 테이블에 영속화한다.
+// pgGameRepo / pgGamePlayerRepo / pgGameEventRepo 중 하나라도 nil이면 해당 테이블은 건너뛴다.
+// 비동기 goroutine에서 호출된다 — 에러는 경고 로그로 처리하고 WS 흐름을 차단하지 않는다.
+func (h *WSHandler) persistGameResult(state *model.GameStateRedis, endType string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if h.pgGameRepo == nil && h.pgGamePlayerRepo == nil && h.pgGameEventRepo == nil {
+		return // postgres 미연결 — 조용히 건너뜀
+	}
+
+	// 승자 결정
+	winnerID := ""
+	winnerSeat := -1
+	for _, p := range state.Players {
+		if len(p.Rack) == 0 {
+			winnerID = p.UserID
+			winnerSeat = p.SeatOrder
+			break
+		}
+	}
+	// stalemate 시 ErrorCode="STALEMATE"를 기반으로 endType을 재지정한다
+	if state.IsStalemate {
+		endType = "STALEMATE"
+	}
+
+	// 1. games 테이블 삽입
+	if h.pgGameRepo != nil {
+		now := time.Now().UTC()
+		var wIDPtr *string
+		if winnerID != "" {
+			wIDPtr = &winnerID
+		}
+		var wSeatPtr *int
+		if winnerSeat >= 0 {
+			wSeatPtr = &winnerSeat
+		}
+		game := &model.Game{
+			ID:          state.GameID,
+			Status:      model.GameStatusFinished,
+			PlayerCount: len(state.Players),
+			WinnerID:    wIDPtr,
+			WinnerSeat:  wSeatPtr,
+			TurnCount:   state.TurnCount,
+			Settings:    "{}",
+			StartedAt:   nil, // 시작 시각 미기록 (향후 개선)
+			EndedAt:     &now,
+		}
+		if err := h.pgGameRepo.CreateGame(ctx, game); err != nil {
+			h.logger.Warn("ws: persistGameResult: create game failed",
+				zap.String("gameID", state.GameID),
+				zap.Error(err),
+			)
+			// games INSERT 실패해도 game_players / game_events 는 계속 시도
+		}
+	}
+
+	// 2. game_players 테이블 삽입
+	if h.pgGamePlayerRepo != nil {
+		for _, p := range state.Players {
+			finalTiles := len(p.Rack)
+			isWinner := p.UserID == winnerID
+			var userIDPtr *string
+			if p.UserID != "" {
+				uid := p.UserID
+				userIDPtr = &uid
+			}
+			gp := &model.GamePlayer{
+				GameID:       state.GameID,
+				UserID:       userIDPtr,
+				PlayerType:   model.PlayerType(p.PlayerType),
+				AIModel:      p.AIModel,
+				AIPersona:    p.AIPersona,
+				AIDifficulty: p.AIDifficulty,
+				SeatOrder:    p.SeatOrder,
+				InitialTiles: 14,
+				FinalTiles:   &finalTiles,
+				IsWinner:     isWinner,
+			}
+			if err := h.pgGamePlayerRepo.CreateGamePlayer(ctx, gp); err != nil {
+				h.logger.Warn("ws: persistGameResult: create game_player failed",
+					zap.String("gameID", state.GameID),
+					zap.Int("seat", p.SeatOrder),
+					zap.Error(err),
+				)
+			}
+		}
+	}
+
+	// 3. game_events 테이블 — GAME_END 이벤트 1건 삽입
+	if h.pgGameEventRepo != nil {
+		actorID := winnerID
+		actorSeat := 0
+		if winnerSeat >= 0 {
+			actorSeat = winnerSeat
+		}
+		payload := fmt.Sprintf(`{"endType":"%s","turnCount":%d}`, endType, state.TurnCount)
+		ev := &model.GameEvent{
+			GameID:     state.GameID,
+			PlayerID:   actorID,
+			TurnNumber: state.TurnCount,
+			Seat:       actorSeat,
+			EventType:  model.EventTypeGameEnd,
+			Payload:    payload,
+		}
+		if err := h.pgGameEventRepo.CreateGameEvent(ctx, ev); err != nil {
+			h.logger.Warn("ws: persistGameResult: create game_event failed",
+				zap.String("gameID", state.GameID),
+				zap.Error(err),
+			)
+		}
+	}
+
+	h.logger.Info("ws: game persisted",
+		zap.String("gameID", state.GameID),
+		zap.String("endType", endType),
+		zap.Int("turnCount", state.TurnCount),
+		zap.String("winnerID", winnerID),
 	)
 }
 
@@ -2026,6 +2169,9 @@ func (h *WSHandler) forfeitAndBroadcast(roomID, gameID string, seat int, userID,
 				Results:    results,
 			},
 		})
+
+		// I-14: 게임 결과 DB 영속화 (비동기)
+		go h.persistGameResult(state, endType)
 
 		go h.updateElo(state)
 
