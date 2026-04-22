@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
@@ -1710,6 +1711,17 @@ func tileScoreFromCode(code string) int {
 	return num
 }
 
+// isValidUUID s가 RFC 4122 UUID 형식인지 확인한다.
+// game_players.user_id / game_events.player_id 처럼 UUID 타입 컬럼에 삽입하기 전에
+// 게스트 ID("qa-테스터-xxx" 등 자유 문자열) 를 걸러내기 위해 사용한다.
+func isValidUUID(s string) bool {
+	if s == "" {
+		return false
+	}
+	_, err := uuid.Parse(s)
+	return err == nil
+}
+
 // updateElo 게임 종료 후 ELO 레이팅을 업데이트한다.
 // eloRepo가 nil이거나 PRACTICE 모드이면 건너뛴다.
 // 순위는 남은 타일 수 기준으로 결정한다 (0장=1위, 이후 타일 적은 순).
@@ -1963,9 +1975,11 @@ func (h *WSHandler) persistGameResult(state *model.GameStateRedis, endType strin
 	if h.pgGamePlayerRepo != nil {
 		for _, p := range state.Players {
 			finalTiles := len(p.Rack)
-			isWinner := p.UserID == winnerID
+			isWinner := p.UserID == winnerID && winnerID != ""
+			// Bug 1 fix: game_players.user_id is UUID type — only set when p.UserID is a valid UUID.
+			// 게스트 ID ("qa-테스터-xxx" 등 자유 문자열)는 NULL로 저장한다 (컬럼이 NULLABLE).
 			var userIDPtr *string
-			if p.UserID != "" {
+			if isValidUUID(p.UserID) {
 				uid := p.UserID
 				userIDPtr = &uid
 			}
@@ -1993,10 +2007,16 @@ func (h *WSHandler) persistGameResult(state *model.GameStateRedis, endType strin
 
 	// 3. game_events 테이블 — GAME_END 이벤트 1건 삽입
 	if h.pgGameEventRepo != nil {
-		actorID := winnerID
 		actorSeat := 0
 		if winnerSeat >= 0 {
 			actorSeat = winnerSeat
+		}
+		// Bug 2 fix: game_events.player_id is UUID NOT NULL.
+		// winnerID가 빈 문자열이거나 UUID 형식이 아닌 경우(forfeit/stalemate 무승부 또는 게스트)
+		// uuid.Nil("00000000-0000-0000-0000-000000000000") 을 시스템 센티넬로 사용한다.
+		actorID := winnerID
+		if !isValidUUID(actorID) {
+			actorID = uuid.Nil.String()
 		}
 		payload := fmt.Sprintf(`{"endType":"%s","turnCount":%d}`, endType, state.TurnCount)
 		ev := &model.GameEvent{
