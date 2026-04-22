@@ -164,9 +164,11 @@ export const useGameStore = create<GameStore>()(
     clearPendingGroupIds: () => set({ pendingGroupIds: new Set<string>() }),
 
     addRecoveredJoker: (code) =>
-      set((state) => ({
-        pendingRecoveredJokers: [...state.pendingRecoveredJokers, code],
-      })),
+      set((state) => {
+        // WARN-03: 중복 push guard — 동일 code가 이미 존재하면 no-op
+        if (state.pendingRecoveredJokers.includes(code)) return state;
+        return { pendingRecoveredJokers: [...state.pendingRecoveredJokers, code] };
+      }),
     removeRecoveredJoker: (code) =>
       set((state) => {
         const idx = state.pendingRecoveredJokers.indexOf(code);

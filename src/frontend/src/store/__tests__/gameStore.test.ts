@@ -129,6 +129,29 @@ describe("selectMyTileCount selector", () => {
 });
 
 // ---------------------------------------------------------------------------
+// WARN-03: addRecoveredJoker 중복 push guard 검증
+// ---------------------------------------------------------------------------
+describe("addRecoveredJoker 중복 push guard (WARN-03)", () => {
+  beforeEach(() => {
+    useGameStore.getState().reset();
+  });
+
+  it("같은 code 2회 addRecoveredJoker → 배열 길이 1 유지", () => {
+    useGameStore.getState().addRecoveredJoker("JK1" as import("@/types/tile").TileCode);
+    useGameStore.getState().addRecoveredJoker("JK1" as import("@/types/tile").TileCode);
+    expect(useGameStore.getState().pendingRecoveredJokers).toHaveLength(1);
+    expect(useGameStore.getState().pendingRecoveredJokers[0]).toBe("JK1");
+  });
+
+  it("다른 code 2회 addRecoveredJoker → 배열 길이 2", () => {
+    useGameStore.getState().addRecoveredJoker("JK1" as import("@/types/tile").TileCode);
+    useGameStore.getState().addRecoveredJoker("JK2" as import("@/types/tile").TileCode);
+    expect(useGameStore.getState().pendingRecoveredJokers).toHaveLength(2);
+    expect(useGameStore.getState().pendingRecoveredJokers).toEqual(["JK1", "JK2"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // G-4 회귀 방지: tileCount drift 시나리오
 //
 // qa 실측에서 관찰된 진동(9→7→9→10→7) 재현 조건:
