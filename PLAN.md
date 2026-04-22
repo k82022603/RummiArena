@@ -372,6 +372,45 @@ docs/
 
 ## 현재 진행 상황
 
+**Sprint 7 Day 1 (Day 12) rooms PostgreSQL Phase 1 전환 + FINDING-01 2단계 추적 수정** (2026-04-22) — "D-03 Dual-Write 완주 + 자동 회귀가 사용자 전에 회귀 발견"
+
+### Sprint 7 Day 1 (Day 12) 성과 — 한 세션 **13 PR 머지** (프로젝트 최고 기록)
+- **심야 실측 대응 P0 3건** (#37/#38/#39 머지): frontend P0 3건 (I-1/I-2/I-4) + backend I-14/I-15 + ai-adapter v7-ollama-meld (I-3)
+- **D-03 rooms PostgreSQL Phase 1 Dual-Write** 완주 (옵션 B 채택):
+  - **PR #40** ADR D-03 (445줄) — `NewRoomService` 3-arg + best-effort + FK guard + I-14 wire
+  - **PR #42** 구현 (16 파일, +1017/-44) — `room_converter.go` 신규, 17 call-site 시그니처 마이그레이션, 단위 5건 + 통합 3건, bash verify-rooms-persistence.sh
+  - **devops smoke 5/5 PASS**: `game-server:phase1-smoke` 배포, rooms 테이블 실제 영속 시작, I-14 FK 정상화 확인
+  - PR #38 의 `game.RoomID = nil` 우회 해소
+- **FINDING-01 3단계 추적 해소** (자동 회귀가 사용자 전에 발견한 첫 사례):
+  - **PR #41** 1차 수정 (I-18 I-2 롤백 + I-19 조커 데드락)
+  - **PR #45** qa 회귀 세션 — Jest 199/199 + Playwright 신규 7/7 PASS + hotfix-p0-i2 SC1/SC2 REAL FAIL → Issue #46 발행
+  - **architect 근본 원인 분석** `docs/04-testing/73-*.md` — `treatAsBoardDrop` 복합 조건 fallback 실패 규명
+  - **PR #51** 완전 롤백 — `GameClient.tsx` §855 early-return 추가 + K8s `frontend:finding-01-fix-2026-04-23` 배포 후 Playwright 전범위 PASS
+- **WARN 4건 triage** (PR #50 머지 + Issue 2건 백로그):
+  - WARN-03 `addRecoveredJoker` 중복 push guard + Jest 2건
+  - WARN-04 게스트 방 rooms 미기록 → **ADR-025 Permanent WONTFIX** 공식 문서화 + admin FAQ
+  - Issue #47/#48 백로그 (P2/P3)
+- **분석 자산화** (PR #52, 1110줄): `docs/04-testing/74-warn-triage` + `75-sec-day12` + `76-issue-47-48-49` — 다음 세션 구현 킥오프용
+- **Day 12 backend P0-1/P0-2 이미 해결됨 확인** (architect 분석): PR #38+#42 덕분. Sprint 7 Day 1 오후 6h 자유 확보. game_results 테이블 부재, games/game_players/game_events 분산 기록 + GAME_OVER broadcast 8 call-sites 완성 (commit `c4b566a`)
+- **pm 문서화** (PR #44): Sprint 7 decisions 인덱스 + I-17 백로그 + PR #38 description 정정
+- **전체 테스트**: Jest 199→201, go test 530/530 PASS, Playwright 신규 7/7
+- **Agent Teams**: 7명 11회 투입, worktree 3개 격리, L5→L6 scope 전환
+
+### Sprint 7 Day 1 교훈
+- **AUTO MODE + SKILL 기계 적용 금지** — 이전 프로젝트 패턴이 default. "Scope L5/L6 질문 반복" 실수
+- **내부 약어 외부 전달 금지** — L5/L6, Phase 0, Scope 등 풀어쓰기
+- **자동 테스트가 회귀를 먼저 잡는 체계 실증** — `ui-regression` + `pre-deploy-playbook` SKILL 조합 효과 확인
+
+### Sprint 7 Day 2 (2026-04-23) 의제 — 병렬 구현 가능
+- **SEC-A**: Go 1.25.9 + go-redis v9.7.3 bump (1.5h, LOW)
+- **SEC-BC**: Next 15.5.15 + admin 16.2.4 + npm audit fix (3h, MEDIUM — Playwright 회귀 필수)
+- **Issue #47**: LeaveRoom PLAYING guard (2h)
+- **Issue #48**: handleConfirm confirmBusy state (1h)
+- **Issue #49**: FINDING-02 test fixture Option A+C (1.5h, ~30 LOC)
+- 총 wall-clock **~5h** (병렬)
+
+---
+
 **Sprint 6 Day 11 UI 실측 대응 + Sprint 7 이관 선제 해소** (2026-04-21) — "실측 피드백 기반 당일 수정 + Sprint 7 잔여 소진"
 
 ### Sprint 6 Day 11 성과
