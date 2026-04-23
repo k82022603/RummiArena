@@ -498,3 +498,79 @@ test.describe("TC-I4-SC5: 조커 미배치 상태에서 확정 차단 유지 (I-
     expect(unplacedResult.blockedAfter).toBe(true);
   });
 });
+
+// ==================================================================
+// SC6 — V-13e: 조커 재배치 후 JokerSwapIndicator 배너 소멸
+// ==================================================================
+
+test.describe("TC-I4-SC6: 조커 재배치 시 JokerSwapIndicator 배너 소멸 (V-13e)", () => {
+  test.setTimeout(180_000);
+
+  test.afterEach(async ({ page }) => {
+    await cleanupViaPage(page).catch(() => {});
+  });
+
+  test("TC-I4-SC6: 회수된 JK1 을 다른 pending 그룹에 드래그하면 joker-swap-indicator 가 DOM 에서 사라진다", async ({
+    page,
+  }) => {
+    await createRoomAndStart(page, {
+      playerCount: 2,
+      aiCount: 1,
+      turnTimeout: 60,
+    });
+    await waitForGameReady(page);
+    await setupJokerSwapScenario(page);
+
+    // Step 1: 조커 회수 트리거 — 서버 [R5, JK1, R7] 에 R6a 드롭
+    const r6 = page.locator('[aria-label="R6a 타일 (드래그 가능)"]').first();
+    const r5 = page.locator('[aria-label*="R5a 타일"]').first();
+    await expect(r6).toBeVisible({ timeout: 5000 });
+    await dndDrag(page, r6, r5);
+    await page.waitForTimeout(500);
+
+    // Step 2: JokerSwapIndicator 배너가 먼저 표시됐는지 확인
+    const indicator = page.locator('[data-testid="joker-swap-indicator"]');
+    await expect(indicator).toBeVisible({ timeout: 3000 });
+
+    // Step 3: 랙에 나타난 JK1 을 다른 pending 그룹 (예: board 빈 공간) 으로 드롭
+    //   → 분기 C-2 (새 그룹 생성) 을 태움
+    const jk1 = page.locator('[aria-label="JK1 타일 (드래그 가능)"]').first();
+    await expect(jk1).toBeVisible({ timeout: 5000 });
+    const board = page.locator('[data-testid="game-board"]').first();
+    await dndDrag(page, jk1, board);
+    await page.waitForTimeout(500);
+
+    // Then: JokerSwapIndicator 가 DOM 에서 사라져야 한다
+    //   (컴포넌트 내부에서 recoveredJokers.length === 0 이면 null 렌더)
+    await expect(indicator).toHaveCount(0, { timeout: 2000 });
+  });
+});
+
+// ==================================================================
+// SC7 — V-13e: 재배치 후 랙으로 되돌리면 배너 재표시 (역방향 대칭)
+// ==================================================================
+
+test.describe("TC-I4-SC7: 조커 재배치 후 랙 복귀 시 배너 재표시 (V-13e 역전)", () => {
+  test.setTimeout(180_000);
+
+  test.afterEach(async ({ page }) => {
+    await cleanupViaPage(page).catch(() => {});
+  });
+
+  test("TC-I4-SC7: 재배치한 JK1 을 다시 랙으로 드래그하면 joker-swap-indicator 가 재표시", async ({
+    page,
+  }) => {
+    /**
+     * 이 테스트는 **필수는 아니지만**, V-13e 설계상 state 가 대칭으로 동작하는지 가드.
+     * removeRecoveredJoker 를 호출했다가 사용자가 다시 랙으로 드래그하면
+     * 조커는 다시 pendingRecoveredJokers 에 add 돼야 한다.
+     *
+     * 주의: "랙 → pending → 랙" 경로에서 addRecoveredJoker 가 다시 호출되는 경로는
+     * 현재 코드에 **없다** (pending → 랙 분기는 line 1079~1102 의 "pending 그룹 → 랙" 경로).
+     * 따라서 이 SC7 은 **실패가 예상되는** 테스트로 작성해 기능 gap 을 표면화한다.
+     * frontend-dev 가 SC7 을 처리하려면 pending → 랙 복귀 경로에 addRecoveredJoker 추가 구현
+     * 필요. Sprint 7 범위: SC7 은 `test.fixme` 로 marked 하고 별건 이슈로 추적.
+     */
+    test.fixme(true, "V-13e 역방향 대칭은 별건 이슈 (IS-V13E-SC7). 현재는 SC6 만 가드");
+  });
+});

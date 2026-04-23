@@ -460,6 +460,7 @@ export default function GameClient({ roomId }: GameClientProps) {
     addPendingGroupId,
     clearPendingGroupIds,
     addRecoveredJoker,
+    removeRecoveredJoker,
     clearRecoveredJokers,
     setMyTiles,
     gameEnded,
@@ -817,6 +818,9 @@ export default function GameClient({ roomId }: GameClientProps) {
           setPendingTableGroups(nextTableGroups);
           setPendingMyTiles(nextMyTiles);
           addPendingGroupId(newGroupId);
+          if (pendingRecoveredJokers.includes(tileCode)) {
+            removeRecoveredJoker(tileCode);
+          }
           return;
         }
         const nextTableGroups = currentTableGroups.map((g) => {
@@ -838,6 +842,9 @@ export default function GameClient({ roomId }: GameClientProps) {
         const nextMyTiles = removeFirstOccurrence(currentMyTiles, tileCode);
         setPendingTableGroups(nextTableGroups);
         setPendingMyTiles(nextMyTiles);
+        if (pendingRecoveredJokers.includes(tileCode)) {
+          removeRecoveredJoker(tileCode);
+        }
         return;
       }
 
@@ -879,6 +886,9 @@ export default function GameClient({ roomId }: GameClientProps) {
         setPendingTableGroups(nextTableGroups);
         setPendingMyTiles(nextMyTiles);
         addPendingGroupId(newGroupId);
+        if (pendingRecoveredJokers.includes(tileCode)) {
+          removeRecoveredJoker(tileCode);
+        }
         return;
       }
 
@@ -898,6 +908,9 @@ export default function GameClient({ roomId }: GameClientProps) {
           setPendingTableGroups(nextTableGroups);
           setPendingMyTiles(nextMyTiles);
           addPendingGroupId(newGroupId);
+          if (pendingRecoveredJokers.includes(tileCode)) {
+            removeRecoveredJoker(tileCode);
+          }
           return;
         }
         const updatedTiles = [...targetServerGroup.tiles, tileCode];
@@ -921,6 +934,9 @@ export default function GameClient({ roomId }: GameClientProps) {
         setPendingMyTiles(nextMyTiles);
         // pending ID 세트에 등록 → UI에서 "수정 중 (미확정)"으로 표시
         addPendingGroupId(targetServerGroup.id);
+        if (pendingRecoveredJokers.includes(tileCode)) {
+          removeRecoveredJoker(tileCode);
+        }
         return;
       }
 
@@ -1027,6 +1043,9 @@ export default function GameClient({ roomId }: GameClientProps) {
           const nextMyTiles = removeFirstOccurrence(currentMyTiles, tileCode);
           setPendingTableGroups(nextTableGroups);
           setPendingMyTiles(nextMyTiles);
+          if (pendingRecoveredJokers.includes(tileCode)) {
+            removeRecoveredJoker(tileCode);
+          }
         } else {
           // 새 그룹 생성 (서버 미전송, 프리뷰 상태)
           // BUG-UI-REARRANGE-002: 단조 카운터로 ID 생성 → 동일 ms 중복 방지
@@ -1053,6 +1072,9 @@ export default function GameClient({ roomId }: GameClientProps) {
           addPendingGroupId(newGroupId);
           // forceNewGroup은 false로 리셋하지 않음 - 사용자가 수동 토글하도록 유지
           if (forceNewGroup) setForceNewGroup(false);
+          if (pendingRecoveredJokers.includes(tileCode)) {
+            removeRecoveredJoker(tileCode);
+          }
         }
       } else if (over.id === "game-board-new-group") {
         // G-5: 새 그룹 드롭존에 직접 드롭 → 무조건 새 그룹 생성
@@ -1075,6 +1097,9 @@ export default function GameClient({ roomId }: GameClientProps) {
         setPendingTableGroups(nextTableGroups);
         setPendingMyTiles(nextMyTiles);
         addPendingGroupId(newGroupId);
+        if (pendingRecoveredJokers.includes(tileCode)) {
+          removeRecoveredJoker(tileCode);
+        }
       } else if (over.id === "player-rack") {
         // 보드 -> 랙: pending 그룹에 실제로 있는 타일만 회수
         // (랙->랙 오드롭 시 서버 그룹 타일을 삭제하는 버그 방지)
@@ -1111,10 +1136,12 @@ export default function GameClient({ roomId }: GameClientProps) {
       addPendingGroupId,
       clearPendingGroupIds,
       addRecoveredJoker,
+      removeRecoveredJoker,
       pendingTableGroups,
       pendingMyTiles,
       pendingGroupIds,
       myTiles,
+      pendingRecoveredJokers,
       forceNewGroup,
       hasInitialMeld,
     ]
