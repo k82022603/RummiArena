@@ -874,9 +874,33 @@ Istio 관련 K8s 매니페스트는 아래 구조로 관리한다.
 istio/
   peer-authentication-default.yaml       # PERMISSIVE (namespace 기본)
   peer-authentication-ai-adapter.yaml    # STRICT (ai-adapter 전용)
-  destination-rule-ai-adapter.yaml       # 서킷 브레이커 + 연결 풀
+  destination-rule-ai-adapter.yaml       # 서킷 브레이커 + 연결 풀 (outlier 튜닝: 2026-04-23)
+  destination-rule-game-server.yaml      # game-server 내부 트래픽 DR (신규: 2026-04-23)
   virtual-service-ai-adapter.yaml        # 타임아웃 + 재시도
 ```
+
+### 13.1 game-server DR 설계 요약 (2026-04-23 신규)
+
+| 항목 | 값 | 비고 |
+|------|-----|------|
+| host | `game-server.rummikub.svc.cluster.local` | mesh 내부 접근 대상 |
+| h2UpgradePolicy | `DO_NOT_UPGRADE` | WebSocket 장기 연결 지원 |
+| http1MaxPendingRequests | 50 | WS + REST 혼합 트래픽 |
+| maxRequestsPerConnection | 0 | WS 장기 연결 무제한 |
+| tcp.maxConnections | 100 | Traefik + mesh 내부 복합 |
+| consecutive5xxErrors | 5 | ai-adapter(3) 보다 완화 |
+| interval | 30s | |
+| baseEjectionTime | 60s | ai-adapter(120s) 보다 짧게 |
+| tls.mode | `ISTIO_MUTUAL` | mesh 내부 mTLS 적용 |
+
+### 13.2 ai-adapter DR outlierDetection 튜닝 (2026-04-23)
+
+| 항목 | 이전 | 변경 후 | 근거 |
+|------|------|---------|------|
+| interval | 30s | 60s | LLM 응답 최대 700s — 30s 간격은 false eject 위험 |
+| baseEjectionTime | 30s | 120s | 짧은 eject 후 재실패 → flapping 방지 |
+| splitExternalLocalOriginErrors | (없음) | true | 외부 LLM 에러 / 내부 네트워크 에러 분리 추적 |
+| consecutiveLocalOriginFailures | (없음) | 5 | 내부 에러 임계값 별도 설정 |
 
 ---
 
