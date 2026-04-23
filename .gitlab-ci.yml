@@ -302,6 +302,122 @@ trivy-fs:
   interruptible: true
 
 # =============================================================================
+# SCA (Software Composition Analysis) — 의존성 감사 잡 3건
+# J1: sca-npm-audit  — Node production High/Critical = 0 강제 게이트
+# J2: sca-govulncheck — Go code-called 취약점 = 0 강제 게이트
+# J3: weekly-dependency-audit — 주 1회 드리프트 스캔 (warn-only)
+#
+# 근거: docs/04-testing/70-sec-rev-013-dependency-audit-report.md §6
+#       docs/04-testing/78-sec-a-b-c-audit-delta.md §7.2 #10
+#       docs/04-testing/80-ci-cd-audit-jobs-impact.md (설계 확정)
+#
+# 파이프라인 영향:
+#   J1+J2 는 quality 스테이지에서 sonarqube/trivy-fs 와 병렬 실행.
+#   sonarqube 의 ~10-15m critical path 범위 내에서 완료 → wall-clock 순증 0m.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# J1 — sca-npm-audit
+# 목적: ai-adapter / frontend / admin production dependency High/Critical = 0 강제
+# Fail 정책: allow_failure: false (production High+ 발견 시 파이프라인 차단)
+# 전제 조건: SEC-B (Next 15.5.15 bump) + SEC-C (axios bump) 머지 완료 후 실행
+# -----------------------------------------------------------------------------
+sca-npm-audit:
+  stage: quality
+  <<: *local-runner
+  timeout: 10m
+  image: node:22-alpine
+  script:
+    # 3개 프로젝트 순차 실행. --audit-level=high: High/Critical만 exit 1.
+    # --omit=dev: production dependency만 검사 (dev는 J3 weekly에서 warn-only 커버).
+    # --prefer-offline: PVC /cache/npm 캐시 히트 시 네트워크 skip.
+    - cd src/ai-adapter && npm ci --prefer-offline --no-audit && npm audit --audit-level=high --omit=dev
+    - cd "$CI_PROJECT_DIR/src/frontend" && npm ci --prefer-offline --no-audit && npm audit --audit-level=high --omit=dev
+    - cd "$CI_PROJECT_DIR/src/admin" && npm ci --prefer-offline --no-audit && npm audit --audit-level=high --omit=dev
+  allow_failure: false
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "develop"
+  interruptible: true
+
+# -----------------------------------------------------------------------------
+# J2 — sca-govulncheck
+# 목적: game-server Go code-called 취약점 = 0 강제 (govulncheck -mode=source)
+# Fail 정책: allow_failure: false
+# 전제 조건: SEC-A (go1.25.9 toolchain bump) 머지 완료 후 실행
+#   — toolchain go1.25.9 directive 포함 시 code-called=0 달성 확인
+#     (docs/04-testing/78-sec-a-b-c-audit-delta.md §2.8)
+# -----------------------------------------------------------------------------
+sca-govulncheck:
+  stage: quality
+  <<: *local-runner
+  timeout: 10m
+  image: golang:1.25-alpine
+  variables:
+    GOFLAGS: "-buildvcs=false"
+    GOGC: "50"
+  before_script:
+    - apk add --no-cache gcc musl-dev git
+  script:
+    - cd src/game-server
+    # govulncheck @v1.2.0 고정 — 재현성 보장 (78번 리포트 실행 버전)
+    - go install golang.org/x/vuln/cmd/govulncheck@v1.2.0
+    # -mode=source: 실 호출 그래프에 있는 취약점만 보고 (false positive 최소화)
+    - govulncheck -mode=source ./...
+  allow_failure: false
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "develop"
+  interruptible: true
+
+# -----------------------------------------------------------------------------
+# J3 — weekly-dependency-audit
+# 목적: 주 1회 전체 의존성 (prod+dev+LOW) 드리프트 스캔. 리포트만 (빌드 차단 없음).
+# 트리거: GitLab Schedules (cron: "0 0 * * 1" — 월 00:00 UTC = 09:00 KST)
+#   Settings → CI/CD → Pipeline schedules → Variable: AUDIT_SCHEDULE=weekly
+# Fail 정책: allow_failure: true (리포트 only, 운영자 triage)
+# -----------------------------------------------------------------------------
+weekly-dependency-audit:
+  stage: quality
+  <<: *local-runner
+  timeout: 15m
+  image: node:22-alpine
+  before_script:
+    - apk add --no-cache go git
+  script:
+    - mkdir -p audit-reports
+    # Node.js 3개 프로젝트 — production + full (dev 포함) + LOW severity JSON 리포트
+    - cd src/ai-adapter && npm ci --prefer-offline --no-audit
+    - npm audit --audit-level=low --json > "$CI_PROJECT_DIR/audit-reports/ai-adapter-full.json" || true
+    - npm audit --audit-level=low --omit=dev --json > "$CI_PROJECT_DIR/audit-reports/ai-adapter-prod.json" || true
+    - cd "$CI_PROJECT_DIR/src/frontend" && npm ci --prefer-offline --no-audit
+    - npm audit --audit-level=low --json > "$CI_PROJECT_DIR/audit-reports/frontend-full.json" || true
+    - npm audit --audit-level=low --omit=dev --json > "$CI_PROJECT_DIR/audit-reports/frontend-prod.json" || true
+    - cd "$CI_PROJECT_DIR/src/admin" && npm ci --prefer-offline --no-audit
+    - npm audit --audit-level=low --json > "$CI_PROJECT_DIR/audit-reports/admin-full.json" || true
+    - npm audit --audit-level=low --omit=dev --json > "$CI_PROJECT_DIR/audit-reports/admin-prod.json" || true
+    # Go — govulncheck JSON 리포트 (전체 vulns, || true 로 빌드 차단 없음)
+    - cd "$CI_PROJECT_DIR/src/game-server"
+    - go install golang.org/x/vuln/cmd/govulncheck@v1.2.0
+    - govulncheck -mode=source -json ./... > "$CI_PROJECT_DIR/audit-reports/govulncheck.json" || true
+    # 요약 (파이프라인 로그 확인용)
+    - cd "$CI_PROJECT_DIR"
+    - echo "=== Weekly Audit Summary ==="
+    - for f in audit-reports/*.json; do echo "$f size=$(wc -c < $f)"; done
+  artifacts:
+    name: "weekly-audit-$CI_COMMIT_SHORT_SHA-$CI_PIPELINE_ID"
+    paths:
+      - audit-reports/
+    expire_in: 90 days
+    when: always
+  allow_failure: true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $AUDIT_SCHEDULE == "weekly"
+  interruptible: false
+
+# =============================================================================
 # Build Stage — Kaniko 빌드 + Trivy 이미지 스캔
 # =============================================================================
 #
