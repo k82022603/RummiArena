@@ -1,0 +1,60 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - main "로비 페이지" [ref=e2]:
+    - generic [ref=e4]:
+      - heading "RummiArena" [level=1] [ref=e5]
+      - navigation [ref=e6]:
+        - button "로비" [ref=e7] [cursor=pointer]
+        - button "연습" [ref=e8] [cursor=pointer]
+        - button "랭킹" [ref=e9] [cursor=pointer]
+      - generic [ref=e10]:
+        - generic [ref=e11]: QA-테스터
+        - button "로그아웃" [ref=e12] [cursor=pointer]
+    - generic [ref=e13]:
+      - complementary [ref=e14]:
+        - generic [ref=e15]:
+          - generic [ref=e16]:
+            - generic [ref=e17]: Q
+            - generic [ref=e18]:
+              - paragraph [ref=e19]: QA-테스터
+              - paragraph [ref=e20]: qa-테스터-1776859564790@dev.local
+          - generic [ref=e21]:
+            - generic [ref=e22]:
+              - paragraph [ref=e23]: 1,247
+              - paragraph [ref=e24]: ELO
+            - generic [ref=e25]:
+              - paragraph [ref=e26]: 54%
+              - paragraph [ref=e27]: 승률
+        - button "새 게임 방 만들기" [ref=e28] [cursor=pointer]: + 새 게임 만들기
+        - generic [ref=e29]:
+          - heading "코드로 참가" [level=3] [ref=e30]
+          - generic [ref=e31]:
+            - textbox "방 코드 입력 (4자리)" [ref=e32]:
+              - /placeholder: ABCD
+            - button "입력한 코드로 참가" [disabled] [ref=e33]: 참가
+        - button "연습 모드 시작" [ref=e34] [cursor=pointer]:
+          - paragraph [ref=e35]: 연습 모드
+          - paragraph [ref=e36]: Stage 1~6 단계별 루미큐브 학습
+      - region "게임 방 목록" [ref=e37]:
+        - generic [ref=e39]:
+          - heading "안녕하세요, QA-테스터님" [level=2] [ref=e40]
+          - paragraph [ref=e41]: 게임 방을 선택하거나 새로 만들어 보세요.
+        - generic [ref=e42]:
+          - textbox "방 코드 검색" [ref=e43]:
+            - /placeholder: 방 코드로 검색...
+          - button "목록 새로고침" [ref=e44] [cursor=pointer]: 새로고침
+        - generic [ref=e46]:
+          - paragraph [ref=e47]: 진행 중인 게임이 없습니다.
+          - paragraph [ref=e48]: 새 게임을 만들어 보세요!
+      - complementary [ref=e49]:
+        - generic [ref=e50]:
+          - heading "현재 현황" [level=3] [ref=e51]
+          - paragraph [ref=e52]: 통계 준비 중
+  - alert [ref=e53]
+  - alert:
+    - img
+    - generic:
+      - generic: 요청이 너무 빨랐습니다. 5초 후 다시 시도합니다.
+```
