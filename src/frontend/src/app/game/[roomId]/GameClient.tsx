@@ -1132,11 +1132,24 @@ export default function GameClient({ roomId }: GameClientProps) {
     [pendingMyTiles, setPendingMyTiles, setMyTiles]
   );
 
+  // Issue #48: CONFIRM_TURN 전송 후 서버 응답(TURN_START or INVALID_MOVE) 대기 중 락
+  // — pendingTableGroups 가 null 로 reset 되면(TURN_START 핸들러) 자동 해제
+  const [confirmBusy, setConfirmBusy] = useState(false);
+
+  // 락 해제: pendingTableGroups 가 null/undefined 로 초기화될 때 (TURN_START 성공 또는 INVALID_MOVE 후)
+  // 의존성 배열: [pendingTableGroups, confirmBusy] 이 둘만 — 다른 값 포함 시 과도한 실행
+  useEffect(() => {
+    if (!pendingTableGroups && confirmBusy) {
+      setConfirmBusy(false);
+    }
+  }, [pendingTableGroups, confirmBusy]);
+
   // 턴 확정: 프리뷰 상태를 서버에 전송 후 확정
   // BUG-UI-006: pending 상태를 즉시 커밋하지 않음.
   // 서버가 TURN_END(성공)를 보내면 TURN_START 핸들러에서 resetPending() 으로 정리되고,
   // INVALID_MOVE(실패)를 보내면 resetPending() + ErrorToast 가 사유를 표시한다.
   const handleConfirm = useCallback(() => {
+    if (confirmBusy) return;               // [Issue #48] 서버 응답 대기 중 중복 클릭 차단
     if (!pendingTableGroups) return;
     // M-4: pendingMyTiles가 null이면 확정 차단
     if (!pendingMyTiles) return;
@@ -1220,6 +1233,8 @@ export default function GameClient({ roomId }: GameClientProps) {
     const tilesFromRack = myTiles.filter(
       (t) => !pendingMyTiles.includes(t)
     );
+    // [Issue #48] 전송 직전 락 설정 — TURN_START 또는 INVALID_MOVE 수신 시 useEffect 에서 해제
+    setConfirmBusy(true);
     // 1단계: 이번 턴 배치 내용을 서버에 전송
     send("PLACE_TILES", {
       tableGroups: pendingTableGroups,
@@ -1231,6 +1246,7 @@ export default function GameClient({ roomId }: GameClientProps) {
       tilesFromRack,
     });
   }, [
+    confirmBusy,
     pendingTableGroups,
     pendingMyTiles,
     pendingRecoveredJokers,
@@ -1544,6 +1560,7 @@ export default function GameClient({ roomId }: GameClientProps) {
                 hasPending={!!pendingTableGroups}
                 allGroupsValid={allGroupsValid}
                 drawPileCount={gameState?.drawPileCount}
+                confirmBusy={confirmBusy}
                 onDraw={handleDraw}
                 onUndo={handleUndo}
                 onConfirm={handleConfirm}

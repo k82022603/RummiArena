@@ -144,6 +144,38 @@ describe("ActionBar — 드로우/패스 버튼", () => {
   });
 });
 
+describe("ActionBar — confirmBusy (Issue #48 in-flight lock)", () => {
+  it("confirmBusy=true 이면 확정 버튼 disabled (서버 응답 대기 중)", () => {
+    render(
+      <ActionBar
+        isMyTurn={true}
+        hasPending={true}
+        allGroupsValid={true}
+        confirmBusy={true}
+        onDraw={noop}
+        onUndo={noop}
+        onConfirm={noop}
+      />
+    );
+    expect(screen.getByRole("button", { name: /확정/ })).toBeDisabled();
+  });
+
+  it("confirmBusy=false + 기존 조건 만족 시 확정 활성", () => {
+    render(
+      <ActionBar
+        isMyTurn={true}
+        hasPending={true}
+        allGroupsValid={true}
+        confirmBusy={false}
+        onDraw={noop}
+        onUndo={noop}
+        onConfirm={noop}
+      />
+    );
+    expect(screen.getByRole("button", { name: /확정/ })).toBeEnabled();
+  });
+});
+
 describe("ActionBar — 초기화 버튼", () => {
   it("hasPending=false → 초기화 비활성", () => {
     render(
