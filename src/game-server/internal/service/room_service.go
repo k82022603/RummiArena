@@ -309,6 +309,16 @@ func (s *roomService) LeaveRoom(roomID, userID string) (*model.RoomState, error)
 		return nil, &ServiceError{Code: "INVALID_REQUEST", Message: "이미 종료된 방입니다.", Status: 400}
 	}
 
+	// PLAYING 상태에서는 LeaveRoom 차단 (V-SPRINT7-RACE-01)
+	// 게임 진행 중 이탈은 FORFEIT 경로를 통해서만 허용한다.
+	if room.Status == model.RoomStatusPlaying {
+		return nil, &ServiceError{
+			Code:    "GAME_IN_PROGRESS",
+			Message: "게임 진행 중에는 방을 나갈 수 없습니다. 기권 기능을 이용하세요.",
+			Status:  409,
+		}
+	}
+
 	found := false
 	for i, p := range room.Players {
 		if p.UserID == userID {
