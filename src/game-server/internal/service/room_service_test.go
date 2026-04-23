@@ -704,3 +704,113 @@ func TestRoomService_DualWrite_GuestHost_SkipsDB(t *testing.T) {
 	defer mock.mu.Unlock()
 	assert.Len(t, mock.createRoomCalls, 0, "비-UUID 호스트는 DB 쓰기 스킵")
 }
+
+// ============================================================
+// Issue #47 — V-SPRINT7-RACE-01: LeaveRoom PLAYING 상태 가드
+// ============================================================
+
+// TestLeaveRoom_RejectsPlayingStatus
+// PLAYING 상태 방에서 LeaveRoom을 호출하면 409 GAME_IN_PROGRESS를 반환한다.
+// 호스트와 게스트 모두 동일하게 차단된다.
+func TestLeaveRoom_RejectsPlayingStatus(t *testing.T) {
+	svc := newRoomService(t)
+
+	// 방 생성 (호스트)
+	room, err := svc.CreateRoom(&CreateRoomRequest{
+		Name:           "진행 중 방",
+		PlayerCount:    2,
+		TurnTimeoutSec: 60,
+		HostUserID:     "host-playing-guard",
+	})
+	require.NoError(t, err)
+
+	// 게스트 참가
+	err = svc.JoinRoom(room.ID, "guest-playing-guard", "게스트")
+	require.NoError(t, err)
+
+	// 게임 시작 → PLAYING 상태
+	_, err = svc.StartGame(room.ID, "host-playing-guard")
+	require.NoError(t, err)
+
+	// 호스트 LeaveRoom 시도 → 차단
+	_, err = svc.LeaveRoom(room.ID, "host-playing-guard")
+	require.Error(t, err, "PLAYING 상태에서 호스트 LeaveRoom은 에러를 반환해야 한다")
+	se, ok := IsServiceError(err)
+	require.True(t, ok, "ServiceError 타입이어야 한다")
+	assert.Equal(t, "GAME_IN_PROGRESS", se.Code)
+	assert.Equal(t, 409, se.Status)
+
+	// 게스트 LeaveRoom 시도 → 차단
+	_, err = svc.LeaveRoom(room.ID, "guest-playing-guard")
+	require.Error(t, err, "PLAYING 상태에서 게스트 LeaveRoom은 에러를 반환해야 한다")
+	se, ok = IsServiceError(err)
+	require.True(t, ok, "ServiceError 타입이어야 한다")
+	assert.Equal(t, "GAME_IN_PROGRESS", se.Code)
+	assert.Equal(t, 409, se.Status)
+}
+
+// TestLeaveRoom_AllowsWaitingStatus
+// WAITING 상태 방에서 LeaveRoom은 정상 동작한다 (회귀 방지).
+func TestLeaveRoom_AllowsWaitingStatus(t *testing.T) {
+	svc := newRoomService(t)
+
+	// 방 생성
+	room, err := svc.CreateRoom(&CreateRoomRequest{
+		Name:           "대기 중 방",
+		PlayerCount:    2,
+		TurnTimeoutSec: 60,
+		HostUserID:     "host-waiting-leave",
+	})
+	require.NoError(t, err)
+
+	// 게스트 참가
+	err = svc.JoinRoom(room.ID, "guest-waiting-leave", "게스트")
+	require.NoError(t, err)
+
+	// 게스트 LeaveRoom → WAITING 상태이므로 정상 퇴장
+	result, err := svc.LeaveRoom(room.ID, "guest-waiting-leave")
+	require.NoError(t, err, "WAITING 상태에서 LeaveRoom은 성공해야 한다")
+	require.NotNil(t, result)
+	assert.Equal(t, room.ID, result.ID)
+
+	// seat이 EMPTY로 초기화됐는지 확인
+	found := false
+	for _, p := range result.Players {
+		if p.UserID == "guest-waiting-leave" {
+			found = true
+			break
+		}
+	}
+	assert.False(t, found, "퇴장한 게스트는 Players 목록에서 제거돼야 한다")
+}
+
+// TestCheckDuplicateRoom_StillWorksOnWaiting
+// checkDuplicateRoom의 self-call(L478) 경로 — WAITING 방 자동 퇴장이 정상 동작하는지 확인.
+// PLAYING 가드 추가 후에도 이 경로는 영향받지 않아야 한다.
+func TestCheckDuplicateRoom_StillWorksOnWaiting(t *testing.T) {
+	svc := newRoomService(t)
+
+	// user가 WAITING 방 A를 생성
+	roomA, err := svc.CreateRoom(&CreateRoomRequest{
+		Name:           "방 A",
+		PlayerCount:    2,
+		TurnTimeoutSec: 60,
+		HostUserID:     "host-dup-check",
+	})
+	require.NoError(t, err)
+
+	// 같은 user가 방 B를 생성 시도 → checkDuplicateRoom이 WAITING 방 A에서 자동 퇴장 후 성공
+	_, err = svc.CreateRoom(&CreateRoomRequest{
+		Name:           "방 B",
+		PlayerCount:    2,
+		TurnTimeoutSec: 60,
+		HostUserID:     "host-dup-check",
+	})
+	require.NoError(t, err, "WAITING 방 A 자동 퇴장 후 방 B 생성은 성공해야 한다")
+
+	// 방 A는 CANCELLED 상태가 됐어야 한다 (호스트가 떠났으므로)
+	roomAState, err := svc.GetRoom(roomA.ID)
+	require.NoError(t, err)
+	assert.Equal(t, model.RoomStatusCancelled, roomAState.Status,
+		"호스트가 자동 퇴장한 방 A는 CANCELLED 상태여야 한다")
+}
