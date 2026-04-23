@@ -9,6 +9,8 @@ export interface ActionBarProps {
   /** 모든 pending 그룹의 타일 수가 3개 이상인지 여부 */
   allGroupsValid?: boolean;
   drawPileCount?: number;
+  /** CONFIRM_TURN 전송 후 서버 응답 대기 중 여부 — 중복 클릭 방지 (Issue #48) */
+  confirmBusy?: boolean;
   onDraw: () => void;
   onUndo: () => void;
   onConfirm: () => void;
@@ -33,6 +35,7 @@ const ActionBar = memo(function ActionBar({
   hasPending,
   allGroupsValid = true,
   drawPileCount,
+  confirmBusy = false,
   onDraw,
   onUndo,
   onConfirm,
@@ -118,10 +121,11 @@ const ActionBar = memo(function ActionBar({
             </button>
 
             {/* 확정 버튼: C-3: 내 턴이고, pending 배치가 있고, 모든 그룹이 유효할 때만 활성 */}
+            {/* Issue #48: confirmBusy=true 이면 서버 응답 대기 중 — 중복 클릭 차단 */}
             <button
               type="button"
               onClick={onConfirm}
-              disabled={!isMyTurn || !hasPending || !allGroupsValid}
+              disabled={!isMyTurn || !hasPending || !allGroupsValid || confirmBusy}
               className={[
                 "flex-1 py-2.5 rounded-xl font-bold text-tile-sm",
                 "bg-warning text-gray-900 hover:bg-yellow-400",
