@@ -1,6 +1,18 @@
 # Istio DestinationRule -- ai-adapter 서킷 브레이커 + 연결 풀
 # game-server -> ai-adapter 구간에 적용
 # 설계 근거: docs/02-design/20-istio-selective-mesh-design.md Section 4.5
+#
+# 변경 이력:
+#   2026-04-23 (Sprint 7 Day 2): outlierDetection 미세조정
+#     - consecutive5xxErrors: 3 (유지 — LLM 장애 빠른 감지)
+#     - interval: 30s → 60s (LLM 호출이 최대 700s 소요. 30s 간격은 너무 짧아
+#       정상 LLM 응답 중 false eject 위험. 60s 로 완화.)
+#     - baseEjectionTime: 30s → 120s (LLM vendor 회복에 120s 여유 부여.
+#       30s 에서 재시도 → 또 실패 → 불필요한 서킷 flapping 방지)
+#     - splitExternalLocalOriginErrors: true 추가 (외부 LLM 에러와
+#       내부 네트워크 에러를 분리 추적. 로그 노이즈 감소)
+#     - consecutiveLocalOriginFailures: 5 (내부 네트워크 에러 임계값 별도 설정)
+#   2026-03-XX (초기): consecutive5xxErrors=3, interval=30s, baseEjectionTime=30s
 ---
 apiVersion: networking.istio.io/v1
 kind: DestinationRule
@@ -19,11 +31,21 @@ spec:
         maxConnections: 50
         connectTimeout: 10s
     outlierDetection:
-      # 연속 5xx 에러 3회 시 서킷 오픈
+      # LLM 호출 실패 5xx 3회 연속 시 서킷 오픈 (임계값 유지)
+      # 근거: 3회면 정상적인 LLM 재시도(max 3회) 소진 + 추가 실패를 의미 → 빠른 차단 적절
       consecutive5xxErrors: 3
-      interval: 30s
-      baseEjectionTime: 30s
+      # interval 30s → 60s: LLM 응답이 최대 700s 이므로 30s 스캔은 너무 빈번.
+      # 60s 스캔으로 false eject(정상 응답 처리 중 임시 5xx) 위험 감소.
+      interval: 60s
+      # baseEjectionTime 30s → 120s: LLM vendor 회복에 120s 여유.
+      # 짧은 eject 후 재시도 → 재실패 → flapping 방지.
+      baseEjectionTime: 120s
       # Pod 1개이므로 100% (전체 차단 후 복구 대기)
       maxEjectionPercent: 100
+      # 외부(LLM vendor) 에러와 내부(네트워크) 에러 분리 추적
+      # splitExternalLocalOriginErrors: true 시 consecutive5xxErrors 는 외부 HTTP 에러만 카운트
+      # consecutiveLocalOriginFailures 는 TCP 연결 실패/타임아웃 등 내부 에러 카운트
+      splitExternalLocalOriginErrors: true
+      consecutiveLocalOriginFailures: 5   # 내부 네트워크 에러 임계값 (별도 추적)
     tls:
       mode: ISTIO_MUTUAL

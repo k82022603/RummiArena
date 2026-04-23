@@ -1,0 +1,48 @@
+# Istio DestinationRule -- game-server 내부 트래픽 정책
+#
+# 목적:
+#   Traefik -> game-server 구간은 mesh 외부(PERMISSIVE) 이나,
+#   향후 mesh 내부(예: admin -> game-server) 트래픽에 대해
+#   mTLS + outlierDetection 을 선제적으로 설정한다.
+#
+# 현재 구성 (2026-04-23):
+#   - Traefik(외부) -> game-server: PERMISSIVE (PeerAuth default 정책)
+#   - mesh 내 서비스 -> game-server: ISTIO_MUTUAL (mTLS 적용)
+#   - outlierDetection: 연속 5xx 5회 → 60s eject (ai-adapter 보다 완화)
+#
+# 설계 근거:
+#   docs/02-design/20-istio-selective-mesh-design.md §8.2
+#   game-server 는 Traefik 을 통한 외부 접근이 주 경로이므로
+#   ai-adapter 처럼 strict 서킷 브레이커가 필요하지 않다.
+#   consecutive5xxErrors=5 (ai-adapter 의 3 보다 완화) + baseEjectionTime=60s.
+#
+# 참조 이슈: Sprint 7 Day 2 infra/istio-dr-tuning
+# 갱신일: 2026-04-23
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: game-server
+  namespace: rummikub
+spec:
+  host: game-server.rummikub.svc.cluster.local
+  trafficPolicy:
+    connectionPool:
+      http:
+        h2UpgradePolicy: DO_NOT_UPGRADE   # game-server 는 HTTP/1.1 WebSocket 사용
+        http1MaxPendingRequests: 50        # WS 연결 + REST 혼합. ai-adapter(20) 보다 넉넉하게
+        maxRequestsPerConnection: 0        # WS 장기 연결 허용 (0 = 제한 없음)
+      tcp:
+        maxConnections: 100               # Traefik + mesh 내부 복합 트래픽
+        connectTimeout: 5s
+    outlierDetection:
+      # game-server 는 단일 Pod. 5xx 5회 연속 발생 시 60s eject.
+      # ai-adapter 보다 임계값 완화 (3→5): 일시적 WS 오류가 많을 수 있음.
+      consecutive5xxErrors: 5
+      interval: 30s
+      baseEjectionTime: 60s
+      maxEjectionPercent: 100   # Pod 1개이므로 100%
+    tls:
+      # ISTIO_MUTUAL: mesh 내부 -> game-server 는 mTLS.
+      # Traefik -> game-server 는 PERMISSIVE PeerAuth 로 평문 허용.
+      mode: ISTIO_MUTUAL
