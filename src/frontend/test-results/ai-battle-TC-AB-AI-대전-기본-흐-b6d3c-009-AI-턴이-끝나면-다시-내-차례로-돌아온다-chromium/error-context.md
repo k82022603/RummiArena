@@ -1,0 +1,138 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - alert [ref=e2]
+  - generic [ref=e3]:
+    - banner [ref=e4]:
+      - heading "Room 853f550b" [level=1] [ref=e6]
+      - timer "남은 시간 0초" [ref=e7]:
+        - generic [ref=e9]: 0s
+      - generic [ref=e10]:
+        - button "턴 히스토리 패널 토글" [pressed] [ref=e11] [cursor=pointer]: 히스토리
+        - generic [ref=e12]: "턴 #2"
+    - generic "상대 플레이어" [ref=e13]:
+      - generic "rookie (LLaMA) 플레이어 카드" [ref=e15]:
+        - generic [ref=e17]:
+          - generic [ref=e18]: A
+          - generic "rookie (LLaMA)" [ref=e19]
+          - generic [ref=e20]: 내 차례
+        - generic [ref=e21]:
+          - generic "연결됨" [ref=e22]
+          - generic [ref=e23]: 연결됨
+        - generic [ref=e24]:
+          - generic "최초 등록 미완료" [ref=e25]
+          - generic [ref=e26]: 등록 전
+        - img "타일 14개" [ref=e28]:
+          - generic [ref=e43]: "14"
+        - generic [ref=e46]: —
+    - generic [ref=e47]:
+      - complementary "내 정보 패널" [ref=e48]:
+        - generic "QA-테스터 플레이어 카드" [ref=e49]:
+          - generic [ref=e51]:
+            - generic [ref=e52]: H
+            - generic "QA-테스터" [ref=e53]
+          - generic [ref=e54]:
+            - generic "연결됨" [ref=e55]
+            - generic [ref=e56]: 연결됨
+          - generic [ref=e57]:
+            - generic "최초 등록 미완료" [ref=e58]
+            - generic [ref=e59]: 등록 전
+          - img "타일 15개" [ref=e61]:
+            - generic [ref=e77]: "15"
+        - generic [ref=e78]:
+          - paragraph [ref=e79]: 드로우 파일
+          - 'generic "드로우 파일: 77장 남음" [ref=e80]':
+            - generic [ref=e85]: 77장
+      - main [ref=e86]:
+        - region "게임 테이블" [ref=e87]:
+          - heading "게임 테이블 (0개 그룹)" [level=2] [ref=e88]
+          - generic:
+            - generic:
+              - generic: +
+            - paragraph: 타일을 여기에 드롭하세요
+            - paragraph: 랙에서 타일을 끌어다 테이블에 올려놓으세요
+        - generic [ref=e89]:
+          - generic [ref=e91]:
+            - text: 내 패
+            - generic [ref=e92]: (15장)
+            - generic [ref=e93]: · 최초 등록 30점 이상 필요
+          - region "내 타일 랙" [ref=e94]:
+            - heading "내 타일 (15개)" [level=2] [ref=e95]
+            - generic [ref=e97]:
+              - text: 내 타일
+              - generic [ref=e98]: (15개)
+            - generic [ref=e99]:
+              - button "Y7a 타일 (드래그 가능)" [disabled] [ref=e100] [cursor=pointer]:
+                - img "Y7a 타일 (드래그 가능)" [ref=e101]:
+                  - generic [ref=e102]: "7"
+                  - generic [ref=e103]: ▲
+              - button "K7b 타일 (드래그 가능)" [disabled] [ref=e104] [cursor=pointer]:
+                - img "K7b 타일 (드래그 가능)" [ref=e105]:
+                  - generic [ref=e106]: "7"
+                  - generic [ref=e107]: ■
+              - button "K7a 타일 (드래그 가능)" [disabled] [ref=e109] [cursor=pointer]:
+                - img "K7a 타일 (드래그 가능)" [ref=e110]:
+                  - generic [ref=e111]: "7"
+                  - generic [ref=e112]: ■
+              - button "B2b 타일 (드래그 가능)" [disabled] [ref=e113] [cursor=pointer]:
+                - img "B2b 타일 (드래그 가능)" [ref=e114]:
+                  - generic [ref=e115]: "2"
+                  - generic [ref=e116]: ●
+              - button "R6a 타일 (드래그 가능)" [disabled] [ref=e118] [cursor=pointer]:
+                - img "R6a 타일 (드래그 가능)" [ref=e119]:
+                  - generic [ref=e120]: "6"
+                  - generic [ref=e121]: ◆
+              - button "K2a 타일 (드래그 가능)" [disabled] [ref=e122] [cursor=pointer]:
+                - img "K2a 타일 (드래그 가능)" [ref=e123]:
+                  - generic [ref=e124]: "2"
+                  - generic [ref=e125]: ■
+              - button "Y11a 타일 (드래그 가능)" [disabled] [ref=e126] [cursor=pointer]:
+                - img "Y11a 타일 (드래그 가능)" [ref=e127]:
+                  - generic [ref=e128]: "11"
+                  - generic [ref=e129]: ▲
+              - button "B10a 타일 (드래그 가능)" [disabled] [ref=e130] [cursor=pointer]:
+                - img "B10a 타일 (드래그 가능)" [ref=e131]:
+                  - generic [ref=e132]: "10"
+                  - generic [ref=e133]: ●
+              - button "Y11b 타일 (드래그 가능)" [disabled] [ref=e134] [cursor=pointer]:
+                - img "Y11b 타일 (드래그 가능)" [ref=e135]:
+                  - generic [ref=e136]: "11"
+                  - generic [ref=e137]: ▲
+              - button "R10a 타일 (드래그 가능)" [disabled] [ref=e139] [cursor=pointer]:
+                - img "R10a 타일 (드래그 가능)" [ref=e140]:
+                  - generic [ref=e141]: "10"
+                  - generic [ref=e142]: ◆
+              - button "K9b 타일 (드래그 가능)" [disabled] [ref=e143] [cursor=pointer]:
+                - img "K9b 타일 (드래그 가능)" [ref=e144]:
+                  - generic [ref=e145]: "9"
+                  - generic [ref=e146]: ■
+              - button "Y5b 타일 (드래그 가능)" [disabled] [ref=e148] [cursor=pointer]:
+                - img "Y5b 타일 (드래그 가능)" [ref=e149]:
+                  - generic [ref=e150]: "5"
+                  - generic [ref=e151]: ▲
+              - button "R1a 타일 (드래그 가능)" [disabled] [ref=e153] [cursor=pointer]:
+                - img "R1a 타일 (드래그 가능)" [ref=e154]:
+                  - generic [ref=e155]: "1"
+                  - generic [ref=e156]: ◆
+              - button "B1a 타일 (드래그 가능)" [disabled] [ref=e157] [cursor=pointer]:
+                - img "B1a 타일 (드래그 가능)" [ref=e158]:
+                  - generic [ref=e159]: "1"
+                  - generic [ref=e160]: ●
+              - button "B5b 타일 (드래그 가능)" [disabled] [ref=e161] [cursor=pointer]:
+                - img "B5b 타일 (드래그 가능)" [ref=e162]:
+                  - generic [ref=e163]: "5"
+                  - generic [ref=e164]: ●
+      - complementary "턴 히스토리" [ref=e166]:
+        - generic [ref=e167]:
+          - heading "턴 히스토리" [level=2] [ref=e168]
+          - paragraph [ref=e169]: 최근 1턴 · 스크롤 가능
+        - generic [ref=e171]:
+          - generic [ref=e172]:
+            - generic [ref=e173]:
+              - generic [ref=e174]: "턴 #1"
+              - generic [ref=e175]: 나
+            - generic [ref=e176]: 0초 전
+          - paragraph [ref=e177]: 드로우
+  - status [ref=e178]
+```

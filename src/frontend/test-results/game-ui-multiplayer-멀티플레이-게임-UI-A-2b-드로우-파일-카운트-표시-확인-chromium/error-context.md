@@ -1,0 +1,43 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - alert [ref=e3]:
+      - generic [ref=e5]: 게임 방을 찾을 수 없습니다.
+    - banner [ref=e6]:
+      - heading "Room 21e6532a" [level=1] [ref=e8]
+      - generic [ref=e9]:
+        - button "턴 히스토리 패널 토글" [pressed] [ref=e10] [cursor=pointer]: 히스토리
+        - generic [ref=e11]: "턴 #1"
+    - generic "상대 플레이어" [ref=e12]:
+      - paragraph [ref=e13]: 상대 플레이어 없음
+    - generic [ref=e14]:
+      - complementary "내 정보 패널" [ref=e15]
+      - main [ref=e16]:
+        - region "게임 테이블" [ref=e17]:
+          - heading "게임 테이블 (0개 그룹)" [level=2] [ref=e18]
+          - generic:
+            - generic:
+              - generic: +
+            - paragraph: 타일을 여기에 드롭하세요
+            - paragraph: 랙에서 타일을 끌어다 테이블에 올려놓으세요
+        - generic [ref=e19]:
+          - generic [ref=e21]:
+            - text: 내 패
+            - generic [ref=e22]: (0장)
+            - generic [ref=e23]: · 최초 등록 30점 이상 필요
+          - region "내 타일 랙" [ref=e24]:
+            - heading "내 타일 (0개)" [level=2] [ref=e25]
+            - generic [ref=e27]:
+              - text: 내 타일
+              - generic [ref=e28]: (0개)
+            - paragraph [ref=e30]: 타일 없음
+      - complementary "턴 히스토리" [ref=e31]:
+        - generic [ref=e32]:
+          - heading "턴 히스토리" [level=2] [ref=e33]
+          - paragraph [ref=e34]: 최근 0턴 · 스크롤 가능
+        - paragraph [ref=e36]: 아직 턴 기록 없음
+  - status [ref=e37]
+  - alert [ref=e38]
+```
