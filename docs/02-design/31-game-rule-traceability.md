@@ -76,7 +76,7 @@ V-13은 단일 권한 검증이 아니라 **재배치 권한 + 4가지 재배치
 | **V-13b** | 유형 1: 세트 분할 (split) | ✅ V-06 보존 + V-01 유효성 | ✅ `conservation_test.go` 간접 | ✅ `f3eedb9` tilesDraggable 프롭 + DraggableTile 렌더링 + `handleDragEnd` 내 table→다른 group 이동 + pending→rack 되돌리기 landed | ⚠️ TC-RR-04 Negative **PASS** (회귀 가드) + TC-RR-03 Happy **fixme** (프론트 재배포 대기) | ❌ S4 미실행 | **부분** |
 | **V-13c** | 유형 2: 세트 합병 (merge) — **본 사건** | ✅ V-01 4색 그룹 + V-06 보존 | ✅ 그룹 유효성 테스트 다수 | ✅ `23e770a` `GameClient.tsx handleDragEnd` 서버 확정 그룹 머지 분기 landed | ⚠️ `adf0d84` TC-RR-01 Happy **fixme** + TC-RR-02 Negative **PASS** | ❌ S4 미실행 | **부분** |
 | **V-13d** | 유형 3: 타일 이동 (move) | ✅ V-06 보존 + V-01/V-02 최종 유효성 | ✅ `conservation_test.go` 간접 | ✅ `f3eedb9` tilesDraggable + `handleDragEnd` 내 table→다른 group 이동 분기 landed | ❌ 전용 TC 없음 (TC-RR-03 간접 커버 예정, 현재 fixme) | ❌ S4 미실행 | **부분** |
-| **V-13e** | 유형 4: 조커 교체 (joker swap) | ✅ V-07 조커 즉시 사용 검증 | ✅ `game_rules_comprehensive_test.go` joker swap | ⚠️ `8e540cc` P3 MVP — `pendingRecoveredJokers` + `JokerSwapIndicator` + ConfirmTurn 사전 차단 landed, **회수 조커 재드래그 미완** (Sprint 6 후반 이월) | ⚠️ TC-RR-06 **fixme** (재배포 대기) | ⚠️ S4 Phase D 조커 미획득 스킵 | **부분** |
+| **V-13e** | 유형 4: 조커 교체 (joker swap) | ✅ V-07 조커 즉시 사용 검증 | ✅ `game_rules_comprehensive_test.go` joker swap | ✅ `8e540cc` P3 MVP + **V-13e 회수 조커 재드래그 완성** (2026-04-23 Sprint 7 Day 2, `removeRecoveredJoker` A/B/C/D 4분기 호출 추가) | ✅ TC-I4-SC6 PASS (V-13e 배너 소멸 가드), SC7 fixme(IS-V13E-SC7 이슈) | ⚠️ S4 Phase D 조커 미획득 스킵 | **완료** |
 
 > **V-13b/V-13d UI 구현 주석**: `GameClient.tsx` `handleDragEnd` 내 `if (!sourceIsPending) return;` 가드는 **의도적 V-06 conservation 준수**이다.
 > 루미큐브 규칙상 "서버 확정 그룹의 타일을 랙으로 회수"는 타일 보존 법칙 위반이므로 **차단하는 것이 정답**이다.
