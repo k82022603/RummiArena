@@ -72,7 +72,7 @@ V-13은 단일 권한 검증이 아니라 **재배치 권한 + 4가지 재배치
 
 | 규칙 ID | 검증 항목 | Engine 구현 | Engine 테스트 | UI 구현 | UI 테스트(E2E) | Playtest | 종합 |
 |---------|----------|-----------|------------|--------|-------------|---------|------|
-| **V-13a** | 재배치 권한 (hasInitialMeld) | ⚠️ **간접 구현** — `ErrNoRearrangePerm` 상수 정의만 존재(`engine/errors.go:52`), 실제로는 `validator.go:100-104 validateInitialMeld` → `ErrInitialMeldSource`가 대체 차단 (review 2026-04-10 §2.7.1) | ✅ `game_rules_comprehensive_test.go:574` + `validator_test.go:208-229` (V-05 간접) | ✅ `GameClient.tsx:644` `if (!hasInitialMeld) return` 재배치 차단 가드 | ✅ `e2e/rearrangement.spec.ts` TC-RR-02/TC-RR-04 Negative(최초 등록 전 시도 차단) PASS | ✅ AI 대전에서 자연 관찰 | ⚠️ |
+| **V-13a** | 재배치 권한 (hasInitialMeld) | ✅ **직접 구현** — `validator.go validateInitialMeld` 에 V-13a 분기 추가 (`ErrNoRearrangePerm` 직접 반환, 2026-04-23 PR fix/v13a-err-no-rearrange-perm-wiring) | ✅ `validator_test.go` V-13a 전용 2건 신규 + V-05 기존 테스트 에러 코드 검증 강화 (`ErrNoRearrangePerm`) + `turn_service_test.go:553` 기대값 갱신 | ✅ `GameClient.tsx:644` `if (!hasInitialMeld) return` 재배치 차단 가드 | ✅ `e2e/rearrangement.spec.ts` TC-RR-02/TC-RR-04 Negative(최초 등록 전 시도 차단) PASS | ✅ AI 대전에서 자연 관찰 | ✅ |
 | **V-13b** | 유형 1: 세트 분할 (split) | ✅ V-06 보존 + V-01 유효성 | ✅ `conservation_test.go` 간접 | ✅ `f3eedb9` tilesDraggable 프롭 + DraggableTile 렌더링 + `handleDragEnd` 내 table→다른 group 이동 + pending→rack 되돌리기 landed | ⚠️ TC-RR-04 Negative **PASS** (회귀 가드) + TC-RR-03 Happy **fixme** (프론트 재배포 대기) | ❌ S4 미실행 | **부분** |
 | **V-13c** | 유형 2: 세트 합병 (merge) — **본 사건** | ✅ V-01 4색 그룹 + V-06 보존 | ✅ 그룹 유효성 테스트 다수 | ✅ `23e770a` `GameClient.tsx handleDragEnd` 서버 확정 그룹 머지 분기 landed | ⚠️ `adf0d84` TC-RR-01 Happy **fixme** + TC-RR-02 Negative **PASS** | ❌ S4 미실행 | **부분** |
 | **V-13d** | 유형 3: 타일 이동 (move) | ✅ V-06 보존 + V-01/V-02 최종 유효성 | ✅ `conservation_test.go` 간접 | ✅ `f3eedb9` tilesDraggable + `handleDragEnd` 내 table→다른 group 이동 분기 landed | ❌ 전용 TC 없음 (TC-RR-03 간접 커버 예정, 현재 fixme) | ❌ S4 미실행 | **부분** |
@@ -241,7 +241,7 @@ V-13은 단일 권한 검증이 아니라 **재배치 권한 + 4가지 재배치
 - V-11 (교착): ⚠️ → ✅ (TC-LF-E07 E2E 발굴로 승격 — 동일하게 반영 누락)
 - V-12 (승리): ⚠️ → ✅ (TC-LF-E05/E09 + A-11 발굴로 승격 — 동일)
 - V-09 (턴 타임아웃): ⚠️ 유지 — TC-GF-008/009는 **설정 값만** 검증, 실제 타임아웃→강제 드로우 전이 E2E는 여전히 0건
-- V-13a (재배치 권한): ⚠️ 유지 — TC-RR-02/04 Negative는 UI 차단 가드만 검증, **엔진은 V-05 간접 차단으로 `ErrNoRearrangePerm` 미사용** (정확도 gap)
+- V-13a (재배치 권한): ⚠️ → ✅ (2026-04-23) — `validateInitialMeld` 에 V-13a 분기 직접 추가, `ErrNoRearrangePerm` 호출 경로 0 → 1건, 기술부채 해소
 
 > 위 합계는 V-13을 V-13a~e의 5건으로 분해한 결과(총 19건 기준, V-13 통합 행은 카운트에서 제외)이다.
 > **Sprint 6 Day 2 진전**: 2026-04-13 기준 ❌ 3건(V-13b/c/d) → 0건 해소.

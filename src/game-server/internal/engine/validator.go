@@ -118,15 +118,16 @@ func ValidateTurnConfirm(req TurnConfirmRequest) error {
 	return nil
 }
 
-// validateInitialMeld enforces V-04 and V-05.
+// validateInitialMeld enforces V-04, V-05, and V-13a.
 func validateInitialMeld(req TurnConfirmRequest) error {
-	// V-05: table-before tiles must still be intact and unmoved.
 	beforeCodes := collectTileCodes(req.TableBefore)
 	afterCodes := collectTileCodes(req.TableAfter)
 
+	// V-13a: 최초 등록 전에는 기존 테이블 타일을 재배치할 수 없다.
+	// table-before 타일이 table-after에서 감소했다면 재배치 시도로 간주한다.
 	for code := range beforeCodes {
 		if afterCodes[code] < beforeCodes[code] {
-			return newValidationError(ErrInitialMeldSource, ErrorMessages[ErrInitialMeldSource])
+			return newValidationError(ErrNoRearrangePerm, ErrorMessages[ErrNoRearrangePerm])
 		}
 	}
 

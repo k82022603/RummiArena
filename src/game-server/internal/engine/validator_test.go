@@ -208,23 +208,82 @@ func TestValidateTurnConfirm_V04_AboveThirty(t *testing.T) {
 // ─── V-05: 최초 등록 시 랙 타일만 사용 ────────────────────────────────────
 
 // TestValidateTurnConfirm_V05_RearrangeBeforeMeld 최초 등록 전 테이블 재배치 시도는 실패한다 (T-06).
+// V-13a: 에러 코드는 ErrNoRearrangePerm이어야 한다.
+// 주의: V-03(랙 타일 미추가)에 걸리지 않으려면 tableAfter 타일 수가 tableBefore보다 많아야 한다.
 func TestValidateTurnConfirm_V05_RearrangeBeforeMeld(t *testing.T) {
-	// 테이블에 기존 타일 R7a가 있는데, 최초 등록 전에 그것을 재배치
+	// 테이블에 기존 세트 [R7a, B7a, K7b]가 있다.
+	// 최초 등록 전 플레이어가 R7a를 제거하고 자신의 랙 타일로 새 세트 2개를 구성 (재배치 시도).
+	// tableAfter 타일 수(7) > tableBefore 타일 수(3) → V-03 통과, V-13a에서 차단.
 	existingSet := makeSet(t, "g0", []string{"R7a", "B7a", "K7b"})
 
-	// 제출 테이블에서 기존 타일이 사라졌음 (재배치 시도)
 	req := TurnConfirmRequest{
 		TableBefore: []*TileSet{existingSet},
 		TableAfter: []*TileSet{
-			// R7a 가 B7a 로 분리된 새 구성 — R7a 타일 수 감소
-			makeSet(t, "g1", []string{"R10a", "B10a", "K10b"}),
+			// R7a 사라짐 (재배치 시도), B7a + K7b 유지
+			makeSet(t, "g0", []string{"B7a", "K7b", "Y7a"}),   // B7a, K7b 재사용 + Y7a 추가
+			makeSet(t, "g1", []string{"R10a", "B10a", "K10b"}), // 랙 타일 새 세트
 		},
-		RackBefore:     []string{"R10a", "B10a", "K10b"},
+		RackBefore:     []string{"Y7a", "R10a", "B10a", "K10b"},
 		RackAfter:      []string{},
 		HasInitialMeld: false,
 	}
 	err := ValidateTurnConfirm(req)
-	assert.Error(t, err, "V-05: 최초 등록 전 테이블 재배치는 실패해야 한다")
+	assert.Error(t, err, "V-13a: 최초 등록 전 테이블 재배치는 실패해야 한다")
+	ve, ok := err.(*ValidationError)
+	require.True(t, ok, "ValidationError 타입이어야 한다")
+	assert.Equal(t, ErrNoRearrangePerm, ve.Code, "V-13a: 재배치 시도는 ErrNoRearrangePerm이어야 한다")
+}
+
+// TestValidateInitialMeld_RejectsRearrangeBeforeInitialMeld
+// 최초 등록 전, 테이블 기존 타일이 감소하면 ErrNoRearrangePerm을 반환한다 (V-13a).
+func TestValidateInitialMeld_RejectsRearrangeBeforeInitialMeld(t *testing.T) {
+	// 테이블에 [R5a, R6a, R7a] 런이 이미 존재한다.
+	// 최초 등록 미완료 플레이어가 R5a를 제거하고 자신의 랙 타일로 새 세트를 추가하려 한다.
+	req := TurnConfirmRequest{
+		TableBefore: []*TileSet{
+			makeSet(t, "r0", []string{"R5a", "R6a", "R7a"}),
+		},
+		TableAfter: []*TileSet{
+			// R5a 가 사라짐 (재배치 시도)
+			makeSet(t, "r0", []string{"R6a", "R7a", "R8a"}),
+			makeSet(t, "g1", []string{"B10a", "Y10a", "K10b"}),
+		},
+		RackBefore:     []string{"R8a", "B10a", "Y10a", "K10b"},
+		RackAfter:      []string{},
+		HasInitialMeld: false,
+	}
+	err := ValidateTurnConfirm(req)
+	require.Error(t, err, "V-13a: 최초 등록 전 재배치 시도는 반드시 실패해야 한다")
+	ve, ok := err.(*ValidationError)
+	require.True(t, ok, "ValidationError 타입이어야 한다")
+	assert.Equal(t, ErrNoRearrangePerm, ve.Code, "재배치 권한 없음 에러 코드여야 한다")
+}
+
+// TestValidateInitialMeld_StillRejectsRackShortage
+// 최초 등록 전, 테이블 타일은 온전하지만 30점 미달 시 ErrInitialMeldScore로 차단한다 (V-04 회귀 가드).
+func TestValidateInitialMeld_StillRejectsRackShortage(t *testing.T) {
+	// 최초 등록 전, 테이블 기존 타일은 그대로이며 랙에서 타일을 추가하지만 30점 미달.
+	// → ErrInitialMeldScore (V-04) 로 차단되어야 한다.
+	req := TurnConfirmRequest{
+		TableBefore: []*TileSet{
+			makeSet(t, "g0", []string{"R7a", "B7a", "K7b"}),
+		},
+		TableAfter: []*TileSet{
+			// 기존 세트 온전 유지
+			makeSet(t, "g0", []string{"R7a", "B7a", "K7b"}),
+			// 랙 타일로 새 세트 추가 — 9점 (30점 미달)
+			makeSet(t, "g1", []string{"R3a", "B3a", "K3b"}),
+		},
+		RackBefore:     []string{"R3a", "B3a", "K3b"},
+		RackAfter:      []string{},
+		HasInitialMeld: false,
+	}
+	err := ValidateTurnConfirm(req)
+	require.Error(t, err, "30점 미달 최초 등록은 실패해야 한다")
+	ve, ok := err.(*ValidationError)
+	require.True(t, ok, "ValidationError 타입이어야 한다")
+	assert.Equal(t, ErrInitialMeldScore, ve.Code, "점수 미달이므로 ErrInitialMeldScore여야 한다")
+	assert.NotEqual(t, ErrNoRearrangePerm, ve.Code, "테이블 온전 — ErrNoRearrangePerm이 아닌 ErrInitialMeldScore여야 한다")
 }
 
 // ─── V-06: 테이블 타일 유실 없음 ─────────────────────────────────────────────

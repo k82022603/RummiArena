@@ -494,11 +494,11 @@ func TestConfirmTurn_InitialMeld_ExactlyThirty(t *testing.T) {
 }
 
 func TestConfirmTurn_InitialMeld_ModifyExistingSet(t *testing.T) {
-	// V-05: HasInitialMeld=false 상태에서 기존 테이블 세트의 타일을 제거(재배치) 시도 -> ErrInitialMeldSource
+	// V-13a: HasInitialMeld=false 상태에서 기존 테이블 세트의 타일을 제거(재배치) 시도 -> ErrNoRearrangePerm
 	// 시나리오: 테이블에 상대가 내려놓은 세트(R10a-R11a-R12a-R13a)가 존재하는 상태에서
 	// 최초 등록 미완료 플레이어가 R13a를 테이블에서 완전히 제거하고
 	// 자신의 랙 타일로만 구성한 세트를 추가.
-	// V-05는 beforeCodes[code] > afterCodes[code] 이면 ERR_INITIAL_MELD_SOURCE를 반환.
+	// V-13a: beforeCodes[code] > afterCodes[code] 이면 ERR_NO_REARRANGE_PERM을 반환.
 	existingTable := []*model.SetOnTable{
 		{ID: "existing-1", Tiles: []*model.Tile{
 			{Code: "R10a"}, {Code: "R11a"}, {Code: "R12a"}, {Code: "R13a"},
@@ -548,9 +548,10 @@ func TestConfirmTurn_InitialMeld_ModifyExistingSet(t *testing.T) {
 		TilesFromRack: tilesFromRack,
 	})
 	// 규칙 S6.1: 검증 실패 → 패널티 드로우 + 턴 종료
+	// V-13a: 재배치 시도이므로 ErrNoRearrangePerm (기존 ErrInitialMeldSource에서 변경)
 	require.NoError(t, err)
 	assert.True(t, result.Success)
-	assert.Equal(t, engine.ErrInitialMeldSource, result.ErrorCode)
+	assert.Equal(t, engine.ErrNoRearrangePerm, result.ErrorCode)
 	assert.Greater(t, result.PenaltyDrawCount, 0)
 }
 
