@@ -6,7 +6,17 @@ set -euo pipefail
 
 NAMESPACE="rummikub"
 HELM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${HELM_DIR}/.." && pwd)"
 ACTION="${1:-install}"
+WITH_PLAYBOOK=0
+
+# --with-playbook 플래그 파싱 (release / hotfix 태그 배포 시 필수)
+# 정책: docs/05-deployment/09-pre-deploy-playbook-gate.md
+for arg in "$@"; do
+  case "${arg}" in
+    --with-playbook) WITH_PLAYBOOK=1 ;;
+  esac
+done
 
 log() { echo "[$(date '+%H:%M:%S')] $*"; }
 err() { echo "[ERROR] $*" >&2; exit 1; }
@@ -101,6 +111,22 @@ uninstall_all() {
   log "완료. PVC는 수동으로 삭제하세요: kubectl delete pvc -n ${NAMESPACE} --all"
 }
 
+run_playbook() {
+  # SKILL.md v1.1 Phase 1~4 자동 실행. release/hotfix 태그 배포 시 필수.
+  # 정책: docs/05-deployment/09-pre-deploy-playbook-gate.md
+  log "=== Pre-deploy Playbook 실행 ==="
+  if [[ ! -x "${REPO_ROOT}/scripts/run-pre-deploy-playbook.sh" ]]; then
+    err "scripts/run-pre-deploy-playbook.sh 실행 권한 없음 (chmod +x 필요)"
+  fi
+  if "${REPO_ROOT}/scripts/run-pre-deploy-playbook.sh"; then
+    log "Playbook PASS — 사용자 전달 가능 (GO)"
+    return 0
+  else
+    log "Playbook FAIL — 사용자 전달 차단 (NO-GO). 배포 태그는 유지, playbook.pass=false 표기 필요"
+    return 1
+  fi
+}
+
 verify_health() {
   log "=== 헬스체크 ==="
   local failed=0
@@ -143,10 +169,16 @@ case "${ACTION}" in
     check_prereqs
     ensure_namespace
     deploy_all
+    if [[ ${WITH_PLAYBOOK} -eq 1 ]]; then
+      run_playbook || err "Pre-deploy Playbook FAIL — 배포 게이트 차단"
+    fi
     ;;
   upgrade)
     check_prereqs
     deploy_all
+    if [[ ${WITH_PLAYBOOK} -eq 1 ]]; then
+      run_playbook || err "Pre-deploy Playbook FAIL — 배포 게이트 차단"
+    fi
     ;;
   uninstall|remove)
     uninstall_all
@@ -157,8 +189,19 @@ case "${ACTION}" in
   health|verify)
     verify_health
     ;;
+  playbook)
+    # 수동 호출: ./helm/deploy.sh playbook
+    run_playbook
+    ;;
   *)
-    echo "사용법: $0 [install|upgrade|uninstall|status|health]"
+    echo "사용법: $0 [install|upgrade|uninstall|status|health|playbook] [--with-playbook]"
+    echo ""
+    echo "  install|deploy [--with-playbook]   설치 (release/hotfix 태그 시 --with-playbook 필수)"
+    echo "  upgrade [--with-playbook]           업그레이드 (동일)"
+    echo "  uninstall|remove                    제거"
+    echo "  status                              Helm 릴리즈 상태"
+    echo "  health|verify                       헬스체크"
+    echo "  playbook                            Pre-deploy Playbook 단독 실행"
     exit 1
     ;;
 esac
