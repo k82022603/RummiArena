@@ -32,6 +32,9 @@ const config: Config = {
         warning: "#F3C623",
         danger: "#F85149",
         "color-ai": "#9B59B6",
+        // 드롭존 상태 색 토큰 (UX-004, docs/02-design/54-drop-zone-color-system.md)
+        "drop-allow": "#27AE60",
+        "drop-block": "#C0392B",
       },
       fontFamily: {
         sans: [
