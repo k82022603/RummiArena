@@ -53,6 +53,11 @@ function sortTiles(tiles: TileCode[]): TileCode[] {
  * - 내 턴에만 드래그 활성화
  * - 정렬 버튼으로 숫자 오름차순 정렬 (조커 마지막)
  * - 드래그 중 되돌리기 힌트 표시
+ *
+ * BUG-UI-013 수정:
+ * - aria-label에 "(N장)" 포함 → E2E readDisplayedTileCount 가 aria-label에서 추출 가능
+ * - data-testid="hand-count" span → readDisplayedTileCount 의 testid 경로 지원
+ * - tileCount는 tiles 배열 길이를 한 번만 계산 (drag preview 중에도 drift 없음)
  */
 const PlayerRack = memo(function PlayerRack({
   tiles,
@@ -63,6 +68,9 @@ const PlayerRack = memo(function PlayerRack({
   className = "",
 }: PlayerRackProps) {
   const { setNodeRef, isOver } = useDroppable({ id: RACK_DROP_ID });
+
+  // BUG-UI-013: 카운트 단일 계산 (drag preview 도중 drift 방지)
+  const tileCount = tiles.length;
 
   const handleSort = useCallback(() => {
     if (!onSort) return;
@@ -92,7 +100,7 @@ const PlayerRack = memo(function PlayerRack({
 
   return (
     <section
-      aria-label="내 타일 랙"
+      aria-label={`내 타일 랙 (${tileCount}장)`}
       ref={setNodeRef}
       className={[
         "rounded-xl",
@@ -105,18 +113,25 @@ const PlayerRack = memo(function PlayerRack({
         .filter(Boolean)
         .join(" ")}
     >
-      <h2 className="sr-only">내 타일 ({tiles.length}개)</h2>
+      <h2 className="sr-only">내 타일 ({tileCount}장)</h2>
 
       {/* 랙 헤더: 타일 수 + 정렬 버튼 */}
       <div className="flex items-center justify-between px-3 pt-2 pb-1">
         <span className="text-tile-xs text-text-secondary">
           내 타일{" "}
-          <span className="text-text-primary font-medium">({tiles.length}개)</span>
+          {/* BUG-UI-013: data-testid="hand-count" 로 E2E 직접 접근 지원 */}
+          <span
+            className="text-text-primary font-medium"
+            data-testid="hand-count"
+            aria-label={`손패 ${tileCount}장`}
+          >
+            ({tileCount}장)
+          </span>
         </span>
 
         {/* 정렬 버튼: 내 턴이고 타일이 2개 이상일 때만 활성 */}
         <AnimatePresence>
-          {isMyTurn && tiles.length >= 2 && (
+          {isMyTurn && tileCount >= 2 && (
             <motion.button
               key="sort-btn"
               type="button"
@@ -144,7 +159,7 @@ const PlayerRack = memo(function PlayerRack({
 
       {/* 타일 목록 */}
       <div className="flex flex-wrap items-center gap-1.5 p-3 pt-1">
-        {tiles.length === 0 ? (
+        {tileCount === 0 ? (
           <p className="text-text-secondary text-tile-sm w-full text-center py-2">
             {isDragging ? "여기로 되돌리기" : "타일 없음"}
           </p>

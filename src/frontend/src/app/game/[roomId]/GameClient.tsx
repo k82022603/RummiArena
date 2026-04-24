@@ -29,6 +29,8 @@ import TurnTimer from "@/components/game/TurnTimer";
 import ConnectionStatus from "@/components/game/ConnectionStatus";
 import ErrorToast from "@/components/game/ErrorToast";
 import ReconnectToast from "@/components/game/ReconnectToast";
+import ExtendLockToast from "@/components/game/ExtendLockToast";
+import InitialMeldBanner from "@/components/game/InitialMeldBanner";
 import ThrottleBadge from "@/components/game/ThrottleBadge";
 import TurnHistoryPanel from "@/components/game/TurnHistoryPanel";
 import JokerSwapIndicator from "@/components/game/JokerSwapIndicator";
@@ -456,6 +458,7 @@ export default function GameClient({ roomId }: GameClientProps) {
     pendingRecoveredJokers,
     aiThinkingSeat,
     turnNumber,
+    currentPlayerId,
     setPendingTableGroups,
     setPendingMyTiles,
     addPendingGroupId,
@@ -509,6 +512,10 @@ export default function GameClient({ roomId }: GameClientProps) {
 
   // 다음 보드 드롭 시 새 그룹 강제 생성 여부
   const [forceNewGroup, setForceNewGroup] = useState(false);
+
+  // UX-004: ExtendLockToast 표시 상태 + 같은 턴 내 1회 추적
+  const [showExtendLockToast, setShowExtendLockToast] = useState(false);
+  const extendLockToastShownRef = useRef(false);
 
   // ------------------------------------------------------------------
   // Task 1: beforeunload + 라우터 가드
@@ -600,7 +607,22 @@ export default function GameClient({ roomId }: GameClientProps) {
   // 실제 내 seat: gameStore.mySeat(AUTH_OK에서 설정, 초기값 -1) 우선,
   // AUTH_OK 수신 전(URL 직접 접근 등)에는 roomStore.mySeat 차선 사용
   const effectiveMySeat = mySeat !== -1 ? mySeat : roomMySeat;
-  const isMyTurn = gameState?.currentSeat === effectiveMySeat;
+
+  // BUG-UI-011: isMyTurn SSOT 강제
+  // currentPlayerId(E2E 테스트 브리지 주입 포함)가 설정된 경우:
+  //   내 seat의 userId와 currentPlayerId를 비교해 턴 여부를 결정한다.
+  // currentPlayerId가 null이면 gameState.currentSeat 기반으로 계산 (프로덕션 기본 경로).
+  const isMyTurn = (() => {
+    if (currentPlayerId !== null) {
+      const myPlayer = players.find((p) => p.seat === effectiveMySeat);
+      if (myPlayer && "userId" in myPlayer) {
+        return (myPlayer as { userId: string }).userId === currentPlayerId;
+      }
+      // myPlayer에 userId가 없으면 AI 플레이어이므로 currentPlayerId 비교 불가 → false
+      return false;
+    }
+    return gameState?.currentSeat === effectiveMySeat;
+  })();
 
   const currentTableGroups = useMemo(
     () => pendingTableGroups ?? gameState?.tableGroups ?? [],
@@ -954,6 +976,12 @@ export default function GameClient({ roomId }: GameClientProps) {
       //     swapCandidate 분기가 선행 처리하므로 여기 도달 시 조커 없음.
       //   - BUG-UI-EXT 수정 4: freshTableGroups(최신 참조) 사용으로 stale snapshot 방지
       if (targetServerGroup && !freshHasInitialMeld) {
+        // UX-004: 초기 등록 미완료 안내 토스트 — 같은 턴 내 1회만 표시
+        // (GameClient.tsx FINDING-01 early-return 직전 삽입, docs/02-design/53 §4.2)
+        if (!extendLockToastShownRef.current) {
+          extendLockToastShownRef.current = true;
+          setShowExtendLockToast(true);
+        }
         pendingGroupSeqRef.current += 1;
         const newGroupId = `pending-${Date.now()}-${pendingGroupSeqRef.current}`;
         const newGroup: TableGroup = {
@@ -1379,6 +1407,9 @@ export default function GameClient({ roomId }: GameClientProps) {
     clearRecoveredJokers();
     setForceNewGroup(false);
     setInvalidPendingGroupIds(new Set());
+    // UX-004: 되돌리기 시 ExtendLockToast 1회 표시 카운터도 초기화 (다음 드롭 시 재안내)
+    extendLockToastShownRef.current = false;
+    setShowExtendLockToast(false);
   }, [
     send,
     setPendingTableGroups,
@@ -1415,6 +1446,11 @@ export default function GameClient({ roomId }: GameClientProps) {
   return (
     <>
       <ErrorToast />
+      {/* UX-004: ExtendLockToast — top-24, ReconnectToast 아래 (top-32로 하향) */}
+      <ExtendLockToast
+        visible={showExtendLockToast}
+        onDismiss={() => setShowExtendLockToast(false)}
+      />
       <ReconnectToast />
       {/* RateLimitToast는 layout.tsx에서 전역 마운트 */}
     <DndContext
@@ -1573,6 +1609,12 @@ export default function GameClient({ roomId }: GameClientProps) {
 
           {/* 중앙: 게임 보드 + 랙 */}
           <main className="flex-1 flex flex-col p-4 gap-3 overflow-hidden min-h-0 min-w-0">
+            {/* UX-004: 초기 등록 안내 배너 (최초 진입 1회) */}
+            <InitialMeldBanner
+              hasInitialMeld={hasInitialMeld}
+              roomId={roomId}
+            />
+
             {/* 게임 보드 — 최근 턴 하이라이트 포함 */}
             <GameBoard
               tableGroups={currentTableGroups}
@@ -1586,6 +1628,7 @@ export default function GameClient({ roomId }: GameClientProps) {
               tilesDraggable={isMyTurn}
               validMergeGroupIds={validMergeGroupIds}
               showNewGroupDropZone={isMyTurn}
+              hasInitialMeld={hasInitialMeld}
               className="flex-1"
             />
 

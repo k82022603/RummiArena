@@ -28,7 +28,12 @@ export interface ActionBarProps {
  * - 확정: pending 상태가 아닐 때 비활성 (배치 확정 -> 서버 전송)
  * - 내 턴이 아닐 때 AnimatePresence로 전체 숨김
  *
+ * UX-004: 확정 버튼에 aria-describedby 툴팁 추가
+ *   "내 타일로 30점 이상 새 멜드를 만들면 확정 가능.
+ *    확정 후엔 보드 기존 멜드에도 이어붙일 수 있어요."
+ *
  * @see docs/02-design/12-player-lifecycle-design.md 섹션 3.6
+ * @see docs/02-design/53-ux004-extend-lock-copy.md §2.2
  */
 const ActionBar = memo(function ActionBar({
   isMyTurn,
@@ -122,20 +127,39 @@ const ActionBar = memo(function ActionBar({
 
             {/* 확정 버튼: C-3: 내 턴이고, pending 배치가 있고, 모든 그룹이 유효할 때만 활성 */}
             {/* Issue #48: confirmBusy=true 이면 서버 응답 대기 중 — 중복 클릭 차단 */}
-            <button
-              type="button"
-              onClick={onConfirm}
-              disabled={!isMyTurn || !hasPending || !allGroupsValid || confirmBusy}
-              className={[
-                "flex-1 py-2.5 rounded-xl font-bold text-tile-sm",
-                "bg-warning text-gray-900 hover:bg-yellow-400",
-                "disabled:opacity-40 disabled:cursor-not-allowed",
-                "transition-colors",
-              ].join(" ")}
-              aria-label="배치 확정"
-            >
-              확정
-            </button>
+            {/* UX-004: aria-describedby 툴팁 — hover/focus 시 초기 등록 규칙 안내 */}
+            <div className="relative group flex-1">
+              <button
+                type="button"
+                onClick={onConfirm}
+                disabled={!isMyTurn || !hasPending || !allGroupsValid || confirmBusy}
+                className={[
+                  "w-full py-2.5 rounded-xl font-bold text-tile-sm",
+                  "bg-warning text-gray-900 hover:bg-yellow-400",
+                  "disabled:opacity-40 disabled:cursor-not-allowed",
+                  "transition-colors",
+                ].join(" ")}
+                aria-label="배치 확정"
+                aria-describedby="confirm-tooltip"
+              >
+                확정
+              </button>
+              {/* UX-004 툴팁 (docs/02-design/53-ux004-extend-lock-copy.md §2.2) */}
+              <div
+                id="confirm-tooltip"
+                role="tooltip"
+                className={[
+                  "absolute bottom-full mb-2 left-1/2 -translate-x-1/2",
+                  "invisible group-hover:visible group-focus-within:visible",
+                  "w-56 bg-card-bg border border-border rounded-lg px-3 py-2",
+                  "text-tile-xs text-text-secondary text-center z-50",
+                  "pointer-events-none",
+                ].join(" ")}
+              >
+                내 타일로 30점 이상 새 멜드를 만들면 확정 가능.{" "}
+                확정 후엔 보드 기존 멜드에도 이어붙일 수 있어요.
+              </div>
+            </div>
           </div>
         </motion.div>
       )}

@@ -41,7 +41,7 @@ export default function ReconnectToast() {
           exit={{ opacity: 0, y: -12 }}
           transition={{ type: "spring", stiffness: 400, damping: 30 }}
           className={[
-            "fixed top-16 left-1/2 -translate-x-1/2 z-50",
+            "fixed top-32 left-1/2 -translate-x-1/2 z-50",
             "flex items-center gap-2",
             "bg-emerald-600 text-white",
             "rounded-xl shadow-lg",

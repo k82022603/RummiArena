@@ -134,6 +134,11 @@ interface GameBoardProps {
    * 드롭 ID는 "game-board-new-group"이며 GameClient handleDragEnd에서 처리한다.
    */
   showNewGroupDropZone?: boolean;
+  /**
+   * UX-004: 초기 등록(30점) 완료 여부.
+   * 드롭존 색 토큰(allow/block) 결정에 사용 (docs/02-design/54-drop-zone-color-system.md).
+   */
+  hasInitialMeld?: boolean;
   className?: string;
 }
 
@@ -142,24 +147,77 @@ function DroppableGroupWrapper({
   groupId,
   isCompatible,
   isDragging,
+  hasInitialMeld,
+  isPendingGroup,
   children,
 }: {
   groupId: string;
   isCompatible?: boolean;
   /** 현재 드래그 중인지 여부 — 드래그 중일 때만 비호환 ring 표시 */
   isDragging?: boolean;
+  /** UX-004: 초기 등록 완료 여부 — 드롭존 색 토큰(allow/block) 결정 */
+  hasInitialMeld?: boolean;
+  /** pending 그룹 여부 — pending 그룹은 초기 등록 전에도 드롭 허용 */
+  isPendingGroup?: boolean;
   children: React.ReactNode;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: groupId });
-  // G-5: hover 시 호환 → 초록, 비호환 → 빨간, 호환 대기 → 초록 pulse
-  const ringClass = isOver
-    ? (isCompatible ? "ring-2 ring-green-400/80 rounded-lg" : "ring-2 ring-red-400/80 rounded-lg")
-    : isCompatible
-      ? "ring-2 ring-green-400/40 rounded-lg animate-pulse"
-      : (isDragging ? "ring-1 ring-red-400/20 rounded-lg" : undefined);
+
+  // UX-004: 드롭존 3상태 색 토큰 적용 (docs/02-design/54-drop-zone-color-system.md §6.2)
+  // - 서버 확정 그룹 + 초기 등록 전 + hover → .dropzone-block (빨간 점선)
+  // - 서버 확정 그룹 + 초기 등록 후 + hover + 호환 → .dropzone-allow (초록 실선)
+  // - pending 그룹 hover + 호환 → 기존 초록 ring 유지
+  const isServerGroup = !isPendingGroup;
+  const isDropBlocked = isOver && isServerGroup && !hasInitialMeld;
+  const isDropAllowed = isOver && isCompatible && (hasInitialMeld || isPendingGroup);
+
+  const ringClass = (() => {
+    if (isDropBlocked) {
+      // 차단: 빨간 점선 + 배경 tint (색약 보조: dashed border)
+      return "ring-0 rounded-lg outline outline-2 outline-dashed outline-[#c0392b]/70 bg-[rgba(192,57,43,0.12)]";
+    }
+    if (isDropAllowed) {
+      // 허용: 초록 실선 + 배경 tint
+      return "ring-2 ring-[#27ae60]/70 rounded-lg bg-[rgba(39,174,96,0.12)]";
+    }
+    // G-5: 기존 로직 유지 (hover 없을 때)
+    if (isOver) {
+      return isCompatible ? "ring-2 ring-green-400/80 rounded-lg" : "ring-2 ring-red-400/80 rounded-lg";
+    }
+    if (isCompatible) return "ring-2 ring-green-400/40 rounded-lg animate-pulse";
+    if (isDragging) return "ring-1 ring-red-400/20 rounded-lg";
+    return undefined;
+  })();
+
   return (
     <div ref={setNodeRef} className={ringClass}>
-      {children}
+      {/* UX-004: 드롭존 상태 아이콘 (색약 접근성 보강) */}
+      <div className="relative">
+        {isDropAllowed && (
+          <span
+            aria-hidden="true"
+            className="absolute top-1 right-1 text-[#27ae60] text-xs z-10 pointer-events-none"
+          >
+            ✓
+          </span>
+        )}
+        {isDropBlocked && (
+          <span
+            aria-hidden="true"
+            className="absolute top-1 right-1 text-[#c0392b] text-xs z-10 pointer-events-none"
+          >
+            ✕
+          </span>
+        )}
+        <span className="sr-only">
+          {isDropAllowed
+            ? "타일을 이 멜드에 이어붙일 수 있습니다"
+            : isDropBlocked
+            ? "초기 등록 후 이어붙이기 가능합니다"
+            : ""}
+        </span>
+        {children}
+      </div>
     </div>
   );
 }
@@ -216,6 +274,7 @@ const GameBoard = memo(function GameBoard({
   tilesDraggable = false,
   validMergeGroupIds,
   showNewGroupDropZone = false,
+  hasInitialMeld = false,
   className = "",
 }: GameBoardProps) {
   const { setNodeRef, isOver } = useDroppable({ id: BOARD_DROP_ID });
@@ -481,6 +540,8 @@ const GameBoard = memo(function GameBoard({
                     isDragging && !!validMergeGroupIds?.has(group.id)
                   }
                   isDragging={isDragging}
+                  hasInitialMeld={hasInitialMeld}
+                  isPendingGroup={isPending}
                 >
                   {groupContent}
                 </DroppableGroupWrapper>
