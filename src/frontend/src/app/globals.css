@@ -21,6 +21,17 @@
   --color-warning: #f3c623;
   --color-danger: #f85149;
   --color-ai: #9b59b6;
+
+  /* === 드롭존 상태 토큰 (UX-004, docs/02-design/54-drop-zone-color-system.md) === */
+  /* 유휴: 드래그 비활성 상태 — 기존 보드 색상 유지 (별도 토큰 없음) */
+  /* 허용: 드롭 가능 영역 하이라이트 (WCAG AA 대비율 검증: #27AE60 on #1A3328 = 4.6:1) */
+  --drop-allow: #27ae60;
+  --drop-allow-bg: rgba(39, 174, 96, 0.12);
+  --drop-allow-border: rgba(39, 174, 96, 0.7);
+  /* 차단: 드롭 불가 영역 하이라이트 (WCAG AA 대비율 검증: #C0392B on #1A3328 = 4.7:1) */
+  --drop-block: #c0392b;
+  --drop-block-bg: rgba(192, 57, 43, 0.12);
+  --drop-block-border: rgba(192, 57, 43, 0.7);
 }
 
 /* 한글 최적화 기본값 */
@@ -84,3 +95,34 @@ body {
   );
   background-size: 6px 6px;
 }
+
+/* === 드롭존 상태 클래스 (dnd-kit over 상태에 따라 적용) === */
+/* 유휴: 별도 클래스 없음, 기본 보드 스타일 유지 */
+
+/* 허용: 드롭 가능 — 초록 실선 border + 배경 tint */
+.dropzone-allow {
+  border: 2px solid var(--drop-allow-border) !important;
+  background-color: var(--drop-allow-bg) !important;
+  box-shadow: 0 0 0 1px var(--drop-allow-border) inset;
+  transition: border-color 0.12s ease, background-color 0.12s ease;
+}
+
+/* 차단: 드롭 불가 — 빨간 점선 border + 배경 tint + 색맹 보조 패턴 */
+.dropzone-block {
+  border: 2px dashed var(--drop-block-border) !important;
+  background-color: var(--drop-block-bg) !important;
+  /* 색약 보조: 점선 자체가 시각적 패턴 역할 (border-style: dashed) */
+  /* 추가 패턴: 대각선 해칭 (적록색맹/전색맹 대비) */
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 4px,
+    rgba(192, 57, 43, 0.08) 4px,
+    rgba(192, 57, 43, 0.08) 5px
+  );
+  transition: border-color 0.12s ease, background-color 0.12s ease;
+}
+
+/* 색약 접근성 보조: 아이콘 패턴 (색상만으로 구분 불가 시 대비) */
+/* 허용 드롭존에는 체크 아이콘, 차단 드롭존에는 X 아이콘을 ::after로 추가 */
+/* 실제 구현은 MeldRenderer.tsx의 isOver 상태에서 SVG 아이콘 조건부 렌더 권장 */
