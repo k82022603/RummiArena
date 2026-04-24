@@ -122,6 +122,16 @@ interface GameStore {
   // pending 상태만 초기화 (INVALID_MOVE 롤백 시 사용)
   resetPending: () => void;
 
+  // F1/F2 (BUG-UI-012 Phase 2): 게임 종료 상태 스키마
+  // GAME_ENDED / PLAYER_FORFEITED 이벤트 수신 시 모달 트리거에 사용.
+  // gameEnded(boolean) 는 GAME_OVER 이벤트 기반이므로 별도 유지.
+  gameStatus: "waiting" | "playing" | "ended";
+  setGameStatus: (status: "waiting" | "playing" | "ended") => void;
+  endReason: string | null;
+  setEndReason: (reason: string | null) => void;
+  winner: { userId: string; displayName: string } | null;
+  setWinner: (winner: { userId: string; displayName: string } | null) => void;
+
   // 전체 초기화
   reset: () => void;
 }
@@ -148,6 +158,10 @@ const initialState = {
   deadlockReason: null as string | null,
   turnHistory: [] as TurnPlacement[],
   lastTurnPlacement: null as TurnPlacement | null,
+  // F1/F2 (BUG-UI-012 Phase 2)
+  gameStatus: "waiting" as "waiting" | "playing" | "ended",
+  endReason: null as string | null,
+  winner: null as { userId: string; displayName: string } | null,
 };
 
 // 히스토리 보관 최대 건수 (메모리 절약)
@@ -194,6 +208,10 @@ export const useGameStore = create<GameStore>()(
     setTurnNumber: (turnNumber) => set({ turnNumber }),
     setGameEnded: (gameEnded) => set({ gameEnded }),
     setGameOverResult: (gameOverResult) => set({ gameOverResult }),
+    // F1/F2 (BUG-UI-012 Phase 2) setters
+    setGameStatus: (gameStatus) => set({ gameStatus }),
+    setEndReason: (endReason) => set({ endReason }),
+    setWinner: (winner) => set({ winner }),
 
     addDisconnectedPlayer: (info) =>
       set((state) => ({
