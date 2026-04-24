@@ -269,9 +269,10 @@ function getPlayerDisplayName(player: Player | null | undefined, fallback: strin
 /** 종료 사유별 UI 메타 */
 const END_TYPE_META: Record<string, { icon: string; label: string; description: string }> = {
   NORMAL: { icon: "\uD83C\uDFC6", label: "게임 종료", description: "" },
-  STALEMATE: { icon: "\uD83E\uDD1D", label: "교착 종료", description: "모든 플레이어가 연속으로 패스하여 교착 상태로 종료되었습니다." },
-  FORFEIT: { icon: "\uD83C\uDFF3\uFE0F", label: "기권 종료", description: "상대 플레이어의 기권으로 게임이 종료되었습니다." },
-  CANCELLED: { icon: "\u274C", label: "게임 취소", description: "게임이 취소되었습니다." },
+  // BUG-UI-012 카피 에디트 (designer, 2026-04-24): 존댓말 통일 + 명료성 개선
+  STALEMATE: { icon: "\uD83E\uDD1D", label: "교착 종료", description: "모든 플레이어가 연속으로 패스해 교착 상태로 종료되었어요." },
+  FORFEIT: { icon: "\uD83C\uDFF3\uFE0F", label: "기권 종료", description: "한 플레이어의 기권으로 게임이 종료되었어요." },
+  CANCELLED: { icon: "\u274C", label: "게임 취소", description: "게임이 취소되었어요." },
 };
 
 function GameEndedOverlay({

@@ -44,36 +44,38 @@ const WS_THROTTLE_COOLDOWN_MS = 10_000;
 /**
  * 서버 에러 코드 -> 한글 메시지 매핑 (errors.go 기반 전체 매핑)
  */
+// BUG-UI-012 카피 에디트 (designer, 2026-04-24): 용어 일관성 + 명료성 개선
+// 변경 기준: docs/02-design/53-ux004-extend-lock-copy.md §5 게임 용어 일관성 표
 const INVALID_MOVE_MESSAGES: Record<string, string> = {
   // 세트 유효성 관련
-  ERR_INVALID_SET: "유효하지 않은 타일 조합입니다. 그룹 또는 런을 확인하세요",
-  ERR_SET_SIZE: "세트는 최소 3개 타일이 필요합니다",
-  ERR_GROUP_NUMBER: "그룹의 모든 타일은 같은 숫자여야 합니다",
-  ERR_GROUP_COLOR_DUP: "같은 색상 타일이 중복됩니다",
-  ERR_RUN_COLOR: "런의 모든 타일은 같은 색상이어야 합니다",
-  ERR_RUN_SEQUENCE: "런의 숫자가 연속적이지 않습니다",
-  ERR_RUN_RANGE: "런의 숫자가 1~13 범위를 벗어났습니다",
-  ERR_RUN_DUPLICATE: "런에 같은 숫자의 타일이 중복됩니다",
-  ERR_RUN_NO_NUMBER: "런에 숫자 타일이 최소 1장 이상 필요합니다",
+  ERR_INVALID_SET: "유효하지 않은 타일 조합이에요. 그룹 또는 런 조건을 확인해 주세요",
+  ERR_SET_SIZE: "멜드는 타일 3장 이상이어야 해요",
+  ERR_GROUP_NUMBER: "그룹은 모든 타일의 숫자가 같아야 해요",
+  ERR_GROUP_COLOR_DUP: "그룹에 같은 색상 타일이 중복되었어요",
+  ERR_RUN_COLOR: "런은 모든 타일의 색상이 같아야 해요",
+  ERR_RUN_SEQUENCE: "런의 숫자가 연속되지 않았어요",
+  ERR_RUN_RANGE: "런의 숫자는 1~13 범위여야 해요",
+  ERR_RUN_DUPLICATE: "런에 같은 숫자의 타일이 중복되었어요",
+  ERR_RUN_NO_NUMBER: "런에 숫자 타일이 최소 1장 이상 필요해요",
   // 턴 규칙 관련
-  ERR_NO_RACK_TILE: "랙에서 최소 1개 타일을 사용해야 합니다",
-  ERR_TABLE_TILE_MISSING: "테이블에서 타일이 유실되었습니다",
-  ERR_JOKER_NOT_USED: "교체한 조커는 같은 턴에 사용해야 합니다",
-  // 최초 등록 관련
-  ERR_INITIAL_MELD_SCORE: "최초 등록은 30점 이상이어야 합니다",
-  ERR_INITIAL_MELD_SOURCE: "최초 등록은 자신의 랙 타일로만 해야 합니다",
-  ERR_NO_REARRANGE_PERM: "최초 등록 전에는 테이블 재배치가 불가합니다",
+  ERR_NO_RACK_TILE: "내 타일을 최소 1장 사용해야 확정할 수 있어요",
+  ERR_TABLE_TILE_MISSING: "보드 타일이 일부 사라졌어요. 초기화 후 다시 시도해 주세요",
+  ERR_JOKER_NOT_USED: "교체한 조커는 같은 턴에 사용해야 해요",
+  // 초기 등록 관련 (53-ux004-extend-lock-copy.md §5 용어 기준: "초기 등록" 통일)
+  ERR_INITIAL_MELD_SCORE: "초기 등록은 30점 이상이어야 해요",
+  ERR_INITIAL_MELD_SOURCE: "초기 등록은 내 타일로만 해야 해요",
+  ERR_NO_REARRANGE_PERM: "초기 등록(30점 확정) 전에는 보드 재배치가 불가해요",
   // 턴 순서 관련
-  ERR_NOT_YOUR_TURN: "지금은 내 차례가 아닙니다",
-  ERR_DRAW_PILE_EMPTY: "드로우 파일이 비어있습니다",
-  ERR_TURN_TIMEOUT: "턴 시간이 초과되었습니다",
+  ERR_NOT_YOUR_TURN: "지금은 내 차례가 아니에요",
+  ERR_DRAW_PILE_EMPTY: "드로우 더미가 비었어요",
+  ERR_TURN_TIMEOUT: "턴 시간이 초과되었어요",
   // 타일 파싱 관련
-  ERR_INVALID_TILE_CODE: "유효하지 않은 타일 코드입니다",
+  ERR_INVALID_TILE_CODE: "인식할 수 없는 타일 코드예요",
   // 레거시 호환
-  ERR_GROUP_INVALID: "유효하지 않은 그룹입니다",
-  ERR_RUN_INVALID: "유효하지 않은 런입니다",
-  ERR_TILE_NOT_IN_RACK: "랙에 없는 타일을 배치하려 했습니다",
-  ERR_TILE_CONSERVATION: "테이블 타일이 유실되었습니다",
+  ERR_GROUP_INVALID: "유효하지 않은 그룹이에요",
+  ERR_RUN_INVALID: "유효하지 않은 런이에요",
+  ERR_TILE_NOT_IN_RACK: "내 타일에 없는 타일을 배치하려 했어요",
+  ERR_TILE_CONSERVATION: "보드 타일이 유실되었어요. 초기화 후 다시 시도해 주세요",
 };
 
 function resolveInvalidMoveMessage(code: string, fallback: string): string {
