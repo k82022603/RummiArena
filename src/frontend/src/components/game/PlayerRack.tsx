@@ -100,7 +100,7 @@ const PlayerRack = memo(function PlayerRack({
 
   return (
     <section
-      aria-label={`내 타일 랙 (${tileCount}장)`}
+      aria-label="내 타일 랙"
       ref={setNodeRef}
       className={[
         "rounded-xl",
