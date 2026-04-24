@@ -492,6 +492,12 @@ export default function GameClient({ roomId }: GameClientProps) {
   // Date.now() 단독은 같은 ms 내 연속 드롭 시 ID 충돌 → 중복 렌더링을 유발했다.
   const pendingGroupSeqRef = useRef(0);
 
+  // BUG-UI-009: handleDragEnd re-entrancy guard —
+  // dnd-kit listener 다중 등록(PlayerRack key 충돌) 또는 pointer 이벤트 다중 dispatch 시
+  // 동일 stale currentTableGroups 스냅샷으로 N개 pending 그룹이 생성되는 것을 차단한다.
+  // queueMicrotask 로 unlock 하여 연속 드래그(정상 케이스)는 차단하지 않는다.
+  const isHandlingDragEndRef = useRef(false);
+
   // 다음 보드 드롭 시 새 그룹 강제 생성 여부
   const [forceNewGroup, setForceNewGroup] = useState(false);
 
@@ -650,6 +656,9 @@ export default function GameClient({ roomId }: GameClientProps) {
 
   // 드래그 시작 핸들러
   const handleDragStart = useCallback((event: DragStartEvent) => {
+    // BUG-UI-009/010: 이전 드래그 잔재 defensive clear —
+    // onDragCancel 이 누락됐거나 ESC/blur 이후 잔존한 state 를 안전하게 초기화한다.
+    activeDragSourceRef.current = null;
     const data = event.active.data.current as
       | { tileCode?: TileCode; source?: "rack" | "table"; groupId?: string; index?: number }
       | undefined;
@@ -662,8 +671,32 @@ export default function GameClient({ roomId }: GameClientProps) {
     }
   }, []);
 
+  // BUG-UI-010: onDragCancel 핸들러 —
+  // ESC 키 / 브라우저 포커스 소실 / window 비활성화 등으로 드래그가 취소될 때
+  // dnd-kit 이 호출한다. activeDragCode / activeDragSourceRef 를 명시 초기화하여
+  // 다음 드래그가 이전 drag state 잔재 없이 시작되도록 보장한다.
+  const handleDragCancel = useCallback(() => {
+    setActiveDragCode(null);
+    activeDragSourceRef.current = null;
+    // BUG-UI-009: 취소 시에도 re-entrancy guard 해제
+    isHandlingDragEndRef.current = false;
+  }, []);
+
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
+      // BUG-UI-009: re-entrancy guard —
+      // PlayerRack key 충돌로 dnd-kit listener 가 다중 등록되거나
+      // pointer up 이벤트가 여러 번 dispatch 될 때 동일 stale snapshot 으로
+      // N 개 pending 그룹이 생성되는 것을 차단한다.
+      // queueMicrotask 로 unlock 하여 정상 연속 드래그는 차단하지 않는다.
+      if (isHandlingDragEndRef.current) {
+        if (process.env.NODE_ENV !== "production") {
+          console.warn("[BUG-UI-009] handleDragEnd re-entrancy 감지 — 중복 dispatch 차단");
+        }
+        return;
+      }
+      isHandlingDragEndRef.current = true;
+      try {
       const dragSource = activeDragSourceRef.current;
       activeDragSourceRef.current = null;
       setActiveDragCode(null);
@@ -1126,6 +1159,13 @@ export default function GameClient({ roomId }: GameClientProps) {
           setPendingMyTiles([...(pendingMyTiles ?? myTiles), tileCode]);
         }
       }
+      } finally {
+        // BUG-UI-009: queueMicrotask 로 unlock — React commit 이후에 해제하여
+        // 정상 연속 드래그(다음 pointer down 이벤트)는 차단하지 않는다.
+        queueMicrotask(() => {
+          isHandlingDragEndRef.current = false;
+        });
+      }
     },
     [
       isMyTurn,
@@ -1334,6 +1374,7 @@ export default function GameClient({ roomId }: GameClientProps) {
       collisionDetection={pointerWithinThenClosest}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
     >
       <div className="h-screen bg-app-bg flex flex-col overflow-hidden">
         <ConnectionStatus />
