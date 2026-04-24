@@ -477,6 +477,11 @@ func (h *WSHandler) handleConfirmTurn(conn *Connection, env *WSEnvelope) {
 
 	// 규칙 S6.1: 패널티 드로우가 적용된 경우 (검증 실패 → 패널티 3장 + 턴 종료)
 	if result.PenaltyDrawCount > 0 {
+		// BUG-UI-014: invalid meld 롤백을 클라이언트에 먼저 알린다.
+		// 프론트엔드가 ROLLBACK_FORCED를 수신하면 로컬 boardState를 서버 상태로 교체한다.
+		if result.RollbackForced {
+			h.broadcastRollbackForced(conn.roomID, conn.seat, state, result.ErrorCode)
+		}
 		h.broadcastTurnEndWithPenalty(conn, state, result.PenaltyDrawCount, result.ErrorCode)
 		h.broadcastTurnStart(conn.roomID, state)
 		h.startTurnTimer(conn.roomID, conn.gameID, state.CurrentSeat, state.TurnTimeoutSec)
@@ -751,6 +756,22 @@ func (h *WSHandler) broadcastTurnEnd(conn *Connection, state *model.GameStateRed
 			Type:    S2CTurnEnd,
 			Payload: payload,
 		})
+	})
+}
+
+// broadcastRollbackForced BUG-UI-014: invalid meld 감지 → 보드 롤백을 전원에게 알린다.
+// 프론트엔드는 이 이벤트를 수신하면 로컬 boardState를 payload.tableGroups 로 즉시 교체해야 한다.
+// Human ConfirmTurn 실패와 AI processAIPlace 실패 양쪽 모두에서 호출한다.
+func (h *WSHandler) broadcastRollbackForced(roomID string, seat int, state *model.GameStateRedis, errorCode string) {
+	tableGroups := stateTableToWSGroups(state.Table)
+	h.hub.BroadcastToRoom(roomID, &WSMessage{
+		Type: S2CRollbackForced,
+		Payload: RollbackForcedPayload{
+			Seat:        seat,
+			ErrorCode:   errorCode,
+			TableGroups: tableGroups,
+			Message:     "규칙 위반으로 배치가 자동 취소되었습니다. 보드가 이전 상태로 복원됩니다.",
+		},
 	})
 }
 
@@ -1071,6 +1092,11 @@ func (h *WSHandler) processAIPlace(roomID, gameID string, seat int, resp *client
 			zap.String("errorCode", result.ErrorCode),
 			zap.Int("penaltyDrawCount", result.PenaltyDrawCount),
 		)
+		// BUG-UI-014: invalid meld 롤백을 클라이언트에 먼저 알린다.
+		// 프론트엔드가 ROLLBACK_FORCED를 수신하면 로컬 boardState를 서버 상태로 교체한다.
+		if result.RollbackForced {
+			h.broadcastRollbackForced(roomID, seat, state, result.ErrorCode)
+		}
 		// 규칙 S8.1: 패널티도 강제 행동 → 카운터 증가
 		h.incrementForceDrawCounter(state, gameID, roomID, seat)
 		h.broadcastTurnEndFromState(roomID, seat, state, "PENALTY_DRAW", 0, &FallbackInfo{

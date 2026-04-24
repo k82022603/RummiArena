@@ -46,6 +46,9 @@ type GameActionResult struct {
 	GameState        *model.GameStateRedis `json:"gameState,omitempty"`
 	ErrorCode        string                `json:"errorCode,omitempty"`
 	PenaltyDrawCount int                   `json:"penaltyDrawCount,omitempty"` // 규칙 S6.1: 패널티 드로우 장수
+	// RollbackForced BUG-UI-014: invalid meld 감지 → 보드 롤백 발생을 클라이언트에 알린다.
+	// ws_handler는 이 값이 true이면 ROLLBACK_FORCED 이벤트를 브로드캐스트한다.
+	RollbackForced bool `json:"rollbackForced,omitempty"`
 }
 
 // GameService 게임 생명주기 비즈니스 로직
@@ -349,8 +352,15 @@ func (s *gameService) ConfirmTurn(gameID string, req *ConfirmRequest) (*GameActi
 
 	if err := engine.ValidateTurnConfirm(validateReq); err != nil {
 		// 규칙 S6.1/S6.4: 검증 실패 시 스냅샷 복원 + 패널티 드로우 3장 + 턴 종료
+		// BUG-UI-014: 스냅샷 복원 여부와 무관하게 보드가 배치 전 상태임을 클라이언트에 알린다.
 		s.restoreSnapshot(state, gameID, req.Seat, playerIdx)
-		return s.penaltyDrawAndAdvance(state, gameID, req.Seat, playerIdx, 3, extractErrCode(err))
+		result, advErr := s.penaltyDrawAndAdvance(state, gameID, req.Seat, playerIdx, 3, extractErrCode(err))
+		if result != nil {
+			// invalid meld 가 발생한 모든 경로에서 RollbackForced=true 를 설정한다.
+			// ws_handler 가 ROLLBACK_FORCED 이벤트를 브로드캐스트하여 프론트가 보드를 동기화한다.
+			result.RollbackForced = true
+		}
+		return result, advErr
 	}
 
 	// 검증 통과: 테이블 + 랙 확정

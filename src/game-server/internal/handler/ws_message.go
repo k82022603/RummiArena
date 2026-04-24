@@ -30,10 +30,11 @@ const (
 	S2CPlayerDisconnected = "PLAYER_DISCONNECTED"
 	S2CPlayerForfeited    = "PLAYER_FORFEITED"
 	S2CDrawPileEmpty      = "DRAW_PILE_EMPTY"
-	S2CAIDeactivated      = "AI_DEACTIVATED" // 규칙 S8.1: AI 5턴 연속 강제 드로우 비활성화
-	S2CError              = "ERROR"
-	S2CPong               = "PONG"
-	S2CChatBroadcast      = "CHAT_BROADCAST"
+	S2CAIDeactivated      = "AI_DEACTIVATED"   // 규칙 S8.1: AI 5턴 연속 강제 드로우 비활성화
+	S2CRollbackForced    = "ROLLBACK_FORCED"  // BUG-UI-014: invalid meld 롤백을 클라이언트에 알림
+	S2CError             = "ERROR"
+	S2CPong              = "PONG"
+	S2CChatBroadcast     = "CHAT_BROADCAST"
 )
 
 // --- WebSocket Close Codes ---
@@ -270,4 +271,14 @@ type AIDeactivatedPayload struct {
 	Seat        int    `json:"seat"`
 	DisplayName string `json:"displayName"`
 	Reason      string `json:"reason"` // "AI_FORCE_DRAW_LIMIT"
+}
+
+// RollbackForcedPayload ROLLBACK_FORCED 페이로드 (BUG-UI-014)
+// 서버가 invalid meld를 감지하여 보드를 배치 전 상태로 롤백했음을 클라이언트에 알린다.
+// 프론트엔드는 이 이벤트 수신 시 로컬 boardState를 tableGroups 로 교체해야 한다.
+type RollbackForcedPayload struct {
+	Seat        int            `json:"seat"`        // 위반한 플레이어 seat
+	ErrorCode   string         `json:"errorCode"`   // 예: "ERR_SET_SIZE", "ERR_INVALID_SET"
+	TableGroups []WSTableGroup `json:"tableGroups"` // 롤백 후 유효한 보드 상태
+	Message     string         `json:"message"`     // 사용자 표시용 설명 (한글)
 }
