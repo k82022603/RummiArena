@@ -177,16 +177,17 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
             } as Player;
           });
           setPlayers(playersUpdated);
-          // BUG-UI-EXT 수정 3: hasInitialMeld SSOT 동기화 —
+          // BUG-UI-EXT 수정 3 + F4 B2 (FINDING-01): hasInitialMeld 완전 SSOT 동기화 —
           // TURN_END 에서만 루트 hasInitialMeld 를 갱신하던 기존 로직은 GAME_STATE (재연결/
           // 새로고침 복구) 시 루트 hasInitialMeld 가 false 로 초기화되는 드리프트를 유발한다.
           // GAME_STATE 수신 시에도 내 seat 의 hasInitialMeld 를 루트 state 에 동기화한다.
-          // (architect 재재조사 §4.3 + §5.2 C)
+          // F4 B2: true 뿐만 아니라 false 포함 전체 값을 동기화 (이중화 해소).
+          // (architect 가이드 §F4 B2 + 재재조사 §4.3 + §5.2 C)
           {
             const mySeatNow = useGameStore.getState().mySeat;
             const myPlayer = payload.players.find((p) => p.seat === mySeatNow);
-            if (myPlayer?.hasInitialMeld) {
-              setHasInitialMeld(true);
+            if (myPlayer !== undefined && myPlayer.hasInitialMeld !== undefined) {
+              setHasInitialMeld(myPlayer.hasInitialMeld);
             }
           }
           // drawPileCount가 0이면 소진 상태 설정

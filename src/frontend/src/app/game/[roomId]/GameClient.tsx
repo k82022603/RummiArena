@@ -484,6 +484,16 @@ export default function GameClient({ roomId }: GameClientProps) {
 
   const { mySeat: roomMySeat } = useRoomStore();
 
+  // F4 (FINDING-01 재검토): effectiveHasInitialMeld — players[mySeat].hasInitialMeld 를 1차 SSOT,
+  // 루트 hasInitialMeld 를 fallback 으로 사용하는 derived 값.
+  // GAME_STATE 핸들러(useWebSocket.ts)가 players[] 만 업데이트하는 구조 때문에
+  // 루트 hasInitialMeld 가 stale 될 수 있다 (architect 가이드 §F4 B1).
+  const effectiveHasInitialMeld = useMemo(() => {
+    if (mySeat === null || mySeat < 0) return hasInitialMeld;
+    const me = players.find((p) => p.seat === mySeat);
+    return me?.hasInitialMeld ?? hasInitialMeld;
+  }, [players, mySeat, hasInitialMeld]);
+
   const [activeDragCode, setActiveDragCode] = useState<TileCode | null>(null);
   const isDragging = activeDragCode !== null;
   // BUG-UI-LAYOUT-001: 히스토리 패널 토글 (기본 펼침)
@@ -759,7 +769,16 @@ export default function GameClient({ roomId }: GameClientProps) {
       const freshPendingTableGroups = latestState.pendingTableGroups;
       const freshPendingGroupIds = latestState.pendingGroupIds;
       const freshPendingRecoveredJokers = latestState.pendingRecoveredJokers;
-      const freshHasInitialMeld = latestState.hasInitialMeld;
+      // F4 (FINDING-01): players[mySeat].hasInitialMeld 를 1차 SSOT 로 사용 (루트는 fallback).
+      // GAME_STATE 핸들러가 players[] 만 업데이트하므로 루트 hasInitialMeld 가 stale 될 수 있음.
+      const freshHasInitialMeld = (() => {
+        const seat = latestState.mySeat;
+        if (seat >= 0) {
+          const me = latestState.players.find((p) => p.seat === seat);
+          if (me?.hasInitialMeld !== undefined) return me.hasInitialMeld;
+        }
+        return latestState.hasInitialMeld;
+      })();
 
       const dragSource = activeDragSourceRef.current;
       activeDragSourceRef.current = null;
@@ -1663,7 +1682,7 @@ export default function GameClient({ roomId }: GameClientProps) {
           <main className="flex-1 flex flex-col p-4 gap-3 overflow-hidden min-h-0 min-w-0">
             {/* UX-004: 초기 등록 안내 배너 (최초 진입 1회) */}
             <InitialMeldBanner
-              hasInitialMeld={hasInitialMeld}
+              hasInitialMeld={effectiveHasInitialMeld}
               roomId={roomId}
             />
 
@@ -1680,7 +1699,7 @@ export default function GameClient({ roomId }: GameClientProps) {
               tilesDraggable={isMyTurn}
               validMergeGroupIds={validMergeGroupIds}
               showNewGroupDropZone={isMyTurn}
-              hasInitialMeld={hasInitialMeld}
+              hasInitialMeld={effectiveHasInitialMeld}
               className="flex-1"
             />
 
@@ -1729,7 +1748,7 @@ export default function GameClient({ roomId }: GameClientProps) {
                   <span className="text-text-primary font-medium">
                     ({currentMyTiles.length}장)
                   </span>
-                  {hasInitialMeld ? (
+                  {effectiveHasInitialMeld ? (
                     <span> &middot; 최초 등록 완료</span>
                   ) : pendingPlacementScore > 0 ? (
                     <span
