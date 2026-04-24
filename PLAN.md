@@ -372,6 +372,42 @@ docs/
 
 ## 현재 진행 상황
 
+**Sprint 7 Day 3 (Day 14) UI 트리아지 + 게임룰 E2E 시나리오 + 이월 F1~F5 수정** (2026-04-24) — "아침 11명 반성 → 오후 실행에서 기본 실수 4건 반복 → 저녁 마감에서 구체 행동 1가지 단위 재정렬"
+
+### Sprint 7 Day 3 (Day 14) 성과 — PR 14건 머지 (#70~#83)
+- **BUG-UI 수정 7건**: #70 (009/010 멜드 복제+drag stuck), #76 (EXT/GHOST 근본 — useMemo stale + pendingGroupIds atomic), #77 (014 invalid meld final validation + ROLLBACK_FORCED), #78 (011/013 + UX-004), #81 (F1~F5 통합)
+- **게임룰 기반 사용자 E2E** (사용자 직접 요청): #75 룰 19 × UI 행위 매트릭스 + Playwright spec 5종 (initial-meld-30pt / extend-after-confirm / ghost-box-absence / one-game-complete / turn-boundary-invariants) + `pre-deploy-playbook` v2.0 + retroactive-map
+- **테스트 인프라**: #71 pre-deploy-playbook 배포 게이트 편입 + 재현 spec 3종 RED, #72 smoke 5축 + rollback 10 트리거
+- **Designer 스펙**: #73 UX-004 카피 3종 + 드롭존 색 토큰(4.78:1 AA) + i18n 에디트
+- **PM 가드레일**: #74 merge gate 10 체크리스트 + 스크럼 주 1일 회고 모드 (부주제 5 로테이션)
+- **ai-adapter dep drift 해소**: #80 `path-to-regexp` overrides 제거 (node-dev, Jest 599 PASS)
+- **수습 PR 3건**: #79 (PlayerRack aria-label 복원), #82 (winnerPlayer type guard), #83 (F3 rollback)
+- **Stage 1 E2E 최종**: 28 PASS / 5 FAIL / 3 SKIP (EXT-SC1/SC3/GHOST-SC2 회귀 + V04-SC1/SC3 — W2-A bisect 이관)
+
+### Sprint 7 Day 3 교훈 (재발 방지 대상)
+- **이미지 드리프트 2회**: PR 머지 직후 재빌드 규칙 부재 — 빌드 전 `git log origin/main -1` 1초 체크 의무
+- **`next build` 누락**: Jest PASS 만 보고 TS 에러 통과 (PR #82 수습) — PR 전 `pnpm build` 의무화
+- **묶음 PR 회귀 추적 어려움**: #81 이 F1~F5 5건 통합 → bisect 불가. Day 2 교훈 반복
+- **병렬 에이전트 worktree 경합**: Phase 1 4명 동시 `git checkout -b` → 브랜치/index.lock 충돌. 모든 에이전트 호출 프롬프트에 `git worktree add /tmp/...` 격리 명시
+- **"RED spec 선행" 가이드 문서에도 적용**: architect 가이드가 RED 없이 구조 제안 → 회귀 유발 의심 (F4 `effectiveHasInitialMeld`)
+- **scrum-log/daily-close/batch-battle SKILLS** — 사용자 지적 전에도 기계적 활용
+
+### Sprint 7 Week 2 (2026-04-25 ~ 2026-05-02) 이관 작업 (W2-A~J)
+- **W2-A (P0)** EXT/GHOST bisect — Day 4 마감 전 / **W2-B (P1)** F3 rack sync 재구현 / **W2-C (P1)** F4 FINDING-01 재작성 / **W2-D (P2)** Stage 2 regression / **W2-E (P2)** 이미지 태그 HEAD 일치 CI / **W2-F (P2)** handleDragEnd 3 handler 분리 ADR / **W2-G (P2)** 룰-UX SSOT `43` / **W2-H (P2)** UX 타이머 레지스트리 `41§6` / **W2-I (P2)** WS 권한 검증 spec / **W2-J (P1)** next-auth v5 이주
+
+---
+
+**Sprint 7 Day 2 (Day 13) 보안/안정성 P1 8.5 SP 한 세션 소화** (2026-04-23) — "머지 5 PR 수습 + Sprint 6 이월 Medium 3건 종결 확인"
+
+### Sprint 7 Day 2 성과 — PR #53~#57 5건 한 세션 머지
+- **Issue 수정 3건**: #47 LeaveRoom PLAYING guard / #48 handleConfirm confirmBusy / #49 FINDING-02 test fixture Option A+C
+- **보안 bump 3건**: SEC-A (Go 1.25.9 + go-redis v9.7.3) / SEC-B (Next 15.5.15 + admin 16.2.4) / SEC-C (npm audit fix)
+- **Sprint 6 이월 Medium 3건 (SEC-REV-002/008/009) 모두 기해소 확인** (docs/04-testing/78 §6)
+- K8s 재배포 `day2-2026-04-23` 태그 smoke PASS
+- Sprint 7 Scope 재편 원칙 수립 ("이관 없음" / "Production 기준 dev-only 포함" / "UI 페어 의무")
+
+---
+
 **Sprint 7 Day 1 (Day 12) rooms PostgreSQL Phase 1 전환 + FINDING-01 2단계 추적 수정** (2026-04-22) — "D-03 Dual-Write 완주 + 자동 회귀가 사용자 전에 회귀 발견"
 
 ### Sprint 7 Day 1 (Day 12) 성과 — 한 세션 **13 PR 머지** (프로젝트 최고 기록)
