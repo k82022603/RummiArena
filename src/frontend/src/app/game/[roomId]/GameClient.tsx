@@ -1399,15 +1399,9 @@ export default function GameClient({ roomId }: GameClientProps) {
     const tilesFromRack = myTiles.filter(
       (t) => !pendingMyTiles.includes(t)
     );
-    // F3 (V-04 SC1): Optimistic myTiles commit.
-    // 확정 요청 직후 pendingMyTiles 를 myTiles 루트 state 로 커밋한다.
-    // spec 은 handleConfirm 직후 rack DOM 을 읽으므로, 서버 TURN_END 응답을
-    // 기다리지 않고 즉시 반영이 필요하다.
-    // 서버 TURN_END.payload.myRack 이 SSOT 이므로 INVALID_MOVE 시 서버가
-    // 원본 rack 을 내려줘 복구된다 (architect 가이드 §F3 A1).
-    if (pendingMyTiles) {
-      setMyTiles(pendingMyTiles);
-    }
+    // F3 ROLLBACK (2026-04-24): optimistic setMyTiles 가 extend 경로 drop 중
+    // pending state 를 침범해 EXT-SC1/SC3/GHOST-SC2 회귀 3건 유발.
+    // V-04 SC1 은 Sprint 7 Week 2 에서 MOVE_ACCEPTED 이벤트 구독 방식으로 재구현.
     // [Issue #48] 전송 직전 락 설정 — TURN_START 또는 INVALID_MOVE 수신 시 useEffect 에서 해제
     setConfirmBusy(true);
     // 1단계: 이번 턴 배치 내용을 서버에 전송
