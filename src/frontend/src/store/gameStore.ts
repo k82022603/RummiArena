@@ -78,6 +78,12 @@ interface GameStore {
   aiThinkingSeat: number | null;
   setAIThinkingSeat: (seat: number | null) => void;
 
+  // 현재 턴 플레이어 ID (E2E 테스트 브리지 + SSOT 보조)
+  // setStoreState({ currentPlayerId: "ai-player-1" }) 형태로 주입 가능.
+  // null 이면 gameState.currentSeat 기반으로 isMyTurn 계산 (기본 경로).
+  currentPlayerId: string | null;
+  setCurrentPlayerId: (id: string | null) => void;
+
   // 턴 번호
   turnNumber: number;
   setTurnNumber: (n: number) => void;
@@ -133,6 +139,7 @@ const initialState = {
   pendingGroupIds: new Set<string>(),
   pendingRecoveredJokers: [] as TileCode[],
   aiThinkingSeat: null as number | null,
+  currentPlayerId: null as string | null,
   turnNumber: 1,
   gameEnded: false,
   gameOverResult: null as GameOverPayload | null,
@@ -183,6 +190,7 @@ export const useGameStore = create<GameStore>()(
       }),
     clearRecoveredJokers: () => set({ pendingRecoveredJokers: [] }),
     setAIThinkingSeat: (aiThinkingSeat) => set({ aiThinkingSeat }),
+    setCurrentPlayerId: (currentPlayerId) => set({ currentPlayerId }),
     setTurnNumber: (turnNumber) => set({ turnNumber }),
     setGameEnded: (gameEnded) => set({ gameEnded }),
     setGameOverResult: (gameOverResult) => set({ gameOverResult }),
