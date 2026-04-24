@@ -475,6 +475,10 @@ export default function GameClient({ roomId }: GameClientProps) {
     deadlockReason,
     turnHistory,
     lastTurnPlacement,
+    // F1/F2 (BUG-UI-012 Phase 2): 기권 종료 모달 트리거용 스키마
+    gameStatus,
+    endReason,
+    winner: gameWinner,
     reset: resetGameStore,
   } = useGameStore();
 
@@ -1376,6 +1380,15 @@ export default function GameClient({ roomId }: GameClientProps) {
     const tilesFromRack = myTiles.filter(
       (t) => !pendingMyTiles.includes(t)
     );
+    // F3 (V-04 SC1): Optimistic myTiles commit.
+    // 확정 요청 직후 pendingMyTiles 를 myTiles 루트 state 로 커밋한다.
+    // spec 은 handleConfirm 직후 rack DOM 을 읽으므로, 서버 TURN_END 응답을
+    // 기다리지 않고 즉시 반영이 필요하다.
+    // 서버 TURN_END.payload.myRack 이 SSOT 이므로 INVALID_MOVE 시 서버가
+    // 원본 rack 을 내려줘 복구된다 (architect 가이드 §F3 A1).
+    if (pendingMyTiles) {
+      setMyTiles(pendingMyTiles);
+    }
     // [Issue #48] 전송 직전 락 설정 — TURN_START 또는 INVALID_MOVE 수신 시 useEffect 에서 해제
     setConfirmBusy(true);
     // 1단계: 이번 턴 배치 내용을 서버에 전송
@@ -1440,6 +1453,45 @@ export default function GameClient({ roomId }: GameClientProps) {
         players={players}
         deadlockReason={deadlockReason}
       />
+    );
+  }
+
+  // F1/F2 (BUG-UI-012 Phase 2): gameStatus='ended' 모달 렌더 조건 배선.
+  // PLAYER_FORFEITED 또는 GAME_OVER 이벤트로 gameStatus='ended' 가 설정되면
+  // gameEnded(GAME_OVER 전용) 와 별개로 기권 종료 모달을 즉시 표시한다.
+  // endReason + winner 를 props 로 전달하여 정상 한글 문구를 렌더링 가능.
+  if (gameStatus === "ended" && !gameEnded) {
+    return (
+      <div
+        role="dialog"
+        aria-label="게임 종료"
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+      >
+        <div className="bg-surface border border-border rounded-2xl p-8 max-w-md w-full text-center space-y-4">
+          <h2 className="text-xl font-bold text-text-primary">
+            {endReason === "opponent_forfeit" ? "상대방 기권" : "게임 종료"}
+          </h2>
+          <p className="text-text-secondary">
+            {endReason === "opponent_forfeit"
+              ? "상대방이 기권하여 게임이 중단되었습니다."
+              : "게임이 종료되었습니다."}
+          </p>
+          {gameWinner && (
+            <p className="text-text-primary font-semibold">
+              {gameWinner.displayName} 승리
+            </p>
+          )}
+          <button
+            onClick={() => {
+              resetGameStore();
+              router.push("/lobby");
+            }}
+            className="mt-4 px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary/80 transition"
+          >
+            로비로 돌아가기
+          </button>
+        </div>
+      </div>
     );
   }
 
