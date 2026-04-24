@@ -71,6 +71,8 @@ interface GameStore {
   pendingGroupIds: Set<string>;
   addPendingGroupId: (id: string) => void;
   clearPendingGroupIds: () => void;
+  // BUG-UI-EXT 수정 4: 재배치 시 소스 그룹 제거 + 타겟 그룹 등록을 atomic 하게 처리
+  setPendingGroupIds: (ids: Set<string>) => void;
 
   // AI 사고 중 표시
   aiThinkingSeat: number | null;
@@ -162,6 +164,8 @@ export const useGameStore = create<GameStore>()(
         pendingGroupIds: new Set([...state.pendingGroupIds, id]),
       })),
     clearPendingGroupIds: () => set({ pendingGroupIds: new Set<string>() }),
+    // BUG-UI-EXT 수정 4: atomic 교체 — 재배치 후 소스 ID 제거 + 타겟 ID 등록을 한 번에
+    setPendingGroupIds: (ids) => set({ pendingGroupIds: ids }),
 
     addRecoveredJoker: (code) =>
       set((state) => {

@@ -120,6 +120,7 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
     removeDisconnectedPlayer,
     setIsDrawPileEmpty,
     setDeadlockReason,
+    setHasInitialMeld,
   } = useGameStore();
 
   const handleMessage = useCallback(
@@ -149,32 +150,43 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
             turnStartedAt: payload.turnStartedAt ?? new Date().toISOString(),
           });
           setMyTiles(payload.myRack);
-          setPlayers(
-            payload.players.map((p): Player => {
-              const base = {
-                seat: p.seat,
-                tileCount: p.tileCount,
-                hasInitialMeld: p.hasInitialMeld,
-              };
-              if (p.playerType === "HUMAN") {
-                return {
-                  ...base,
-                  type: "HUMAN" as const,
-                  userId: p.userId ?? "",
-                  displayName: p.displayName ?? "",
-                  status: p.isConnected ? ("CONNECTED" as const) : ("DISCONNECTED" as const),
-                };
-              }
-              // AI 플레이어: displayName을 사용하되 타입에 맞는 기본값 설정
+          const playersUpdated = payload.players.map((p): Player => {
+            const base = {
+              seat: p.seat,
+              tileCount: p.tileCount,
+              hasInitialMeld: p.hasInitialMeld,
+            };
+            if (p.playerType === "HUMAN") {
               return {
                 ...base,
-                type: p.playerType as Player["type"],
+                type: "HUMAN" as const,
                 userId: p.userId ?? "",
                 displayName: p.displayName ?? "",
                 status: p.isConnected ? ("CONNECTED" as const) : ("DISCONNECTED" as const),
-              } as Player;
-            })
-          );
+              };
+            }
+            // AI 플레이어: displayName을 사용하되 타입에 맞는 기본값 설정
+            return {
+              ...base,
+              type: p.playerType as Player["type"],
+              userId: p.userId ?? "",
+              displayName: p.displayName ?? "",
+              status: p.isConnected ? ("CONNECTED" as const) : ("DISCONNECTED" as const),
+            } as Player;
+          });
+          setPlayers(playersUpdated);
+          // BUG-UI-EXT 수정 3: hasInitialMeld SSOT 동기화 —
+          // TURN_END 에서만 루트 hasInitialMeld 를 갱신하던 기존 로직은 GAME_STATE (재연결/
+          // 새로고침 복구) 시 루트 hasInitialMeld 가 false 로 초기화되는 드리프트를 유발한다.
+          // GAME_STATE 수신 시에도 내 seat 의 hasInitialMeld 를 루트 state 에 동기화한다.
+          // (architect 재재조사 §4.3 + §5.2 C)
+          {
+            const mySeatNow = useGameStore.getState().mySeat;
+            const myPlayer = payload.players.find((p) => p.seat === mySeatNow);
+            if (myPlayer?.hasInitialMeld) {
+              setHasInitialMeld(true);
+            }
+          }
           // drawPileCount가 0이면 소진 상태 설정
           if (payload.drawPileCount === 0) {
             setIsDrawPileEmpty(true);

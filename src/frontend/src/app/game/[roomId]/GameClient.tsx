@@ -459,6 +459,7 @@ export default function GameClient({ roomId }: GameClientProps) {
     setPendingMyTiles,
     addPendingGroupId,
     clearPendingGroupIds,
+    setPendingGroupIds,
     addRecoveredJoker,
     removeRecoveredJoker,
     clearRecoveredJokers,
@@ -497,6 +498,13 @@ export default function GameClient({ roomId }: GameClientProps) {
   // 동일 stale currentTableGroups 스냅샷으로 N개 pending 그룹이 생성되는 것을 차단한다.
   // queueMicrotask 로 unlock 하여 연속 드래그(정상 케이스)는 차단하지 않는다.
   const isHandlingDragEndRef = useRef(false);
+
+  // BUG-UI-EXT 수정 2: activatorEvent.timeStamp 기반 중복 dispatch dedup —
+  // isHandlingDragEndRef 는 microtask 경계(queueMicrotask unlock)를 넘는 연속 dispatch 를
+  // 차단하지 못한다. 동일 pointer down 이벤트가 여러 번 onDragEnd 를 트리거하면 같은
+  // timeStamp 를 공유하므로 이를 기록해 early-return 한다. 정상 연속 드래그는 timeStamp
+  // 가 다르므로 차단하지 않는다.
+  const lastDragEndTimestampRef = useRef<number>(-1);
 
   // 다음 보드 드롭 시 새 그룹 강제 생성 여부
   const [forceNewGroup, setForceNewGroup] = useState(false);
@@ -695,8 +703,37 @@ export default function GameClient({ roomId }: GameClientProps) {
         }
         return;
       }
+
+      // BUG-UI-EXT 수정 2: activatorEvent.timeStamp dedup —
+      // 동일 pointer down 이벤트가 microtask 경계를 넘어 중복으로 onDragEnd 를 트리거할 때
+      // timeStamp 가 동일하므로 두 번째 이후를 차단한다. 정상 연속 드래그는 timeStamp 가 다르다.
+      const activatorTs = (event.activatorEvent as PointerEvent | undefined)?.timeStamp ?? -1;
+      if (activatorTs !== -1 && activatorTs === lastDragEndTimestampRef.current) {
+        if (process.env.NODE_ENV !== "production") {
+          console.warn("[BUG-UI-EXT] handleDragEnd 동일 timeStamp 중복 dispatch 차단 ts=%f", activatorTs);
+        }
+        return;
+      }
+      lastDragEndTimestampRef.current = activatorTs;
+
       isHandlingDragEndRef.current = true;
       try {
+      // BUG-UI-EXT 수정 1: useMemo stale snapshot 제거 —
+      // currentTableGroups / currentMyTiles 는 useMemo derived state 라 같은 렌더 사이클
+      // 내에서 여러 번 handleDragEnd 가 호출되면 첫 번째 setState 가 아직 반영되지 않은
+      // stale 스냅샷을 사용한다. 매 분기 진입 전 useGameStore.getState() 로 최신 값을
+      // 1회 가져와 stale 를 근본적으로 차단한다.
+      // (architect 재재조사 §4.1 §5.1 수정 A)
+      const latestState = useGameStore.getState();
+      const freshTableGroups: import("@/types/tile").TableGroup[] =
+        latestState.pendingTableGroups ?? latestState.gameState?.tableGroups ?? [];
+      const freshMyTiles: import("@/types/tile").TileCode[] =
+        latestState.pendingMyTiles ?? latestState.myTiles;
+      const freshPendingTableGroups = latestState.pendingTableGroups;
+      const freshPendingGroupIds = latestState.pendingGroupIds;
+      const freshPendingRecoveredJokers = latestState.pendingRecoveredJokers;
+      const freshHasInitialMeld = latestState.hasInitialMeld;
+
       const dragSource = activeDragSourceRef.current;
       activeDragSourceRef.current = null;
       setActiveDragCode(null);
@@ -719,9 +756,9 @@ export default function GameClient({ roomId }: GameClientProps) {
       if (dragSource?.kind === "table") {
         // 최초 등록 전에는 pending 그룹 내 타일을 랙으로 되돌리는 경우만 허용
         // (§6.1 — 서버 확정 그룹 수정 금지)
-        const sourceGroup = currentTableGroups.find((g) => g.id === dragSource.groupId);
+        const sourceGroup = freshTableGroups.find((g) => g.id === dragSource.groupId);
         if (!sourceGroup) return;
-        const sourceIsPending = pendingGroupIds.has(dragSource.groupId);
+        const sourceIsPending = freshPendingGroupIds.has(dragSource.groupId);
 
         // 같은 그룹 위로 떨어뜨리면 no-op
         if (over.id === dragSource.groupId) return;
@@ -735,20 +772,20 @@ export default function GameClient({ roomId }: GameClientProps) {
           const [removed] = baseTiles.splice(dragSource.index, 1);
           if (removed !== tileCode) return; // 안전장치
 
-          const nextTableGroups = currentTableGroups
+          const nextTableGroups = freshTableGroups
             .map((g) => (g.id === dragSource.groupId ? { ...g, tiles: baseTiles, type: classifySetType(baseTiles) } : g))
             .filter((g) => g.tiles.length > 0);
 
-          const stillHasPending = nextTableGroups.some((g) => pendingGroupIds.has(g.id));
+          const stillHasPending = nextTableGroups.some((g) => freshPendingGroupIds.has(g.id));
           setPendingTableGroups(stillHasPending ? nextTableGroups : null);
           if (!stillHasPending) clearPendingGroupIds();
-          setPendingMyTiles([...(pendingMyTiles ?? myTiles), tileCode]);
+          setPendingMyTiles([...freshMyTiles, tileCode]);
           return;
         }
 
         // 테이블 → 다른 그룹 이동 (유형 3)
-        if (!hasInitialMeld) return; // 최초 등록 전에는 재배치 금지
-        const targetGroup = currentTableGroups.find((g) => g.id === over.id);
+        if (!freshHasInitialMeld) return; // 최초 등록 전에는 재배치 금지
+        const targetGroup = freshTableGroups.find((g) => g.id === over.id);
         if (!targetGroup) return;
         // 자기 자신으로 이동하는 경우 no-op (동일 object id면 tiles가 두 번 변형됨)
         if (targetGroup.id === sourceGroup.id) return;
@@ -761,7 +798,7 @@ export default function GameClient({ roomId }: GameClientProps) {
 
         // BUG-UI-REARRANGE-002: 불변성 유지 + 중복 방지
         // map 결과를 filter하여 빈 그룹 제거, id 기준 unique 체크로 안전장치 추가.
-        const nextTableGroups = currentTableGroups
+        const nextTableGroups = freshTableGroups
           .map((g) => {
             if (g.id === sourceGroup.id) return { ...g, tiles: updatedSourceTiles, type: classifySetType(updatedSourceTiles) };
             if (g.id === targetGroup.id) return { ...g, tiles: updatedTargetTiles, type: classifySetType(updatedTargetTiles) };
@@ -778,12 +815,19 @@ export default function GameClient({ roomId }: GameClientProps) {
         }
 
         setPendingTableGroups(nextTableGroups);
-        // 랙 상태는 변화 없음 — pendingMyTiles 최신 값을 그대로 유지
-        setPendingMyTiles(pendingMyTiles ?? myTiles);
-        // 원 그룹이 비워져 제거된 경우 pendingGroupIds에 유령 ID를 남기지 않음
-        const sourceStillExists = updatedSourceTiles.length > 0;
-        if (sourceStillExists) addPendingGroupId(sourceGroup.id);
-        addPendingGroupId(targetGroup.id);
+        // 랙 상태는 변화 없음 — freshMyTiles 최신 값을 그대로 유지
+        setPendingMyTiles(freshMyTiles);
+        // BUG-UI-EXT 수정 4 보충: 소스 그룹이 비워져 제거된 경우 pendingGroupIds 에서도 제거.
+        // 기존 addPendingGroupId 만으로는 유령 ID 가 남는다 (clearPendingGroupIds 는 전체 초기화).
+        // nextTableGroups 에 실제로 존재하는 그룹 ID 만 남도록 pendingGroupIds 를 atomic 교체.
+        // setPendingGroupIds(Zustand set 기반) 를 사용하여 direct setState race 없이 일관성 보장.
+        {
+          const nextGroupIdSet = new Set(nextTableGroups.map((g) => g.id));
+          const updatedPendingIds = new Set(
+            [...freshPendingGroupIds, targetGroup.id].filter((id) => nextGroupIdSet.has(id))
+          );
+          setPendingGroupIds(updatedPendingIds);
+        }
         return;
       }
 
@@ -794,16 +838,16 @@ export default function GameClient({ roomId }: GameClientProps) {
       // pending/서버 확정 그룹 모두 포함 (최초 등록 후). 규칙 V-07: 회수한
       // 조커는 같은 턴에 다른 세트에 사용해야 ConfirmTurn 가능.
       // ------------------------------------------------------------
-      const swapCandidate = currentTableGroups.find((g) => g.id === over.id);
+      const swapCandidate = freshTableGroups.find((g) => g.id === over.id);
       if (swapCandidate) {
         const hasJoker = swapCandidate.tiles.some((t) => t === "JK1" || t === "JK2");
         if (hasJoker) {
           // 서버 확정 그룹에서 조커를 빼내려면 최초 등록이 완료되어 있어야 한다 (§6.1)
-          const isPending = pendingGroupIds.has(swapCandidate.id);
-          if (isPending || hasInitialMeld) {
+          const isPending = freshPendingGroupIds.has(swapCandidate.id);
+          if (isPending || freshHasInitialMeld) {
             const swap = tryJokerSwap(swapCandidate.tiles, tileCode);
             if (swap) {
-              const nextTableGroups = currentTableGroups.map((g) =>
+              const nextTableGroups = freshTableGroups.map((g) =>
                 g.id === swapCandidate.id
                   ? { ...g, tiles: swap.nextTiles, type: classifySetType(swap.nextTiles) }
                   : g
@@ -814,7 +858,7 @@ export default function GameClient({ roomId }: GameClientProps) {
               // nextMyTilesAfterSwap 에서 랙 타일을 제거한 뒤 조커를 추가하면
               // 사용자는 JokerSwapIndicator 배너를 보면서도 랙에서 조커를 끌 수 있다.
               const nextMyTilesAfterSwap = [
-                ...removeFirstOccurrence(currentMyTiles, tileCode),
+                ...removeFirstOccurrence(freshMyTiles, tileCode),
                 swap.recoveredJoker,
               ];
               setPendingTableGroups(nextTableGroups);
@@ -828,8 +872,8 @@ export default function GameClient({ roomId }: GameClientProps) {
       }
 
       // 기존 pending 그룹에 드롭한 경우
-      const existingPendingGroup = pendingTableGroups?.find(
-        (g) => g.id === over.id && pendingGroupIds.has(g.id)
+      const existingPendingGroup = freshPendingTableGroups?.find(
+        (g) => g.id === over.id && freshPendingGroupIds.has(g.id)
       );
 
       if (existingPendingGroup) {
@@ -838,7 +882,8 @@ export default function GameClient({ roomId }: GameClientProps) {
         // 이전 코드는 색상/숫자 체크 없이 무조건 병합 → 파랑 타일이 노랑 런에 합쳐지는 버그.
         // 호환되지 않으면 새 그룹으로 생성한다.
         if (!isCompatibleWithGroup(tileCode, existingPendingGroup)) {
-          // 호환되지 않으면 새 그룹 생성
+          // BUG-UI-EXT 수정 4: createNewPendingGroup 공통 함수로 추출된 로직 (inline 버전)
+          // 기존 [...currentTableGroups, newGroup] 9개 분산 지점을 freshTableGroups 기반으로 통일
           pendingGroupSeqRef.current += 1;
           const newGroupId = `pending-${Date.now()}-${pendingGroupSeqRef.current}`;
           const newGroup: TableGroup = {
@@ -846,17 +891,17 @@ export default function GameClient({ roomId }: GameClientProps) {
             tiles: [tileCode],
             type: classifySetType([tileCode]),
           };
-          const nextTableGroups = [...currentTableGroups, newGroup];
-          const nextMyTiles = removeFirstOccurrence(currentMyTiles, tileCode);
+          const nextTableGroups = [...freshTableGroups, newGroup];
+          const nextMyTiles = removeFirstOccurrence(freshMyTiles, tileCode);
           setPendingTableGroups(nextTableGroups);
           setPendingMyTiles(nextMyTiles);
           addPendingGroupId(newGroupId);
-          if (pendingRecoveredJokers.includes(tileCode)) {
+          if (freshPendingRecoveredJokers.includes(tileCode)) {
             removeRecoveredJoker(tileCode);
           }
           return;
         }
-        const nextTableGroups = currentTableGroups.map((g) => {
+        const nextTableGroups = freshTableGroups.map((g) => {
           if (g.id !== existingPendingGroup.id) return g;
           const updatedTiles = [...g.tiles, tileCode];
           return { ...g, tiles: updatedTiles, type: classifySetType(updatedTiles) };
@@ -872,10 +917,10 @@ export default function GameClient({ roomId }: GameClientProps) {
             return;
           }
         }
-        const nextMyTiles = removeFirstOccurrence(currentMyTiles, tileCode);
+        const nextMyTiles = removeFirstOccurrence(freshMyTiles, tileCode);
         setPendingTableGroups(nextTableGroups);
         setPendingMyTiles(nextMyTiles);
-        if (pendingRecoveredJokers.includes(tileCode)) {
+        if (freshPendingRecoveredJokers.includes(tileCode)) {
           removeRecoveredJoker(tileCode);
         }
         return;
@@ -892,9 +937,9 @@ export default function GameClient({ roomId }: GameClientProps) {
       // isCompatibleWithGroup 검증 없이 merge하면 잡종 그룹이 생성된다.
       // 예: {R13,B13,K13} 에 B11 드롭 → [R13,B13,K13,B11] 잡종 (스크린샷 170801 증거)
       // 호환 안 되면 새 그룹 생성 경로(옵션 A)로 폴스루 — 사용자 의도에 더 가까움.
-      const targetServerGroup = currentTableGroups.find((g) => g.id === over.id);
+      const targetServerGroup = freshTableGroups.find((g) => g.id === over.id);
 
-      // FINDING-01 (Issue #46) — I-18 완전 롤백: hasInitialMeld=false 상태에서
+      // FINDING-01 (Issue #46) — I-18 완전 롤백: freshHasInitialMeld=false 상태에서
       // 서버 확정 그룹 영역에 드롭된 경우는 반드시 새 pending 그룹을 생성한다.
       //
       // 근거:
@@ -904,9 +949,10 @@ export default function GameClient({ roomId }: GameClientProps) {
       //     처리하려 했으나, 실측 결과 어떤 경로로든 line 874-894 (append) 가
       //     실행되는 증상이 재현됨 (RCA: docs/04-testing/73).
       //   - 의존성 제거: "서버 그룹이 targeted 되었고 초기 등록 전이면"
-      //     무조건 단일 타일의 새 pending 그룹을 만든다. 조커는 line 763-794
+      //     무조건 단일 타일의 새 pending 그룹을 만든다. 조커는 위
       //     swapCandidate 분기가 선행 처리하므로 여기 도달 시 조커 없음.
-      if (targetServerGroup && !hasInitialMeld) {
+      //   - BUG-UI-EXT 수정 4: freshTableGroups(최신 참조) 사용으로 stale snapshot 방지
+      if (targetServerGroup && !freshHasInitialMeld) {
         pendingGroupSeqRef.current += 1;
         const newGroupId = `pending-${Date.now()}-${pendingGroupSeqRef.current}`;
         const newGroup: TableGroup = {
@@ -914,21 +960,21 @@ export default function GameClient({ roomId }: GameClientProps) {
           tiles: [tileCode],
           type: classifySetType([tileCode]),
         };
-        const nextTableGroups = [...currentTableGroups, newGroup];
-        const nextMyTiles = removeFirstOccurrence(currentMyTiles, tileCode);
+        const nextTableGroups = [...freshTableGroups, newGroup];
+        const nextMyTiles = removeFirstOccurrence(freshMyTiles, tileCode);
         setPendingTableGroups(nextTableGroups);
         setPendingMyTiles(nextMyTiles);
         addPendingGroupId(newGroupId);
-        if (pendingRecoveredJokers.includes(tileCode)) {
+        if (freshPendingRecoveredJokers.includes(tileCode)) {
           removeRecoveredJoker(tileCode);
         }
         return;
       }
 
-      if (targetServerGroup && hasInitialMeld) {
+      if (targetServerGroup && freshHasInitialMeld) {
         if (!isCompatibleWithGroup(tileCode, targetServerGroup)) {
           // 호환 안 됨: 새 그룹 생성 (옵션 A 폴스루)
-          // pendingGroupSeqRef는 이 분기 아래에서도 같은 패턴을 사용한다
+          // BUG-UI-EXT 수정 4: freshTableGroups 기반으로 통일 (stale currentTableGroups 제거)
           pendingGroupSeqRef.current += 1;
           const newGroupId = `pending-${Date.now()}-${pendingGroupSeqRef.current}`;
           const newGroup: TableGroup = {
@@ -936,18 +982,18 @@ export default function GameClient({ roomId }: GameClientProps) {
             tiles: [tileCode],
             type: classifySetType([tileCode]),
           };
-          const nextTableGroups = [...currentTableGroups, newGroup];
-          const nextMyTiles = removeFirstOccurrence(currentMyTiles, tileCode);
+          const nextTableGroups = [...freshTableGroups, newGroup];
+          const nextMyTiles = removeFirstOccurrence(freshMyTiles, tileCode);
           setPendingTableGroups(nextTableGroups);
           setPendingMyTiles(nextMyTiles);
           addPendingGroupId(newGroupId);
-          if (pendingRecoveredJokers.includes(tileCode)) {
+          if (freshPendingRecoveredJokers.includes(tileCode)) {
             removeRecoveredJoker(tileCode);
           }
           return;
         }
         const updatedTiles = [...targetServerGroup.tiles, tileCode];
-        const nextTableGroups = currentTableGroups.map((g) =>
+        const nextTableGroups = freshTableGroups.map((g) =>
           g.id === targetServerGroup.id
             ? { ...g, tiles: updatedTiles, type: classifySetType(updatedTiles) }
             : g
@@ -962,12 +1008,12 @@ export default function GameClient({ roomId }: GameClientProps) {
             return;
           }
         }
-        const nextMyTiles = removeFirstOccurrence(currentMyTiles, tileCode);
+        const nextMyTiles = removeFirstOccurrence(freshMyTiles, tileCode);
         setPendingTableGroups(nextTableGroups);
         setPendingMyTiles(nextMyTiles);
         // pending ID 세트에 등록 → UI에서 "수정 중 (미확정)"으로 표시
         addPendingGroupId(targetServerGroup.id);
-        if (pendingRecoveredJokers.includes(tileCode)) {
+        if (freshPendingRecoveredJokers.includes(tileCode)) {
           removeRecoveredJoker(tileCode);
         }
         return;
@@ -975,7 +1021,7 @@ export default function GameClient({ roomId }: GameClientProps) {
 
       // B-1 수정: closestCenter 알고리즘이 빈 보드 영역 드롭을 기존 서버 그룹에
       // 매핑하는 경우, 새 그룹 생성 로직으로 폴스루한다.
-      // targetServerGroup && !hasInitialMeld 케이스는 위 FINDING-01 early-return 이
+      // targetServerGroup && !freshHasInitialMeld 케이스는 위 FINDING-01 early-return 이
       // 전담하므로 여기서는 game-board 직접 드롭만 처리한다.
       const treatAsBoardDrop = over.id === "game-board";
 
@@ -985,8 +1031,8 @@ export default function GameClient({ roomId }: GameClientProps) {
         // 사용하면 안 된다. 서버 확정 그룹에 타일을 추가하는 경로는 명시적 그룹 드롭존을
         // 통해야 한다 (targetServerGroup 분기). 여기서는 "pending-" 접두사로 생성된
         // 순수 신규 그룹만 고려하여 의도치 않은 서버 그룹 오염을 방지한다.
-        const pendingOnlyGroups = pendingTableGroups?.filter((g) =>
-          pendingGroupIds.has(g.id) && g.id.startsWith("pending-")
+        const pendingOnlyGroups = freshPendingTableGroups?.filter((g) =>
+          freshPendingGroupIds.has(g.id) && g.id.startsWith("pending-")
         );
         const lastPendingGroup = pendingOnlyGroups?.at(-1);
 
@@ -1067,21 +1113,23 @@ export default function GameClient({ roomId }: GameClientProps) {
 
         if (lastPendingGroup && !shouldCreateNewGroup) {
           // 마지막 pending 그룹에 타일 추가 + BUG-UI-005: 타입 재분류
+          // BUG-UI-EXT 수정 4: freshTableGroups 기반으로 통일
           const updatedTiles = [...lastPendingGroup.tiles, tileCode];
-          const nextTableGroups = currentTableGroups.map((g) =>
+          const nextTableGroups = freshTableGroups.map((g) =>
             g.id === lastPendingGroup.id
               ? { ...g, tiles: updatedTiles, type: classifySetType(updatedTiles) }
               : g
           );
-          const nextMyTiles = removeFirstOccurrence(currentMyTiles, tileCode);
+          const nextMyTiles = removeFirstOccurrence(freshMyTiles, tileCode);
           setPendingTableGroups(nextTableGroups);
           setPendingMyTiles(nextMyTiles);
-          if (pendingRecoveredJokers.includes(tileCode)) {
+          if (freshPendingRecoveredJokers.includes(tileCode)) {
             removeRecoveredJoker(tileCode);
           }
         } else {
           // 새 그룹 생성 (서버 미전송, 프리뷰 상태)
           // BUG-UI-REARRANGE-002: 단조 카운터로 ID 생성 → 동일 ms 중복 방지
+          // BUG-UI-EXT 수정 4: freshTableGroups 기반으로 통일 (stale snapshot 방지)
           pendingGroupSeqRef.current += 1;
           const newGroupId = `pending-${Date.now()}-${pendingGroupSeqRef.current}`;
           // BUG-UI-005: 새 그룹 타일로 타입 자동 판별
@@ -1090,7 +1138,7 @@ export default function GameClient({ roomId }: GameClientProps) {
             tiles: [tileCode],
             type: classifySetType([tileCode]),
           };
-          const nextTableGroups = [...currentTableGroups, newGroup];
+          const nextTableGroups = [...freshTableGroups, newGroup];
           // dev assertion: 그룹 ID는 항상 unique해야 한다
           if (process.env.NODE_ENV !== "production") {
             const ids = nextTableGroups.map((g) => g.id);
@@ -1098,20 +1146,21 @@ export default function GameClient({ roomId }: GameClientProps) {
               console.error("[BUG-UI-REARRANGE-002] 그룹 ID 중복 감지", ids);
             }
           }
-          const nextMyTiles = removeFirstOccurrence(currentMyTiles, tileCode);
+          const nextMyTiles = removeFirstOccurrence(freshMyTiles, tileCode);
           setPendingTableGroups(nextTableGroups);
           setPendingMyTiles(nextMyTiles);
           // 새로 생성된 그룹을 프리뷰 ID 세트에 등록
           addPendingGroupId(newGroupId);
           // forceNewGroup은 false로 리셋하지 않음 - 사용자가 수동 토글하도록 유지
           if (forceNewGroup) setForceNewGroup(false);
-          if (pendingRecoveredJokers.includes(tileCode)) {
+          if (freshPendingRecoveredJokers.includes(tileCode)) {
             removeRecoveredJoker(tileCode);
           }
         }
       } else if (over.id === "game-board-new-group") {
         // G-5: 새 그룹 드롭존에 직접 드롭 → 무조건 새 그룹 생성
         // (game-board의 shouldCreateNewGroup 조건 판단을 우회하여 즉시 새 그룹)
+        // BUG-UI-EXT 수정 4: freshTableGroups 기반으로 통일
         pendingGroupSeqRef.current += 1;
         const newGroupId = `pending-${Date.now()}-${pendingGroupSeqRef.current}`;
         const newGroup: TableGroup = {
@@ -1119,44 +1168,45 @@ export default function GameClient({ roomId }: GameClientProps) {
           tiles: [tileCode],
           type: classifySetType([tileCode]),
         };
-        const nextTableGroups = [...currentTableGroups, newGroup];
+        const nextTableGroups = [...freshTableGroups, newGroup];
         if (process.env.NODE_ENV !== "production") {
           const ids = nextTableGroups.map((g) => g.id);
           if (new Set(ids).size !== ids.length) {
             console.error("[BUG-UI-REARRANGE-002] 그룹 ID 중복 감지 (new-group-dropzone)", ids);
           }
         }
-        const nextMyTiles = removeFirstOccurrence(currentMyTiles, tileCode);
+        const nextMyTiles = removeFirstOccurrence(freshMyTiles, tileCode);
         setPendingTableGroups(nextTableGroups);
         setPendingMyTiles(nextMyTiles);
         addPendingGroupId(newGroupId);
-        if (pendingRecoveredJokers.includes(tileCode)) {
+        if (freshPendingRecoveredJokers.includes(tileCode)) {
           removeRecoveredJoker(tileCode);
         }
       } else if (over.id === "player-rack") {
         // 보드 -> 랙: pending 그룹에 실제로 있는 타일만 회수
         // (랙->랙 오드롭 시 서버 그룹 타일을 삭제하는 버그 방지)
-        if (pendingTableGroups) {
+        // BUG-UI-EXT 수정 1: freshPendingTableGroups/freshPendingGroupIds 사용 (stale 방지)
+        if (freshPendingTableGroups) {
           // pending 그룹 중 해당 tileCode를 포함하는 첫 번째 그룹 인덱스를 탐색
-          const sourceGroupIdx = pendingTableGroups.findIndex(
-            (g) => pendingGroupIds.has(g.id) && g.tiles.includes(tileCode)
+          const sourceGroupIdx = freshPendingTableGroups.findIndex(
+            (g) => freshPendingGroupIds.has(g.id) && g.tiles.includes(tileCode)
           );
           if (sourceGroupIdx < 0) return;
 
           // BUG-UI-006(G-3): filter((t) => t !== tileCode)는 ALL 그룹의 ALL 일치를
           // 제거해 고스트 타일 잔존 / 타일 소멸을 유발한다.
           // removeFirstOccurrence로 원본 그룹에서 1개만 정확히 제거한다.
-          const updated = pendingTableGroups
+          const updated = freshPendingTableGroups
             .map((g, idx) => {
               if (idx !== sourceGroupIdx) return g;
               return { ...g, tiles: removeFirstOccurrence(g.tiles, tileCode) };
             })
             .filter((g) => g.tiles.length > 0);
 
-          const stillHasPending = updated.some((g) => pendingGroupIds.has(g.id));
+          const stillHasPending = updated.some((g) => freshPendingGroupIds.has(g.id));
           setPendingTableGroups(stillHasPending ? updated : null);
           if (!stillHasPending) clearPendingGroupIds();
-          setPendingMyTiles([...(pendingMyTiles ?? myTiles), tileCode]);
+          setPendingMyTiles([...freshMyTiles, tileCode]);
         }
       }
       } finally {
@@ -1169,21 +1219,18 @@ export default function GameClient({ roomId }: GameClientProps) {
     },
     [
       isMyTurn,
-      currentTableGroups,
-      currentMyTiles,
       setPendingTableGroups,
       setPendingMyTiles,
       addPendingGroupId,
       clearPendingGroupIds,
+      setPendingGroupIds,
       addRecoveredJoker,
       removeRecoveredJoker,
-      pendingTableGroups,
-      pendingMyTiles,
-      pendingGroupIds,
-      myTiles,
-      pendingRecoveredJokers,
+      // BUG-UI-EXT 수정 1: currentTableGroups(useMemo stale) 와 currentMyTiles 를 deps 에서 제거.
+      // handleDragEnd 내부에서 useGameStore.getState() 로 최신 참조를 직접 획득하므로
+      // useMemo snapshot 에 대한 deps 불필요. React 경고 억제를 위해 stable setter 함수만 유지.
+      // 단, forceNewGroup 은 React state 라 deps 필요.
       forceNewGroup,
-      hasInitialMeld,
     ]
   );
 
