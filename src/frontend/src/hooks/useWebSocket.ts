@@ -356,7 +356,7 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
               winner: winnerPlayer
                 ? {
                     userId: (winnerPlayer as { userId?: string }).userId ?? "",
-                    displayName: winnerPlayer.displayName ?? "",
+                    displayName: (winnerPlayer as { displayName?: string }).displayName ?? "",
                   }
                 : null,
             });
