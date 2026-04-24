@@ -151,7 +151,7 @@ const PlayerRack = memo(function PlayerRack({
         ) : (
           tiles.map((code, idx) => (
             <DraggableTile
-              key={`rack-${code}`}
+              key={`rack-${code}-${idx}`}
               id={`rack-${code}-${idx}`}
               code={code}
               size="rack"
