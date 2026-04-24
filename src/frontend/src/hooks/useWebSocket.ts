@@ -177,16 +177,17 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
             } as Player;
           });
           setPlayers(playersUpdated);
-          // BUG-UI-EXT 수정 3: hasInitialMeld SSOT 동기화 —
+          // BUG-UI-EXT 수정 3 + F4 B2 (FINDING-01): hasInitialMeld 완전 SSOT 동기화 —
           // TURN_END 에서만 루트 hasInitialMeld 를 갱신하던 기존 로직은 GAME_STATE (재연결/
           // 새로고침 복구) 시 루트 hasInitialMeld 가 false 로 초기화되는 드리프트를 유발한다.
           // GAME_STATE 수신 시에도 내 seat 의 hasInitialMeld 를 루트 state 에 동기화한다.
-          // (architect 재재조사 §4.3 + §5.2 C)
+          // F4 B2: true 뿐만 아니라 false 포함 전체 값을 동기화 (이중화 해소).
+          // (architect 가이드 §F4 B2 + 재재조사 §4.3 + §5.2 C)
           {
             const mySeatNow = useGameStore.getState().mySeat;
             const myPlayer = payload.players.find((p) => p.seat === mySeatNow);
-            if (myPlayer?.hasInitialMeld) {
-              setHasInitialMeld(true);
+            if (myPlayer !== undefined && myPlayer.hasInitialMeld !== undefined) {
+              setHasInitialMeld(myPlayer.hasInitialMeld);
             }
           }
           // drawPileCount가 0이면 소진 상태 설정
@@ -338,6 +339,28 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
           console.info("[WS] GAME_OVER", payload);
           useGameStore.getState().setGameOverResult(payload);
           setGameEnded(true);
+          // F1/F2 (BUG-UI-012 Phase 2): gameStatus + endReason + winner 반영
+          // setStoreState({gameStatus:'ended',...}) E2E 주입 및 실제 WS 이벤트 모두 처리
+          {
+            const storeState = useGameStore.getState();
+            const winnerPlayer = payload.winnerId
+              ? storeState.players.find((p) => {
+                  // Player 타입은 userId 필드를 가짐
+                  const hp = p as { userId?: string; displayName?: string };
+                  return hp.userId === payload.winnerId;
+                })
+              : null;
+            useGameStore.setState({
+              gameStatus: "ended",
+              endReason: "game_over",
+              winner: winnerPlayer
+                ? {
+                    userId: (winnerPlayer as { userId?: string }).userId ?? "",
+                    displayName: winnerPlayer.displayName ?? "",
+                  }
+                : null,
+            });
+          }
           break;
         }
         case "PLAYER_JOIN": {
@@ -410,7 +433,18 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
             "[WS] PLAYER_FORFEITED seat=%d %s reason=%s activePlayers=%d",
             payload.seat, payload.displayName, payload.reason, payload.activePlayers
           );
-          // isGameOver이면 GAME_OVER 메시지가 별도로 오므로 여기서는 처리하지 않음
+          // F1/F2 (BUG-UI-012 Phase 2): 상대 기권 시 gameStatus='ended' + endReason 반영
+          // activePlayers <= 1 이면 게임 종료로 간주 (GAME_OVER 메시지 도달 전 모달 선행 렌더)
+          if (payload.activePlayers <= 1) {
+            // 나를 제외한 기권자가 winner 가 아님 → winner 는 나(현재 플레이어) 또는 null
+            useGameStore.setState({
+              gameStatus: "ended",
+              endReason: "opponent_forfeit",
+              // winner 는 GAME_OVER 이벤트에서 확정 예정. 여기서는 null 유지.
+              winner: null,
+            });
+          }
+          // isGameOver이면 GAME_OVER 메시지가 별도로 오므로 거기서 확정
           break;
         }
         // ---- 교착 처리 메시지 ----

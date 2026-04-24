@@ -115,8 +115,11 @@ test.describe("BUG-UI-011: AI 턴 중 플레이어 버튼 활성화 금지", () 
       }
     }
 
-    // 최소 하나라도 렌더되어 있어야 의미 있는 테스트
-    const totalCount = (await undoBtn.count()) + (await newGroupBtn.count());
-    expect(totalCount).toBeGreaterThan(0);
+    // F5 결정 (architect 옵션 C): T11-01 ActionBar hidden 정책과 정합.
+    // AI 턴에는 ActionBar 전체 hidden (PR #78 isMyTurn SSOT) 이므로
+    // 되돌리기/새 그룹 버튼이 totalCount=0 이어도 FAIL 이 아니다.
+    // T11-01 이 이미 hidden 을 검증하므로 여기서 중복 가드는 자기 모순.
+    // 버튼이 렌더된 경우에만 disabled 검증 (방어적) — 가드 삭제.
+    // 참조: work_logs/plans/tmp-analysis/f3-f4-f5-architect-guide.md §3.3
   });
 });
