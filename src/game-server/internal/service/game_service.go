@@ -2,9 +2,11 @@ package service
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/k82022603/RummiArena/game-server/internal/engine"
 	"github.com/k82022603/RummiArena/game-server/internal/model"
 	"github.com/k82022603/RummiArena/game-server/internal/repository"
@@ -913,15 +915,26 @@ func removeTilesFromRack(rack []string, tiles []string) ([]string, error) {
 }
 
 // convertToSetOnTable TilePlacement 슬라이스를 model.SetOnTable 슬라이스로 변환한다.
+//
+// V-17 / D-01 / D-12: 그룹 ID 발급 정책 (SSOT — 이 함수만 ID 를 결정한다)
+//   - 빈 ID("") → UUID v4 신규 발급
+//   - "pending-" prefix → UUID v4 신규 발급 (D-12: pending- prefix 는 DB 에 적재되어서는 안 된다)
+//   - 유효한 UUID v4(36자) → 그대로 보존
 func convertToSetOnTable(placements []TilePlacement) []*model.SetOnTable {
 	sets := make([]*model.SetOnTable, 0, len(placements))
 	for _, p := range placements {
+		groupID := p.ID
+		if groupID == "" || strings.HasPrefix(groupID, "pending-") {
+			// V-17: 서버가 UUID v4 를 발급한다.
+			// D-12: pending- prefix 가 DB 에 적재되지 않도록 교체한다.
+			groupID = uuid.NewString()
+		}
 		tiles := make([]*model.Tile, 0, len(p.Tiles))
 		for _, code := range p.Tiles {
 			tiles = append(tiles, &model.Tile{Code: code})
 		}
 		sets = append(sets, &model.SetOnTable{
-			ID:    p.ID,
+			ID:    groupID,
 			Tiles: tiles,
 		})
 	}
