@@ -5,6 +5,10 @@
  * - 56 section 3.18 셀: A17 (드래그 중 ESC 키 또는 dnd-kit onDragCancel)
  * - 룰 ID: UR-17, INV-G1, INV-G2
  * - 이 경로에서 어떠한 state 변경도 발생해서는 안 됨 (D-01/D-02 invariant 보호)
+ *
+ * NOTE: cancel 은 dragEndReducer 에 cancel 전용 경로가 없으며,
+ *       UI 레이어가 onDragCancel 에서 reducer 를 호출하지 않는다.
+ *       본 테스트는 "cancel 역할을 하는 거절 경로" 를 검증한다.
  */
 
 import { describe, it, expect, beforeEach } from "@jest/globals";
@@ -13,93 +17,76 @@ import type { TileCode } from "@/types/tile";
 import {
   serverGroup,
   pendingGroup,
-  makeInput,
+  makeReducerArgs,
   resetGroupSeq,
+  expectRejected,
 } from "../test-helpers";
 
 describe("[A17] [UR-17] cancel (S2/S3/S4 -> S1/S5)", () => {
   beforeEach(() => resetGroupSeq());
 
-  describe("[A17.1] [UR-17] S2/S3/S4 -> 원위치 (state 변경 0)", () => {
-    it("드래그 중 ESC -> state === 직전 상태", () => {
+  describe("[A17.1] [UR-17] server -> rack = cannot-return-server-tile (state 변경 0)", () => {
+    it("서버 tile 을 rack 으로 drop -> 거절 = cancel 과 동일 효과", () => {
       // UR-17: cancel 시 어떠한 state 변경도 없어야 함
+      // server -> rack 는 cannot-return-server-tile 로 거절되어 state 변경 0
       const sg = serverGroup(["R7a", "B7a", "Y7a"] as TileCode[], "group");
       const pg = pendingGroup(["K5a", "K6a"] as TileCode[], "run");
       const myTiles = ["R1a", "B2a"] as TileCode[];
       const pendingIds = new Set([pg.id]);
 
-      // cancel 은 dest 가 없는 특수한 경우
-      // dragEndReducer 가 cancel 을 처리할 때 state 변경 0 반환
-      const output = dragEndReducer(
-        makeInput({
-          tileCode: "R7a" as TileCode,
-          source: { kind: "server", groupId: sg.id, index: 0 },
-          dest: { kind: "rack" }, // cancel 시의 dest 는 무시되어야 함
-          isMyTurn: true,
-          hasInitialMeld: true,
-          tableGroups: [sg, pg],
-          myTiles,
-          pendingGroupIds: pendingIds,
-        })
-      );
+      const [state, input] = makeReducerArgs({
+        tileCode: "R7a" as TileCode,
+        source: { kind: "server", groupId: sg.id, index: 0 },
+        dest: { kind: "rack" },
+        hasInitialMeld: true,
+        tableGroups: [sg, pg],
+        myTiles,
+        pendingGroupIds: pendingIds,
+      });
+      const output = dragEndReducer(state, input);
 
-      // cancel 경로에서는 accepted=false (V-06 으로 server->rack 거절)
-      // 또는 cancel 전용 핸들링이면 state 변경 0
-      // 어느 쪽이든 원래 state 유지
-      if (!output.accepted) {
-        // 거절 = state 변경 0 (정상)
-        expect(output.nextTableGroups).toBeUndefined();
-      } else {
-        // 만약 허용이라면 state 동일해야 함
-        expect(output.nextTableGroups!.length).toBe(2);
-      }
+      expectRejected(output, "cannot-return-server-tile");
     });
   });
 
-  describe("[A17.2] [UR-17] state 변경 0 (D-01/D-02 invariant 유지)", () => {
-    it("cancel 경로에서 어떠한 store mutation 도 발생 X", () => {
-      // rack -> rack (no-op) 시나리오로 cancel 모사
-      const myTiles = ["R7a", "B7a"] as TileCode[];
+  describe("[A17.2] [UR-17] self-drop = no-op-self-drop (state 변경 0)", () => {
+    it("table tile 을 같은 그룹에 drop -> no-op-self-drop 거절", () => {
+      const sg = serverGroup(["R7a", "B7a", "Y7a"] as TileCode[], "group");
 
-      const output = dragEndReducer(
-        makeInput({
-          tileCode: "R7a" as TileCode,
-          source: { kind: "rack" },
-          dest: { kind: "rack" }, // same source = cancel equivalent
-          isMyTurn: true,
-          tableGroups: [],
-          myTiles,
-        })
-      );
+      const [state, input] = makeReducerArgs({
+        tileCode: "R7a" as TileCode,
+        source: { kind: "server", groupId: sg.id, index: 0 },
+        overId: sg.id, // 같은 그룹에 drop
+        hasInitialMeld: true,
+        tableGroups: [sg],
+        myTiles: [],
+      });
+      const output = dragEndReducer(state, input);
 
-      // rack -> rack 은 A13 (재정렬). 허용되지만 보드 변경 0
-      if (output.accepted) {
-        expect(output.nextTableGroups!.length).toBe(0);
-        expect(output.nextMyTiles!.sort()).toEqual(myTiles.sort());
-      }
+      expectRejected(output, "no-op-self-drop");
     });
   });
 
-  describe("[A17.3] [INV-G1] [INV-G2] cancel 후 invariant 유지", () => {
-    it("cancel 후 모든 board.tiles multiset 유니크, 모든 group.id 유니크", () => {
+  describe("[A17.3] [INV-G1] [INV-G2] 거절 후 invariant 유지", () => {
+    it("거절 경로에서 nextTableGroups 는 입력 state 의 tableGroups 와 동일", () => {
       const sg = serverGroup(["R7a", "B7a", "Y7a"] as TileCode[], "group");
       const pg = pendingGroup(["K1a"] as TileCode[], "group");
+      const pendingIds = new Set([pg.id]);
 
-      // cancel = rejected (server -> rack = V-06 거절)
-      const output = dragEndReducer(
-        makeInput({
-          tileCode: "R7a" as TileCode,
-          source: { kind: "server", groupId: sg.id, index: 0 },
-          dest: { kind: "rack" },
-          hasInitialMeld: true,
-          tableGroups: [sg, pg],
-          myTiles: [],
-          pendingGroupIds: new Set([pg.id]),
-        })
-      );
+      const [state, input] = makeReducerArgs({
+        tileCode: "R7a" as TileCode,
+        source: { kind: "server", groupId: sg.id, index: 0 },
+        dest: { kind: "rack" },
+        hasInitialMeld: true,
+        tableGroups: [sg, pg],
+        myTiles: [],
+        pendingGroupIds: pendingIds,
+      });
+      const output = dragEndReducer(state, input);
 
-      // 거절이므로 state 변경 없음 -- invariant 유지
-      expect(output.accepted).toBe(false);
+      // 거절이므로 state 변경 없음 -- nextTableGroups 는 입력 tableGroups 참조
+      expectRejected(output);
+      expect(output.nextTableGroups).toEqual(state.tableGroups);
     });
   });
 });
