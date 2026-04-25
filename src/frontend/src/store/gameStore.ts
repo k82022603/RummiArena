@@ -5,6 +5,7 @@ import { subscribeWithSelector } from "zustand/middleware";
 import type { TileCode, TableGroup } from "@/types/tile";
 import type { Player, GameState, Room } from "@/types/game";
 import type { GameOverPayload } from "@/types/websocket";
+import { computeEffectiveMeld } from "@/lib/turnUtils";
 
 /** 연결 끊김 플레이어 정보 (Grace Period 카운트다운 표시용) */
 export interface DisconnectedPlayerInfo {
@@ -52,26 +53,37 @@ interface GameStore {
   remainingMs: number;
   setRemainingMs: (ms: number) => void;
 
+  // ---------------------------------------------------------------------------
+  // @deprecated Phase 1: 아래 pending 관련 필드는 pendingStore로 이전됨.
+  //   Phase 3에서 완전 제거 예정. 현재는 기존 코드(GameClient.tsx, useWebSocket.ts) 호환성 유지.
+  //   신규 코드에서는 usePendingStore를 사용할 것 (src/store/pendingStore.ts).
+  // ---------------------------------------------------------------------------
+
   // 임시 테이블 상태 (턴 확정 전 로컬 편집 중)
+  // @deprecated → usePendingStore().draft.groups
   pendingTableGroups: TableGroup[] | null;
   setPendingTableGroups: (groups: TableGroup[] | null) => void;
 
   // 임시 내 랙 상태 (테이블에 끌어놓은 타일 제거된 상태)
+  // @deprecated → usePendingStore().draft.myTiles
   pendingMyTiles: TileCode[] | null;
   setPendingMyTiles: (tiles: TileCode[] | null) => void;
 
   // P3: 테이블 조커 교체로 회수한 조커 대기 풀
   // 규칙 §3.3/§6.2 유형 4 — 회수한 조커는 같은 턴 내에 다른 세트에 반드시 사용해야 한다.
+  // @deprecated → usePendingStore().draft.recoveredJokers
   pendingRecoveredJokers: TileCode[];
   addRecoveredJoker: (code: TileCode) => void;
   removeRecoveredJoker: (code: TileCode) => void;
   clearRecoveredJokers: () => void;
 
   // 이번 턴에 새로 추가된 그룹 ID 세트 (프리뷰 표시용, 서버 미확정)
+  // @deprecated → usePendingStore().draft.pendingGroupIds
   pendingGroupIds: Set<string>;
   addPendingGroupId: (id: string) => void;
   clearPendingGroupIds: () => void;
   // BUG-UI-EXT 수정 4: 재배치 시 소스 그룹 제거 + 타겟 그룹 등록을 atomic 하게 처리
+  // @deprecated → usePendingStore().applyMutation()
   setPendingGroupIds: (ids: Set<string>) => void;
 
   // AI 사고 중 표시
@@ -120,6 +132,7 @@ interface GameStore {
   setLastTurnPlacement: (placement: TurnPlacement | null) => void;
 
   // pending 상태만 초기화 (INVALID_MOVE 롤백 시 사용)
+  // @deprecated → usePendingStore().reset()
   resetPending: () => void;
 
   // F1/F2 (BUG-UI-012 Phase 2): 게임 종료 상태 스키마
@@ -275,6 +288,56 @@ export function selectMyTileCount(
   }
   const me = players.find((p) => (p as { seat?: number }).seat === mySeat);
   return me?.tileCount ?? 0;
+}
+
+// ---------------------------------------------------------------------------
+// Selector: effectiveHasInitialMeld
+//
+// 문제: effectiveHasInitialMeld 가 7개 지점에서 중복 참조됨 (W2-A 사고).
+// 해결: computeEffectiveMeld 순수 함수를 단일 selector로 래핑.
+//   hasInitialMeld 필드 대신 이 selector를 사용하면 7지점 산포 제거 가능.
+//   Phase 3에서 hasInitialMeld 필드 완전 제거 예정.
+// ---------------------------------------------------------------------------
+
+/**
+ * 나의 effectiveHasInitialMeld — V-13a (재배치 권한 판정) SSOT.
+ *
+ * players 배열의 서버 응답값을 단일 소스로 사용한다.
+ * hasInitialMeld 필드(서버 전달 boolean)보다 이 selector 우선.
+ */
+export function selectEffectiveMeld(
+  state: ReturnType<typeof useGameStore.getState>
+): boolean {
+  return computeEffectiveMeld(state.players, state.mySeat);
+}
+
+/**
+ * 내 플레이어 객체 selector.
+ */
+export function selectMyPlayer(
+  state: ReturnType<typeof useGameStore.getState>
+): Player | undefined {
+  return state.players.find((p) => p.seat === state.mySeat);
+}
+
+/**
+ * 현재 턴 seat selector.
+ */
+export function selectCurrentSeat(
+  state: ReturnType<typeof useGameStore.getState>
+): number {
+  return state.gameState?.currentSeat ?? -1;
+}
+
+/**
+ * 내 턴 여부 selector — V-08.
+ */
+export function selectIsMyTurn(
+  state: ReturnType<typeof useGameStore.getState>
+): boolean {
+  const currentSeat = selectCurrentSeat(state);
+  if (currentSeat < 0) return false;
+  return currentSeat === state.mySeat;
 }
 
 // E2E 테스트 브릿지: Zustand 스토어를 window에 노출
