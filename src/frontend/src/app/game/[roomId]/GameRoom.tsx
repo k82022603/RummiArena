@@ -1,0 +1,118 @@
+"use client";
+
+/**
+ * GameRoom — 게임 화면 합성 루트 (L1)
+ *
+ * SSOT 매핑:
+ *   - 58 §7 Phase 3: L1 컴포넌트 분리
+ *   - 58 §1.1 To-Be 디렉터리 트리: GameRoom.tsx 역할
+ *   - F-01: 내 턴 시작 인지 (useGameSync + useTurnStateStore)
+ *   - F-02~F-06: 드래그 핸들러 (useDragHandlers)
+ *   - F-09: ConfirmTurn (useTurnActions)
+ *   - F-11: DRAW (useTurnActions)
+ *
+ * Phase 3 과도기 전략:
+ *   GameClient.tsx의 기존 기능을 완전 보존하면서 Phase 2 hook을 활성화한다.
+ *
+ *   WS 브릿지 등록: GameClient 내부에서 registerWSSendBridge(send)를 호출한다.
+ *   이 컴포넌트는 store/hook 활성화 컨테이너 역할만 수행하고
+ *   렌더링은 GameClient에 위임한다.
+ *
+ *   GameClient가 자체 DndContext를 소유하므로 이 컴포넌트는 DndContext를 추가하지 않는다.
+ *   Phase 4에서 GameClient의 DndContext를 이 컴포넌트로 이전한다.
+ *
+ * 계층 규칙:
+ *   - L2(store/hook)만 import. L3 순수 함수 직접 import 금지.
+ *   - L4(WS) 직접 import 금지 — GameClient의 브릿지 경유.
+ */
+
+// L2 hooks
+import { useDragHandlers } from "@/hooks/useDragHandlers";
+import { useTurnActions } from "@/hooks/useTurnActions";
+import { useGameSync } from "@/hooks/useGameSync";
+import { useInitialMeldGuard } from "@/hooks/useInitialMeldGuard";
+import { useTurnTimer } from "@/hooks/useTurnTimer";
+
+// L2 stores
+import { useTurnStateStore } from "@/store/turnStateStore";
+import { usePendingStore } from "@/store/pendingStore";
+
+// L1 컴포넌트 (기존 보존)
+import GameClient from "./GameClient";
+
+// ---------------------------------------------------------------------------
+// Props
+// ---------------------------------------------------------------------------
+
+interface GameRoomProps {
+  roomId: string;
+}
+
+// ---------------------------------------------------------------------------
+// GameRoom 컴포넌트
+// ---------------------------------------------------------------------------
+
+/**
+ * 게임 화면 합성 루트.
+ *
+ * Phase 3 과도기:
+ *   Phase 2 hook들을 마운트하여 store 상태(turnStateStore, pendingStore, dragStateStore)가
+ *   올바르게 유지되도록 한다. 렌더링과 WS 연결은 GameClient에 위임한다.
+ *
+ * WS 브릿지:
+ *   GameClient 내부에서 registerWSSendBridge(send)를 호출한다.
+ *   이 컴포넌트는 브릿지 등록에 관여하지 않는다.
+ *
+ * store 상태 흐름:
+ *   useGameSync → gameStore 변화 감지 → turnStateStore/pendingStore 전이
+ *   useDragHandlers → dragStateStore + pendingStore + turnStateStore 업데이트
+ *   useTurnActions → WS bridge 경유 C2S 발신 + store 전이
+ *
+ * NOTE: GameClient 내부에 자체 DndContext와 handleDragEnd가 있다.
+ *       Phase 3에서는 두 구현이 공존한다.
+ *       useDragHandlers/useTurnActions는 store 연결을 준비하지만
+ *       실제 드래그/액션 이벤트는 GameClient가 처리한다.
+ *       Phase 4에서 GameClient의 DndContext와 핸들러를 이 컴포넌트로 이전.
+ */
+export default function GameRoom({ roomId }: GameRoomProps) {
+  // ---------------------------------------------------------------------------
+  // Phase 2 hook 활성화
+  // ---------------------------------------------------------------------------
+
+  // F-01: TURN_START/GAME_OVER/INVALID_MOVE 감지 → pendingStore/turnStateStore dispatch
+  useGameSync(roomId);
+
+  // F-02~F-06: 드래그 핸들러 store 상태 초기화
+  // 이 hook을 마운트하면 handleDragStart/End/Cancel 함수와 store 액션이 준비된다.
+  // Phase 3에서는 직접 DndContext에 연결하지 않는다 (GameClient의 DndContext 사용).
+  // Phase 4에서 GameClient DndContext를 이 컴포넌트로 이전 시 직접 연결.
+  const _dragHandlers = useDragHandlers();
+  void _dragHandlers;
+
+  // F-09/F-11: 턴 액션 준비
+  // GameClient 내부에서 registerWSSendBridge 후 이 hook의 handleConfirm/handleDraw가 동작한다.
+  // Phase 3에서는 GameClient의 기존 handleConfirm/handleDraw와 공존.
+  const _turnActions = useTurnActions();
+  void _turnActions;
+
+  // F-04/F-17: hasInitialMeld SSOT 단일화 (InitialMeldBanner/GroupDropZone 연결 준비)
+  const _meldGuard = useInitialMeldGuard();
+  void _meldGuard;
+
+  // F-15: 턴 타이머 활성화 (TimerView 연결 준비)
+  const _timer = useTurnTimer();
+  void _timer;
+
+  // FSM 상태 구독 (store 활성화)
+  const _turnState = useTurnStateStore((s: { state: string }) => s.state);
+  void _turnState;
+
+  // pending 상태 구독 (드래그/액션 활성화 판단 보조)
+  const _hasPending = usePendingStore((s: { draft: unknown }) => s.draft !== null);
+  void _hasPending;
+
+  // ---------------------------------------------------------------------------
+  // 렌더 — GameClient에 위임 (기존 기능 전체 보존)
+  // ---------------------------------------------------------------------------
+  return <GameClient roomId={roomId} />;
+}

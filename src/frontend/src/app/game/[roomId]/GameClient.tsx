@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { registerWSSendBridge, unregisterWSSendBridge } from "@/hooks/useTurnActions";
 import {
   DndContext,
   DragEndEvent,
@@ -445,6 +446,15 @@ const pointerWithinThenClosest: CollisionDetection = (args) => {
 export default function GameClient({ roomId }: GameClientProps) {
   const router = useRouter();
   const { send } = useWebSocket({ roomId });
+
+  // Phase 3: WS send 브릿지 등록 — useTurnActions가 WS에 간접 접근할 수 있도록 한다.
+  // 58 §5.2: L2 hook이 WS를 직접 import하지 않기 위한 브릿지 패턴.
+  useEffect(() => {
+    registerWSSendBridge(send);
+    return () => {
+      unregisterWSSendBridge();
+    };
+  }, [send]);
 
   const {
     mySeat,
