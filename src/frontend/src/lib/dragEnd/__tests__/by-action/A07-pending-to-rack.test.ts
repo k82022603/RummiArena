@@ -4,6 +4,9 @@
  * SSOT 매핑:
  * - 56 section 3.8 셀: A7 (PENDING_BOARD -> RACK)
  * - 룰 ID: UR-12, V-06, INV-G3
+ *
+ * NOTE: table -> rack 이동은 reducer 에서 pending 여부를 체크.
+ *       pending 그룹이면 회수 허용, 서버 그룹이면 거절.
  */
 
 import { describe, it, expect, beforeEach } from "@jest/globals";
@@ -11,7 +14,7 @@ import { dragEndReducer } from "../../dragEndReducer";
 import type { TileCode } from "@/types/tile";
 import {
   pendingGroup,
-  makeInput,
+  makeReducerArgs,
   resetGroupSeq,
   expectAccepted,
   expectNoEmptyGroups,
@@ -27,16 +30,15 @@ describe("[A7] [UR-12] pending -> rack (recovery)", () => {
       const pg = pendingGroup(["R7a", "B7a"] as TileCode[], "group");
       const pendingIds = new Set([pg.id]);
 
-      const output = dragEndReducer(
-        makeInput({
-          tileCode: "R7a" as TileCode,
-          source: { kind: "pending", groupId: pg.id, index: 0 },
-          dest: { kind: "rack" },
-          tableGroups: [pg],
-          myTiles: ["K1a"] as TileCode[],
-          pendingGroupIds: pendingIds,
-        })
-      );
+      const [state, input] = makeReducerArgs({
+        tileCode: "R7a" as TileCode,
+        source: { kind: "pending", groupId: pg.id, index: 0 },
+        dest: { kind: "rack" },
+        tableGroups: [pg],
+        myTiles: ["K1a"] as TileCode[],
+        pendingGroupIds: pendingIds,
+      });
+      const output = dragEndReducer(state, input);
 
       expectAccepted(output);
       // 출발 그룹에서 타일 제거
@@ -54,46 +56,46 @@ describe("[A7] [UR-12] pending -> rack (recovery)", () => {
       const pg = pendingGroup(["R7a"] as TileCode[], "group");
       const pendingIds = new Set([pg.id]);
 
-      const output = dragEndReducer(
-        makeInput({
-          tileCode: "R7a" as TileCode,
-          source: { kind: "pending", groupId: pg.id, index: 0 },
-          dest: { kind: "rack" },
-          tableGroups: [pg],
-          myTiles: [],
-          pendingGroupIds: pendingIds,
-        })
-      );
+      const [state, input] = makeReducerArgs({
+        tileCode: "R7a" as TileCode,
+        source: { kind: "pending", groupId: pg.id, index: 0 },
+        dest: { kind: "rack" },
+        tableGroups: [pg],
+        myTiles: [],
+        pendingGroupIds: pendingIds,
+      });
+      const output = dragEndReducer(state, input);
 
       expectAccepted(output);
-      expectNoEmptyGroups(output.nextTableGroups!);
-      expect(output.nextTableGroups!.find((g) => g.id === pg.id)).toBeUndefined();
+      // nextTableGroups 는 null(pending 전체 정리) 또는 빈 배열
+      if (output.nextTableGroups !== null) {
+        expectNoEmptyGroups(output.nextTableGroups);
+        expect(output.nextTableGroups.find((g) => g.id === pg.id)).toBeUndefined();
+      }
       expect(output.nextMyTiles!).toContain("R7a");
     });
   });
 
   describe("[A7.3] [D-12] 회수 후 pendingGroupIds 갱신", () => {
     it("서버 그룹 pending 마킹 상태에서 마지막 추가 tile 회수 시 pendingGroupIds 갱신", () => {
-      // 서버 그룹에 타일 추가 후 회수 -> pendingGroupIds 에서 제거
       const pg = pendingGroup(["R7a", "B7a"] as TileCode[], "group");
       const pendingIds = new Set([pg.id]);
 
-      const output = dragEndReducer(
-        makeInput({
-          tileCode: "R7a" as TileCode,
-          source: { kind: "pending", groupId: pg.id, index: 0 },
-          dest: { kind: "rack" },
-          tableGroups: [pg],
-          myTiles: [],
-          pendingGroupIds: pendingIds,
-        })
-      );
+      const [state, input] = makeReducerArgs({
+        tileCode: "R7a" as TileCode,
+        source: { kind: "pending", groupId: pg.id, index: 0 },
+        dest: { kind: "rack" },
+        tableGroups: [pg],
+        myTiles: [],
+        pendingGroupIds: pendingIds,
+      });
+      const output = dragEndReducer(state, input);
 
       expectAccepted(output);
       // pending 그룹이 아직 남아있으므로 pendingGroupIds 에 유지
       const resultPg = output.nextTableGroups!.find((g) => g.id === pg.id);
       if (resultPg && resultPg.tiles.length > 0) {
-        expect(output.nextPendingGroupIds!.has(pg.id)).toBe(true);
+        expect(output.nextPendingGroupIds.has(pg.id)).toBe(true);
       }
     });
   });
@@ -105,16 +107,15 @@ describe("[A7] [UR-12] pending -> rack (recovery)", () => {
       const myTiles = ["K1a", "K2a"] as TileCode[];
       const totalBefore = pg.tiles.length + myTiles.length; // 3 + 2 = 5
 
-      const output = dragEndReducer(
-        makeInput({
-          tileCode: "R7a" as TileCode,
-          source: { kind: "pending", groupId: pg.id, index: 0 },
-          dest: { kind: "rack" },
-          tableGroups: [pg],
-          myTiles,
-          pendingGroupIds: pendingIds,
-        })
-      );
+      const [state, input] = makeReducerArgs({
+        tileCode: "R7a" as TileCode,
+        source: { kind: "pending", groupId: pg.id, index: 0 },
+        dest: { kind: "rack" },
+        tableGroups: [pg],
+        myTiles,
+        pendingGroupIds: pendingIds,
+      });
+      const output = dragEndReducer(state, input);
 
       expectAccepted(output);
       const boardTiles = output.nextTableGroups!.flatMap((g) => g.tiles);

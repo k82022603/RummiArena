@@ -4,6 +4,9 @@
  * SSOT 매핑:
  * - 56 section 3.6 셀: A5 (PENDING_BOARD -> PENDING_BOARD)
  * - 룰 ID: UR-14, V-13c, INV-G3, D-01
+ *
+ * NOTE: pending/server source 는 reducer 에서 { kind: "table" } 로 통합.
+ *       dest 는 overId = targetGroup.id 로 표현.
  */
 
 import { describe, it, expect, beforeEach } from "@jest/globals";
@@ -11,7 +14,7 @@ import { dragEndReducer } from "../../dragEndReducer";
 import type { TileCode } from "@/types/tile";
 import {
   pendingGroup,
-  makeInput,
+  makeReducerArgs,
   resetGroupSeq,
   expectRejected,
   expectAccepted,
@@ -29,16 +32,15 @@ describe("[A5] [V-13c] pending -> pending (merge)", () => {
       const pgB = pendingGroup(["Y7a"] as TileCode[], "group");
       const pendingIds = new Set([pgA.id, pgB.id]);
 
-      const output = dragEndReducer(
-        makeInput({
-          tileCode: "Y7a" as TileCode,
-          source: { kind: "pending", groupId: pgB.id, index: 0 },
-          dest: { kind: "pending-group", groupId: pgA.id },
-          tableGroups: [pgA, pgB],
-          myTiles: [],
-          pendingGroupIds: pendingIds,
-        })
-      );
+      const [state, input] = makeReducerArgs({
+        tileCode: "Y7a" as TileCode,
+        source: { kind: "pending", groupId: pgB.id, index: 0 },
+        overId: pgA.id,
+        tableGroups: [pgA, pgB],
+        myTiles: [],
+        pendingGroupIds: pendingIds,
+      });
+      const output = dragEndReducer(state, input);
 
       expectAccepted(output);
       // dst 에 타일 추가
@@ -53,24 +55,23 @@ describe("[A5] [V-13c] pending -> pending (merge)", () => {
   });
 
   describe("[A5.2] [UR-19] [V-13c] INCOMPAT reject", () => {
-    it("pending [R7,B7] + 다른 pending [R5,R6,R7] 런 -> R8 드래그 후 [R7,B7] 에 시도 -> 거절", () => {
+    it("pending [R7,B7] + 다른 pending [R5,R6,R8] 런 -> R8 드래그 후 [R7,B7] 에 시도 -> 거절", () => {
       // UR-19: 숫자 불일치 = 비호환 -> 거절
       const pgDst = pendingGroup(["R7a", "B7a"] as TileCode[], "group");
       const pgSrc = pendingGroup(["R5a", "R6a", "R8a"] as TileCode[], "run");
       const pendingIds = new Set([pgDst.id, pgSrc.id]);
 
-      const output = dragEndReducer(
-        makeInput({
-          tileCode: "R8a" as TileCode,
-          source: { kind: "pending", groupId: pgSrc.id, index: 2 },
-          dest: { kind: "pending-group", groupId: pgDst.id },
-          tableGroups: [pgDst, pgSrc],
-          myTiles: [],
-          pendingGroupIds: pendingIds,
-        })
-      );
+      const [state, input] = makeReducerArgs({
+        tileCode: "R8a" as TileCode,
+        source: { kind: "pending", groupId: pgSrc.id, index: 2 },
+        overId: pgDst.id,
+        tableGroups: [pgDst, pgSrc],
+        myTiles: [],
+        pendingGroupIds: pendingIds,
+      });
+      const output = dragEndReducer(state, input);
 
-      expectRejected(output, "UR-19");
+      expectRejected(output, "incompatible-merge");
     });
   });
 
@@ -80,16 +81,15 @@ describe("[A5] [V-13c] pending -> pending (merge)", () => {
       const pgDst = pendingGroup(["B7a", "Y7a"] as TileCode[], "group");
       const pendingIds = new Set([pgSrc.id, pgDst.id]);
 
-      const output = dragEndReducer(
-        makeInput({
-          tileCode: "R7a" as TileCode,
-          source: { kind: "pending", groupId: pgSrc.id, index: 0 },
-          dest: { kind: "pending-group", groupId: pgDst.id },
-          tableGroups: [pgSrc, pgDst],
-          myTiles: [],
-          pendingGroupIds: pendingIds,
-        })
-      );
+      const [state, input] = makeReducerArgs({
+        tileCode: "R7a" as TileCode,
+        source: { kind: "pending", groupId: pgSrc.id, index: 0 },
+        overId: pgDst.id,
+        tableGroups: [pgSrc, pgDst],
+        myTiles: [],
+        pendingGroupIds: pendingIds,
+      });
+      const output = dragEndReducer(state, input);
 
       expectAccepted(output);
       expectNoEmptyGroups(output.nextTableGroups!);
@@ -103,16 +103,15 @@ describe("[A5] [V-13c] pending -> pending (merge)", () => {
       const pgDst = pendingGroup(["B7a", "Y7a"] as TileCode[], "group");
       const pendingIds = new Set([pgSrc.id, pgDst.id]);
 
-      const output = dragEndReducer(
-        makeInput({
-          tileCode: "R7a" as TileCode,
-          source: { kind: "pending", groupId: pgSrc.id, index: 0 },
-          dest: { kind: "pending-group", groupId: pgDst.id },
-          tableGroups: [pgSrc, pgDst],
-          myTiles: [],
-          pendingGroupIds: pendingIds,
-        })
-      );
+      const [state, input] = makeReducerArgs({
+        tileCode: "R7a" as TileCode,
+        source: { kind: "pending", groupId: pgSrc.id, index: 0 },
+        overId: pgDst.id,
+        tableGroups: [pgSrc, pgDst],
+        myTiles: [],
+        pendingGroupIds: pendingIds,
+      });
+      const output = dragEndReducer(state, input);
 
       expectAccepted(output);
       // dst ID 보존
