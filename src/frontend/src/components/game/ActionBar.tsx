@@ -16,6 +16,25 @@ export interface ActionBarProps {
   onConfirm: () => void;
   /** 패스 전용 핸들러 (드로우 파일 소진 시). 미제공 시 onDraw 사용. */
   onPass?: () => void;
+
+  // Phase 3 추가 props — useTurnActions hook 반환값과 직접 연결
+  // 기존 isMyTurn/hasPending 기반 로직과 OR 조건으로 병행 사용 (과도기 호환)
+  // Phase 4에서 기존 props를 완전 대체 예정.
+  /**
+   * ConfirmTurn 버튼 활성 여부 (useTurnActions.confirmEnabled)
+   * 미제공 시 기존 isMyTurn + hasPending + allGroupsValid 기반 계산 사용.
+   */
+  confirmEnabled?: boolean;
+  /**
+   * RESET 버튼 활성 여부 (useTurnActions.resetEnabled)
+   * 미제공 시 기존 hasPending 기반 계산 사용.
+   */
+  resetEnabled?: boolean;
+  /**
+   * DRAW 버튼 활성 여부 (useTurnActions.drawEnabled)
+   * 미제공 시 기존 hasPending 기반 계산 사용.
+   */
+  drawEnabled?: boolean;
 }
 
 /**
@@ -45,8 +64,22 @@ const ActionBar = memo(function ActionBar({
   onUndo,
   onConfirm,
   onPass,
+  // Phase 3 추가 props (과도기 호환 — 미제공 시 기존 로직 사용)
+  confirmEnabled: confirmEnabledProp,
+  resetEnabled: resetEnabledProp,
+  drawEnabled: drawEnabledProp,
 }: ActionBarProps) {
   const isDrawPileEmpty = drawPileCount === 0;
+
+  // Phase 3 과도기: prop이 제공되면 우선 사용, 아니면 기존 로직으로 계산
+  const effectiveConfirmEnabled =
+    confirmEnabledProp !== undefined
+      ? confirmEnabledProp && !confirmBusy
+      : isMyTurn && hasPending && allGroupsValid && !confirmBusy;
+  const effectiveResetEnabled =
+    resetEnabledProp !== undefined ? resetEnabledProp : hasPending;
+  const effectiveDrawEnabled =
+    drawEnabledProp !== undefined ? drawEnabledProp : !hasPending;
 
   return (
     <AnimatePresence>
@@ -77,7 +110,7 @@ const ActionBar = memo(function ActionBar({
               <button
                 type="button"
                 onClick={onPass ?? onDraw}
-                disabled={hasPending}
+                disabled={!effectiveDrawEnabled}
                 className={[
                   "flex-1 py-2.5 rounded-xl font-medium text-tile-sm",
                   "bg-amber-600/20 border border-amber-500/50 text-amber-400",
@@ -94,7 +127,7 @@ const ActionBar = memo(function ActionBar({
               <button
                 type="button"
                 onClick={onDraw}
-                disabled={hasPending}
+                disabled={!effectiveDrawEnabled}
                 className={[
                   "flex-1 py-2.5 rounded-xl font-medium text-tile-sm",
                   "bg-card-bg border border-border hover:border-border-active",
@@ -111,7 +144,7 @@ const ActionBar = memo(function ActionBar({
             <button
               type="button"
               onClick={onUndo}
-              disabled={!hasPending}
+              disabled={!effectiveResetEnabled}
               className={[
                 "px-4 py-2.5 rounded-xl font-medium text-tile-sm",
                 "bg-card-bg border border-border",
@@ -132,7 +165,7 @@ const ActionBar = memo(function ActionBar({
               <button
                 type="button"
                 onClick={onConfirm}
-                disabled={!isMyTurn || !hasPending || !allGroupsValid || confirmBusy}
+                disabled={!effectiveConfirmEnabled}
                 className={[
                   "w-full py-2.5 rounded-xl font-bold text-tile-sm",
                   "bg-warning text-gray-900 hover:bg-yellow-400",
