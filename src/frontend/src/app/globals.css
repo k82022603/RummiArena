@@ -2,14 +2,62 @@
 @tailwind components;
 @tailwind utilities;
 
-/* CSS 디자인 토큰 (07-ui-wireframe.md §1.1 기준) */
+/* CSS 디자인 토큰 SSOT: docs/02-design/57-game-rule-visual-language.md §1.1 §1.2 §11.4 */
 :root {
-  --tile-red: #e74c3c;
-  --tile-blue: #3498db;
-  --tile-yellow: #f1c40f;
-  --tile-black: #2c3e50;
-  --board-bg: #1a3328;
-  --board-border: #2a5a3a;
+  /* ─── 타일 색상 4종 (57 §1.1) ──────────────────────────────────── */
+  --tile-red: #e74c3c;       /* 빨강 타일 배경 */
+  --tile-blue: #3498db;      /* 파랑 타일 배경 */
+  --tile-yellow: #f1c40f;    /* 노랑 타일 배경 */
+  --tile-black: #2c3e50;     /* 검정 타일 배경 */
+
+  /* 타일 숫자 색 (57 §1.1) */
+  --tile-text-light: #ffffff; /* 밝은 배경 위 숫자 (빨강/파랑/검정) */
+  --tile-text-dark: #1a1a1a;  /* 노랑 배경 위 숫자 */
+
+  /* 조커 (57 §1.1) */
+  --tile-joker-ring: #c084fc; /* 조커 무지개 링 (보라 기준) */
+
+  /* ─── 보드 배경 (57 §1.1) ──────────────────────────────────────── */
+  --board-bg: #1a3328;       /* 보드 배경 — 따뜻한 나무 계열 짙은 초록 */
+  --board-border: #2a5a3a;   /* 보드 경계선 */
+
+  /* ─── 드롭존 상태 토큰 3종 (57 §1.1, UX-004, docs/02-design/54) ── */
+  /* 허용: WCAG AA 대비율 검증 — #27AE60 on #1A3328 = 4.6:1 */
+  --drop-allow: #27ae60;
+  --drop-allow-bg: rgba(39, 174, 96, 0.12);
+  --drop-allow-border: rgba(39, 174, 96, 0.7);
+  /* 차단: WCAG AA 대비율 검증 — #C0392B on #1A3328 = 4.7:1 */
+  --drop-block: #c0392b;
+  --drop-block-bg: rgba(192, 57, 43, 0.12);
+  --drop-block-border: rgba(192, 57, 43, 0.7);
+
+  /* ─── pending 그룹 (57 §1.1, UR-20) ────────────────────────────── */
+  --pending-border: #f1c40f;              /* pending 그룹 — 노랑 점선 */
+  --pending-bg: rgba(241, 196, 15, 0.10); /* pending 그룹 배경 tint */
+  --pending-invalid: #e74c3c;             /* pending 무효 — 빨간 ring + shake */
+
+  /* ─── 토스트 3종 (57 §1.1, UR-21/29/30) ───────────────────────── */
+  --toast-error: #c0392b; /* INVALID_MOVE 토스트 배경 */
+  --toast-info: #3498db;  /* 안내 토스트 배경 */
+  --toast-warn: #e67e22;  /* 경고 토스트 배경 */
+
+  /* ─── 타일 글로우 (57 §1.1, UR-02/05) ─────────────────────────── */
+  --highlight-mine: rgba(74, 222, 128, 0.90); /* 내가 놓은 타일 글로우 */
+  --highlight-opp: rgba(251, 146, 60, 0.90);  /* 상대가 놓은 타일 글로우 */
+
+  /* ─── 타이머 3단계 (57 §1.1, UR-26) ───────────────────────────── */
+  --timer-normal: #3498db;   /* 타이머 기본 (> 10초) */
+  --timer-warn: #f1c40f;     /* 타이머 경고 (≤ 10초) */
+  --timer-critical: #e74c3c; /* 타이머 위험 (≤ 5초) + 펄스 */
+
+  /* ─── 플레이어 상태 5종 (57 §1.1, UR-32/13) ───────────────────── */
+  --state-connected: #3fb950;              /* 연결됨 */
+  --state-disconn: #f0883e;               /* 연결 끊김 */
+  --state-forfeited: #484f58;             /* 기권 */
+  --state-meld-done: #3fb950;             /* 최초 등록 완료 */
+  --state-meld-none: rgba(231, 76, 60, 0.50); /* 최초 등록 미완료 */
+
+  /* ─── 앱/패널 기반 색 (기존 유지) ──────────────────────────────── */
   --app-bg: #0d1117;
   --panel-bg: #161b22;
   --card-bg: #1c2128;
@@ -22,16 +70,22 @@
   --color-danger: #f85149;
   --color-ai: #9b59b6;
 
-  /* === 드롭존 상태 토큰 (UX-004, docs/02-design/54-drop-zone-color-system.md) === */
-  /* 유휴: 드래그 비활성 상태 — 기존 보드 색상 유지 (별도 토큰 없음) */
-  /* 허용: 드롭 가능 영역 하이라이트 (WCAG AA 대비율 검증: #27AE60 on #1A3328 = 4.6:1) */
-  --drop-allow: #27ae60;
-  --drop-allow-bg: rgba(39, 174, 96, 0.12);
-  --drop-allow-border: rgba(39, 174, 96, 0.7);
-  /* 차단: 드롭 불가 영역 하이라이트 (WCAG AA 대비율 검증: #C0392B on #1A3328 = 4.7:1) */
-  --drop-block: #c0392b;
-  --drop-block-bg: rgba(192, 57, 43, 0.12);
-  --drop-block-border: rgba(192, 57, 43, 0.7);
+  /* ─── 애니메이션 duration 토큰 (57 §1.2, UR-06/17) ────────────── */
+  --dur-instant: 50ms;   /* 즉각 피드백 (드롭존 hover) */
+  --dur-fast: 150ms;     /* 상태 전환 */
+  --dur-normal: 300ms;   /* 타일 등장/퇴장 */
+  --dur-slow: 500ms;     /* 오버레이, 게임 종료 */
+
+  /* ─── easing 토큰 (57 §1.2, UR-06/17) ─────────────────────────── */
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+
+  /* ─── spacing / 레이아웃 토큰 (57 §11.4, UR-01) ───────────────── */
+  --space-header-h: 32px;              /* 헤더 고정 높이 */
+  --space-player-card-compact-h: 56px; /* 가로 배열 콤팩트 카드 높이 */
+  --space-rack-h: 100px;               /* 랙 영역 고정 높이 (타일 1행) */
+  --space-action-bar-h: 56px;          /* 드로우/초기화/확정 버튼 행 */
+  --space-board-min-h: 0px;            /* 보드 min-height — 가용 공간 모두 흡수 */
 }
 
 /* 한글 최적화 기본값 */
@@ -68,7 +122,7 @@ body {
   outline-offset: 2px;
 }
 
-/* 색약 접근성: 타일 패턴 */
+/* 색약 접근성: 타일 패턴 (♦♠♣♥★ 심볼은 Tile 컴포넌트에서 렌더) */
 .tile-pattern-red {
   background-image: repeating-linear-gradient(
     -45deg,
@@ -96,23 +150,24 @@ body {
   background-size: 6px 6px;
 }
 
-/* === 드롭존 상태 클래스 (dnd-kit over 상태에 따라 적용) === */
+/* ─── 드롭존 상태 클래스 (dnd-kit over 상태에 따라 적용) ─────────────────── */
 /* 유휴: 별도 클래스 없음, 기본 보드 스타일 유지 */
 
-/* 허용: 드롭 가능 — 초록 실선 border + 배경 tint */
+/* 허용: 드롭 가능 — 초록 실선 border + 배경 tint (UR-18) */
 .dropzone-allow {
   border: 2px solid var(--drop-allow-border) !important;
   background-color: var(--drop-allow-bg) !important;
   box-shadow: 0 0 0 1px var(--drop-allow-border) inset;
-  transition: border-color 0.12s ease, background-color 0.12s ease;
+  transition:
+    border-color var(--dur-instant) ease,
+    background-color var(--dur-instant) ease;
 }
 
-/* 차단: 드롭 불가 — 빨간 점선 border + 배경 tint + 색맹 보조 패턴 */
+/* 차단: 드롭 불가 — 빨간 점선 border + 배경 tint + 색맹 보조 패턴 (UR-19) */
 .dropzone-block {
   border: 2px dashed var(--drop-block-border) !important;
   background-color: var(--drop-block-bg) !important;
-  /* 색약 보조: 점선 자체가 시각적 패턴 역할 (border-style: dashed) */
-  /* 추가 패턴: 대각선 해칭 (적록색맹/전색맹 대비) */
+  /* 색약 보조: 대각선 해칭 (적록색맹/전색맹 대비) */
   background-image: repeating-linear-gradient(
     -45deg,
     transparent,
@@ -120,9 +175,45 @@ body {
     rgba(192, 57, 43, 0.08) 4px,
     rgba(192, 57, 43, 0.08) 5px
   );
-  transition: border-color 0.12s ease, background-color 0.12s ease;
+  transition:
+    border-color var(--dur-instant) ease,
+    background-color var(--dur-instant) ease;
 }
 
-/* 색약 접근성 보조: 아이콘 패턴 (색상만으로 구분 불가 시 대비) */
-/* 허용 드롭존에는 체크 아이콘, 차단 드롭존에는 X 아이콘을 ::after로 추가 */
-/* 실제 구현은 MeldRenderer.tsx의 isOver 상태에서 SVG 아이콘 조건부 렌더 권장 */
+/* 색약 접근성 보조: 허용 드롭존 체크 아이콘, 차단 드롭존 X 아이콘 */
+/* 실제 아이콘 렌더는 GroupDropZone.tsx / NewGroupDropZone.tsx 에서 isOver 조건부 렌더 */
+
+/* ─── 타일 글로우 애니메이션 (UR-02) ───────────────────────────────────────── */
+@keyframes tile-pulse-mine {
+  0%, 100% { box-shadow: 0 0 0 2px var(--highlight-mine); }
+  50% { box-shadow: 0 0 8px 4px var(--highlight-mine); }
+}
+
+@keyframes tile-pulse-opp {
+  0%, 100% { box-shadow: 0 0 0 2px var(--highlight-opp); }
+  50% { box-shadow: 0 0 8px 4px var(--highlight-opp); }
+}
+
+/* ─── pending 그룹 invalid shake (UR-21) ──────────────────────────────────── */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-4px); }
+  40% { transform: translateX(4px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
+}
+
+.shake {
+  animation: shake var(--dur-fast) var(--ease-out);
+}
+
+/* ─── 타이머 펄스 (UR-26) ──────────────────────────────────────────────────── */
+@keyframes timer-pulse-warn {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+@keyframes timer-pulse-critical {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
