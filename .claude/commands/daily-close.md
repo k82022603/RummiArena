@@ -44,9 +44,16 @@
 - 사용자에게 업데이트된 파일 목록과 내용 요약 보여주기
 - **확인 없이 즉시 커밋 + push 실행** (데일리 마감 커밋은 필수 절차)
 - 커밋 메시지: `데일리 마감 (YYYY-MM-DD)`
-- push 완료 후 결과 보고
+- **`commit-push` SKILL Phase 3 준수: origin(GitHub) + gitlab 양쪽 push**
+  ```bash
+  git push origin main
+  git push gitlab main --force   # GitHub이 SSOT, GitLab은 미러
+  ```
+- 양쪽 push 완료 확인 후 결과 보고
 
 ## 주의사항
 - **커밋 + push는 데일리 마감의 필수 단계** — 사용자 확인 불필요
-- push 실패 시 원인 안내 (remote 미설정, 충돌 등)
+- **origin + gitlab 양쪽 push 필수** — 한쪽만 push하면 미완료 (2026-04-26 교훈)
+- push 실패 시 원인 안내 (remote 미설정, 충돌, protected branch 등)
 - 문서 현행화는 실제 변경이 있을 때만. 변경 없으면 "변경 없음" 표시
+- GitLab push 실패 시 `--force` 허용 (GitHub이 SSOT)
