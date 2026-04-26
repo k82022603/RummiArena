@@ -66,6 +66,19 @@ export type RejectReason =
   | "invalid-tile"
   | "source-not-found";
 
+/**
+ * semantic action 열거형 — Phase E DragOutput 공식 API (D-12, UR-19, F-02, F-03)
+ * pendingStore.applyMutation 호출자가 이 값을 기준으로 분기 처리한다.
+ */
+export type DragAction =
+  | "CREATE_PENDING_GROUP"   // 랙 → 빈 보드 / 비호환 그룹 → 새 pending 그룹 생성
+  | "ADD_TO_PENDING_GROUP"   // 랙 → 기존 pending 그룹 병합 (호환)
+  | "REJECT"                 // 모든 reject 경로 (rejected 필드와 대응)
+  | "MERGE_TO_SERVER_GROUP"  // 랙 → 서버 확정 그룹 확장 (초기 등록 후)
+  | "RETURN_TO_RACK"         // 보드 → 랙 회수
+  | "JOKER_SWAP"             // 랙 → 조커 교체
+  | "REORDER_IN_GROUP";      // 테이블 내 재배치
+
 export interface DragOutput {
   nextTableGroups: TableGroup[] | null;  // null = pending 초기화
   nextMyTiles: TileCode[] | null;
@@ -80,6 +93,11 @@ export interface DragOutput {
   warning?: "extend-lock-before-initial-meld";
   /** 디버그용 branch tag */
   branch: string;
+  /**
+   * semantic action — Phase E pendingStore 연결용 공식 API (F-02, F-03, UR-19, D-12)
+   * rejected 시 반드시 "REJECT". 그 외는 분기에 따라 결정된다.
+   */
+  action?: DragAction;
 }
 
 // ---------------------------------------------------------------------------
@@ -112,6 +130,7 @@ export function dragEndReducer(state: DragReducerState, input: DragInput): DragO
     ...defaults,
     rejected: reason,
     branch,
+    action: "REJECT",
   });
 
   // ======================================================================
@@ -157,6 +176,7 @@ export function dragEndReducer(state: DragReducerState, input: DragInput): DragO
         nextMyTiles: [...myTiles, tileCode],
         nextPendingGroupIds: nextIds,
         branch: "table→rack:ok",
+        action: "RETURN_TO_RACK",
       };
     }
 
@@ -216,6 +236,7 @@ export function dragEndReducer(state: DragReducerState, input: DragInput): DragO
       nextTableGroups,
       nextPendingGroupIds,
       branch: "table→table:ok",
+      action: "REORDER_IN_GROUP",
     };
   }
 
@@ -253,6 +274,7 @@ export function dragEndReducer(state: DragReducerState, input: DragInput): DragO
       nextMyTiles: [...myTiles, tileCode],
       nextPendingGroupIds: nextIds,
       branch: "rack→rack:recover-pending",
+      action: "RETURN_TO_RACK",
     };
   }
 
@@ -288,6 +310,7 @@ export function dragEndReducer(state: DragReducerState, input: DragInput): DragO
             nextPendingRecoveredJokers,
             addedJoker: swap.recoveredJoker,
             branch: "rack→joker-swap:ok",
+            action: "JOKER_SWAP",
           };
         }
       }
@@ -327,6 +350,8 @@ export function dragEndReducer(state: DragReducerState, input: DragInput): DragO
         nextPendingGroupSeq: nextSeq,
         removedJoker: pendingRecoveredJokers.includes(tileCode) ? tileCode : undefined,
         branch: "rack→pending-incompat:new-group",
+        // UR-19: 비호환 타일 → 새 그룹 생성 (D-12)
+        action: "CREATE_PENDING_GROUP",
       };
     }
     // 호환 → 병합
@@ -351,6 +376,8 @@ export function dragEndReducer(state: DragReducerState, input: DragInput): DragO
       nextPendingRecoveredJokers,
       removedJoker: pendingRecoveredJokers.includes(tileCode) ? tileCode : undefined,
       branch: "rack→pending-compat:merge",
+      // F-03: 기존 pending 그룹에 호환 타일 추가 (UR-14)
+      action: "ADD_TO_PENDING_GROUP",
     };
   }
 
@@ -386,6 +413,8 @@ export function dragEndReducer(state: DragReducerState, input: DragInput): DragO
       warning: "extend-lock-before-initial-meld",
       removedJoker: pendingRecoveredJokers.includes(tileCode) ? tileCode : undefined,
       branch: "rack→server-preinitial:new-group",
+      // 초기 등록 전 서버 그룹 드롭 → 새 pending 그룹 생성 (D-12)
+      action: "CREATE_PENDING_GROUP",
     };
   }
 
@@ -418,6 +447,8 @@ export function dragEndReducer(state: DragReducerState, input: DragInput): DragO
         nextPendingGroupSeq: nextSeq,
         removedJoker: pendingRecoveredJokers.includes(tileCode) ? tileCode : undefined,
         branch: "rack→server-incompat:new-group",
+        // 서버 그룹 비호환 → 새 pending 그룹 생성 (D-12)
+        action: "CREATE_PENDING_GROUP",
       };
     }
     // 호환 → 서버 그룹 확장
@@ -444,6 +475,8 @@ export function dragEndReducer(state: DragReducerState, input: DragInput): DragO
       nextPendingRecoveredJokers,
       removedJoker: pendingRecoveredJokers.includes(tileCode) ? tileCode : undefined,
       branch: "rack→server-compat:merge",
+      // 서버 확정 그룹 호환 확장 (초기 등록 후)
+      action: "MERGE_TO_SERVER_GROUP",
     };
   }
 
@@ -482,6 +515,8 @@ export function dragEndReducer(state: DragReducerState, input: DragInput): DragO
         nextPendingRecoveredJokers,
         removedJoker: pendingRecoveredJokers.includes(tileCode) ? tileCode : undefined,
         branch: "rack→board:append-last",
+        // 마지막 pending 그룹에 타일 추가 (기존 그룹에 병합)
+        action: "ADD_TO_PENDING_GROUP",
       };
     }
     // 새 그룹 생성
@@ -511,6 +546,8 @@ export function dragEndReducer(state: DragReducerState, input: DragInput): DragO
       nextPendingGroupSeq: nextSeq,
       removedJoker: pendingRecoveredJokers.includes(tileCode) ? tileCode : undefined,
       branch: "rack→board:new-group",
+      // F-02: 랙 → 빈 보드 새 pending 그룹 생성 (D-12)
+      action: "CREATE_PENDING_GROUP",
     };
   }
 
@@ -542,6 +579,8 @@ export function dragEndReducer(state: DragReducerState, input: DragInput): DragO
       nextPendingGroupSeq: nextSeq,
       removedJoker: pendingRecoveredJokers.includes(tileCode) ? tileCode : undefined,
       branch: "rack→board-new-group:ok",
+      // 명시적 새 그룹 생성 (F-02, D-12)
+      action: "CREATE_PENDING_GROUP",
     };
   }
 

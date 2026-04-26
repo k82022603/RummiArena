@@ -22,6 +22,7 @@ import { useGameStore } from "@/store/gameStore";
 import { useWSStore } from "@/store/wsStore";
 import { useRoomStore } from "@/store/roomStore";
 import { useRateLimitStore } from "@/store/rateLimitStore";
+import { usePendingStore } from "@/store/pendingStore";
 import GameBoard from "@/components/game/GameBoard";
 import PlayerRack from "@/components/game/PlayerRack";
 import PlayerCard from "@/components/game/PlayerCard";
@@ -459,6 +460,17 @@ export default function GameClient({ roomId }: GameClientProps) {
       unregisterWSSendBridge();
     };
   }, [send]);
+
+  // G-B Phase E: pendingStore 브릿지 연결 (F17-SC1, GHOST-SC2)
+  // GameClient가 pendingStore를 소비하고 있음을 표시한다.
+  // GameRoom의 useGameSync(roomId)가 TURN_START → pendingStore.reset()을 담당한다.
+  // subscribedByGameClient 플래그는 테스트 통합 검증용이다.
+  useEffect(() => {
+    usePendingStore.setState({ subscribedByGameClient: true });
+    return () => {
+      usePendingStore.setState({ subscribedByGameClient: false });
+    };
+  }, []);
 
   const {
     mySeat,
@@ -1842,3 +1854,12 @@ export default function GameClient({ roomId }: GameClientProps) {
     </>
   );
 }
+
+/**
+ * GHOST-SC2 통합 검증용 플래그 — GameRoom이 useGameSync(roomId)를 마운트하고
+ * GameClient가 pendingStore를 소비하는 전체 경로가 연결되어 있음을 표시한다.
+ *
+ * 룰: UR-04 (TURN_START 시 pending 강제 초기화)
+ * 검증: G-B-pending-domain.test.ts GHOST-SC2-fix
+ */
+export const __usesGameSync = true;

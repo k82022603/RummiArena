@@ -271,9 +271,100 @@ DashScope 는 Round 6 Phase 2 에 실제 투입되는 모델이므로, v4 시나
 
 ---
 
+## §6. UX 타이머 레지스트리 (프론트엔드)
+
+- 작성일: 2026-04-26 (Sprint 7 W2)
+- 작성자: node-dev
+- 대상: `src/frontend/src/` 전체 (node_modules, `__tests__` 제외)
+
+프론트엔드 레이어에는 §3 서버/인프라 타임아웃과 별개로 동작하는 UX 타이머가 존재한다. 이 타이머들은 주로 **사용자에게 시각적 피드백을 주거나**, **재연결 로직을 실행하거나**, **폴링으로 서버 상태를 동기화**하는 역할을 한다. 서버 체인과 직접 부등식 관계를 맺는 항목(U-04, U-08)은 별도로 표기한다.
+
+### 6.1 타이머 목록
+
+| # | 타이머 ID | 위치 (파일:라인) | 기본값 | 단위 | 용도 | 관련 룰/이벤트 |
+|---|-----------|----------------|--------|------|------|--------------|
+| U-01 | 턴 타이머 카운트다운 | `hooks/useTurnTimer.ts:40` | 서버 전달값 (`timeoutSec`) | 1,000 ms tick | `remainingMs`를 1초 단위로 차감. 서버 `TURN_START` 수신 시 리셋 | UR-05 (턴 제한 시간) |
+| U-02 | 에러 토스트 자동 소멸 | `components/game/ErrorToast.tsx:7,29` | 5,000 ms | ms | `INVALID_MOVE` 에러 메시지 상단 표시 후 자동 닫기 | `INVALID_MOVE` WS 이벤트 |
+| U-03 | 초기 등록 잠금 토스트 자동 소멸 | `components/game/ExtendLockToast.tsx:6,34` | 4,000 ms | ms | UX-004 초기 등록 미완료 안내 토스트 4초 후 자동 소멸 | UR-21 (초기 등록 잠금) |
+| U-04 | TURN_START 미전송 방어 fallback | `hooks/useWebSocket.ts:284` | 2,000 ms | ms | `TURN_END` 수신 후 2초 내 `TURN_START`가 미도달 시 클라이언트 자체 턴 시작 처리 (BUG-WS-001 방어 로직) | `TURN_END` WS 이벤트 |
+| U-05 | WS 스로틀 쿨다운 해제 | `hooks/useWebSocket.ts:42,523` | 10,000 ms | ms | `RATE_LIMITED` 이벤트 수신 후 10초 동안 WS 발신 스로틀링 유지. 경과 후 스로틀 해제 | `ERROR(RATE_LIMITED)` WS 이벤트 |
+| U-06 | Rate Limit 토스트 자동 소멸 (쿨다운 없음) | `components/game/RateLimitToast.tsx:9-11,79` | 6,000 ms (stage 0-1) / 8,000 ms (stage 2) | ms | HTTP 429 또는 WS RATE_LIMITED 위반 횟수(stage)에 따라 토스트 표시 시간 차등 | HTTP 429 / WS RATE_LIMITED |
+| U-07 | Rate Limit 쿨다운 종료 후 토스트 지연 소멸 | `components/game/RateLimitToast.tsx:90` | 2,000 ms | ms | 쿨다운 카운트다운이 0이 된 직후 토스트를 바로 닫지 않고 2초 유예 후 소멸 | Rate Limit 쿨다운 완료 |
+| U-08 | WS 재연결 지연 (지수 백오프) | `hooks/useWebSocket.ts:37,626,645` | 초기 3,000 ms (최대 48,000 ms) | ms | WS close 이벤트 발생 시 3초→6초→12초→24초→48초 순서로 지수 백오프 재연결. 최대 5회 | WS `onclose` (비재연결 불가 코드 제외) |
+| U-09 | WS 재연결 카운트다운 tick | `hooks/useWebSocket.ts:635` | 1,000 ms | ms | 재연결 대기 중 남은 초를 화면에 표시하기 위한 1초 interval | WS `onclose` (재연결 대기 중) |
+| U-10 | 재접속 알림 토스트 자동 소멸 | `components/game/ReconnectToast.tsx:7,27` | 3,000 ms | ms | 다른 플레이어 재접속 시 상단 토스트 3초 후 자동 소멸 | `PLAYER_RECONNECTED` WS 이벤트 |
+| U-11 | 대기실 Room 상태 폴링 | `app/room/[roomId]/WaitingRoomClient.tsx:205` | 5,000 ms | ms | 대기실에서 방 상태(플레이어 목록, 게임 시작 여부)를 5초마다 REST GET으로 갱신 | WS 없는 대기실 구간 |
+| U-12 | 로비 방 목록 폴링 | `app/lobby/LobbyClient.tsx:226` | 30,000 ms | ms | 로비 방 목록을 30초마다 자동 갱신 | 로비 페이지 상주 중 |
+| U-13 | 초대 링크 복사 확인 표시 | `app/room/[roomId]/WaitingRoomClient.tsx:222` | 2,000 ms | ms | 초대 링크 복사 버튼 클릭 시 "복사됨" 피드백을 2초간 표시 후 원상복귀 | 사용자 복사 액션 |
+| U-14 | 연결 끊김 플레이어 grace 카운트다운 tick | `app/game/[roomId]/GameClient.tsx:600,625` | 1,000 ms | ms | 연결 끊긴 플레이어의 `graceSec` 기반 복귀 유예 시간 잔여 초를 1초마다 갱신하여 화면에 표시 | `PLAYER_DISCONNECTED` WS 이벤트 |
+| U-15 | HTTP Rate Limit 자동 재시도 지연 | `lib/api.ts:138` | 서버 Retry-After 헤더값 (초) | ms 변환 | HTTP 429 응답 수신 후 서버가 지정한 시간만큼 대기 후 최대 `MAX_RATE_LIMIT_RETRIES`회 자동 재시도 | HTTP 429 응답 |
+| U-16 | Rate Limit 쿨다운 카운트다운 tick | `store/rateLimitStore.ts:71` | 1,000 ms | ms | `startCooldown(totalSec)` 호출 시 매초 `cooldownSec`을 차감. 0이 되면 interval 해제 | AI_COOLDOWN (300s) 또는 HTTP 429 |
+
+### 6.2 서버 체인과의 부등식 관계
+
+서버 §4의 부등식 체인과 직접 연결되는 UX 타이머는 두 항목이다.
+
+**U-01 (턴 타이머) — 서버 `turnTimeoutSec` 종속**
+
+```
+서버 TURN_START.timeoutSec (예: 60초)
+   --> useTurnTimer 초기값 = timeoutSec * 1000 ms
+   --> 1초 tick으로 카운트다운
+   --> 0 도달 시 interval 정지
+```
+
+U-01은 서버가 내려준 값(`payload.timeoutSec`)을 그대로 사용한다. 클라이언트 자체에 고정 상한은 없다. 서버가 바꾸면 자동 반영되므로 별도 수정 지점이 아니다.
+
+**U-04 (TURN_START fallback) — 서버 이벤트 전달 지연 방어**
+
+```
+TURN_END 수신
+   --> 2,000 ms 대기 (U-04)
+   --> TURN_START 미도달 시 클라이언트 자체 턴 시작
+```
+
+U-04의 2,000 ms는 서버→클라이언트 WS 이벤트 전달 레이턴시 상한을 가정한 값이다. 네트워크 RTT가 2초를 넘는 환경에서는 정상 `TURN_START`가 fallback 이후에 도착해 이중 처리될 수 있다. 변경 시 네트워크 RTT P99를 기준으로 설정할 것.
+
+### 6.3 변경 영향 범위 및 허용 범위
+
+| # | 타이머 ID | 최솟값 (추정) | 최댓값 (추정) | 변경 시 영향 |
+|---|-----------|-------------|-------------|-------------|
+| U-01 | 턴 타이머 | 서버 결정 | 서버 결정 | 서버 `TURN_START.timeoutSec` SSOT — 프론트 코드 수정 불필요 |
+| U-02 | 에러 토스트 | 2,000 ms | 10,000 ms | 너무 짧으면 사용자가 읽지 못함. 너무 길면 화면 방해 |
+| U-03 | 초기 등록 잠금 토스트 | 2,000 ms | 8,000 ms | UX-004 카피 문서(`docs/02-design/53`) 검토 후 조정 |
+| U-04 | TURN_START fallback | 1,000 ms | 5,000 ms | **너무 짧으면 정상 TURN_START가 떨어지기 전에 fallback 발동** — 네트워크 P99 RTT 기준으로 설정 |
+| U-05 | WS 스로틀 쿨다운 | 3,000 ms | 30,000 ms | 짧으면 rate limit 반복 발생. 길면 사용자가 너무 오래 차단됨 |
+| U-06 | Rate Limit 토스트 | 3,000 ms | 15,000 ms | stage별 차등 유지 권장 |
+| U-07 | 쿨다운 종료 후 지연 소멸 | 500 ms | 4,000 ms | 너무 짧으면 사용자가 쿨다운 완료를 인지하지 못함 |
+| U-08 | WS 재연결 초기값 | 1,000 ms | 10,000 ms | 초기값이 짧으면 서버 재시작 전에 시도해 실패 반복. 최대 5회×지수 백오프 = 최대 48초 |
+| U-09 | 재연결 카운트다운 tick | 1,000 ms | 1,000 ms | 1초 고정 (UX 표시 용도) |
+| U-10 | 재접속 알림 토스트 | 1,000 ms | 5,000 ms | 게임 중 표시되는 알림이므로 짧게 유지 권장 |
+| U-11 | 대기실 폴링 | 2,000 ms | 15,000 ms | 짧으면 서버 부하 증가. 15초 이상이면 게임 시작 감지 지연이 체감됨 |
+| U-12 | 로비 폴링 | 10,000 ms | 60,000 ms | 로비는 실시간성 요구가 낮음. 30초는 적정 |
+| U-13 | 복사 확인 표시 | 1,000 ms | 5,000 ms | UX 피드백. 짧아도 무방 |
+| U-14 | grace 카운트다운 tick | 1,000 ms | 1,000 ms | 1초 고정 (UX 표시 용도). grace 총 시간은 서버 `graceSec` 결정 |
+| U-15 | HTTP Rate Limit 재시도 지연 | 서버 Retry-After | 서버 Retry-After | 서버 헤더 SSOT. 클라이언트 임의 변경 금지 |
+| U-16 | Rate Limit 쿨다운 tick | 1,000 ms | 1,000 ms | 1초 고정. `cooldownTotalSec`(AI_COOLDOWN=300s 등)은 서버 응답 결정 |
+
+### 6.4 변경 체크리스트 (UX 타이머)
+
+UX 타이머 값을 변경할 때는 서버 §5 체크리스트와 달리 클러스터 반영이 필요하지 않지만, 아래 항목을 확인한다.
+
+| # | 항목 |
+|---|------|
+| 1 | 변경 대상 타이머의 최솟값/최댓값 범위(§6.3)를 벗어나지 않는지 확인 |
+| 2 | U-04(TURN_START fallback)를 변경할 경우 네트워크 RTT P99 실측값 근거 필수 |
+| 3 | U-08(재연결 지연)을 변경할 경우 최대 재시도 횟수(`MAX_RECONNECT_ATTEMPTS=5`) 및 총 대기 시간 재계산 |
+| 4 | 토스트 자동 소멸(U-02, U-03, U-06, U-07, U-10)은 a11y 검토 — aria-live 영역의 읽기 완료 시간 기준 |
+| 5 | 폴링 주기(U-11, U-12) 변경 시 game-server REST API Rate Limit 설정과 충돌하지 않는지 확인 |
+| 6 | jest 유닛 테스트(`useTurnTimer`, `useWebSocket`) 및 Playwright E2E 타이머 관련 케이스 통과 확인 |
+
+---
+
 ## 10. 변경 이력 (footer)
 
 | 날짜 | 편집자 | 변경 |
 |---|---|---|
 | 2026-04-16 | architect | 최초 작성 — Sprint 6 Day 4 Run 3 fallback 사고 원인 분석 결과 |
+| 2026-04-26 | node-dev | §6 UX 타이머 레지스트리 추가 — Sprint 7 W2 W5 작업 |
 

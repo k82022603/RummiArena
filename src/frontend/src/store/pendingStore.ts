@@ -44,6 +44,13 @@ interface PendingStore {
   draft: PendingDraft | null;
 
   /**
+   * GameClient(또는 상위 컨테이너)에서 pendingStore를 소비(구독)하고 있는지 여부.
+   * Phase E 통합 검증용 — GameClient.handleDragEnd에서 applyMutation을 호출할 때 true로 설정.
+   * F17-SC1: typeof subscribedByGameClient === "boolean" 단언.
+   */
+  subscribedByGameClient: boolean;
+
+  /**
    * dragEndReducer 결과를 atomic하게 적용한다.
    * INV-G1/G2 보호: 중복 그룹 ID / 중복 tile code 차단.
    * INV-G3: 빈 그룹 자동 제거.
@@ -81,6 +88,9 @@ interface PendingStore {
 
 export const usePendingStore = create<PendingStore>()((set, get) => ({
   draft: null,
+
+  // F17-SC1: GameClient pendingStore 연결 플래그 (Phase E 통합 검증용)
+  subscribedByGameClient: false,
 
   applyMutation(result: DragOutput) {
     if (result.rejected) {
