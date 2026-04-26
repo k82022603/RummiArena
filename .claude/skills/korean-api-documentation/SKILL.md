@@ -1,3 +1,8 @@
+---
+name: korean-api-documentation
+description: 한글 API 문서화 표준. 엔드포인트 템플릿 + OpenAPI 연동 + 에러 코드 표준. 신규 API 추가 시, game-server/ai-adapter API 확장 시 사용.
+---
+
 # Korean API Documentation
 
 한글 API 문서화를 위한 표준과 템플릿을 정의합니다.

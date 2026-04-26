@@ -1,3 +1,8 @@
+---
+name: web-design-system
+description: 웹 디자인 시스템 가이드. Verbalized Sampling 기법 + TailwindCSS 색상/타이포/레이아웃 표준 + 컴포���트 안티패턴 식별. UI 신설/리디자인 시 designer/frontend-dev 필수 참조.
+---
+
 # Web Design System Skill
 
 > **Version**: 2.0

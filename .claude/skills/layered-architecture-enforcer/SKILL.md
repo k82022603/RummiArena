@@ -1,3 +1,8 @@
+---
+name: layered-architecture-enforcer
+description: 계층형 아키텍처 가드레일. L1(UI)→L2(상태)→L3(도메인)→L4(통신) 단방향 의존성 강제. 안티패턴 5종 차단 + Dev 에이전트 코드 생성 시 사전 검증.
+---
+
 # Layered Architecture Enforcer
 
 > "AI는 당신의 아키텍처를 깨뜨리지 않는다. 조용히 구부려서 형태를 잃게 만든다."

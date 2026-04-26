@@ -1,3 +1,8 @@
+---
+name: code-fix
+description: 팀 협업 코드 수정 워크플로���. architect가 분석(Phase 1)→Dev가 구현(Phase 2)→QA가 검증(Phase 3). SSOT 매핑 + 롤백 명령 + 최대 3회 루프.
+---
+
 # Code Fix Workflow (코드 수정 워크플로우)
 
 > 아키텍트가 분석하고, Dev가 구현하고, QA가 검증한다.

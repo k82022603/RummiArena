@@ -1,3 +1,8 @@
+---
+name: mermaid-diagrams
+description: Mermaid 다이어그램 작성 표준. 다이어그램 유형 선택 가이드 + GitHub 렌더링 주의사항 + 노드 한글 설명 의무. 모든 문서/SKILL.md의 도식 작성에 적용.
+---
+
 # Mermaid Diagrams
 
 Mermaid를 사용한 다이어그램 작성 표준을 정의합니다.

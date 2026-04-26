@@ -1,3 +1,8 @@
+---
+name: code-modification
+description: Dev 에이전트 코드 수정 표준. 영향 분석(Phase 1)→수정(Phase 2)→검증(Phase 3)→티어링 판단(Phase 4). 타임아웃 체인/프롬프트 variant/게임룰 등 SSOT 특수 케이스 포함.
+---
+
 # Code Modification Standard (코드 수정 표준 절차)
 
 > "생각 없이 고치면, 고친 것이 아니라 옮긴 것이다."
