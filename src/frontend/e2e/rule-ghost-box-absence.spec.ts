@@ -42,8 +42,39 @@ async function setupGhostScenario(
     if (!store) throw new Error("__gameStore not available");
     const cur = store.getState();
     const baseGs = (cur.gameState ?? {}) as Record<string, unknown>;
+
+    // players 배열: seat=0 플레이어의 hasInitialMeld를 true로 업데이트한다.
+    //
+    // 근거: effectiveHasInitialMeld(GameClient.tsx line 517-521) 는
+    //   me?.hasInitialMeld ?? hasInitialMeld 로 계산된다.
+    //   players[0].hasInitialMeld === false 이면 "false ?? true = false" 가 아니라
+    //   "false" 자체가 반환된다 (?? 연산자는 null/undefined 에만 fallback).
+    //   handleDragEnd 의 freshHasInitialMeld 도 동일 경로를 사용하므로, players
+    //   배열도 함께 패치하지 않으면 두 값이 모두 false 로 계산된다.
+    //
+    // isMyTurn 문제: WS 메시지가 계속 수신되면서 gameState.currentSeat 이
+    //   AI seat 으로 변경되어 isMyTurn=false 가 되고, handleDragEnd line 814 에서
+    //   즉시 return 된다. currentPlayerId 를 seat=0 플레이어의 userId 로 설정하면
+    //   WS 가 currentSeat 을 바꿔도 isMyTurn=true 가 유지된다.
+    const rawPlayers = (cur.players ?? []) as Array<Record<string, unknown>>;
+    const patchedPlayers = rawPlayers.map((p) =>
+      p.seat === 0 ? { ...p, hasInitialMeld: true } : p
+    );
+    // seat=0 플레이어가 없으면(드문 경우) 최소 항목을 추가
+    if (!patchedPlayers.some((p) => p.seat === 0)) {
+      patchedPlayers.push({ seat: 0, hasInitialMeld: true, tileCount: 3 });
+    }
+
+    // seat=0 플레이어의 userId 를 currentPlayerId 로 설정하여
+    // WS 가 currentSeat 을 변경해도 isMyTurn=true 가 유지되도록 한다.
+    const seat0Player = patchedPlayers.find((p) => p.seat === 0);
+    const seat0UserId = (seat0Player?.userId as string | undefined) ?? null;
+
     store.setState({
       mySeat: 0,
+      players: patchedPlayers,
+      // currentPlayerId 주입: WS 의 currentSeat 변경에 의한 isMyTurn=false 를 방지
+      currentPlayerId: seat0UserId,
       // 여러 호환 불가 타일 (서로 다른 색상/숫자) 로 반복 drop 시뮬레이션
       myTiles: ["Y5a", "K8b", "B2a"],
       hasInitialMeld: true,
@@ -61,7 +92,23 @@ async function setupGhostScenario(
       },
     });
   });
+
+  // React 리렌더 + store 반영 대기
   await page.waitForTimeout(400);
+
+  // players[0].userId 가 없는 경우 currentPlayerId=null 로 isMyTurn 이
+  // currentSeat 기반으로 계산된다. 이때 WS 가 currentSeat 을 변경하기 전에
+  // store 가 올바른 상태임을 확인한다.
+  await page.waitForFunction(
+    () => {
+      const s = (window as unknown as { __gameStore?: { getState: () => Record<string, unknown> } }).__gameStore?.getState();
+      if (!s) return false;
+      const players = s.players as Array<{ seat: number; hasInitialMeld?: boolean }>;
+      const seat0 = players.find((p) => p.seat === 0);
+      return seat0?.hasInitialMeld === true;
+    },
+    { timeout: 5000 }
+  );
 }
 
 // ==================================================================
