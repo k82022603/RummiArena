@@ -449,8 +449,12 @@ export default function GameClient({ roomId }: GameClientProps) {
 
   // Phase 3: WS send 브릿지 등록 — useTurnActions가 WS에 간접 접근할 수 있도록 한다.
   // 58 §5.2: L2 hook이 WS를 직접 import하지 않기 위한 브릿지 패턴.
+  // sendBridgeAdapter: send<T>(C2SMessageType, T) → (string, unknown) 로 시그니처 정렬.
+  // C2SMessageType ⊂ string 이므로 런타임 안전.
   useEffect(() => {
-    registerWSSendBridge(send);
+    const sendBridgeAdapter = (type: string, payload: unknown) =>
+      send(type as import("@/types/websocket").C2SMessageType, payload);
+    registerWSSendBridge(sendBridgeAdapter);
     return () => {
       unregisterWSSendBridge();
     };
