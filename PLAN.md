@@ -393,7 +393,28 @@ docs/
 - **scrum-log/daily-close/batch-battle SKILLS** — 사용자 지적 전에도 기계적 활용
 
 ### Sprint 7 Week 2 (2026-04-25 ~ 2026-05-02) 이관 작업 (W2-A~J)
-- **W2-A (P0)** EXT/GHOST bisect — Day 4 마감 전 / **W2-B (P1)** F3 rack sync 재구현 / **W2-C (P1)** F4 FINDING-01 재작성 / **W2-D (P2)** Stage 2 regression / **W2-E (P2)** 이미지 태그 HEAD 일치 CI / **W2-F (P2)** handleDragEnd 3 handler 분리 ADR / **W2-G (P2)** 룰-UX SSOT `43` / **W2-H (P2)** UX 타이머 레지스트리 `41§6` / **W2-I (P2)** WS 권한 검증 spec / **W2-J (P1)** next-auth v5 이주
+- **W2-A (P0)** EXT/GHOST bisect — ✅ effectiveHasInitialMeld 7지점 → useInitialMeldGuard hook 통합 (Phase D)
+- **W2-B (P1)** F3 rack sync 재구현 — ⏳ G-F 범위
+- **W2-C (P1)** F4 FINDING-01 재작성 — ⏳ G-E 범위
+- **W2-D (P2)** Stage 2 regression — ⏳
+- **W2-E (P2)** 이미지 태그 HEAD 일치 CI — ⏳
+- **W2-F (P2)** handleDragEnd 3 handler 분리 ADR — ✅ `59-g-e-rearrangement-guide.md` 시동
+- **W2-G (P2)** 룰-UX SSOT `43` — ✅ `43-rule-ux-sync-ssot.md` 71개 전수 매핑
+- **W2-H (P2)** UX 타이머 레지스트리 `41§6` — ✅ 16개 타이머 등록
+- **W2-I (P2)** WS 권한 검증 spec — ⏳
+- **W2-J (P1)** next-auth v5 이주 — ✅ `27-next-auth-v5-security-adr.md` 초안 (조건부 권장)
+
+### Sprint 7 W2 Phase D 완료 (2026-04-25)
+- 4계층 재설계: L1 UI / L2 상태+hook / L3 도메인 / L4 통신
+- PR 8건 머지 (#84, #86, #93~#98), 539/540 Jest PASS
+- K8s 배포 `phase-d-b254b04`
+
+### Sprint 7 W2 G-B 완료 (2026-04-26)
+- Task #5: DragAction 7종 + pendingStore 브릿지 + GHOST-SC2 GREEN
+- E2E 이터레이션 2회: 10 PASS / 4 FAIL(의도된 RED) / 3 SKIP
+- K8s 배포 `g-b-fix-7a0b0c5`
+- 문서 4건: 43(룰-UX), 59(G-E 가이드), 41§6(타이머), 27(next-auth ADR)
+- **다음**: G-E(Task #7) + G-F(Task #8) → 잔존 RED 4건 해소 → 사용자 실기 테스트
 
 ---
 
