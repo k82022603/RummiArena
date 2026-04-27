@@ -251,12 +251,17 @@ export class DeepSeekAdapter extends BaseAdapter {
       //   - response_format 미지원
       //   - V4 thinking 활성화 파라미터 (reasoner는 불필요 — 항상 thinking)
       if (this.isV4 && this.v4ThinkingMode) {
-        body.thinking = { type: 'enabled', budget_tokens: 8192 };
+        body.thinking = { type: 'enabled' };
+        body.reasoning_effort = 'high';
       }
     } else {
       // non-thinking 모드 (deepseek-chat, V4 기본, V4-Pro):
+      //   - V4 API 기본값이 thinking=enabled이므로 명시적 disabled 필수
       //   - response_format: json_object 지원 → JSON 파싱 신뢰도 향상
       //   - temperature 제어 가능
+      if (this.isV4) {
+        body.thinking = { type: 'disabled' };
+      }
       body.temperature = temperature;
       body.response_format = { type: 'json_object' };
     }

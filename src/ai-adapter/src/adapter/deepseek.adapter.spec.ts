@@ -1135,7 +1135,7 @@ describe('DeepSeekAdapter', () => {
 
       const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
       expect(body.response_format).toEqual({ type: 'json_object' });
-      expect(body.thinking).toBeUndefined();
+      expect(body.thinking).toEqual({ type: 'disabled' });
     });
 
     it('V4-Flash non-thinking 모드: temperature가 요청 바디에 포함된다', async () => {
@@ -1194,7 +1194,8 @@ describe('DeepSeekAdapter', () => {
       await thinkingV4Adapter.generateMove(makeMoveRequest());
 
       const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
-      expect(body.thinking).toEqual({ type: 'enabled', budget_tokens: 8192 });
+      expect(body.thinking).toEqual({ type: 'enabled' });
+      expect(body.reasoning_effort).toBe('high');
       expect(body.response_format).toBeUndefined();
       expect(body.temperature).toBeUndefined();
     });
