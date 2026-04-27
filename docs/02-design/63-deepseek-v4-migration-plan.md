@@ -26,6 +26,19 @@
 | **ConfigMap** | `DEEPSEEK_DEFAULT_MODEL: deepseek-reasoner` |
 | **최근 성적** | Round 5: place rate 30.8%, fallback 0, 게임당 $0.013 |
 
+### 1.1b 모델명 호환성 (2026-04-27 확인)
+
+> 출처: https://api-docs.deepseek.com/quick_start/pricing
+
+| 레거시 모델명 | 실제 동작 | 상태 |
+|--------------|----------|------|
+| `deepseek-chat` | **V4-Flash non-thinking** 모드 | 향후 폐기 예정 (alias) |
+| `deepseek-reasoner` | **V4-Flash thinking** 모드 | 향후 폐기 예정 (alias) |
+| `deepseek-v4-flash` | V4-Flash (non-thinking 기본) | **신규 정식 ID** |
+| `deepseek-v4-pro` | V4-Pro | **신규 정식 ID** |
+
+**중요 시사점**: 기존 Round 5(deepseek-reasoner)의 30.8% 실측은, alias 전환 시점에 따라 **이미 V4-Flash thinking 모드**였을 가능성이 있다. R1 원본과의 직접 비교는 불가능하며, 기존 실측 데이터와 비교해야 한다.
+
 ### 1.2 DeepSeek V4 신규 라인업
 
 | 항목 | V4-Pro | V4-Flash |

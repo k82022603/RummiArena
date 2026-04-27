@@ -60,7 +60,7 @@ work_logs/         # 세션/데일리/스크럼/바이브/회고/결정 로그
 - **Backend (game-server)**: Go (gin + gorilla/websocket + GORM)
 - **Backend (ai-adapter)**: NestJS (TypeScript)
 - **DB**: PostgreSQL 16, Redis 7
-- **AI**: OpenAI API, Claude API, DeepSeek API, Ollama (LLaMA)
+- **AI**: OpenAI API, Claude API, DeepSeek API (V4-Flash/V4-Pro), Ollama (LLaMA)
 - **Infra**: Docker Desktop Kubernetes, Helm 3, ArgoCD
 - **CI**: GitLab CI + GitLab Runner
 - **Quality**: SonarQube, Trivy
