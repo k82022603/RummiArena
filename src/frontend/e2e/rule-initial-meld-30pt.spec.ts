@@ -300,32 +300,14 @@ test.describe("V-04 최초 등록 30점 룰", () => {
     //       게임 보드(over.id="game-board") → treatAsBoardDrop 분기 →
     //       freshHasInitialMeld=false + lastPendingGroup=null → 새 pending 그룹 생성.
     //       결과: Y9a가 새 pending 그룹으로 분리 (srv-group-9 유지).
+    //
+    // 뷰포트 벗어남 대응: dndDrag()는 scrollIntoViewIfNeeded()로 타일을 뷰포트 안으로
+    //   스크롤한 후 드래그한다 (V04-SC1 근본 원인 fix — 2026-04-27).
     const board = page.locator('section[aria-label="게임 테이블"]');
     await expect(board).toBeVisible({ timeout: 5000 });
 
-    // 서버 그룹이 보드 좌상단을 차지하므로, board의 중앙이 그룹 위에 겹치지 않도록
-    // board 우측 하단 빈 영역으로 드롭한다 (그룹 영역 회피).
-    const boardBox = await board.boundingBox();
-    if (!boardBox) throw new Error("board boundingBox not found");
-    const y9Box = await y9.boundingBox();
-    if (!y9Box) throw new Error("y9 boundingBox not found");
-
-    // 드래그 시작: Y9a 타일 중앙
-    const sx = y9Box.x + y9Box.width / 2;
-    const sy = y9Box.y + y9Box.height / 2;
-    // 드롭 목표: 보드 우측 70%, 세로 50% (빈 공간이 확보된 위치)
-    const dx = boardBox.x + boardBox.width * 0.7;
-    const dy = boardBox.y + boardBox.height * 0.5;
-
-    await page.mouse.move(sx, sy);
-    await page.mouse.down();
-    await page.mouse.move(sx + 2, sy, { steps: 2 });
-    await page.mouse.move(sx + 6, sy, { steps: 3 });
-    await page.mouse.move(sx + 12, sy, { steps: 3 });
-    await page.mouse.move(dx, dy, { steps: 40 });
-    await page.waitForTimeout(300);
-    await page.mouse.up();
-    await page.waitForTimeout(600);
+    await dndDrag(page, y9, board);
+    await page.waitForTimeout(200);
 
     // 드롭 후 store에 Y9a가 새 pending 그룹으로 들어갔는지 확인
     await page.waitForFunction(

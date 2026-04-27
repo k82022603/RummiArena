@@ -21,20 +21,35 @@ import type { Locator, Page } from "@playwright/test";
  *   - 목적지 이동 steps: 20 → 40 (dnd-kit collisions 계산 충분 시간 확보)
  *   - mouse.up() 전 대기: 200ms → 300ms (React 리렌더링 대기)
  *   - mouse.up() 후 대기: 300ms → 500ms (onDragEnd + setState 완료 대기)
+ *
+ * 뷰포트 벗어남 대응 (2026-04-27, V04-SC1 근본 원인 fix):
+ *   - page.mouse 이벤트는 뷰포트 좌표만 유효하다.
+ *   - tableGroups=[] 빈 보드일 때 레이아웃상 랙이 뷰포트(720px) 하단을 벗어남.
+ *   - src.scrollIntoViewIfNeeded()로 타일을 뷰포트 안으로 스크롤 후 boundingBox 재계산.
+ *   - 스크롤 후 좌표가 여전히 뷰포트 밖이면 뷰포트 상단에서 고정 offset으로 클램핑.
  */
 export async function dndDrag(
   page: Page,
   src: Locator,
   dst: Locator
 ): Promise<void> {
+  // 소스 타일을 뷰포트 안으로 스크롤
+  await src.scrollIntoViewIfNeeded();
+
   const srcBox = await src.boundingBox();
   const dstBox = await dst.boundingBox();
   if (!srcBox || !dstBox) throw new Error("boundingBox not found for drag");
 
+  const viewport = page.viewportSize() ?? { width: 1280, height: 720 };
+
+  // 소스 중심 좌표 — 뷰포트 안으로 클램핑 (스크롤 후에도 경계에 걸릴 경우 대비)
   const sx = srcBox.x + srcBox.width / 2;
-  const sy = srcBox.y + srcBox.height / 2;
-  const dx = dstBox.x + dstBox.width / 2;
-  const dy = dstBox.y + dstBox.height / 2;
+  const syRaw = srcBox.y + srcBox.height / 2;
+  const sy = Math.min(syRaw, viewport.height - 5);
+
+  // 목적지 중심 좌표 — 뷰포트 안으로 클램핑
+  const dx = Math.max(5, Math.min(dstBox.x + dstBox.width / 2, viewport.width - 5));
+  const dy = Math.max(5, Math.min(dstBox.y + dstBox.height / 2, viewport.height - 5));
 
   await page.mouse.move(sx, sy);
   await page.mouse.down();
