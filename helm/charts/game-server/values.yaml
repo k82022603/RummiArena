@@ -30,7 +30,7 @@ env:
   REDIS_PORT: "6379"
   CORS_ALLOWED_ORIGINS: "http://localhost:30000,http://localhost:3000"
   AI_ADAPTER_URL: "http://ai-adapter:8081"
-  AI_ADAPTER_TIMEOUT_SEC: "700"
+  AI_ADAPTER_TIMEOUT_SEC: "1000"
   RATE_LIMIT_LOW_MAX: "1000"
   # Playwright E2E suite(--repeat-each=7, spec당 최대 20 createRoomAndStart)가
   # 단일 게스트 세션을 공유하므로 1분 윈도우에 다수 WS 업그레이드가 집중된다.

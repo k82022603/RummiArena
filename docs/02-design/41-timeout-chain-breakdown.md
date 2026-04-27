@@ -62,33 +62,33 @@ sequenceDiagram
 
 ## 3. 구간별 타임아웃 레지스트리
 
-**기준일: 2026-04-16 (Sprint 6 Day 4). 기준값: `AI_ADAPTER_TIMEOUT_SEC = 700` (DeepSeek Reasoner v4 + Thinking Budget 대응).**
+**기준일: 2026-04-27 (Sprint 7 W2). 기준값: `AI_ADAPTER_TIMEOUT_SEC = 1000` (DeepSeek Reasoner 체인 상향).**
 
-| # | 구간 | 값 (Day 4 기준) | 위치 (파일 또는 리소스) | 소비 주체 | 역할 | 변경 공식 |
+| # | 구간 | 값 (2026-04-27 기준) | 위치 (파일 또는 리소스) | 소비 주체 | 역할 | 변경 공식 |
 |---|------|---|---|---|---|---|
-| 1 | Python recv_timeout (DeepSeek) | `770` 초 | `scripts/ai-battle-3model-r4.py:77` (`ws_timeout`) | Python 스크립트 | 스크립트 쪽 WS recv poll 타임아웃. 가장 바깥 층 | `AI_ADAPTER_TIMEOUT_SEC + 70` |
-| 2 | Game Server `handleAITurn` context | `760` 초 | `src/game-server/internal/handler/ws_handler.go:874` | goroutine context | AI 턴 전체의 고수위 데드라인 | `aiTimeoutSec + 60` (코드 상 고정) |
-| 3 | Game Server `MoveRequest.TimeoutMs` | `700_000` ms | `src/game-server/internal/handler/ws_handler.go:902` | ai-adapter 에 전달되는 DTO 필드 | 내부 LLM 호출용 시한 예산 | `aiAdapterTimeoutSec * 1000` |
-| 4 | Game Server `http.Client.Timeout` | `760` 초 | `src/game-server/cmd/server/main.go:123-124` | Go net/http 클라이언트 | POST /move 전체 HTTP 왕복 시한 | `cfg.AIAdapter.TimeoutSec + 60` 이 돼야 함. **현재 코드는 `cfg.AIAdapter.TimeoutSec` 만 주입 (`=700`) — 버퍼 없음. §8 위반 1 참조** |
-| 5 | viper 기본값 (game-server) | `500` | `src/game-server/internal/config/config.go:92` | env 없을 때의 fallback | 안전망 — env 누락 시 동작 보장 | "정상 운영값보다 크거나 같게" 또는 "음수로 실패" |
-| 6 | Helm values game-server | `500` | `helm/charts/game-server/values.yaml:33` | Helm rendering | ConfigMap `game-server-config` 시드값 | `AI_ADAPTER_TIMEOUT_SEC` 기준값과 **항상 동일** |
-| 7 | ConfigMap `game-server-config` (live) | `700` | `kubectl -n rummikub get cm game-server-config` | Pod envFrom | Helm 렌더 결과 또는 `kubectl patch` 결과 | (#6 과 반드시 동기) |
+| 1 | Python recv_timeout (DeepSeek) | `1070` 초 | `scripts/ai-battle-3model-r4.py:77` (`ws_timeout`) | Python 스크립트 | 스크립트 쪽 WS recv poll 타임아웃. 가장 바깥 층 | `AI_ADAPTER_TIMEOUT_SEC + 70` |
+| 2 | Game Server `handleAITurn` context | `1060` 초 | `src/game-server/internal/handler/ws_handler.go:874` | goroutine context | AI 턴 전체의 고수위 데드라인 | `aiTimeoutSec + 60` (코드 상 고정) |
+| 3 | Game Server `MoveRequest.TimeoutMs` | `1_000_000` ms | `src/game-server/internal/handler/ws_handler.go:902` | ai-adapter 에 전달되는 DTO 필드 | 내부 LLM 호출용 시한 예산 | `aiAdapterTimeoutSec * 1000` |
+| 4 | Game Server `http.Client.Timeout` | `1060` 초 | `src/game-server/cmd/server/main.go:123-124` | Go net/http 클라이언트 | POST /move 전체 HTTP 왕복 시한 | `cfg.AIAdapter.TimeoutSec + 60` |
+| 5 | viper 기본값 (game-server) | `1000` | `src/game-server/internal/config/config.go:92` | env 없을 때의 fallback | 안전망 — env 누락 시 동작 보장 | "정상 운영값보다 크거나 같게" 또는 "음수로 실패" |
+| 6 | Helm values game-server | `1000` | `helm/charts/game-server/values.yaml:33` | Helm rendering | ConfigMap `game-server-config` 시드값 | `AI_ADAPTER_TIMEOUT_SEC` 기준값과 **항상 동일** |
+| 7 | ConfigMap `game-server-config` (live) | `1000` | `kubectl -n rummikub get cm game-server-config` | Pod envFrom | Helm 렌더 결과 또는 `kubectl patch` 결과 | (#6 과 반드시 동기) |
 | 8 | Helm values ai-adapter | (없음) | `helm/charts/ai-adapter/values.yaml` | -- | -- | **해당 env 를 소비하지 않으므로 추가하지 말 것** |
-| 9 | ConfigMap `ai-adapter-config` (live) | (없음) | `kubectl -n rummikub get cm ai-adapter-config` | -- | -- | **§8 위반 2 참조** |
-| 10 | Istio `VirtualService` timeout | `510` 초 (현재 drift) | `istio/virtual-service-ai-adapter.yaml:16` + live VS | Envoy 사이드카 | East-West LLM 호출 전체 시한 | `AI_ADAPTER_TIMEOUT_SEC + 10` → **710 초** |
-| 11 | Istio `VirtualService` perTryTimeout | `510` 초 (현재 drift) | `istio/virtual-service-ai-adapter.yaml:20` + live VS | Envoy 사이드카 | 재시도 1 회당 시한 | `AI_ADAPTER_TIMEOUT_SEC + 10` → **710 초** (timeout 과 동일) |
+| 9 | ConfigMap `ai-adapter-config` (live) | (없음) | `kubectl -n rummikub get cm ai-adapter-config` | -- | -- | **§8 위반 2 참조 — ai-adapter 는 req.timeoutMs 로 수신** |
+| 10 | Istio `VirtualService` timeout | `1010` 초 | `istio/virtual-service-ai-adapter.yaml:16` + live VS | Envoy 사이드카 | East-West LLM 호출 전체 시한 | `AI_ADAPTER_TIMEOUT_SEC + 10` |
+| 11 | Istio `VirtualService` perTryTimeout | `1010` 초 | `istio/virtual-service-ai-adapter.yaml:20` + live VS | Envoy 사이드카 | 재시도 1 회당 시한 | `AI_ADAPTER_TIMEOUT_SEC + 10` (timeout 과 동일) |
 | 12 | Istio `DestinationRule` connectTimeout | `10` 초 | `istio/destination-rule-ai-adapter.yaml:20` | Envoy TCP 연결 | TCP handshake 시한 (응답 대기와 무관) | 고정 |
 | 13 | NestJS `MoveRequestDto.timeoutMs` 기본값 | `30_000` ms | `src/ai-adapter/src/move/move.controller.ts:189` | MoveService | 호출자(game-server)가 안 보낼 때 방어값 | 고정 30 초 — game-server 에서 항상 주입되므로 실제 경로 미사용 |
-| 14 | DeepSeek Reasoner min floor | `500_000` ms (**drift**) | `src/ai-adapter/src/adapter/deepseek.adapter.ts:220` | axios timeout | reasoner 전용 하한선 | `Math.max(timeoutMs, AI_ADAPTER_TIMEOUT_SEC * 1000)` → **700_000 ms** |
+| 14 | DeepSeek Reasoner min floor | `1_000_000` ms | `src/ai-adapter/src/adapter/deepseek.adapter.ts:271` | axios timeout | reasoner 전용 하한선 | `Math.max(timeoutMs, AI_ADAPTER_TIMEOUT_SEC * 1000)` |
 | 15 | Claude thinking min floor | `210_000` ms | `src/ai-adapter/src/adapter/claude.adapter.ts:114` | axios timeout | extended thinking 전용 하한선 | 현 Claude 사고 실측이 낮으므로 `210_000` 유지. v4 측정 이후 재검토 |
 | 16 | Ollama min floor | `210_000` ms | `src/ai-adapter/src/adapter/ollama.adapter.ts:29` | axios timeout | CPU 추론 하한선 | 유지 |
 | 17 | OpenAI reasoning min floor | `210_000` ms | `src/ai-adapter/src/adapter/openai.adapter.ts:31,112` | axios timeout | gpt-5-mini reasoning 하한선 | 유지 |
-| 18 | DashScope thinking-only min | `600_000` ms | `src/ai-adapter/src/adapter/dashscope/dashscope.service.ts:51` | axios timeout | qwen3 thinking-only 하한선 | **700_000 ms 로 상향 권장** (v4 Run 실측 기준 재평가 후) |
+| 18 | DashScope thinking-only min | `600_000` ms | `src/ai-adapter/src/adapter/dashscope/dashscope.service.ts:51` | axios timeout | qwen3 thinking-only 하한선 | 1_000_000 ms 로 상향 검토 (v4 Run 실측 기준 재평가 후) |
 | 19 | Game Server `http.Server.ReadTimeout` | `15` 초 | `src/game-server/cmd/server/main.go:54` | HTTP 인바운드 | REST 본문 수신 시한 | 무관 (POST /move 는 내부 요청이 아니라 game-server 가 클라이언트) |
 | 20 | Game Server `http.Server.WriteTimeout` | `0` | `src/game-server/cmd/server/main.go:60` | HTTP 인바운드 | WS Hijack 후 무제한 | 의도된 설정 — 변경 금지 |
 | 21 | Game Server `http.Server.IdleTimeout` | `60` 초 | `src/game-server/cmd/server/main.go:61` | HTTP keep-alive | keep-alive idle 시한 | 무관 |
 
-**§8 에서 현 drift 3 건을 다룬다.**
+**§8 에서 현 drift 목록을 다룬다.**
 
 ---
 
@@ -115,17 +115,17 @@ py_ws_timeout (1)
 | (10) - (3) | 10 초 (Istio 가 LLM 예산보다 10 초 넉넉) |
 | (3) - (14~18) | 0 초 (adapter 는 `Math.max` 로 하한만 올림) |
 
-### Day 4 기준 수치 예 (`AI_ADAPTER_TIMEOUT_SEC = 700`)
+### 2026-04-27 기준 수치 예 (`AI_ADAPTER_TIMEOUT_SEC = 1000`)
 
 | 레이어 | 값 | 공식 |
 |---|---|---|
-| Python ws_timeout | 770 초 | 700 + 70 |
-| handleAITurn ctx | 760 초 | 700 + 60 |
-| Go http.Client | 760 초 | 700 + 60 (`main.go` 수정 필요, §8 위반 1) |
-| Istio VS timeout | 710 초 | 700 + 10 |
-| Istio VS perTryTimeout | 710 초 | 동일 |
-| request.timeoutMs | 700_000 ms | 700 * 1000 |
-| DeepSeek adapter floor | 700_000 ms | `Math.max(timeoutMs, 700_000)` |
+| Python ws_timeout | 1070 초 | 1000 + 70 |
+| handleAITurn ctx | 1060 초 | 1000 + 60 |
+| Go http.Client | 1060 초 | 1000 + 60 |
+| Istio VS timeout | 1010 초 | 1000 + 10 |
+| Istio VS perTryTimeout | 1010 초 | 동일 |
+| request.timeoutMs | 1_000_000 ms | 1000 * 1000 |
+| DeepSeek adapter floor | 1_000_000 ms | `Math.max(timeoutMs, 1_000_000)` |
 
 ---
 
@@ -212,46 +212,25 @@ py_ws_timeout (1)
 | Sprint 5 Day 5 (2026-04-10) | `240 → 500` 초 | DeepSeek Reasoner Run 3 에서 356 초 관찰 → 500 으로 상향, fallback 9 → 0 달성 |
 | Sprint 6 Day 4 (2026-04-15) | `500 → 700` 초 | v4 프롬프트 + Thinking Budget 허가로 사고 시간 자율 확장 → 500 초 한계 근접 (Run 5 T70/T76 435/434 s) |
 | Sprint 6 Day 4 사고 (2026-04-16) | 소스 drift 발견 | game-server env 700 / Istio VS 510 / Helm values 500 drift — 본 문서 작성 계기 |
+| Sprint 7 W2 (2026-04-27) | `700 → 1000` 초 | 체인 전수 상향. 새 부등식: script_ws(1070) > gs_ctx(1060) > http_client(1060) > istio_vs(1010) > adapter(1000) |
 
 ---
 
-## 8. 현 drift 목록 (수정 계획서의 Phase 2 대상)
+## 8. drift 이력 (해결 완료)
 
-### 위반 1 — `http.Client.Timeout` 이 버퍼 없는 `TimeoutSec` 그대로
+### 위반 1 — `http.Client.Timeout` 버퍼 없음 (2026-04-27 해결)
 
-**위치**: `src/game-server/cmd/server/main.go:123`
-```go
-timeout := time.Duration(cfg.AIAdapter.TimeoutSec) * time.Second  // = 700s
-aiClient = client.NewAIClient(cfg.AIAdapter.BaseURL, cfg.AIAdapter.Token, timeout)
-```
+**위치**: `src/game-server/cmd/server/main.go:131`
 
-**문제**: §4 부등식에서 `go_http_client > istio_vs_timeout` 이어야 한다. Istio VS 가 710 초이면 Go http.Client 도 최소 710 초 이상이어야 하는데, 현재는 700 초로 **Istio 보다 짧다**. Envoy 가 710 초에 끊기 전에 Go 쪽이 700 초에 먼저 끊어 CancelContext → Istio 입장에서는 client 가 먼저 닫은 것이므로 회고 로그에도 timeout 이 아닌 context canceled 로 남을 수 있다.
+**수정 완료**: `time.Duration(cfg.AIAdapter.TimeoutSec + 60) * time.Second` (= 1060 초). `handleAITurn` context 와 동일 공식. §4 부등식 `go_http_client(1060) > istio_vs(1010)` 준수.
 
-**수정**: `time.Duration(cfg.AIAdapter.TimeoutSec + 60) * time.Second` (= 760 초) — `handleAITurn` context 와 같은 공식으로 통일.
+### 위반 2 — `ai-adapter` 에 `AI_ADAPTER_TIMEOUT_SEC` 소비 없음 (문서화 완료)
 
-### 위반 2 — `ai-adapter` 에 `AI_ADAPTER_TIMEOUT_SEC` 가 실제로는 소비되지 않음
+ai-adapter 는 `AI_ADAPTER_TIMEOUT_SEC` env 를 소비하지 않는다. game-server 가 각 요청의 `body.timeoutMs` 필드로 주입한다. Helm values 와 ConfigMap 에 이 env 를 추가하지 말 것. (§3 #8, #9 항목에 명시)
 
-**증거**: `grep -r AI_ADAPTER_TIMEOUT_SEC src/ai-adapter/src` → 결과 0 건 (spec 파일 주석 1 건 제외). ai-adapter 는 이 env 를 읽지 않는다. 대신 각 요청의 `body.timeoutMs` 필드로 받는다.
+### 위반 3 — Istio VS timeout drift (2026-04-27 해결)
 
-**문제**: 애벌레가 "양쪽 다 700 으로 올렸다" 고 인식하는 원인. 라이브에는 런타임 set env 로 주입되어 보이지만:
-1. 코드가 소비하지 않으므로 무의미
-2. Helm values / ConfigMap 에 없으므로 rollout 또는 ArgoCD sync 시 자연 소멸
-3. 소비 경로가 있는 것처럼 보여 혼동 유발
-
-**수정**: ai-adapter 쪽 `AI_ADAPTER_TIMEOUT_SEC` env 를 명시적으로 **제거 또는 사용처 문서화**. 제거가 권장 — 완전 소거 후 설명 주석 1 줄만 남김.
-
-### 위반 3 — Istio VS timeout 이 ConfigMap 과 불일치
-
-**위치**: `istio/virtual-service-ai-adapter.yaml:5,16,20` (파일) + live cluster VS
-
-**현재**:
-- 파일 주석: `"500s + 10s=510s"` (stale)
-- 파일 timeout: `510s` (stale)
-- 파일 perTryTimeout: `510s` (stale)
-- live VS: 510s / 510s (파일과 동기화됨, 둘 다 stale)
-- ConfigMap: 700 (최신)
-
-**수정**: `710s` 로 상향 + 주석 갱신.
+**수정 완료**: `istio/virtual-service-ai-adapter.yaml` timeout/perTryTimeout = `1010s`. live VS 동기 확인.
 
 ---
 
@@ -367,4 +346,5 @@ UX 타이머 값을 변경할 때는 서버 §5 체크리스트와 달리 클러
 |---|---|---|
 | 2026-04-16 | architect | 최초 작성 — Sprint 6 Day 4 Run 3 fallback 사고 원인 분석 결과 |
 | 2026-04-26 | node-dev | §6 UX 타이머 레지스트리 추가 — Sprint 7 W2 W5 작업 |
+| 2026-04-27 | devops | 700→1000초 체인 전수 상향. §3 레지스트리, §4 수치 예, §7 이력, §8 drift 해결 상태 갱신. 새 부등식: script_ws(1070)>gs_ctx(1060)>http_client(1060)>istio_vs(1010)>adapter(1000) |
 

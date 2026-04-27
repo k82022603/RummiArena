@@ -2,7 +2,7 @@
 # LLM 호출은 비용이 크므로 재시도는 네트워크 장애(5xx, reset)에 한해 1회만
 # 비즈니스 재시도(invalid move)는 Game Engine이 담당 (최대 3회)
 # 설계 근거: docs/02-design/20-istio-selective-mesh-design.md Section 4.5
-# timeout = ConfigMap AI_ADAPTER_TIMEOUT_SEC(1800s) + 10s 버퍼 = 1810s (v4 unlimited 실험, 기준일 2026-04-17, docs/02-design/41 §3)
+# timeout = ConfigMap AI_ADAPTER_TIMEOUT_SEC(1000s) + 10s 버퍼 = 1010s (2026-04-27, docs/02-design/41 §3)
 ---
 apiVersion: networking.istio.io/v1
 kind: VirtualService
@@ -13,11 +13,11 @@ spec:
   hosts:
     - ai-adapter
   http:
-    - timeout: 1810s             # AI_ADAPTER_TIMEOUT_SEC(1800s) + 10s 버퍼 (v4 unlimited)
+    - timeout: 1010s             # AI_ADAPTER_TIMEOUT_SEC(1000s) + 10s 버퍼
       retries:
         attempts: 1              # 네트워크 장애에 한해 1회 재시도
         retryOn: "5xx,reset"
-        perTryTimeout: 1810s
+        perTryTimeout: 1010s
       route:
         - destination:
             host: ai-adapter

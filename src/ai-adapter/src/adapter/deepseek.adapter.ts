@@ -266,9 +266,10 @@ export class DeepSeekAdapter extends BaseAdapter {
       body.response_format = { type: 'json_object' };
     }
 
-    // reasoner 전용 최소 타임아웃 1800초. V4는 응답이 빠르므로 적용하지 않는다.
+    // reasoner 전용 최소 타임아웃 1000초. V4는 응답이 빠르므로 적용하지 않는다.
+    // AI_ADAPTER_TIMEOUT_SEC=1000 기준 (2026-04-27, docs/02-design/41 §3)
     const effectiveTimeout =
-      this.isReasoner ? Math.max(timeoutMs, 1_800_000) : timeoutMs;
+      this.isReasoner ? Math.max(timeoutMs, 1_000_000) : timeoutMs;
 
     const response = await axios.post(
       `${this.baseUrl}/chat/completions`,
