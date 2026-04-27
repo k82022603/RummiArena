@@ -395,10 +395,10 @@ docs/
 ### Sprint 7 Week 2 (2026-04-25 ~ 2026-05-02) 이관 작업 (W2-A~J)
 - **W2-A (P0)** EXT/GHOST bisect — ✅ effectiveHasInitialMeld 7지점 → useInitialMeldGuard hook 통합 (Phase D)
 - **W2-B (P1)** F3 rack sync 재구현 — ⏳ G-F 범위
-- **W2-C (P1)** F4 FINDING-01 재작성 — ⏳ G-E 범위
+- **W2-C (P1)** F4 FINDING-01 재작성 — ✅ G-E A4/A8 split 분기 구현 (04-27)
 - **W2-D (P2)** Stage 2 regression — ⏳
 - **W2-E (P2)** 이미지 태그 HEAD 일치 CI — ⏳
-- **W2-F (P2)** handleDragEnd 3 handler 분리 ADR — ✅ `59-g-e-rearrangement-guide.md` 시동
+- **W2-F (P2)** handleDragEnd 3 handler 분리 ADR — ✅ `59-g-e-rearrangement-guide.md` 시동 + G-E table→game-board 위임 1단계 완료 (04-27)
 - **W2-G (P2)** 룰-UX SSOT `43` — ✅ `43-rule-ux-sync-ssot.md` 71개 전수 매핑
 - **W2-H (P2)** UX 타이머 레지스트리 `41§6` — ✅ 16개 타이머 등록
 - **W2-I (P2)** WS 권한 검증 spec — ⏳
@@ -415,6 +415,15 @@ docs/
 - K8s 배포 `g-b-fix-7a0b0c5`
 - 문서 4건: 43(룰-UX), 59(G-E 가이드), 41§6(타이머), 27(next-auth ADR)
 - **다음**: G-E(Task #7) + G-F(Task #8) → 잔존 RED 4건 해소 → 사용자 실기 테스트
+
+### Sprint 7 W2 G-E + G-F 완료 (2026-04-27)
+- Task #7 G-E: A4(SPLIT_PENDING_GROUP) + A8(SPLIT_SERVER_GROUP) 구현, RDX-02 보강
+- Task #8 G-F: canConfirmTurn 순수 함수, A14 GREEN (546 PASS / 0 FAIL)
+- E2E 이터레이션 3: 12 PASS / 2 FAIL(V04-SC1/SC3 dndDrag 타이밍) / 3 SKIP
+- effort: high ADR (에이전트 6개 effort 설정)
+- DeepSeek V4 변경 계획서 (`docs/02-design/63`)
+- K8s 배포 `g-e-2442913`, pre-deploy-playbook CONDITIONAL GO
+- **다음**: DeepSeek V4 Stage 1~3 실행 + V04 E2E 잔존 해소
 
 ---
 

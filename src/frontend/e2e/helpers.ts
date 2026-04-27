@@ -15,6 +15,12 @@ import type { Locator, Page } from "@playwright/test";
 /**
  * 두 로케이터 사이의 dnd-kit 드래그를 시뮬레이션한다.
  * - pointerdown → 8px 초과 이동(활성화) → 목적지 이동 → pointerup
+ *
+ * 타이밍 강화 (2026-04-27, V04-SC1/SC3 fix):
+ *   - activation step 3단계 → 확실한 PointerSensor distance 충족
+ *   - 목적지 이동 steps: 20 → 40 (dnd-kit collisions 계산 충분 시간 확보)
+ *   - mouse.up() 전 대기: 200ms → 300ms (React 리렌더링 대기)
+ *   - mouse.up() 후 대기: 300ms → 500ms (onDragEnd + setState 완료 대기)
  */
 export async function dndDrag(
   page: Page,
@@ -32,14 +38,15 @@ export async function dndDrag(
 
   await page.mouse.move(sx, sy);
   await page.mouse.down();
-  // activation constraint(8px) 초과를 위해 점진적으로 이동
-  await page.mouse.move(sx + 3, sy, { steps: 2 });
-  await page.mouse.move(sx + 9, sy, { steps: 2 });
-  // 목적지로 이동
-  await page.mouse.move(dx, dy, { steps: 20 });
-  await page.waitForTimeout(200);
-  await page.mouse.up();
+  // activation constraint(8px) 초과를 위해 3단계로 점진 이동
+  await page.mouse.move(sx + 2, sy, { steps: 2 });
+  await page.mouse.move(sx + 6, sy, { steps: 3 });
+  await page.mouse.move(sx + 12, sy, { steps: 3 });
+  // 목적지로 충분히 부드럽게 이동 (steps 증가 → collision 감지 안정화)
+  await page.mouse.move(dx, dy, { steps: 40 });
   await page.waitForTimeout(300);
+  await page.mouse.up();
+  await page.waitForTimeout(500);
 }
 
 // ------------------------------------------------------------------
