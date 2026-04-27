@@ -63,8 +63,10 @@ describe("[A9] [V-13a] [V-13c] [V-17] [INV-G1] server -> server (merge)", () => 
       const output = dragEndReducer(state, input);
 
       expectAccepted(output);
-      // 타겟 서버 그룹이 pending 마킹 (reducer 는 target 만 마킹)
+      // 타겟 서버 그룹이 pending 마킹
       expect(output.nextPendingGroupIds.has(sgB.id)).toBe(true);
+      // RDX-02: source 서버 그룹도 pending 마킹 (server→server 이동 시 양쪽 마킹)
+      expect(output.nextPendingGroupIds.has(sgA.id)).toBe(true);
       // 타일 이동 확인
       const resultSgA = output.nextTableGroups!.find((g) => g.id === sgA.id);
       const resultSgB = output.nextTableGroups!.find((g) => g.id === sgB.id);

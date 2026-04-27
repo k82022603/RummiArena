@@ -77,7 +77,9 @@ export type DragAction =
   | "MERGE_TO_SERVER_GROUP"  // 랙 → 서버 확정 그룹 확장 (초기 등록 후)
   | "RETURN_TO_RACK"         // 보드 → 랙 회수
   | "JOKER_SWAP"             // 랙 → 조커 교체
-  | "REORDER_IN_GROUP";      // 테이블 내 재배치
+  | "REORDER_IN_GROUP"       // 테이블 내 재배치
+  | "SPLIT_PENDING_GROUP"   // A4: pending → 새 그룹 (split)
+  | "SPLIT_SERVER_GROUP";   // A8: server → 새 그룹 (split, POST_MELD)
 
 export interface DragOutput {
   nextTableGroups: TableGroup[] | null;  // null = pending 초기화
@@ -180,6 +182,54 @@ export function dragEndReducer(state: DragReducerState, input: DragInput): DragO
       };
     }
 
+    // ---- A4/A8: table → game-board / game-board-new-group (새 그룹 split) ----
+    if (overId === "game-board" || overId === "game-board-new-group") {
+      const updatedSourceTiles = [...sourceGroup.tiles];
+      if (updatedSourceTiles[source.index] !== tileCode) {
+        return rejectWith("index-mismatch", "table→new-group:index-mismatch");
+      }
+      updatedSourceTiles.splice(source.index, 1);
+
+      if (!sourceIsPending && !hasInitialMeld) {
+        return rejectWith("initial-meld-required", "table→new-group:server-pre-meld");
+      }
+
+      const nextSeq = pendingGroupSeq + 1;
+      const newGroupId = makeNewGroupId(nextSeq);
+      const newGroup: TableGroup = {
+        id: newGroupId,
+        tiles: [tileCode],
+        type: classifySetType([tileCode]),
+      };
+
+      const nextTableGroups = tableGroups
+        .map(g => g.id === sourceGroup.id
+          ? { ...g, tiles: updatedSourceTiles, type: classifySetType(updatedSourceTiles) }
+          : g)
+        .filter(g => g.tiles.length > 0)
+        .concat([newGroup]);
+
+      const dupes = detectDuplicateTileCodes(nextTableGroups);
+      if (dupes.length > 0) {
+        return rejectWith("duplicate-detected", "table→new-group:dup-guard");
+      }
+
+      const nextGroupIdSet = new Set(nextTableGroups.map(g => g.id));
+      const nextPendingGroupIds = new Set(
+        [...pendingGroupIds, ...(sourceIsPending ? [] : [sourceGroup.id]), newGroupId]
+          .filter(id => nextGroupIdSet.has(id))
+      );
+
+      return {
+        ...defaults,
+        nextTableGroups,
+        nextPendingGroupIds,
+        nextPendingGroupSeq: nextSeq,
+        branch: sourceIsPending ? "table→new-group:split-pending" : "table→new-group:split-server",
+        action: sourceIsPending ? "SPLIT_PENDING_GROUP" : "SPLIT_SERVER_GROUP",
+      };
+    }
+
     // ---- table → table ----
     if (!hasInitialMeld) {
       return rejectWith("initial-meld-required", "table→table:initial-meld-lock");
@@ -228,7 +278,7 @@ export function dragEndReducer(state: DragReducerState, input: DragInput): DragO
 
     const nextGroupIdSet = new Set(nextTableGroups.map((g) => g.id));
     const nextPendingGroupIds = new Set(
-      [...pendingGroupIds, targetGroup.id].filter((id) => nextGroupIdSet.has(id))
+      [...pendingGroupIds, sourceGroup.id, targetGroup.id].filter((id) => nextGroupIdSet.has(id))
     );
 
     return {

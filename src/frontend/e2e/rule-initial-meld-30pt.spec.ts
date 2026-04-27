@@ -56,10 +56,19 @@ async function setupInitialMeldScenario(
     const current = store.getState();
     const baseGameState = (current.gameState ?? {}) as Record<string, unknown>;
 
+    // players 배열 주입: freshHasInitialMeld (GameClient line 800-804) 가
+    //   players[mySeat].hasInitialMeld 를 1차 SSOT 로 참조하므로,
+    //   루트 hasInitialMeld 와 players[0].hasInitialMeld 를 일치시켜야 한다.
+    //   V04-SC1: hasInitialMeld=false (초기 등록 전), V04-SC3: false (확정 전 extend 차단).
+    //   (GHOST-SC2 GREEN 전환 시 동일 패턴 적용 — 2026-04-26)
     store.setState({
       mySeat: 0,
       myTiles: args.rackTiles,
       hasInitialMeld: args.hasInitialMeld ?? false,
+      players: [
+        { seat: 0, type: "HUMAN", userId: "test-user", displayName: "Test", status: "CONNECTED", hasInitialMeld: args.hasInitialMeld ?? false, tileCount: args.rackTiles.length },
+        { seat: 1, type: "AI_DEEPSEEK", persona: "rookie", difficulty: "beginner", psychologyLevel: 0, status: "READY", hasInitialMeld: true, tileCount: 14 },
+      ],
       pendingTableGroups: null,
       pendingMyTiles: null,
       pendingGroupIds: new Set<string>(),
@@ -94,7 +103,6 @@ test.describe("V-04 최초 등록 30점 룰", () => {
   test("V04-SC1: 랙 [R10 R11 R12] (30점 런) → 보드 드롭 → 확정 성공 → hasInitialMeld=true", async ({
     page,
   }) => {
-    // RED 근거: (없음) 본 TC 는 V-04 Happy 의 PASS 기본선. 회귀 탐지용.
     await createRoomAndStart(page, { playerCount: 2, aiCount: 1, turnTimeout: 60 });
     await waitForGameReady(page);
 
@@ -102,6 +110,45 @@ test.describe("V-04 최초 등록 30점 룰", () => {
     await setupInitialMeldScenario(page, {
       rackTiles: ["R10a", "R11a", "R12a"],
     });
+
+    // setupInitialMeldScenario가 store를 setState로 패치한 후 서버 WS 메시지가 state를 덮어쓸 수 있다.
+    // 드래그 전에 store의 myTiles + gameState.currentSeat 가 주입한 값과 일치하는지 확인한다.
+    // 일치하지 않으면(서버가 덮어씀) 직접 재설정하고 안정화를 기다린다.
+    await page.waitForFunction(
+      () => {
+        const store = (window as unknown as {
+          __gameStore?: {
+            getState: () => {
+              myTiles?: string[];
+              pendingMyTiles?: string[] | null;
+              gameState?: { currentSeat?: number } | null;
+            };
+            setState: (s: Record<string, unknown>) => void;
+          };
+        }).__gameStore;
+        if (!store) return false;
+        const s = store.getState();
+        const rack = s.pendingMyTiles ?? s.myTiles ?? [];
+        const hasAllTiles = rack.includes("R10a") && rack.includes("R11a") && rack.includes("R12a");
+        const isMyTurnInStore = s.gameState?.currentSeat === 0;
+        if (!hasAllTiles || !isMyTurnInStore) {
+          // WS 메시지가 state를 덮어썼으면 재설정
+          const cur = store.getState();
+          const baseGs = (cur.gameState ?? {}) as Record<string, unknown>;
+          store.setState({
+            myTiles: ["R10a", "R11a", "R12a"],
+            pendingMyTiles: null,
+            pendingTableGroups: null,
+            pendingGroupIds: new Set<string>(),
+            gameState: { ...baseGs, currentSeat: 0 },
+          });
+          return false;
+        }
+        return true;
+      },
+      { timeout: 10_000 }
+    );
+    await page.waitForTimeout(200);
 
     // 세 타일을 모두 보드에 드롭
     const board = page.locator('section[aria-label="게임 테이블"]');
@@ -113,7 +160,7 @@ test.describe("V-04 최초 등록 30점 룰", () => {
         .first();
       await expect(tile).toBeVisible({ timeout: 5000 });
       await dndDrag(page, tile, board);
-      await page.waitForTimeout(200);
+      await page.waitForTimeout(300);
     }
 
     // 검증: 랙에서 세 타일이 모두 사라졌는지
@@ -201,10 +248,17 @@ test.describe("V-04 최초 등록 30점 룰", () => {
       if (!store) throw new Error("__gameStore not available");
       const cur = store.getState();
       const baseGs = (cur.gameState ?? {}) as Record<string, unknown>;
+      // players 배열 주입: freshHasInitialMeld 가 players[0].hasInitialMeld 를
+      //   1차 참조하므로, hasInitialMeld: false 를 players[0] 에도 일치시킨다.
+      //   (GHOST-SC2 GREEN 전환 시 동일 패턴 적용 — 2026-04-26)
       store.setState({
         mySeat: 0,
         myTiles: ["Y9a"],
         hasInitialMeld: false, // 초기 등록 전
+        players: [
+          { seat: 0, type: "HUMAN", userId: "test-user", displayName: "Test", status: "CONNECTED", hasInitialMeld: false, tileCount: 1 },
+          { seat: 1, type: "AI_DEEPSEEK", persona: "rookie", difficulty: "beginner", psychologyLevel: 0, status: "READY", hasInitialMeld: true, tileCount: 14 },
+        ],
         pendingTableGroups: null,
         pendingMyTiles: null,
         pendingGroupIds: new Set<string>(),

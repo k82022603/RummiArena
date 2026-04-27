@@ -6,6 +6,7 @@
  *   - V-13a: hasInitialMeld — 재배치 권한 판정
  *   - V-03: tilesAdded >= 1 (랙에서 최소 1장 추가)
  *   - V-04: 30점 초과 확인
+ *   - UR-15: canConfirmTurn 종합 조건 (A14)
  *   - 56b §3.2: computeIsMyTurn → S0 / S1 진입 조건
  *
  * 금지: store, WS, DOM import 불가 (L3 계층 규칙)
@@ -101,4 +102,85 @@ export function computePendingScore(pendingOnlyGroups: TableGroup[]): number {
     }
   }
   return total;
+}
+
+// ---------------------------------------------------------------------------
+// canConfirmTurn — UR-15 (A14)
+// ---------------------------------------------------------------------------
+
+/**
+ * ConfirmTurn 버튼 활성화 판단 입력값 — A14 테스트 SSOT
+ *
+ * SSOT 매핑: 56 section 3.15 셀 A14, UR-15, V-01~V-04, V-14, V-15
+ */
+export interface ConfirmTurnInput {
+  /** 현재 보드 위 그룹 목록 (pending 포함) */
+  pendingTableGroups: TableGroup[];
+  /** pending으로 마킹된 그룹 ID Set */
+  pendingGroupIds: Set<string>;
+  /** 초기 등록 완료 여부 */
+  hasInitialMeld: boolean;
+  /** 회수됐으나 아직 보드에 미배치된 조커 목록 */
+  pendingRecoveredJokers: TileCode[];
+  /** 이번 턴에 랙에서 보드로 추가한 타일 수 */
+  tilesAddedCount: number;
+}
+
+/**
+ * ConfirmTurn 버튼 활성화 여부를 판단한다 (클라이언트 사전검증).
+ *
+ * 서버 검증(V-* 응답)의 클라이언트 미러. 서버가 최종 판정자이며,
+ * 이 함수는 불필요한 서버 왕복을 줄이기 위한 선제 차단 목적이다.
+ *
+ * 조건 (UR-15):
+ *   1. tilesAdded >= 1 (V-03: 단순 재배치 금지)
+ *   2. pending 그룹이 1개 이상 존재
+ *   3. 모든 pending 그룹이 최소 3개 타일 (V-02)
+ *   4. hasInitialMeld=false 이면 pending 점수 합계 >= 30점 (V-04)
+ *   5. 회수된 조커가 아직 랙에 남아있으면 차단 (V-07)
+ *
+ * @param input ConfirmTurnInput
+ * @returns { enabled: boolean; reason?: string }
+ */
+export function canConfirmTurn(input: ConfirmTurnInput): { enabled: boolean; reason?: string } {
+  const {
+    pendingTableGroups,
+    pendingGroupIds,
+    hasInitialMeld,
+    pendingRecoveredJokers,
+    tilesAddedCount,
+  } = input;
+
+  // V-03: 랙에서 최소 1장 이상 보드에 추가해야 확정 가능
+  if (tilesAddedCount < 1) {
+    return { enabled: false, reason: "V-03: tilesAdded < 1" };
+  }
+
+  // UR-15: pending 그룹이 1개 이상 있어야 함
+  const pendingOnlyGroups = pendingTableGroups.filter((g) => pendingGroupIds.has(g.id));
+  if (pendingOnlyGroups.length === 0) {
+    return { enabled: false, reason: "UR-15: pending 그룹 없음" };
+  }
+
+  // V-02: 모든 pending 그룹이 최소 3개 타일을 가져야 함
+  for (const group of pendingOnlyGroups) {
+    if (group.tiles.length < 3) {
+      return { enabled: false, reason: `V-02: 그룹 ${group.id} 타일 수 부족 (${group.tiles.length}/3)` };
+    }
+  }
+
+  // V-07: 회수된 조커가 아직 배치되지 않았으면 차단
+  if (pendingRecoveredJokers.length > 0) {
+    return { enabled: false, reason: "V-07: 회수된 조커 미배치" };
+  }
+
+  // V-04: 최초 등록 미완료 시 pending 점수 합계 >= 30점 필요
+  if (!hasInitialMeld) {
+    const score = computePendingScore(pendingOnlyGroups);
+    if (score < 30) {
+      return { enabled: false, reason: `V-04: 점수 부족 (${score}/30)` };
+    }
+  }
+
+  return { enabled: true };
 }

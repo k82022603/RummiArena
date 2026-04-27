@@ -6,9 +6,9 @@
  * - 룰 ID: V-13a, V-13b, D-12
  *
  * NOTE: dragEndReducer 의 table source 분기에서 overId="game-board-new-group" 는
- *       실제 그룹 ID 가 아니므로 target-not-found 로 거절된다.
- *       server 타일 split 은 UI 레이어에서 별도 처리하거나
- *       rack -> new-group 경로로 수행한다.
+ *       직접 split 을 지원한다 (A4/A8 분기, POST_MELD 시).
+ *       server 타일 split 은 단일 드래그로 수행 가능:
+ *         table(server) -> game-board-new-group → SPLIT_SERVER_GROUP (hasInitialMeld=true 시)
  *       본 테스트는 reducer 의 실제 동작을 검증한다.
  */
 
@@ -50,10 +50,8 @@ describe("[A8] [V-13a] [V-13b] server -> new group (split)", () => {
     });
   });
 
-  describe("[A8.2] table source + overId=game-board-new-group -> target-not-found", () => {
-    it("table source 에서 game-board-new-group 으로 drop -> target 을 찾지 못해 거절", () => {
-      // reducer 의 table 분기에서 overId 로 그룹을 찾으므로
-      // "game-board-new-group" 은 실제 그룹 ID 가 아니라 target-not-found
+  describe("[A8.2] [V-13b] table source + overId=game-board-new-group -> 직접 split (SPLIT_SERVER_GROUP)", () => {
+    it("server tile 을 game-board-new-group 에 drop -> 새 그룹 분리 허용 (POST_MELD)", () => {
       const sg = serverGroup(["R7a", "B7a", "Y7a", "K7a"] as TileCode[], "group");
 
       const [state, input] = makeReducerArgs({
@@ -66,7 +64,17 @@ describe("[A8] [V-13a] [V-13b] server -> new group (split)", () => {
       });
       const output = dragEndReducer(state, input);
 
-      expectRejected(output, "target-not-found");
+      expectAccepted(output);
+      expect(output.action).toBe("SPLIT_SERVER_GROUP");
+      // source server group ID 가 pendingGroupIds 에 포함 (V-17)
+      expect(output.nextPendingGroupIds.has(sg.id)).toBe(true);
+      // 새 pending 그룹 생성
+      const newGroup = output.nextTableGroups!.find((g) => g.id !== sg.id);
+      expect(newGroup).toBeDefined();
+      expect(newGroup!.tiles).toEqual(["R7a"]);
+      expect(newGroup!.id.startsWith("pending-")).toBe(true);
+      // INV-G2: 중복 없음
+      expectNoDuplicateTiles(output.nextTableGroups!);
     });
   });
 

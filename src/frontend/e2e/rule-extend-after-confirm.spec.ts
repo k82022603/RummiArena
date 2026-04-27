@@ -51,10 +51,19 @@ async function setupExtendAfterConfirm(
     if (!store) throw new Error("__gameStore not available");
     const cur = store.getState();
     const baseGs = (cur.gameState ?? {}) as Record<string, unknown>;
+    // players 배열 주입: freshHasInitialMeld (GameClient line 800-804) 가
+    //   players[mySeat].hasInitialMeld 를 1차 SSOT 로 참조하므로,
+    //   루트 hasInitialMeld 와 players[0].hasInitialMeld 를 모두 true 로 설정해야
+    //   확정 후 extend 시나리오가 올바르게 동작한다.
+    //   (GHOST-SC2 GREEN 전환 시 동일 패턴 적용 — 2026-04-26)
     store.setState({
       mySeat: 0,
       myTiles: args.rackTiles,
       hasInitialMeld: true, // 핵심: 확정 후
+      players: [
+        { seat: 0, type: "HUMAN", userId: "test-user", displayName: "Test", status: "CONNECTED", hasInitialMeld: true, tileCount: args.rackTiles.length },
+        { seat: 1, type: "AI_DEEPSEEK", persona: "rookie", difficulty: "beginner", psychologyLevel: 0, status: "READY", hasInitialMeld: true, tileCount: 14 },
+      ],
       pendingTableGroups: null,
       pendingMyTiles: null,
       pendingGroupIds: new Set<string>(),

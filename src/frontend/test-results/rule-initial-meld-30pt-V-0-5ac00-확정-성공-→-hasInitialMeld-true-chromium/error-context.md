@@ -5,32 +5,34 @@
   - alert [ref=e2]
   - generic [ref=e3]:
     - banner [ref=e4]:
-      - heading "Room b2358dd5" [level=1] [ref=e6]
+      - heading "Room 46905968" [level=1] [ref=e6]
       - timer "남은 시간 0초" [ref=e7]:
         - generic [ref=e9]: 0s
       - generic [ref=e10]:
         - button "턴 히스토리 패널 토글" [pressed] [ref=e11] [cursor=pointer]: 히스토리
         - generic [ref=e12]: "턴 #1"
     - generic "상대 플레이어" [ref=e13]:
-      - generic "shark (GPT-4o) 플레이어 카드" [ref=e15]:
+      - generic "DeepSeek (루키) 플레이어 카드" [ref=e15]:
         - generic [ref=e17]:
           - generic [ref=e18]: A
-          - generic "shark (GPT-4o)" [ref=e19]
+          - generic "DeepSeek (루키)" [ref=e19]
         - generic [ref=e20]:
           - generic "연결됨" [ref=e21]
           - generic [ref=e22]: 연결됨
         - generic [ref=e23]:
-          - generic "최초 등록 미완료" [ref=e24]
-          - generic [ref=e25]: 등록 전
+          - generic "최초 등록 완료" [ref=e24]
+          - generic [ref=e25]: 등록 완료
         - img "타일 14개" [ref=e27]:
           - generic [ref=e42]: "14"
-        - generic [ref=e45]: —
+        - generic [ref=e43]:
+          - generic [ref=e44]: 루키
+          - generic [ref=e45]: 하수
     - generic [ref=e46]:
       - complementary "내 정보 패널" [ref=e47]:
-        - generic "QA-테스터 플레이어 카드" [ref=e48]:
+        - generic "Test 플레이어 카드" [ref=e48]:
           - generic [ref=e50]:
             - generic [ref=e51]: H
-            - generic "QA-테스터" [ref=e52]
+            - generic "Test" [ref=e52]
             - generic [ref=e53]: 내 차례
           - generic [ref=e54]:
             - generic "연결됨" [ref=e55]

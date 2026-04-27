@@ -46,6 +46,7 @@ import { validatePendingBlock } from "@/components/game/GameBoard";
 import { detectDuplicateTileCodes } from "@/lib/tileStateHelpers";
 import type { GameOverPayload } from "@/types/websocket";
 import type { Player } from "@/types/game";
+import { dragEndReducer } from "@/lib/dragEnd/dragEndReducer";
 
 // ------------------------------------------------------------------
 // BUG-UI-005: 타일 목록으로 그룹/런 자동 분류
@@ -855,6 +856,31 @@ export default function GameClient({ roomId }: GameClientProps) {
           return;
         }
 
+        // A4/A8: table source → game-board/game-board-new-group → reducer 위임
+        if (over.id === "game-board" || over.id === "game-board-new-group") {
+          const result = dragEndReducer({
+            tableGroups: freshTableGroups,
+            myTiles: freshMyTiles,
+            pendingGroupIds: freshPendingGroupIds,
+            pendingRecoveredJokers: freshPendingRecoveredJokers,
+            hasInitialMeld: freshHasInitialMeld,
+            forceNewGroup: false,
+            pendingGroupSeq: pendingGroupSeqRef.current,
+          }, {
+            source: { kind: "table", groupId: dragSource.groupId, index: dragSource.index },
+            tileCode,
+            overId: String(over.id),
+            now: Date.now(),
+          });
+          if (!result.rejected) {
+            setPendingTableGroups(result.nextTableGroups);
+            setPendingMyTiles(result.nextMyTiles ?? freshMyTiles);
+            setPendingGroupIds(result.nextPendingGroupIds);
+            pendingGroupSeqRef.current = result.nextPendingGroupSeq;
+          }
+          return;
+        }
+
         // 테이블 → 다른 그룹 이동 (유형 3)
         if (!freshHasInitialMeld) return; // 최초 등록 전에는 재배치 금지
         const targetGroup = freshTableGroups.find((g) => g.id === over.id);
@@ -896,7 +922,7 @@ export default function GameClient({ roomId }: GameClientProps) {
         {
           const nextGroupIdSet = new Set(nextTableGroups.map((g) => g.id));
           const updatedPendingIds = new Set(
-            [...freshPendingGroupIds, targetGroup.id].filter((id) => nextGroupIdSet.has(id))
+            [...freshPendingGroupIds, sourceGroup.id, targetGroup.id].filter((id) => nextGroupIdSet.has(id))
           );
           setPendingGroupIds(updatedPendingIds);
         }

@@ -14,27 +14,9 @@
  */
 
 import { describe, it, expect, beforeEach } from "@jest/globals";
-import type { TileCode, TableGroup } from "@/types/tile";
-import { pendingGroup, serverGroup, resetGroupSeq } from "../test-helpers";
-
-/**
- * canConfirmTurn 순수 함수 시그니처 (RED spec)
- * 실제 구현은 frontend-dev PR-D04 에서 채운다.
- */
-interface ConfirmTurnInput {
-  pendingTableGroups: TableGroup[];
-  pendingGroupIds: Set<string>;
-  hasInitialMeld: boolean;
-  pendingRecoveredJokers: TileCode[];
-  /** 이번 턴에 랙에서 보드로 추가한 타일 수 */
-  tilesAddedCount: number;
-}
-
-// TODO: frontend-dev PR-D04 에서 구현 후 import 경로 교체
-function canConfirmTurn(_input: ConfirmTurnInput): { enabled: boolean; reason?: string } {
-  // RED stub
-  return { enabled: false, reason: "NOT_IMPLEMENTED" };
-}
+import type { TileCode } from "@/types/tile";
+import { pendingGroup, resetGroupSeq } from "../test-helpers";
+import { canConfirmTurn } from "@/lib/turnUtils";
 
 describe("[A14] [UR-15] ConfirmTurn (S5/S6 -> S7)", () => {
   beforeEach(() => resetGroupSeq());

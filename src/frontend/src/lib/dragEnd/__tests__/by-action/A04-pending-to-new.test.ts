@@ -1,16 +1,15 @@
 /**
- * A4 -- pending -> 새 그룹 (split via new)
+ * A4 -- pending -> 새 그룹 (split)
  *
  * SSOT 매핑:
  * - 56 section 3.5 셀: A4 (PENDING_BOARD -> NEW_GROUP)
  * - 룰 ID: UR-11, V-13b, D-01, D-12, V-02, UR-20
  *
- * NOTE: dragEndReducer 의 table 분기에서 overId="game-board-new-group" 는
- *       실제 그룹 ID 가 아니므로 target-not-found 로 거절된다.
- *       pending tile split(새 그룹 생성)은:
- *       1) table(pending) -> player-rack 회수 후
- *       2) rack -> game-board-new-group 로 수행한다 (2-step).
- *       본 테스트는 각 단계를 개별 검증한다.
+ * NOTE: dragEndReducer 의 table 분기에서 overId="game-board-new-group" 은
+ *       직접 split 을 지원한다 (A4/A8 분기).
+ *       pending tile split 은 단일 드래그로 수행 가능:
+ *         table(pending) -> game-board-new-group → SPLIT_PENDING_GROUP
+ *       본 테스트는 단일-step 직접 split 과 2-step 경로를 모두 검증한다.
  */
 
 import { describe, it, expect, beforeEach } from "@jest/globals";
@@ -30,8 +29,8 @@ import {
 describe("[A4] [V-13b] pending -> new group (split)", () => {
   beforeEach(() => resetGroupSeq());
 
-  describe("[A4.1] table -> game-board-new-group = target-not-found (reducer 제약)", () => {
-    it("pending tile 을 game-board-new-group 에 drop -> target-not-found 거절", () => {
+  describe("[A4.1] [V-13b] table -> game-board-new-group = 직접 split (SPLIT_PENDING_GROUP)", () => {
+    it("pending tile 을 game-board-new-group 에 drop -> 새 그룹 분리 허용", () => {
       const pg = pendingGroup(["R7a", "B7a", "Y7a"] as TileCode[], "group");
       const pendingIds = new Set([pg.id]);
 
@@ -42,11 +41,24 @@ describe("[A4] [V-13b] pending -> new group (split)", () => {
         tableGroups: [pg],
         myTiles: [],
         pendingGroupIds: pendingIds,
+        pendingGroupSeq: 100, // ID 충돌 방지 (pendingGroup 팩토리 seq=1과 구분)
       });
       const output = dragEndReducer(state, input);
 
-      // table source 에서 game-board-new-group 은 target-not-found
-      expectRejected(output, "target-not-found");
+      // 직접 split 허용
+      expectAccepted(output);
+      expect(output.action).toBe("SPLIT_PENDING_GROUP");
+      // 새 그룹 생성 (tiles = [tileCode])
+      const newGroup = output.nextTableGroups!.find((g) => g.id !== pg.id);
+      expect(newGroup).toBeDefined();
+      expect(newGroup!.tiles).toEqual(["R7a"]);
+      // source 그룹 축소 (R7a 제거)
+      const srcGroup = output.nextTableGroups!.find((g) => g.id === pg.id);
+      expect(srcGroup).toBeDefined();
+      expect(srcGroup!.tiles).not.toContain("R7a");
+      expect(srcGroup!.tiles.length).toBe(2);
+      // INV-G2: 중복 없음
+      expectNoDuplicateTiles(output.nextTableGroups!);
     });
   });
 
