@@ -18,6 +18,7 @@ data:
   CLAUDE_DEFAULT_MODEL: {{ .Values.env.CLAUDE_DEFAULT_MODEL | quote }}
   CLAUDE_EXTENDED_THINKING: {{ .Values.env.CLAUDE_EXTENDED_THINKING | quote }}
   DEEPSEEK_DEFAULT_MODEL: {{ .Values.env.DEEPSEEK_DEFAULT_MODEL | quote }}
+  DEEPSEEK_V4_THINKING_MODE: {{ .Values.env.DEEPSEEK_V4_THINKING_MODE | quote }}
   REDIS_HOST: {{ .Values.env.REDIS_HOST | quote }}
   REDIS_PORT: {{ .Values.env.REDIS_PORT | quote }}
   DAILY_COST_LIMIT_USD: {{ .Values.env.DAILY_COST_LIMIT_USD | quote }}

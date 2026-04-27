@@ -19,7 +19,11 @@ env:
   OPENAI_DEFAULT_MODEL: "gpt-5-mini"
   CLAUDE_DEFAULT_MODEL: "claude-sonnet-4-20250514"
   CLAUDE_EXTENDED_THINKING: "true"
-  DEEPSEEK_DEFAULT_MODEL: "deepseek-reasoner"
+  DEEPSEEK_DEFAULT_MODEL: "deepseek-v4-flash"
+  # V4 모델 thinking 모드 옵션 (기본 false = non-thinking, response_format: json_object 사용)
+  # true 설정 시: thinking: { type: "enabled", budget_tokens: 8192 } 활성화
+  # 활성화: kubectl -n rummikub set env deployment/ai-adapter DEEPSEEK_V4_THINKING_MODE=true
+  DEEPSEEK_V4_THINKING_MODE: "false"
   REDIS_HOST: "redis"
   REDIS_PORT: "6379"
   DAILY_COST_LIMIT_USD: "20"

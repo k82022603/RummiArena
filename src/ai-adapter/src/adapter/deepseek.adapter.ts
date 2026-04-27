@@ -21,21 +21,31 @@ import {
 /**
  * DeepSeek 어댑터.
  * OpenAI 호환 API 를 사용하므로 openai.adapter.ts 와 구조가 유사하다.
- * 기본 모델: deepseek-chat (비용 효율적)
+ * 기본 모델: deepseek-v4-flash (V4-Flash, non-thinking 우선)
  *
- * deepseek-reasoner 사용 시:
- *   - PromptRegistry 가 'deepseek-reasoner' 매핑 → 기본 'v3' (★ SP3 behavior change, 이전 v2 하드코딩)
- *     환경변수 PROMPT_VARIANT 또는 DEEPSEEK_REASONER_PROMPT_VARIANT 로 override 가능
- *   - reasoning_content 필드 파싱 + extractBestJson() 다단계 JSON 복구
- *   - temperature=0 고정
+ * 모델별 동작:
+ *   - deepseek-v4-flash / deepseek-v4-pro (V4):
+ *     기본: non-thinking 모드 → response_format: json_object 지원, temperature 제어 가능
+ *     옵션: DEEPSEEK_V4_THINKING_MODE=true → thinking: { type: "enabled", budget_tokens: 8192 }
+ *           thinking 모드 시 reasoning_content 파싱 + extractBestJson() 다단계 JSON 복구
+ *
+ *   - deepseek-reasoner (R1):
+ *     항상 thinking 모드 → reasoning_content 파싱 + extractBestJson() + temperature=0 고정
+ *     타임아웃 최소 1800초 적용
+ *
+ *   - deepseek-chat:
+ *     표준 chat 모드 → response_format: json_object 지원, temperature 제어 가능
  *
  * Registry 가 주입되지 않은 경우 (legacy spec): V2 하드코딩 경로 유지 — 기존 테스트 호환.
+ * 운영 기준: docs/02-design/42-prompt-variant-standard.md §2 표 B
  */
 @Injectable()
 export class DeepSeekAdapter extends BaseAdapter {
   private readonly apiKey: string;
   private readonly defaultModel: string;
   private readonly baseUrl = 'https://api.deepseek.com/v1';
+
+  private readonly v4ThinkingMode: boolean;
 
   constructor(
     promptBuilder: PromptBuilderService,
@@ -47,17 +57,38 @@ export class DeepSeekAdapter extends BaseAdapter {
     this.apiKey = this.configService.get<string>('DEEPSEEK_API_KEY', '');
     this.defaultModel = this.configService.get<string>(
       'DEEPSEEK_DEFAULT_MODEL',
-      'deepseek-chat',
+      'deepseek-v4-flash',
     );
+    this.v4ThinkingMode =
+      this.configService.get<string>('DEEPSEEK_V4_THINKING_MODE', 'false') ===
+      'true';
   }
 
   protected getRegistryModelType(): RegistryModelType {
     return this.isReasoner ? 'deepseek-reasoner' : 'deepseek';
   }
 
-  /** reasoner 모델 여부를 판별한다 */
+  /** reasoner 모델 여부를 판별한다 (deepseek-reasoner / R1) */
   private get isReasoner(): boolean {
     return this.defaultModel.includes('reasoner');
+  }
+
+  /**
+   * V4 모델 여부를 판별한다 (deepseek-v4-flash / deepseek-v4-pro).
+   * V4는 기본이 non-thinking이며, DEEPSEEK_V4_THINKING_MODE=true 로 thinking 모드 전환 가능.
+   */
+  private get isV4(): boolean {
+    return this.defaultModel.startsWith('deepseek-v4-');
+  }
+
+  /**
+   * thinking 모드로 동작하는지 판별한다.
+   * - reasoner: 항상 thinking
+   * - V4 + DEEPSEEK_V4_THINKING_MODE=true: thinking
+   * - 그 외: non-thinking (표준 chat)
+   */
+  private get isThinkingMode(): boolean {
+    return this.isReasoner || (this.isV4 && this.v4ThinkingMode);
   }
 
   getModelInfo(): ModelInfo {
@@ -81,16 +112,17 @@ export class DeepSeekAdapter extends BaseAdapter {
   }
 
   /**
-   * DeepSeek Reasoner 는 generateMove 를 오버라이드하여
+   * DeepSeek Reasoner 와 V4 thinking 모드에서 generateMove 를 오버라이드하여
    * 전용 프롬프트와 향상된 파싱 로직을 적용한다.
    *
-   * 프롬프트 선택:
-   *   - PromptRegistry 가 주입된 경우: registry.resolve('deepseek-reasoner') 로 PromptVariant 획득
-   *     (default-recommendation: 'v3', 환경변수로 override 가능)
-   *   - 미주입 경우: V2 하드코딩 (legacy spec 호환)
+   * - non-thinking 모드 (V4 기본, deepseek-chat): super.generateMove() 위임
+   * - thinking 모드 (reasoner 항상, V4 + DEEPSEEK_V4_THINKING_MODE=true):
+   *   프롬프트 선택:
+   *     - PromptRegistry 가 주입된 경우: registry.resolve('deepseek-reasoner') 로 PromptVariant 획득
+   *     - 미주입 경우: V2 하드코딩 (legacy spec 호환)
    */
   async generateMove(request: MoveRequestDto): Promise<MoveResponseDto> {
-    if (!this.isReasoner) {
+    if (!this.isThinkingMode) {
       return super.generateMove(request);
     }
 
@@ -107,8 +139,11 @@ export class DeepSeekAdapter extends BaseAdapter {
 
     for (let attempt = 0; attempt < request.maxRetries; attempt++) {
       if (attempt > 0) {
+        const retryModeLabel = this.isReasoner
+          ? 'DeepSeek-Reasoner'
+          : 'DeepSeek-V4-Thinking';
         this.logger.log(
-          `[DeepSeek-Reasoner] 재시도 대기 (attempt=${attempt + 1})`,
+          `[${retryModeLabel}] 재시도 대기 (attempt=${attempt + 1})`,
         );
         await this.backoff(attempt);
       }
@@ -126,8 +161,11 @@ export class DeepSeekAdapter extends BaseAdapter {
           ? buildV2UserPrompt(request.gameState)
           : buildV2RetryPrompt(request.gameState, lastErrorReason, attempt);
 
+      const modeLabel = this.isReasoner
+        ? 'DeepSeek-Reasoner'
+        : 'DeepSeek-V4-Thinking';
       this.logger.log(
-        `[DeepSeek-Reasoner] gameId=${request.gameId} attempt=${attempt + 1}/${request.maxRetries} variant=${variant?.id ?? 'v2-legacy'}`,
+        `[${modeLabel}] gameId=${request.gameId} attempt=${attempt + 1}/${request.maxRetries} variant=${variant?.id ?? 'v2-legacy'}`,
       );
 
       try {
@@ -135,7 +173,7 @@ export class DeepSeekAdapter extends BaseAdapter {
           systemPrompt,
           userPrompt,
           request.timeoutMs,
-          0, // reasoner는 temperature=0 고정
+          0, // thinking 모드는 temperature=0 고정 (API에서 무시되더라도 명시)
         );
 
         const latencyMs = Date.now() - attemptStartTime;
@@ -156,19 +194,19 @@ export class DeepSeekAdapter extends BaseAdapter {
 
         if (parseResult.success && parseResult.response) {
           this.logger.log(
-            `[DeepSeek-Reasoner] 성공 action=${parseResult.response.action} latencyMs=${latencyMs}`,
+            `[${modeLabel}] 성공 action=${parseResult.response.action} latencyMs=${latencyMs}`,
           );
           return parseResult.response;
         }
 
         lastErrorReason = parseResult.errorReason ?? '알 수 없는 파싱 오류';
         this.logger.warn(
-          `[DeepSeek-Reasoner] attempt=${attempt + 1} 파싱 실패: ${lastErrorReason}`,
+          `[${modeLabel}] attempt=${attempt + 1} 파싱 실패: ${lastErrorReason}`,
         );
       } catch (err) {
         lastErrorReason = (err as Error).message;
         this.logger.error(
-          `[DeepSeek-Reasoner] attempt=${attempt + 1} LLM 호출 오류: ${lastErrorReason}`,
+          `[${modeLabel}] attempt=${attempt + 1} LLM 호출 오류: ${lastErrorReason}`,
         );
       }
     }
@@ -196,24 +234,36 @@ export class DeepSeekAdapter extends BaseAdapter {
     promptTokens: number;
     completionTokens: number;
   }> {
-    const isReasoner = this.isReasoner;
+    const thinkingMode = this.isThinkingMode;
 
-    // deepseek-reasoner는 response_format: json_object를 지원하지 않는다
     const body: Record<string, unknown> = {
       model: this.defaultModel,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
-      max_tokens: isReasoner ? 16384 : 1024,
+      max_tokens: thinkingMode ? 16384 : 1024,
     };
 
-    if (isReasoner) {
-      // reasoner: temperature 파라미터 자체를 보내지 않음 (API 호환)
+    if (thinkingMode) {
+      // thinking 모드 (reasoner 항상, V4 opt-in):
+      //   - temperature 파라미터를 보내지 않음 (API 호환)
+      //   - response_format 미지원
+      //   - V4 thinking 활성화 파라미터 (reasoner는 불필요 — 항상 thinking)
+      if (this.isV4 && this.v4ThinkingMode) {
+        body.thinking = { type: 'enabled', budget_tokens: 8192 };
+      }
     } else {
+      // non-thinking 모드 (deepseek-chat, V4 기본, V4-Pro):
+      //   - response_format: json_object 지원 → JSON 파싱 신뢰도 향상
+      //   - temperature 제어 가능
       body.temperature = temperature;
       body.response_format = { type: 'json_object' };
     }
+
+    // reasoner 전용 최소 타임아웃 1800초. V4는 응답이 빠르므로 적용하지 않는다.
+    const effectiveTimeout =
+      this.isReasoner ? Math.max(timeoutMs, 1_800_000) : timeoutMs;
 
     const response = await axios.post(
       `${this.baseUrl}/chat/completions`,
@@ -223,14 +273,15 @@ export class DeepSeekAdapter extends BaseAdapter {
           Authorization: `Bearer ${this.apiKey}`,
           'Content-Type': 'application/json',
         },
-        timeout: isReasoner ? Math.max(timeoutMs, 1_800_000) : timeoutMs,
+        timeout: effectiveTimeout,
       },
     );
 
     const choice = response.data.choices[0];
     const usage = response.data.usage;
     const content = (choice.message.content as string) ?? '';
-    const reasoningContent = (choice.message.reasoning_content as string) ?? '';
+    const reasoningContent =
+      (choice.message.reasoning_content as string) ?? '';
 
     if (reasoningContent) {
       this.logger.debug(
@@ -238,9 +289,9 @@ export class DeepSeekAdapter extends BaseAdapter {
       );
     }
 
-    // 향상된 JSON 추출 전략 (reasoner 전용)
+    // thinking 모드에서는 extractBestJson으로 다단계 JSON 복구
     let finalContent = content;
-    if (isReasoner) {
+    if (thinkingMode) {
       finalContent = this.extractBestJson(content, reasoningContent);
     }
 

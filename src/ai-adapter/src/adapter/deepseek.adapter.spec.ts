@@ -112,6 +112,23 @@ const makeReasonerResponse = (
   status: 200,
 });
 
+/** deepseek-v4-flash 어댑터 생성 헬퍼 (non-thinking 기본 모드) */
+const makeV4FlashAdapter = (thinkingMode = false) => {
+  const promptBuilder = new PromptBuilderService();
+  const responseParser = new ResponseParserService();
+  const configService = {
+    get: jest.fn((key: string, defaultValue?: string) => {
+      const config: Record<string, string> = {
+        DEEPSEEK_API_KEY: 'test-deepseek-key',
+        DEEPSEEK_DEFAULT_MODEL: 'deepseek-v4-flash',
+        DEEPSEEK_V4_THINKING_MODE: thinkingMode ? 'true' : 'false',
+      };
+      return config[key] ?? defaultValue;
+    }),
+  } as unknown as ConfigService;
+  return new DeepSeekAdapter(promptBuilder, responseParser, configService);
+};
+
 /** deepseek-chat 어댑터 생성 헬퍼 (향후 chat 모델 테스트용) */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const makeChatAdapter = () => {
@@ -184,7 +201,7 @@ describe('DeepSeekAdapter', () => {
       expect(info.baseUrl).toContain('deepseek.com');
     });
 
-    it('환경변수 미설정 시 기본값(deepseek-chat)을 반환한다', () => {
+    it('환경변수 미설정 시 기본값(deepseek-v4-flash)을 반환한다', () => {
       const configWithDefaults = {
         get: jest.fn((key: string, defaultValue?: string) => defaultValue),
       } as unknown as ConfigService;
@@ -195,7 +212,7 @@ describe('DeepSeekAdapter', () => {
       );
 
       const info = adapterWithDefaults.getModelInfo();
-      expect(info.modelName).toBe('deepseek-chat');
+      expect(info.modelName).toBe('deepseek-v4-flash');
     });
   });
 
@@ -1085,6 +1102,101 @@ describe('DeepSeekAdapter', () => {
         // 30점 미만 예시
         expect(systemContent).toContain('1+2+3 = 6');
       });
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // V4-Flash 모드 테스트
+  // -----------------------------------------------------------------------
+  describe('V4-Flash 모드 (deepseek-v4-flash)', () => {
+    let v4Adapter: DeepSeekAdapter;
+
+    beforeEach(() => {
+      v4Adapter = makeV4FlashAdapter();
+      jest.clearAllMocks();
+      jest.spyOn(v4Adapter as any, 'backoff').mockResolvedValue(undefined);
+    });
+
+    it('getModelInfo()가 modelName=deepseek-v4-flash를 반환한다', () => {
+      const info = v4Adapter.getModelInfo();
+
+      expect(info.modelType).toBe('deepseek');
+      expect(info.modelName).toBe('deepseek-v4-flash');
+      expect(info.baseUrl).toContain('deepseek.com');
+    });
+
+    it('V4-Flash non-thinking 모드: 요청 바디에 response_format: json_object가 포함된다', async () => {
+      const content = JSON.stringify({ action: 'draw', reasoning: 'no combo' });
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(makeDeepSeekResponse(content));
+
+      await v4Adapter.generateMove(makeMoveRequest());
+
+      const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
+      expect(body.response_format).toEqual({ type: 'json_object' });
+      expect(body.thinking).toBeUndefined();
+    });
+
+    it('V4-Flash non-thinking 모드: temperature가 요청 바디에 포함된다', async () => {
+      const content = JSON.stringify({ action: 'draw', reasoning: 'no combo' });
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(makeDeepSeekResponse(content));
+
+      await v4Adapter.generateMove(makeMoveRequest({ difficulty: 'expert' }));
+
+      const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
+      expect(body.temperature).toBe(0.3);
+    });
+
+    it('V4-Flash non-thinking 모드: axios 타임아웃이 1800초 하한선 없이 timeoutMs를 그대로 사용한다', async () => {
+      const content = JSON.stringify({ action: 'draw' });
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(makeDeepSeekResponse(content));
+
+      await v4Adapter.generateMove(makeMoveRequest({ timeoutMs: 30000 }));
+
+      const [, , config] = (mockedAxios.post as jest.Mock).mock.calls[0];
+      // V4 non-thinking은 reasoner 전용 1800초 하한 미적용
+      expect(config.timeout).toBe(30000);
+    });
+
+    it('V4-Flash non-thinking 모드: JSON 직접 파싱 성공 시 action=draw를 반환한다', async () => {
+      const content = JSON.stringify({
+        action: 'draw',
+        reasoning: 'V4 no valid combination',
+      });
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(makeDeepSeekResponse(content));
+
+      const response = await v4Adapter.generateMove(makeMoveRequest());
+
+      expect(response.action).toBe('draw');
+      expect(response.metadata.modelType).toBe('deepseek');
+      expect(response.metadata.modelName).toBe('deepseek-v4-flash');
+      expect(response.metadata.isFallbackDraw).toBe(false);
+    });
+
+    it('V4-Flash thinking 모드: DEEPSEEK_V4_THINKING_MODE=true 시 thinking 파라미터가 포함된다', async () => {
+      const thinkingV4Adapter = makeV4FlashAdapter(true);
+      jest
+        .spyOn(thinkingV4Adapter as any, 'backoff')
+        .mockResolvedValue(undefined);
+
+      const content = JSON.stringify({ action: 'draw', reasoning: 'thinking' });
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(makeReasonerResponse(content, 'thought...'));
+
+      await thinkingV4Adapter.generateMove(makeMoveRequest());
+
+      const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
+      expect(body.thinking).toEqual({ type: 'enabled', budget_tokens: 8192 });
+      expect(body.response_format).toBeUndefined();
+      expect(body.temperature).toBeUndefined();
     });
   });
 });
