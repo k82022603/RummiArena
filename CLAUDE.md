@@ -118,23 +118,25 @@ AI 플레이어는 난이도(하수/중수/고수)와 캐릭터(Rookie, Calculat
 }
 ```
 
-## Agent Model Policy (2026-04-17 갱신)
+## Agent Model Policy (2026-04-27 갱신)
 
-에이전트별 모델은 작업 특성에 따라 분리한다. Claude Code 메인 세션 및 Opus 유지 에이전트들은 **Opus 4.7 xhigh** 를 사용한다.
+에이전트별 모델은 작업 특성에 따라 분리한다. Opus 에이전트는 `effort: high`를 표준으로 사용한다 (`work_logs/decisions/2026-04-27-adr-agent-effort-high.md`).
 
-| 구분 | Model | 에이전트 | 사유 |
-|------|-------|---------|------|
-| 메인 세션 | **Opus 4.7 xhigh** | Claude Code | 전반적 추론·의사결정 |
-| 추론·전략 | **Opus 4.7 xhigh** | architect, ai-engineer, security, pm, qa | 설계·보안 판단·프롬프트 엔지니어링·전략적 의사결정·검증 게이트 |
-| 구현·설정 | `claude-sonnet-4-6` | go-dev, node-dev, frontend-dev, devops, designer | 정형화된 코드 구현·인프라 설정·UI 작업 (비용 최적화) |
+| 구분 | Model | Effort | 에이전트 | 사유 |
+|------|-------|--------|---------|------|
+| 메인 세션 | **Opus** | (세션 기본값) | Claude Code | 전반적 추론·의사결정 |
+| 추론·전략 | **Opus** | **high** | architect, ai-engineer, game-analyst, security, pm, qa | 설계·보안·분석·검증 (high로 충분, xhigh는 토큰 낭비) |
+| 구현·설정 | `claude-sonnet-4-6` | (기본값) | go-dev, node-dev, frontend-dev, devops, designer | 정형화된 코드 구현·인프라 설정·UI 작업 (비용 최적화) |
 
 ### 이력
 - **2026-03-30**: 전 에이전트 sonnet → opus 일괄 승격
-- **2026-04-17**: 구현 중심 5개 에이전트 opus → `claude-sonnet-4-6` 다운시프트. 추론/전략 5개 에이전트 + 메인 세션은 **Opus 4.7 xhigh** 로 명시
+- **2026-04-17**: 구현 중심 5개 에이전트 opus → `claude-sonnet-4-6` 다운시프트. 추론/전략 에이전트 + 메인 세션은 Opus 유지
+- **2026-04-27**: Opus 6개 에이전트 `effort: high` 명시. xhigh → high 다운시프트 (`work_logs/decisions/2026-04-27-adr-agent-effort-high.md`, 블로그 실증 근거: 과도한 effort는 집중력 분산 + 토큰 낭비)
 
 ### 운영 원칙
-- 모델 변경 시 `.claude/agents/{name}-agent.md` frontmatter `model:` 필드에 이력 주석 필수
-- "xhigh" = Extended Thinking High budget. 복잡한 추론을 요하는 세션에서 사용
+- 모델/effort 변경 시 `.claude/agents/{name}-agent.md` frontmatter에 이력 주석 필수
+- `effort: high` = "거의 항상 사고 활성화". 에이전트 업무 대부분을 커버
+- 특수 작업(미해결 디버깅, 보안 감사)에서 higher effort 필요 시 dispatch 시점에 override
 - 구현 작업 중 설계 의사결정이 필요하면 architect/ai-engineer 에이전트로 위임
 
 ## Git Commit Policy

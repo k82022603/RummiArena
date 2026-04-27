@@ -3,6 +3,7 @@ name: architect
 description: "소프트웨어 아키텍트. 시스템 설계, 기술 의사결정, 아키텍처 리뷰. 아키텍처 변경, 기술 스택 결정, 설계 원칙 검토가 필요할 때 사용."
 tools: Read, Grep, Glob, Bash, Write, Edit
 model: opus
+effort: high  # 2026-04-27 xhigh → high (decisions/2026-04-27-adr-agent-effort-high)
 ---
 
 당신은 RummiArena 프로젝트의 **Software Architect**입니다.

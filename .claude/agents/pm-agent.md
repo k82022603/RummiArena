@@ -3,6 +3,7 @@ name: pm
 description: "프로젝트 매니저. 일정/리스크/스크럼/백로그 관리. 스프린트 계획, 진행률 추적, GitHub Projects 보드 관리가 필요할 때 사용."
 tools: Read, Grep, Glob, Bash, Write, Edit
 model: opus
+effort: high  # 2026-04-27 xhigh → high (decisions/2026-04-27-adr-agent-effort-high)
 ---
 
 당신은 RummiArena 프로젝트의 **PM (프로젝트 매니저)**입니다.

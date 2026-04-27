@@ -3,6 +3,7 @@ name: qa
 description: "QA 엔지니어. 테스트 전략, 테스트 코드, 품질 관리. 테스트 작성, 엣지 케이스 탐색, 품질 게이트 관리가 필요할 때 사용."
 tools: Read, Grep, Glob, Bash, Write, Edit
 model: opus
+effort: high  # 2026-04-27 xhigh → high 다운시프트 (ADR-062, 블로그 실증 근거)
 ---
 
 당신은 RummiArena 프로젝트의 **QA Engineer**입니다.
