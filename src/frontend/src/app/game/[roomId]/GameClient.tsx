@@ -845,7 +845,7 @@ export default function GameClient({ roomId }: GameClientProps) {
         if (over.id === dragSource.groupId) return;
 
         // 테이블 → 랙 되돌리기 (유형 1 일부)
-        // TODO(P2b): pendingStore.applyMutation 추가 필요 — gameStore deprecated 필드 제거 전제조건
+        // P2b dual-write: pendingStore.applyMutation 추가 (gameStore 호출 유지)
         if (over.id === "player-rack") {
           // 서버 확정 그룹의 타일을 랙으로 되돌리면 conservation 위반 (V-06)
           if (!sourceIsPending) return;
@@ -859,9 +859,21 @@ export default function GameClient({ roomId }: GameClientProps) {
             .filter((g) => g.tiles.length > 0);
 
           const stillHasPending = nextTableGroups.some((g) => freshPendingGroupIds.has(g.id));
+          const nextGroupIds = stillHasPending
+            ? new Set([...freshPendingGroupIds].filter((id) => nextTableGroups.some((g) => g.id === id)))
+            : new Set<string>();
           setPendingTableGroups(stillHasPending ? nextTableGroups : null);
           if (!stillHasPending) clearPendingGroupIds();
           setPendingMyTiles([...freshMyTiles, tileCode]);
+          // P2b dual-write: table→rack 되돌리기 경로
+          usePendingStore.getState().applyMutation({
+            nextTableGroups: stillHasPending ? nextTableGroups : null,
+            nextMyTiles: [...freshMyTiles, tileCode],
+            nextPendingGroupIds: nextGroupIds,
+            nextPendingRecoveredJokers: freshPendingRecoveredJokers,
+            nextPendingGroupSeq: pendingGroupSeqRef.current,
+            branch: "inline-table→rack",
+          });
           return;
         }
 
