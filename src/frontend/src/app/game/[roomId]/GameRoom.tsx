@@ -28,7 +28,6 @@
 
 // L2 hooks
 import { useDragHandlers } from "@/hooks/useDragHandlers";
-import { useTurnActions } from "@/hooks/useTurnActions";
 import { useGameSync } from "@/hooks/useGameSync";
 import { useInitialMeldGuard } from "@/hooks/useInitialMeldGuard";
 import { useTurnTimer } from "@/hooks/useTurnTimer";
@@ -89,11 +88,10 @@ export default function GameRoom({ roomId }: GameRoomProps) {
   const _dragHandlers = useDragHandlers();
   void _dragHandlers;
 
-  // F-09/F-11: 턴 액션 준비
-  // GameClient 내부에서 registerWSSendBridge 후 이 hook의 handleConfirm/handleDraw가 동작한다.
-  // Phase 3에서는 GameClient의 기존 handleConfirm/handleDraw와 공존.
-  const _turnActions = useTurnActions();
-  void _turnActions;
+  // F-09/F-11: 턴 액션 (useTurnActions)은 GameClient 내부에서 직접 호출한다.
+  // GameClient가 WS 브릿지 등록(registerWSSendBridge) 이후에 useTurnActions()를 호출하므로
+  // 이 컴포넌트에서 중복 인스턴스를 생성할 필요가 없다.
+  // Phase 4에서 GameRoom이 turnActions를 props로 내려주는 방식으로 전환할 때 이 주석을 제거한다.
 
   // F-04/F-17: hasInitialMeld SSOT 단일화 (InitialMeldBanner/GroupDropZone 연결 준비)
   const _meldGuard = useInitialMeldGuard();

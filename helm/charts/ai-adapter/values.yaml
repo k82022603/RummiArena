@@ -20,10 +20,9 @@ env:
   CLAUDE_DEFAULT_MODEL: "claude-sonnet-4-20250514"
   CLAUDE_EXTENDED_THINKING: "true"
   DEEPSEEK_DEFAULT_MODEL: "deepseek-v4-flash"
-  # V4 모델 thinking 모드 옵션 (기본 false = non-thinking, response_format: json_object 사용)
-  # true 설정 시: thinking: { type: "enabled", budget_tokens: 8192 } 활성화
-  # 활성화: kubectl -n rummikub set env deployment/ai-adapter DEEPSEEK_V4_THINKING_MODE=true
-  DEEPSEEK_V4_THINKING_MODE: "false"
+  # V4-Pro thinking 채택 (2026-04-28, place 31.9%, fallback 0)
+  # true: thinking: { type: "enabled" } + reasoning_effort: "high"
+  DEEPSEEK_V4_THINKING_MODE: "true"
   REDIS_HOST: "redis"
   REDIS_PORT: "6379"
   DAILY_COST_LIMIT_USD: "20"
@@ -37,11 +36,11 @@ env:
   # 활성화: kubectl -n rummikub set env deployment/ai-adapter OLLAMA_PROMPT_VARIANT=v7-ollama-meld
   PROMPT_VARIANT: ""
   OPENAI_PROMPT_VARIANT: ""
-  CLAUDE_PROMPT_VARIANT: ""
+  CLAUDE_PROMPT_VARIANT: "v4"
   DEEPSEEK_PROMPT_VARIANT: ""
-  DEEPSEEK_REASONER_PROMPT_VARIANT: ""
-  DASHSCOPE_PROMPT_VARIANT: ""
-  OLLAMA_PROMPT_VARIANT: ""
+  DEEPSEEK_REASONER_PROMPT_VARIANT: "v2"
+  DASHSCOPE_PROMPT_VARIANT: "v4"
+  OLLAMA_PROMPT_VARIANT: "v7-ollama-meld"
   # ContextShaper 설정 (docs/02-design/44 §6.3)
   # 기본값 passthrough = v2 동작 그대로 보존
   # Phase 4 실측: kubectl set env deploy/ai-adapter -n rummikub DEEPSEEK_REASONER_CONTEXT_SHAPER=joker-hinter

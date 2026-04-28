@@ -1,7 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { registerWSSendBridge, unregisterWSSendBridge } from "@/hooks/useTurnActions";
+import {
+  registerWSSendBridge,
+  unregisterWSSendBridge,
+  useTurnActions,
+} from "@/hooks/useTurnActions";
 import {
   DndContext,
   DragEndEvent,
@@ -461,6 +465,13 @@ export default function GameClient({ roomId }: GameClientProps) {
       unregisterWSSendBridge();
     };
   }, [send]);
+
+  // useTurnActions — confirmEnabled / resetEnabled / drawEnabled 를 ActionBar에 연결
+  // WS 브릿지 등록(위 useEffect) 이후에 선언한다.
+  // GameRoom은 중복 호출을 제거하고 이 컴포넌트에서 단일 인스턴스로 관리한다.
+  // Phase 4에서 GameRoom이 turnActions를 props로 내려주는 방식으로 전환할 때
+  // 이 줄을 제거하고 props에서 수신한다.
+  const turnActions = useTurnActions();
 
   // G-B Phase E: pendingStore 브릿지 연결 (F17-SC1, GHOST-SC2)
   // GameClient가 pendingStore를 소비하고 있음을 표시한다.
@@ -1841,6 +1852,9 @@ export default function GameClient({ roomId }: GameClientProps) {
                 onUndo={handleUndo}
                 onConfirm={handleConfirm}
                 onPass={handlePass}
+                confirmEnabled={turnActions.confirmEnabled}
+                resetEnabled={turnActions.resetEnabled}
+                drawEnabled={turnActions.drawEnabled}
               />
             </div>
           </main>

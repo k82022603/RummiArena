@@ -176,6 +176,120 @@ describe("ActionBar — confirmBusy (Issue #48 in-flight lock)", () => {
   });
 });
 
+describe("ActionBar — Phase 3 확정/초기화/드로우 prop 직접 제공 (useTurnActions 연결)", () => {
+  it("confirmEnabled=true prop 제공 시 확정 버튼 활성", () => {
+    render(
+      <ActionBar
+        isMyTurn={true}
+        hasPending={false}
+        allGroupsValid={false}
+        onDraw={noop}
+        onUndo={noop}
+        onConfirm={noop}
+        confirmEnabled={true}
+      />
+    );
+    // fallback(hasPending=false, allGroupsValid=false)이면 비활성이지만
+    // confirmEnabled=true 우선 적용 → 활성
+    expect(screen.getByRole("button", { name: /확정/ })).toBeEnabled();
+  });
+
+  it("confirmEnabled=false prop 제공 시 확정 버튼 비활성 (기존 hasPending=true와 무관)", () => {
+    render(
+      <ActionBar
+        isMyTurn={true}
+        hasPending={true}
+        allGroupsValid={true}
+        onDraw={noop}
+        onUndo={noop}
+        onConfirm={noop}
+        confirmEnabled={false}
+      />
+    );
+    // fallback(hasPending=true, allGroupsValid=true)이면 활성이지만
+    // confirmEnabled=false 우선 적용 → 비활성
+    expect(screen.getByRole("button", { name: /확정/ })).toBeDisabled();
+  });
+
+  it("confirmEnabled=true + confirmBusy=true → 확정 비활성 (in-flight 잠금 우선)", () => {
+    render(
+      <ActionBar
+        isMyTurn={true}
+        hasPending={true}
+        allGroupsValid={true}
+        confirmBusy={true}
+        onDraw={noop}
+        onUndo={noop}
+        onConfirm={noop}
+        confirmEnabled={true}
+      />
+    );
+    expect(screen.getByRole("button", { name: /확정/ })).toBeDisabled();
+  });
+
+  it("resetEnabled=true prop 제공 시 초기화 버튼 활성 (hasPending=false 무관)", () => {
+    render(
+      <ActionBar
+        isMyTurn={true}
+        hasPending={false}
+        onDraw={noop}
+        onUndo={noop}
+        onConfirm={noop}
+        resetEnabled={true}
+      />
+    );
+    expect(
+      screen.getByRole("button", { name: /이번 턴 배치 초기화/ })
+    ).toBeEnabled();
+  });
+
+  it("resetEnabled=false prop 제공 시 초기화 버튼 비활성 (hasPending=true 무관)", () => {
+    render(
+      <ActionBar
+        isMyTurn={true}
+        hasPending={true}
+        onDraw={noop}
+        onUndo={noop}
+        onConfirm={noop}
+        resetEnabled={false}
+      />
+    );
+    expect(
+      screen.getByRole("button", { name: /이번 턴 배치 초기화/ })
+    ).toBeDisabled();
+  });
+
+  it("drawEnabled=true prop 제공 시 드로우 버튼 활성 (hasPending=true 무관)", () => {
+    render(
+      <ActionBar
+        isMyTurn={true}
+        hasPending={true}
+        drawPileCount={10}
+        onDraw={noop}
+        onUndo={noop}
+        onConfirm={noop}
+        drawEnabled={true}
+      />
+    );
+    expect(screen.getByRole("button", { name: "타일 드로우" })).toBeEnabled();
+  });
+
+  it("drawEnabled=false prop 제공 시 드로우 버튼 비활성 (hasPending=false 무관)", () => {
+    render(
+      <ActionBar
+        isMyTurn={true}
+        hasPending={false}
+        drawPileCount={10}
+        onDraw={noop}
+        onUndo={noop}
+        onConfirm={noop}
+        drawEnabled={false}
+      />
+    );
+    expect(screen.getByRole("button", { name: "타일 드로우" })).toBeDisabled();
+  });
+});
+
 describe("ActionBar — 초기화 버튼", () => {
   it("hasPending=false → 초기화 비활성", () => {
     render(
