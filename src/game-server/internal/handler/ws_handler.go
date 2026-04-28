@@ -193,6 +193,10 @@ func (h *WSHandler) HandleWS(c *gin.Context) {
 	// GAME_STATE 전송 (게임이 진행 중인 경우)
 	if conn.gameID != "" {
 		h.sendGameState(conn)
+		// I1: GAME_STATE 직후 TURN_START unicast.
+		// WS 연결이 완료되기 전에 broadcastTurnStart가 이미 전송된 경우를 보완한다.
+		// 남은 시간을 포함하므로 클라이언트가 타이머를 정확히 복원할 수 있다.
+		h.sendTurnStartToClient(conn)
 		h.restoreTimerIfNeeded(conn.roomID, conn.gameID)
 	}
 
@@ -820,9 +824,11 @@ func (h *WSHandler) broadcastTurnEndWithPenalty(conn *Connection, state *model.G
 func (h *WSHandler) broadcastTurnStart(roomID string, state *model.GameStateRedis) {
 	playerIdx := findPlayerBySeatInState(state.Players, state.CurrentSeat)
 	playerType := "HUMAN"
+	displayName := ""
 	var currentPlayer *model.PlayerState
 	if playerIdx >= 0 {
 		playerType = state.Players[playerIdx].PlayerType
+		displayName = state.Players[playerIdx].DisplayName
 		currentPlayer = &state.Players[playerIdx]
 	}
 
@@ -832,8 +838,10 @@ func (h *WSHandler) broadcastTurnStart(roomID string, state *model.GameStateRedi
 			Seat:          state.CurrentSeat,
 			TurnNumber:    state.TurnCount + 1,
 			PlayerType:    playerType,
+			DisplayName:   displayName,
 			TimeoutSec:    state.TurnTimeoutSec,
 			TurnStartedAt: time.Unix(state.TurnStartAt, 0).UTC().Format(time.RFC3339),
+			IsAITurn:      strings.HasPrefix(playerType, "AI_"),
 		},
 	})
 
@@ -841,6 +849,73 @@ func (h *WSHandler) broadcastTurnStart(roomID string, state *model.GameStateRedi
 	if h.aiClient != nil && currentPlayer != nil && strings.HasPrefix(playerType, "AI_") {
 		go h.handleAITurn(roomID, state.GameID, currentPlayer, state)
 	}
+}
+
+// sendTurnStartToClient I1: WS 인증 완료 직후, 해당 클라이언트 한 명에게만 TURN_START를 unicast한다.
+//
+// 목적: 게임 시작 직후 WS 연결이 완료되기 전에 broadcastTurnStart가 전송되어
+// Human 첫 턴 타이머가 0s로 표시되는 문제를 해결한다.
+//
+// 동작:
+//   - 게임이 PLAYING 상태이고 TurnStartAt > 0인 경우에만 전송한다.
+//   - 남은 시간(remainingSec)을 now 기준으로 계산하여 포함한다.
+//     remainingSec <= 0이면 타이머가 이미 만료된 것이므로 전송하지 않는다.
+//   - 기존 broadcastTurnStart 로직(브로드캐스트 + AI 자동 수행)은 변경하지 않는다.
+func (h *WSHandler) sendTurnStartToClient(conn *Connection) {
+	state, err := h.gameSvc.GetRawGameState(conn.gameID)
+	if err != nil {
+		h.logger.Warn("ws: sendTurnStartToClient — GetRawGameState failed",
+			zap.String("gameID", conn.gameID),
+			zap.Error(err),
+		)
+		return
+	}
+
+	if state.Status != model.GameStatusPlaying {
+		return
+	}
+	if state.TurnStartAt <= 0 {
+		return
+	}
+
+	// 남은 시간 계산
+	elapsed := time.Since(time.Unix(state.TurnStartAt, 0))
+	remaining := time.Duration(state.TurnTimeoutSec)*time.Second - elapsed
+	remainingSec := int(remaining.Seconds())
+	if remainingSec <= 0 {
+		// 타이머 이미 만료 — 클라이언트에 전송하지 않는다
+		return
+	}
+
+	playerIdx := findPlayerBySeatInState(state.Players, state.CurrentSeat)
+	playerType := "HUMAN"
+	displayName := ""
+	if playerIdx >= 0 {
+		playerType = state.Players[playerIdx].PlayerType
+		displayName = state.Players[playerIdx].DisplayName
+	}
+
+	conn.Send(&WSMessage{
+		Type: S2CTurnStart,
+		Payload: TurnStartPayload{
+			Seat:          state.CurrentSeat,
+			TurnNumber:    state.TurnCount + 1,
+			PlayerType:    playerType,
+			DisplayName:   displayName,
+			TimeoutSec:    state.TurnTimeoutSec,
+			RemainingSec:  remainingSec,
+			TurnStartedAt: time.Unix(state.TurnStartAt, 0).UTC().Format(time.RFC3339),
+			IsAITurn:      strings.HasPrefix(playerType, "AI_"),
+		},
+	})
+
+	h.logger.Info("ws: sendTurnStartToClient unicast",
+		zap.String("gameID", conn.gameID),
+		zap.String("userID", conn.userID),
+		zap.Int("seat", conn.seat),
+		zap.Int("currentSeat", state.CurrentSeat),
+		zap.Int("remainingSec", remainingSec),
+	)
 }
 
 func (h *WSHandler) broadcastGameOver(conn *Connection, state *model.GameStateRedis) {

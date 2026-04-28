@@ -112,6 +112,8 @@ export interface TurnStartPayload {
   displayName?: string;
   timeoutSec: number;
   turnStartedAt: string;
+  /** AI 턴 여부 — 서버가 아직 미전송이면 undefined */
+  isAITurn?: boolean;
 }
 
 export interface TurnEndPayload {
@@ -200,6 +202,13 @@ export interface ChatBroadcastPayload {
   displayName: string;
   message: string;
   sentAt: string;
+}
+
+/** S2C: TIMER_UPDATE - 서버 측 타이머 동기화 */
+export interface TimerUpdatePayload {
+  /** 남은 시간 (밀리초) */
+  remainingMs: number;
+  seat: number;
 }
 
 /** S2C: PLAYER_DISCONNECTED - 플레이어 연결 끊김, Grace Period 카운트다운 시작 */

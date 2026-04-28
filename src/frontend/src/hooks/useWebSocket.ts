@@ -23,6 +23,7 @@ import type {
   PlayerJoinPayload,
   PlayerLeavePayload,
   AIThinkingPayload,
+  TimerUpdatePayload,
   WSErrorPayload,
   ChatBroadcastPayload,
   PlayerDisconnectedPayload,
@@ -114,6 +115,7 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
     setPlayers,
     setRemainingMs,
     setAIThinkingSeat,
+    setIsAITurn,
     setGameEnded,
     setMySeat,
     setTurnNumber,
@@ -194,6 +196,12 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
           if (payload.drawPileCount === 0) {
             setIsDrawPileEmpty(true);
           }
+          // I1: GAME_STATE 수신 시 turnStartedAt + turnTimeoutSec에서 남은 시간 계산
+          if (payload.turnStartedAt && payload.turnTimeoutSec > 0) {
+            const elapsed = Date.now() - new Date(payload.turnStartedAt).getTime();
+            const remaining = Math.max(0, payload.turnTimeoutSec * 1000 - elapsed);
+            setRemainingMs(remaining);
+          }
           break;
         }
         case "TURN_START": {
@@ -208,6 +216,8 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
           setRemainingMs(payload.timeoutSec * 1000);
           if (payload.turnNumber != null) setTurnNumber(payload.turnNumber);
           setAIThinkingSeat(null);
+          // I2: isAITurn 저장 — 서버가 미전송이면 false로 기본값 처리
+          setIsAITurn(payload.isAITurn === true);
           useGameStore.setState((state) => ({
             gameState: state.gameState
               ? { ...state.gameState, currentSeat: payload.seat }
@@ -268,6 +278,7 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
           });
           if (payload.nextTurnNumber != null) setTurnNumber(payload.nextTurnNumber);
           setAIThinkingSeat(null);
+          setIsAITurn(false);
           // drawPileCount가 0이면 소진 상태 설정
           if (payload.drawPileCount === 0) {
             setIsDrawPileEmpty(true);
@@ -487,6 +498,8 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
             pendingTurnStartRef.current = null;
           }
           setAIThinkingSeat(payload.seat);
+          // I2: AI_THINKING 수신 = AI 턴 확정 (isAITurn이 TURN_START에서 미전송이었을 경우 보완)
+          setIsAITurn(true);
           break;
         }
         case "CHAT_BROADCAST": {
@@ -495,7 +508,9 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
           break;
         }
         case "TIMER_UPDATE": {
-          // Future: server-side timer sync
+          // I1: 서버 측 타이머 동기화 — 클라이언트 타이머를 서버 기준으로 보정
+          const timerPayload = msg.payload as TimerUpdatePayload;
+          setRemainingMs(timerPayload.remainingMs);
           break;
         }
         case "ERROR": {
@@ -545,6 +560,7 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
       setPlayers,
       setRemainingMs,
       setAIThinkingSeat,
+      setIsAITurn,
       setGameEnded,
       setLastError,
       setMySeat,

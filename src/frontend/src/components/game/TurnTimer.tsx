@@ -12,15 +12,46 @@ interface TurnTimerProps {
 
 /**
  * 턴 타이머 컴포넌트
- * - 남은 시간을 프로그레스바와 숫자로 표시
- * - 10초 이하: 경고 색상(warning), 5초 이하: 위험 색상(danger)
+ * - 인간 턴: 남은 시간을 프로그레스바와 숫자로 표시
+ *   - 10초 이하: 경고 색상(warning), 5초 이하: 위험 색상(danger)
+ * - AI 턴: 프로그레스 바 정상 색상(초록) 고정 + "AI 사고 중..." 경과 시간 표시
  */
 const TurnTimer = memo(function TurnTimer({
   totalSec,
   className = "",
 }: TurnTimerProps) {
-  const { seconds, isWarning, isDanger } = useTurnTimer();
+  const { seconds, isWarning, isDanger, isAITurn, elapsedSec } = useTurnTimer();
 
+  // AI 턴: 프로그레스 바 100% 고정, 정상 색상 유지
+  if (isAITurn) {
+    return (
+      <div
+        className={`flex items-center gap-2 ${className}`}
+        role="status"
+        aria-label="AI 사고 중"
+        aria-live="polite"
+      >
+        {/* 프로그레스바 — 100% 고정, 초록색 */}
+        <div className="flex-1 h-1.5 bg-border rounded-full overflow-hidden">
+          <motion.div
+            className="h-full rounded-full bg-success"
+            animate={{ width: "100%", opacity: [0.6, 1, 0.6] }}
+            transition={{ opacity: { repeat: Infinity, duration: 2, ease: "easeInOut" } }}
+          />
+        </div>
+
+        {/* 경과 시간 */}
+        <span
+          className="font-mono font-bold text-tile-sm min-w-[60px] text-right text-color-ai"
+          aria-hidden="true"
+        >
+          {elapsedSec}s
+        </span>
+      </div>
+    );
+  }
+
+  // 인간 턴: 기존 카운트다운 로직
   const progress = totalSec > 0 ? Math.max(0, seconds / totalSec) : 0;
 
   const barColor = isDanger

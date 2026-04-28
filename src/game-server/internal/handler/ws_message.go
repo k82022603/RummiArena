@@ -145,6 +145,12 @@ type TurnStartPayload struct {
 	DisplayName   string `json:"displayName"`
 	TimeoutSec    int    `json:"timeoutSec"`
 	TurnStartedAt string `json:"turnStartedAt"`
+	// I1: WS 재연결 시 unicast 재전송에서 사용하는 남은 시간(초).
+	// 0이면 클라이언트가 timeoutSec을 그대로 사용한다.
+	RemainingSec int `json:"remainingSec,omitempty"`
+	// I2: 현재 턴 플레이어가 AI인지 여부.
+	// PlayerType이 "AI_"로 시작하면 true.
+	IsAITurn bool `json:"isAITurn"`
 }
 
 // TurnEndPayload TURN_END 페이로드

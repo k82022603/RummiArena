@@ -280,3 +280,216 @@ func (m *mockGameStartNotifier) NotifyGameStarted(roomID string, state *model.Ga
 		m.onNotify(roomID, state)
 	}
 }
+
+// TestSendTurnStartToClient_UnicastOnReconnect I1:
+// 게임 PLAYING 중 새로 연결된 클라이언트에게 TURN_START unicast가 전송되는지 확인한다.
+// 기존 broadcastTurnStart(브로드캐스트)와 별개로 해당 conn에만 전송되어야 한다.
+func TestSendTurnStartToClient_UnicastOnReconnect(t *testing.T) {
+	logger := zap.NewNop()
+	hub := NewHub(logger)
+	gameStateRepo := repository.NewMemoryGameStateRepoAdapter()
+	roomRepo := repository.NewMemoryRoomRepo()
+	gameSvc := service.NewGameService(gameStateRepo)
+	roomSvc := service.NewRoomService(roomRepo, gameStateRepo, nil)
+	turnSvc := service.NewTurnService(gameStateRepo, gameSvc)
+
+	wsHandler := &WSHandler{
+		hub:           hub,
+		roomSvc:       roomSvc,
+		gameSvc:       gameSvc,
+		turnSvc:       turnSvc,
+		jwtSecret:     "test-secret",
+		logger:        logger,
+		timers:        make(map[string]*turnTimer),
+		graceTimers:   make(map[string]*graceTimer),
+		aiTurnCancels: make(map[string]context.CancelFunc),
+	}
+
+	// 턴이 진행 중인 게임 상태 (turnStartAt = 20초 전)
+	state := &model.GameStateRedis{
+		GameID:         "game-unicast-test",
+		Status:         model.GameStatusPlaying,
+		CurrentSeat:    0,
+		TurnCount:      3,
+		TurnTimeoutSec: 60,
+		TurnStartAt:    time.Now().Add(-20 * time.Second).Unix(), // 20초 전 시작 → 40초 남음
+		DrawPile:       []string{"Y7a"},
+		Table:          []*model.SetOnTable{},
+		Players: []model.PlayerState{
+			{SeatOrder: 0, UserID: "human-1", DisplayName: "Player1", PlayerType: "HUMAN", Rack: []string{"R1a"}},
+			{SeatOrder: 1, UserID: "human-2", DisplayName: "Player2", PlayerType: "HUMAN", Rack: []string{"B2a"}},
+		},
+	}
+	require.NoError(t, gameStateRepo.SaveGameState(state))
+
+	// 재연결하는 conn (gameID 이미 설정됨)
+	conn := &Connection{
+		roomID: "room-unicast-test",
+		userID: "human-1",
+		gameID: "game-unicast-test",
+		seat:   0,
+		send:   make(chan []byte, 8),
+	}
+	hub.Register(conn)
+
+	// sendTurnStartToClient 직접 호출
+	wsHandler.sendTurnStartToClient(conn)
+
+	// 채널에서 메시지 수신
+	var msg WSMessage
+	select {
+	case data := <-conn.send:
+		require.NoError(t, json.Unmarshal(data, &msg))
+	case <-time.After(300 * time.Millisecond):
+		t.Fatal("sendTurnStartToClient: 메시지가 전송되지 않음")
+	}
+
+	assert.Equal(t, S2CTurnStart, msg.Type, "TURN_START 타입이어야 한다")
+
+	payloadBytes, err := json.Marshal(msg.Payload)
+	require.NoError(t, err)
+	var payload TurnStartPayload
+	require.NoError(t, json.Unmarshal(payloadBytes, &payload))
+
+	assert.Equal(t, 0, payload.Seat, "CurrentSeat과 일치해야 한다")
+	assert.Equal(t, 4, payload.TurnNumber, "TurnCount+1 이어야 한다")
+	assert.Equal(t, "HUMAN", payload.PlayerType)
+	assert.Equal(t, "Player1", payload.DisplayName)
+	assert.False(t, payload.IsAITurn, "Human 턴이므로 IsAITurn=false이어야 한다")
+	assert.InDelta(t, 40, payload.RemainingSec, 2,
+		"20초 경과 후 remainingSec은 약 40초여야 한다")
+}
+
+// TestSendTurnStartToClient_SkipWhenExpired I1:
+// 타이머가 이미 만료된 경우 sendTurnStartToClient는 메시지를 전송하지 않는다.
+func TestSendTurnStartToClient_SkipWhenExpired(t *testing.T) {
+	logger := zap.NewNop()
+	hub := NewHub(logger)
+	gameStateRepo := repository.NewMemoryGameStateRepoAdapter()
+	roomRepo := repository.NewMemoryRoomRepo()
+	gameSvc := service.NewGameService(gameStateRepo)
+	roomSvc := service.NewRoomService(roomRepo, gameStateRepo, nil)
+	turnSvc := service.NewTurnService(gameStateRepo, gameSvc)
+
+	wsHandler := &WSHandler{
+		hub:           hub,
+		roomSvc:       roomSvc,
+		gameSvc:       gameSvc,
+		turnSvc:       turnSvc,
+		jwtSecret:     "test-secret",
+		logger:        logger,
+		timers:        make(map[string]*turnTimer),
+		graceTimers:   make(map[string]*graceTimer),
+		aiTurnCancels: make(map[string]context.CancelFunc),
+	}
+
+	// 타이머가 이미 만료된 상태 (100초 전 시작, 60초 타임아웃)
+	state := &model.GameStateRedis{
+		GameID:         "game-expired-test",
+		Status:         model.GameStatusPlaying,
+		CurrentSeat:    1,
+		TurnCount:      5,
+		TurnTimeoutSec: 60,
+		TurnStartAt:    time.Now().Add(-100 * time.Second).Unix(), // 100초 전 시작 → 이미 만료
+		DrawPile:       []string{"K1a"},
+		Table:          []*model.SetOnTable{},
+		Players: []model.PlayerState{
+			{SeatOrder: 0, UserID: "ua", DisplayName: "A", PlayerType: "HUMAN", Rack: []string{}},
+			{SeatOrder: 1, UserID: "ub", DisplayName: "B", PlayerType: "HUMAN", Rack: []string{}},
+		},
+	}
+	require.NoError(t, gameStateRepo.SaveGameState(state))
+
+	conn := &Connection{
+		roomID: "room-expired-test",
+		userID: "ua",
+		gameID: "game-expired-test",
+		seat:   0,
+		send:   make(chan []byte, 8),
+	}
+	hub.Register(conn)
+
+	wsHandler.sendTurnStartToClient(conn)
+
+	// 채널이 비어있어야 한다
+	select {
+	case data := <-conn.send:
+		var msg WSMessage
+		_ = json.Unmarshal(data, &msg)
+		t.Fatalf("만료된 타이머에서 메시지가 전송되면 안 됨: type=%s", msg.Type)
+	case <-time.After(100 * time.Millisecond):
+		// 정상 — 메시지가 전송되지 않음
+	}
+}
+
+// TestBroadcastTurnStart_IsAITurn I2:
+// broadcastTurnStart에서 AI 플레이어 턴일 때 IsAITurn=true가 포함되는지 확인한다.
+func TestBroadcastTurnStart_IsAITurn(t *testing.T) {
+	logger := zap.NewNop()
+	hub := NewHub(logger)
+	gameStateRepo := repository.NewMemoryGameStateRepoAdapter()
+	roomRepo := repository.NewMemoryRoomRepo()
+	gameSvc := service.NewGameService(gameStateRepo)
+	roomSvc := service.NewRoomService(roomRepo, gameStateRepo, nil)
+	turnSvc := service.NewTurnService(gameStateRepo, gameSvc)
+
+	wsHandler := &WSHandler{
+		hub:           hub,
+		roomSvc:       roomSvc,
+		gameSvc:       gameSvc,
+		turnSvc:       turnSvc,
+		jwtSecret:     "test-secret",
+		logger:        logger,
+		timers:        make(map[string]*turnTimer),
+		graceTimers:   make(map[string]*graceTimer),
+		aiTurnCancels: make(map[string]context.CancelFunc),
+		aiClient:      nil, // AI 자동 수행 비활성화 (handleAITurn 실행 방지)
+	}
+
+	state := &model.GameStateRedis{
+		GameID:         "game-aiturn-test",
+		Status:         model.GameStatusPlaying,
+		CurrentSeat:    1,
+		TurnCount:      2,
+		TurnTimeoutSec: 90,
+		TurnStartAt:    time.Now().Unix(),
+		DrawPile:       []string{"R3a"},
+		Table:          []*model.SetOnTable{},
+		Players: []model.PlayerState{
+			{SeatOrder: 0, UserID: "human", DisplayName: "Human", PlayerType: "HUMAN", Rack: []string{"R1a"}},
+			{SeatOrder: 1, UserID: "ai-bot", DisplayName: "Claude", PlayerType: "AI_CLAUDE", Rack: []string{"B1a"}},
+		},
+	}
+	require.NoError(t, gameStateRepo.SaveGameState(state))
+
+	conn := &Connection{
+		roomID: "room-aiturn-test",
+		userID: "human",
+		gameID: "game-aiturn-test",
+		seat:   0,
+		send:   make(chan []byte, 8),
+	}
+	hub.Register(conn)
+
+	wsHandler.broadcastTurnStart("room-aiturn-test", state)
+
+	var msg WSMessage
+	select {
+	case data := <-conn.send:
+		require.NoError(t, json.Unmarshal(data, &msg))
+	case <-time.After(300 * time.Millisecond):
+		t.Fatal("broadcastTurnStart: 메시지가 전송되지 않음")
+	}
+
+	assert.Equal(t, S2CTurnStart, msg.Type)
+
+	payloadBytes, err := json.Marshal(msg.Payload)
+	require.NoError(t, err)
+	var payload TurnStartPayload
+	require.NoError(t, json.Unmarshal(payloadBytes, &payload))
+
+	assert.Equal(t, 1, payload.Seat)
+	assert.Equal(t, "AI_CLAUDE", payload.PlayerType)
+	assert.Equal(t, "Claude", payload.DisplayName)
+	assert.True(t, payload.IsAITurn, "AI 플레이어 턴이므로 IsAITurn=true이어야 한다")
+}
