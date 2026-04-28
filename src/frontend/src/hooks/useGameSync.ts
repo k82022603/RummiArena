@@ -23,6 +23,7 @@ import { usePendingStore } from "@/store/pendingStore";
 import { useTurnStateStore } from "@/store/turnStateStore";
 import { useWSStore } from "@/store/wsStore";
 import { computeIsMyTurn } from "@/lib/turnUtils";
+import type { TileCode, TableGroup } from "@/types/tile";
 
 // ---------------------------------------------------------------------------
 // Hook 구현
@@ -66,6 +67,42 @@ export function useGameSync(_roomId: string): void {
         if (!seatChanged && !turnNumberChanged) return;
         if (next.currentSeat === null) return;
 
+        // -------------------------------------------------------------------
+        // 2026-04-28 회귀 핫픽스 (E2E 14건 FAIL — myRack 빈 배열 표시):
+        //
+        // useWebSocket.ts의 GAME_STATE 핸들러는 setGameState → setMyTiles 순서로
+        // 별개 setState를 호출한다. zustand subscribeWithSelector는 매 setState 마다
+        // selector를 평가하므로,
+        //   1) setGameState 직후: currentSeat이 변경되어 이 콜백이 발동.
+        //      이 시점 next.myTiles는 아직 빈 배열 [] (setMyTiles 전).
+        //      → saveTurnStartSnapshot([], ...) 실행 → draft.myTiles = []
+        //   2) setMyTiles 직후: myTiles만 14장으로 갱신되지만 seatChanged/turnNumberChanged
+        //      모두 false → early return. draft.myTiles 빈 배열 그대로.
+        //   3) GameClient: currentMyTiles = draftPendingMyTiles ?? myTiles
+        //      → draftPendingMyTiles(빈 배열)이 우선되어 rack 0장 표시.
+        //
+        // 회피 전략: 첫 진입(prev.currentSeat === null)이면서 next.myTiles가
+        //   비어있으면, 이는 setGameState 직후의 race window이므로 스냅샷 저장을
+        //   건너뛴다. 다음 setState (setMyTiles)는 콜백을 발동시키지 않으므로,
+        //   실제 스냅샷은 다음 turn 전환 또는 별도 트리거에서 저장된다.
+        //   하지만 GAME_STATE 1회 수신만으로도 정상 동작하도록, 여기서는 reset만
+        //   하고 saveTurnStartSnapshot은 myTiles가 채워졌을 때만 수행한다.
+        //
+        // 정상 케이스(턴 진행 중 마지막 타일 배치로 0장)에서는 prev.currentSeat
+        //   이 null 이 아니므로 영향 없음.
+        // -------------------------------------------------------------------
+        const isFirstEntry = prev.currentSeat === null;
+        const myTilesEmpty = next.myTiles.length === 0;
+        if (isFirstEntry && myTilesEmpty) {
+          // race window: setGameState 직후, setMyTiles 전.
+          // pending reset만 수행하고 빈 스냅샷 저장은 회피.
+          // 다음 setMyTiles 후 별도 effect에서 스냅샷 저장.
+          usePendingStore.getState().reset();
+          const isMyTurn = computeIsMyTurn(next.currentSeat, next.mySeat);
+          useTurnStateStore.getState().transition("TURN_START", { isMyTurn });
+          return;
+        }
+
         const isMyTurn = computeIsMyTurn(next.currentSeat, next.mySeat);
 
         // pendingStore 초기화 + 스냅샷 저장 (UR-04, F-01)
@@ -79,6 +116,50 @@ export function useGameSync(_roomId: string): void {
       { equalityFn: shallowEqualTurnState }
     );
 
+    return unsubscribe;
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // 2026-04-28 회귀 핫픽스 (백필):
+  //   TURN_START 감지 콜백에서 race window(currentSeat 변경 + myTiles 빈 배열)
+  //   를 우회한 직후, setMyTiles에 의해 myTiles가 채워졌을 때 turnStartSnapshot
+  //   을 백필한다. 사용자 드래그가 시작되어 draft가 만들어지기 전이라면 안전하게
+  //   스냅샷을 저장할 수 있다.
+  //
+  //   조건:
+  //     - prev.myTiles 빈 배열, next.myTiles ≥ 1 (채워짐)
+  //     - currentSeat이 null 이 아님 (게임 시작됨)
+  //     - pendingStore.draft === null (사용자 드래그 시작 전)
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const unsubscribe = useGameStore.subscribe(
+      (state) => ({
+        myTilesLength: state.myTiles.length,
+        myTilesRef: state.myTiles,
+        currentSeat: state.gameState?.currentSeat ?? null,
+        tableGroups: state.gameState?.tableGroups ?? [],
+      }),
+      (next, prev) => {
+        // myTiles가 빈 → 채워진 첫 전이만 트리거
+        if (prev.myTilesLength !== 0 || next.myTilesLength === 0) return;
+        if (next.currentSeat === null) return;
+
+        const pending = usePendingStore.getState();
+        // 드래그가 시작되어 draft가 이미 만들어진 경우 덮어쓰지 않음
+        if (pending.draft !== null) return;
+
+        pending.saveTurnStartSnapshot(
+          next.myTilesRef as TileCode[],
+          next.tableGroups as TableGroup[]
+        );
+      },
+      {
+        equalityFn: (a, b) =>
+          a.myTilesLength === b.myTilesLength &&
+          a.currentSeat === b.currentSeat &&
+          a.tableGroups.length === b.tableGroups.length,
+      }
+    );
     return unsubscribe;
   }, []);
 

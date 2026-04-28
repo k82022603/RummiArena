@@ -146,6 +146,11 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
         }
         case "GAME_STATE": {
           const payload = msg.payload as GameStatePayload;
+          // 2026-04-28 회귀 핫픽스: setMyTiles를 setGameState보다 먼저 호출해
+          // useGameSync의 TURN_START 감지가 currentSeat 변경 시점에 빈 myTiles
+          // 스냅샷을 저장하는 race window를 닫는다.
+          // (rack 0장 표시 / E2E 14건 FAIL 회귀 대응)
+          setMyTiles(payload.myRack);
           setGameState({
             currentSeat: payload.currentSeat,
             tableGroups: payload.tableGroups,
@@ -153,7 +158,6 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
             turnTimeoutSec: payload.turnTimeoutSec,
             turnStartedAt: payload.turnStartedAt ?? new Date().toISOString(),
           });
-          setMyTiles(payload.myRack);
           const playersUpdated = payload.players.map((p): Player => {
             const base = {
               seat: p.seat,
