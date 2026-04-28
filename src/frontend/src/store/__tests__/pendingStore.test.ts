@@ -369,3 +369,89 @@ describe("selectConfirmEnabled", () => {
     expect(selectConfirmEnabled(getStore(), false)).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// 7. P2a dual-write 시나리오 테스트
+// ---------------------------------------------------------------------------
+
+describe("P2a dual-write — dragEndReducer 결과 applyMutation 경로", () => {
+  it("dragEndReducer 결과를 applyMutation으로 적용하면 pendingStore가 동기화된다", () => {
+    // saveTurnStartSnapshot으로 초기 스냅샷 설정
+    act(() => {
+      usePendingStore.getState().saveTurnStartSnapshot(["R7a", "B5b"], []);
+    });
+
+    // dragEndReducer가 반환할 법한 결과를 직접 구성 (rack→board:new-group 경로)
+    const reducerResult = makeDragOutput({
+      nextTableGroups: [makeGroup("pending-1001-1", ["R7a"])],
+      nextMyTiles: ["B5b"],
+      nextPendingGroupIds: new Set(["pending-1001-1"]),
+      nextPendingRecoveredJokers: [],
+      nextPendingGroupSeq: 1,
+      branch: "rack→board:new-group",
+    });
+
+    // GameClient.handleDragEnd가 수행하는 dual-write 순서 재현:
+    // 1) gameStore.setPending*  (이 테스트에서는 생략 — gameStore mock 불필요)
+    // 2) pendingStore.applyMutation(result)
+    act(() => {
+      usePendingStore.getState().applyMutation(reducerResult);
+    });
+
+    const draft = getStore().draft;
+    expect(draft).not.toBeNull();
+    expect(draft!.groups).toHaveLength(1);
+    expect(draft!.groups[0].id).toBe("pending-1001-1");
+    expect(draft!.groups[0].tiles).toEqual(["R7a"]);
+    expect(draft!.myTiles).toEqual(["B5b"]);
+    expect(draft!.pendingGroupIds.has("pending-1001-1")).toBe(true);
+  });
+
+  it("rejected DragOutput은 pendingStore 상태를 변경하지 않는다", () => {
+    act(() => {
+      usePendingStore.getState().saveTurnStartSnapshot(["R7a"], []);
+    });
+
+    const before = getStore().draft;
+
+    const rejectedResult = makeDragOutput({
+      rejected: "incompatible-merge",
+      branch: "table→table:reject",
+    });
+
+    act(() => {
+      usePendingStore.getState().applyMutation(rejectedResult);
+    });
+
+    // pendingStore의 applyMutation은 rejected 시 early-return하므로 상태 불변
+    expect(getStore().draft?.myTiles).toEqual(before?.myTiles);
+  });
+
+  it("tryJokerSwap inline DragOutput — nextPendingRecoveredJokers에 조커 추가", () => {
+    act(() => {
+      usePendingStore.getState().saveTurnStartSnapshot(["R7a", "B5b"], []);
+    });
+
+    const swapGroup = makeGroup("srv-abc", ["R7a", "R8a", "JK1"]);
+
+    // tryJokerSwap 경로에서 GameClient가 구성하는 DragOutput
+    const jokerSwapOutput = makeDragOutput({
+      nextTableGroups: [{ ...swapGroup, tiles: ["R7a", "R8a", "B5b"] }],
+      nextMyTiles: ["JK1"],
+      nextPendingGroupIds: new Set(["srv-abc"]),
+      nextPendingRecoveredJokers: ["JK1"],
+      nextPendingGroupSeq: 0,
+      addedJoker: "JK1",
+      branch: "rack→joker-swap:gameclient-inline",
+    });
+
+    act(() => {
+      usePendingStore.getState().applyMutation(jokerSwapOutput);
+    });
+
+    const draft = getStore().draft;
+    expect(draft!.recoveredJokers).toContain("JK1");
+    expect(draft!.pendingGroupIds.has("srv-abc")).toBe(true);
+    expect(draft!.myTiles).toContain("JK1");
+  });
+});

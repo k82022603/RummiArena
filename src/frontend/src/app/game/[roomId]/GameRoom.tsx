@@ -32,10 +32,6 @@ import { useGameSync } from "@/hooks/useGameSync";
 import { useInitialMeldGuard } from "@/hooks/useInitialMeldGuard";
 import { useTurnTimer } from "@/hooks/useTurnTimer";
 
-// L2 stores
-import { useTurnStateStore } from "@/store/turnStateStore";
-import { usePendingStore } from "@/store/pendingStore";
-
 // L1 컴포넌트 (기존 보존)
 import GameClient from "./GameClient";
 
@@ -82,6 +78,7 @@ export default function GameRoom({ roomId }: GameRoomProps) {
   useGameSync(roomId);
 
   // F-02~F-06: 드래그 핸들러 store 상태 초기화
+  // [보존 — Phase 4 연결 예정]
   // 이 hook을 마운트하면 handleDragStart/End/Cancel 함수와 store 액션이 준비된다.
   // Phase 3에서는 직접 DndContext에 연결하지 않는다 (GameClient의 DndContext 사용).
   // Phase 4에서 GameClient DndContext를 이 컴포넌트로 이전 시 직접 연결.
@@ -94,20 +91,25 @@ export default function GameRoom({ roomId }: GameRoomProps) {
   // Phase 4에서 GameRoom이 turnActions를 props로 내려주는 방식으로 전환할 때 이 주석을 제거한다.
 
   // F-04/F-17: hasInitialMeld SSOT 단일화 (InitialMeldBanner/GroupDropZone 연결 준비)
+  // [보존 — Phase 4 연결 예정]
+  // InitialMeldBanner, GroupDropZone이 이 hook의 반환값을 사용하게 될 예정이다.
   const _meldGuard = useInitialMeldGuard();
   void _meldGuard;
 
   // F-15: 턴 타이머 활성화 (TimerView 연결 준비)
+  // [보존 — Phase 4 연결 예정]
+  // TurnTimer 컴포넌트가 독자적으로 useTurnTimer를 호출하지만,
+  // GameRoom에서도 타이머 상태를 참조해 턴 강제 종료 로직에 연결할 예정이다.
   const _timer = useTurnTimer();
   void _timer;
 
-  // FSM 상태 구독 (store 활성화)
-  const _turnState = useTurnStateStore((s: { state: string }) => s.state);
-  void _turnState;
+  // P1: _turnState (useTurnStateStore 구독) 제거
+  //     GameClient 내부 useTurnActions가 turnStateStore를 직접 구독하므로 중복.
+  //     Phase 3 과도기에서 이 컴포넌트가 별도로 FSM 상태를 구독할 필요 없음.
 
-  // pending 상태 구독 (드래그/액션 활성화 판단 보조)
-  const _hasPending = usePendingStore((s: { draft: unknown }) => s.draft !== null);
-  void _hasPending;
+  // P1: _hasPending (usePendingStore 구독) 제거
+  //     GameClient 내부에서 usePendingStore를 직접 구독(subscribedByGameClient)하고,
+  //     useTurnActions가 gameStore에서 pending 상태를 직접 읽으므로 중복.
 
   // ---------------------------------------------------------------------------
   // 렌더 — GameClient에 위임 (기존 기능 전체 보존)

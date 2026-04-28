@@ -217,10 +217,14 @@ export default function LobbyClient() {
   const [joinError, setJoinError] = useState<string | null>(null);
 
   // Room 목록 로드
+  // I7: 인증 토큰이 아직 없으면 API 호출을 건너뛴다.
+  //     세션 로드 완료 후 useCallback 의존성(session)이 변경되어 자동 재호출된다.
   const loadRooms = useCallback(async () => {
+    const token = session?.accessToken;
+    if (!token) return;
+
     setIsLoading(true);
     try {
-      const token = session?.accessToken;
       const data = await getRooms(token);
       setRooms(data);
     } catch (err) {

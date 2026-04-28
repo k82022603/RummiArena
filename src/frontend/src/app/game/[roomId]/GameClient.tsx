@@ -885,6 +885,8 @@ export default function GameClient({ roomId }: GameClientProps) {
             setPendingMyTiles(result.nextMyTiles ?? freshMyTiles);
             setPendingGroupIds(result.nextPendingGroupIds);
             pendingGroupSeqRef.current = result.nextPendingGroupSeq;
+            // P2a dual-write: pendingStore에도 동일 결과 적용 (gameStore 호출 유지)
+            usePendingStore.getState().applyMutation(result);
           }
           return;
         }
@@ -971,6 +973,20 @@ export default function GameClient({ roomId }: GameClientProps) {
               setPendingMyTiles(nextMyTilesAfterSwap);
               addPendingGroupId(swapCandidate.id);
               addRecoveredJoker(swap.recoveredJoker);
+              // P2a dual-write: tryJokerSwap 경로 — DragOutput 구성 후 pendingStore 동기화
+              {
+                const nextPendingGroupIds = new Set([...freshPendingGroupIds, swapCandidate.id]);
+                const nextPendingRecoveredJokers = [...freshPendingRecoveredJokers, swap.recoveredJoker];
+                usePendingStore.getState().applyMutation({
+                  nextTableGroups,
+                  nextMyTiles: nextMyTilesAfterSwap,
+                  nextPendingGroupIds,
+                  nextPendingRecoveredJokers,
+                  nextPendingGroupSeq: pendingGroupSeqRef.current,
+                  addedJoker: swap.recoveredJoker,
+                  branch: "rack→joker-swap:gameclient-inline",
+                });
+              }
               return;
             }
           }
