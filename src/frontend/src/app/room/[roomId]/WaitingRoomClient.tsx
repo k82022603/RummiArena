@@ -41,9 +41,9 @@ interface SeatSlotProps {
 }
 
 function SeatSlot({ seat, player, isHost, isMe }: SeatSlotProps) {
-  const isEmpty = !player;
-  const isHuman = player?.type === "HUMAN";
-  const isAI = player && !isHuman;
+  const isEmpty = !player || player.status === "EMPTY";
+  const isHuman = !isEmpty && player?.type === "HUMAN";
+  const isAI = !isEmpty && !!player && !isHuman;
 
   let name = "대기 중...";
   if (isHuman) {
@@ -65,7 +65,7 @@ function SeatSlot({ seat, player, isHost, isMe }: SeatSlotProps) {
         "relative p-5 rounded-2xl border-2 transition-colors",
         isMe
           ? "border-warning bg-warning/5"
-          : player
+          : !isEmpty
           ? "border-border bg-card-bg"
           : "border-dashed border-border bg-card-bg/50",
       ].join(" ")}
@@ -79,7 +79,7 @@ function SeatSlot({ seat, player, isHost, isMe }: SeatSlotProps) {
       </div>
 
       {/* 호스트 배지 */}
-      {isHost && player && (
+      {isHost && !isEmpty && (
         <div className="absolute top-3 right-3">
           <span className="px-2 py-0.5 rounded-full text-tile-xs bg-warning/20 text-warning font-medium">
             호스트

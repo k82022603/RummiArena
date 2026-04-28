@@ -27,8 +27,9 @@ export type AIDifficulty = "beginner" | "intermediate" | "expert";
 
 /**
  * 플레이어 연결 상태
+ * EMPTY: 서버가 빈 좌석을 나타낼 때 사용하는 상태값
  */
-export type PlayerStatus = "CONNECTED" | "DISCONNECTED" | "READY" | "FORFEITED";
+export type PlayerStatus = "CONNECTED" | "DISCONNECTED" | "READY" | "FORFEITED" | "EMPTY";
 
 /**
  * 플레이어 (Human)
@@ -53,7 +54,7 @@ export interface AIPlayer {
   persona: AIPersona;
   difficulty: AIDifficulty;
   psychologyLevel: 0 | 1 | 2 | 3;
-  status: "READY" | "THINKING" | "CONNECTED" | "DISCONNECTED" | "FORFEITED";
+  status: "READY" | "THINKING" | "CONNECTED" | "DISCONNECTED" | "FORFEITED" | "EMPTY";
   tileCount?: number;
   hasInitialMeld?: boolean;
 }

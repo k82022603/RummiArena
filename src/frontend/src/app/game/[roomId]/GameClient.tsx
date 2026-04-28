@@ -28,7 +28,6 @@ import { useRoomStore } from "@/store/roomStore";
 import { useRateLimitStore } from "@/store/rateLimitStore";
 import { usePendingStore } from "@/store/pendingStore";
 import GameBoard from "@/components/game/GameBoard";
-import { TurnStatusStrip } from "@/components/game/turn-strip";
 import PlayerRack from "@/components/game/PlayerRack";
 import PlayerCard from "@/components/game/PlayerCard";
 import ActionBar from "@/components/game/ActionBar";
@@ -1718,39 +1717,6 @@ export default function GameClient({ roomId }: GameClientProps) {
 
           {/* 중앙: 게임 보드 + 랙 */}
           <main className="flex-1 flex flex-col p-4 gap-3 overflow-hidden min-h-0 min-w-0">
-            {/* PR1: TurnStatusStrip — 목업 데이터 하드코딩. PR2에서 실시간 props로 교체.
-                레이아웃: main 최상단 → InitialMeldBanner / GameBoard 위 */}
-            <TurnStatusStrip
-              remainingSec={42}
-              totalSec={60}
-              current={{
-                playerId: "mock-p1",
-                name: "네선용",
-                isMe: true,
-                avatarColor: "#f59e0b",
-              }}
-              contextLine="최초 등록 필요 · 30점 이상의 세트를 보드에 올리세요"
-              next={{
-                playerId: "mock-p2",
-                name: "shark",
-                avatarChar: "S",
-                estimatedWaitSec: 45,
-              }}
-              playerCount={4}
-              roundIndex={7}
-              rounds={[
-                {
-                  roundIndex: 6,
-                  turns: ["done", "done"],
-                },
-                {
-                  roundIndex: 7,
-                  turns: ["done", "done", "done", "current", "pending", "pending"],
-                },
-              ]}
-              turnsCompleted={3}
-              turnsTotal={6}
-            />
 
             {/* UX-004: 초기 등록 안내 배너 (최초 진입 1회) */}
             <InitialMeldBanner
