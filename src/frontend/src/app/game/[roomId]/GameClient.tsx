@@ -1633,43 +1633,25 @@ export default function GameClient({ roomId }: GameClientProps) {
           </div>
         </header>
 
-        {/* 상대 플레이어 행 (가로 스크롤) */}
-        <div
-          className="flex-shrink-0 flex gap-2 px-4 py-2 bg-panel-bg border-b border-border overflow-x-auto"
-          aria-label="상대 플레이어"
-        >
-          {opponents.length > 0 ? (
-            opponents.map((player) => (
-              <div key={player.seat} className="flex-shrink-0 w-44">
-                <PlayerCard
-                  player={player}
-                  isCurrentTurn={
-                    gameState?.currentSeat === player.seat
-                  }
-                  isAIThinking={aiThinkingSeat === player.seat}
-                  disconnectCountdown={disconnectCountdowns[player.seat]}
-                />
-              </div>
-            ))
-          ) : (
-            <p className="text-tile-xs text-text-secondary py-1">
-              상대 플레이어 없음
-            </p>
-          )}
-        </div>
-
         {/* 게임 본문 */}
         <div className="flex flex-1 overflow-hidden min-h-0">
-          {/* 좌측 사이드: 내 플레이어 카드 + 드로우 파일 */}
+          {/* 좌측 사이드: 전체 플레이어 카드 + 드로우 파일 */}
           <aside
-            className="w-48 flex-shrink-0 bg-panel-bg border-r border-border p-3 flex flex-col gap-3"
-            aria-label="내 정보 패널"
+            className="w-48 flex-shrink-0 bg-panel-bg border-r border-border p-3 flex flex-col gap-2 overflow-y-auto"
+            aria-label="플레이어 패널"
           >
-            {/* 내 플레이어 카드
-                G-4: pendingMyTiles가 있으면 tileCount를 currentMyTiles.length로 override.
-                player.tileCount는 서버 기준값이어서 pending 배치 중 drift가 발생함.
-                PlayerRack 헤더와 동일한 값(currentMyTiles.length)을 보여줌으로써 일관성 유지.
-            */}
+            {/* 상대 플레이어 */}
+            {opponents.map((player) => (
+              <PlayerCard
+                key={player.seat}
+                player={player}
+                isCurrentTurn={gameState?.currentSeat === player.seat}
+                isAIThinking={aiThinkingSeat === player.seat}
+                disconnectCountdown={disconnectCountdowns[player.seat]}
+              />
+            ))}
+
+            {/* 내 플레이어 카드 */}
             {players
               .filter((p) => p.seat === effectiveMySeat)
               .map((player) => (
