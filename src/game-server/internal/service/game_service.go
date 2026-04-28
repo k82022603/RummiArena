@@ -47,7 +47,8 @@ type GameActionResult struct {
 	WinnerID         string                `json:"winnerId,omitempty"`
 	GameState        *model.GameStateRedis `json:"gameState,omitempty"`
 	ErrorCode        string                `json:"errorCode,omitempty"`
-	PenaltyDrawCount int                   `json:"penaltyDrawCount,omitempty"` // 규칙 S6.1: 패널티 드로우 장수
+	PenaltyDrawCount int    `json:"penaltyDrawCount,omitempty"` // Human INVALID_MOVE 시 패널티 드로우 장수
+	PenaltyReason    string `json:"penaltyReason,omitempty"`    // Human 패널티 드로우 시 사용자 표시용 설명 문구
 	// RollbackForced BUG-UI-014: invalid meld 감지 → 보드 롤백 발생을 클라이언트에 알린다.
 	// ws_handler는 이 값이 true이면 ROLLBACK_FORCED 이벤트를 브로드캐스트한다.
 	RollbackForced bool `json:"rollbackForced,omitempty"`
@@ -353,14 +354,27 @@ func (s *gameService) ConfirmTurn(gameID string, req *ConfirmRequest) (*GameActi
 	}
 
 	if err := engine.ValidateTurnConfirm(validateReq); err != nil {
-		// 규칙 S6.1/S6.4: 검증 실패 시 스냅샷 복원 + 패널티 드로우 3장 + 턴 종료
-		// BUG-UI-014: 스냅샷 복원 여부와 무관하게 보드가 배치 전 상태임을 클라이언트에 알린다.
+		// B안: Human/AI 분기 처리
+		//   Human — 스냅샷 복원 + 패널티 3장 드로우 + 턴 종료 (오프라인 루미큐브 룰 그대로)
+		//   AI    — 스냅샷 복원 + INVALID_MOVE 에러 반환 → ws_handler에서 forceAIDraw(1장) 폴백
+		// BUG-UI-014: 양쪽 모두 스냅샷 복원 후 RollbackForced=true 를 설정한다.
 		s.restoreSnapshot(state, gameID, req.Seat, playerIdx)
-		result, advErr := s.penaltyDrawAndAdvance(state, gameID, req.Seat, playerIdx, 3, extractErrCode(err))
+
+		errCode := extractErrCode(err)
+		isAI := strings.HasPrefix(state.Players[playerIdx].PlayerType, "AI_")
+		if isAI {
+			// AI 경로: 에러 반환 → ws_handler가 forceAIDraw(1장) 폴백
+			if saveErr := s.gameRepo.SaveGameState(state); saveErr != nil {
+				return nil, fmt.Errorf("game_service: save after ai rollback: %w", saveErr)
+			}
+			return nil, &ServiceError{Code: "INVALID_MOVE", Message: errCode, Status: 422}
+		}
+
+		// Human 경로: 패널티 3장 드로우 + 턴 종료
+		result, advErr := s.penaltyDrawAndAdvance(state, gameID, req.Seat, playerIdx, 3, errCode)
 		if result != nil {
-			// invalid meld 가 발생한 모든 경로에서 RollbackForced=true 를 설정한다.
-			// ws_handler 가 ROLLBACK_FORCED 이벤트를 브로드캐스트하여 프론트가 보드를 동기화한다.
 			result.RollbackForced = true
+			result.PenaltyReason = "유효하지 않은 배치입니다. 보드가 원래 상태로 복원되고, 패널티로 3장을 드로우합니다."
 		}
 		return result, advErr
 	}
@@ -436,16 +450,6 @@ func extractErrCode(err error) string {
 		return ve.Code
 	}
 	return engine.ErrInvalidSet
-}
-
-// buildValidationFailResult 유효성 검증 실패 시 GameActionResult를 생성한다.
-func (s *gameService) buildValidationFailResult(state *model.GameStateRedis, err error) *GameActionResult {
-	return &GameActionResult{
-		Success:   false,
-		NextSeat:  state.CurrentSeat,
-		ErrorCode: extractErrCode(err),
-		GameState: state,
-	}
 }
 
 // finishGame 승리 조건 충족 시 게임을 종료하고 결과를 반환한다.
@@ -561,9 +565,10 @@ func (s *gameService) advanceToNextTurn(state *model.GameStateRedis) (*GameActio
 	return &GameActionResult{Success: true, NextSeat: nextSeat, GameState: state}, nil
 }
 
-// penaltyDrawAndAdvance 패널티 드로우를 수행하고 다음 턴으로 전환한다.
-// 규칙 S6.1/S6.4: ConfirmTurn 검증 실패 시 스냅샷 복원 후 패널티 타일을 뽑아 랙에 추가하고 턴을 종료한다.
-// count: 뽑을 타일 수 (보통 3장), 드로우 파일이 부족하면 min(count, len(DrawPile))장만 뽑는다.
+// penaltyDrawAndAdvance Human INVALID_MOVE 시 패널티 드로우를 수행하고 다음 턴으로 전환한다.
+// count: 뽑을 타일 수 (기본 3장), 드로우 파일이 부족하면 min(count, len(DrawPile))장만 뽑는다.
+// 호출 전에 반드시 restoreSnapshot을 완료해야 한다.
+// BUG-GS-005 후속: TurnCount 증가 후 maxTurnsLimit 검사 포함.
 func (s *gameService) penaltyDrawAndAdvance(state *model.GameStateRedis, gameID string, seat, playerIdx, count int, errorCode string) (*GameActionResult, error) {
 	drawCount := count
 	if drawCount > len(state.DrawPile) {
@@ -578,7 +583,7 @@ func (s *gameService) penaltyDrawAndAdvance(state *model.GameStateRedis, gameID 
 	// 패널티 드로우도 게임 진행으로 간주 → 교착 카운터 리셋
 	state.ConsecutivePassCount = 0
 
-	// 스냅샷 삭제 (턴 종료)
+	// 스냅샷 삭제 (turnSnapshot은 restoreSnapshot에서 이미 제거됨, 방어적 삭제)
 	snapKey := snapshotKey(gameID, seat)
 	s.snapshotMu.Lock()
 	delete(s.snapshots, snapKey)

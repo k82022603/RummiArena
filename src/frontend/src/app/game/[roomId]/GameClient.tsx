@@ -1878,16 +1878,15 @@ export default function GameClient({ roomId }: GameClientProps) {
               {/* 액션 버튼 */}
               <ActionBar
                 isMyTurn={isMyTurn}
-                hasPending={!!pendingTableGroups}
-                allGroupsValid={allGroupsValid}
                 drawPileCount={gameState?.drawPileCount}
                 confirmBusy={confirmBusy}
                 onDraw={handleDraw}
                 onUndo={handleUndo}
                 onConfirm={handleConfirm}
                 onPass={handlePass}
-                /* confirmEnabled/resetEnabled: useTurnActions가 turnState 의존으로 과도하게 엄격 — ActionBar fallback 사용 */
-                /* drawEnabled: useTurnActions 조건이 turnState 의존으로 과도하게 엄격 — ActionBar fallback(!hasPending) 사용 */
+                confirmEnabled={turnActions.confirmEnabled}
+                resetEnabled={turnActions.resetEnabled}
+                drawEnabled={turnActions.drawEnabled}
               />
             </div>
           </main>

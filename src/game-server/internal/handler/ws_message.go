@@ -162,7 +162,8 @@ type TurnEndPayload struct {
 	MyRack           []string       `json:"myRack,omitempty"`
 	IsFallbackDraw   bool           `json:"isFallbackDraw,omitempty"`
 	FallbackReason   string         `json:"fallbackReason,omitempty"` // "AI_TIMEOUT", "INVALID_MOVE", "AI_ERROR"
-	PenaltyDrawCount int            `json:"penaltyDrawCount,omitempty"` // 규칙 S6.1: 패널티 드로우 장수
+	PenaltyDrawCount int    `json:"penaltyDrawCount,omitempty"` // Human INVALID_MOVE 시 패널티 드로우 장수
+	PenaltyReason    string `json:"penaltyReason,omitempty"`    // Human 패널티 드로우 시 사용자 표시용 설명 문구
 }
 
 // TilePlacedPayload TILE_PLACED 페이로드 (실시간 피드백)

@@ -457,8 +457,9 @@ func (h *WSHandler) handleConfirmTurn(conn *Connection, env *WSEnvelope) {
 
 	result, err := h.gameSvc.ConfirmTurn(conn.gameID, req)
 	if err != nil {
-		// 기타 에러 (NOT_FOUND, NOT_YOUR_TURN 등)
 		if svcErr, ok := service.IsServiceError(err); ok {
+			// AI INVALID_MOVE 는 processAIPlace 경로를 타므로 여기서는 기타 에러만 처리.
+			// (Human INVALID_MOVE 는 penaltyDrawAndAdvance 후 result 로 반환되므로 이 분기에 오지 않는다)
 			conn.SendError(svcErr.Code, svcErr.Message)
 			return
 		}
@@ -475,14 +476,14 @@ func (h *WSHandler) handleConfirmTurn(conn *Connection, env *WSEnvelope) {
 		return
 	}
 
-	// 규칙 S6.1: 패널티 드로우가 적용된 경우 (검증 실패 → 패널티 3장 + 턴 종료)
+	// B안: Human INVALID_MOVE → 패널티 드로우가 적용된 경우
+	// (검증 실패 → 스냅샷 복원 + 패널티 3장 드로우 + 턴 종료)
 	if result.PenaltyDrawCount > 0 {
 		// BUG-UI-014: invalid meld 롤백을 클라이언트에 먼저 알린다.
-		// 프론트엔드가 ROLLBACK_FORCED를 수신하면 로컬 boardState를 서버 상태로 교체한다.
 		if result.RollbackForced {
 			h.broadcastRollbackForced(conn.roomID, conn.seat, state, result.ErrorCode)
 		}
-		h.broadcastTurnEndWithPenalty(conn, state, result.PenaltyDrawCount, result.ErrorCode)
+		h.broadcastTurnEndWithPenalty(conn, state, result.PenaltyDrawCount, result.ErrorCode, result.PenaltyReason)
 		h.broadcastTurnStart(conn.roomID, state)
 		h.startTurnTimer(conn.roomID, conn.gameID, state.CurrentSeat, state.TurnTimeoutSec)
 		return
@@ -775,8 +776,9 @@ func (h *WSHandler) broadcastRollbackForced(roomID string, seat int, state *mode
 	})
 }
 
-// broadcastTurnEndWithPenalty 패널티 드로우 적용 시 TURN_END를 브로드캐스트한다 (Human ConfirmTurn 실패 시).
-func (h *WSHandler) broadcastTurnEndWithPenalty(conn *Connection, state *model.GameStateRedis, penaltyCount int, errorCode string) {
+// broadcastTurnEndWithPenalty B안: Human INVALID_MOVE 시 패널티 드로우 적용 후 TURN_END를 브로드캐스트한다.
+// penaltyReason은 프론트엔드가 사용자에게 표시할 설명 문구다.
+func (h *WSHandler) broadcastTurnEndWithPenalty(conn *Connection, state *model.GameStateRedis, penaltyCount int, errorCode, penaltyReason string) {
 	playerIdx := findPlayerBySeatInState(state.Players, conn.seat)
 	playerTileCount := 0
 	hasInitialMeld := false
@@ -800,6 +802,7 @@ func (h *WSHandler) broadcastTurnEndWithPenalty(conn *Connection, state *model.G
 			NextSeat:         state.CurrentSeat,
 			NextTurnNumber:   state.TurnCount + 1,
 			PenaltyDrawCount: penaltyCount,
+			PenaltyReason:    penaltyReason,
 		}
 		recvIdx := findPlayerBySeatInState(state.Players, c.seat)
 		if recvIdx >= 0 {
@@ -1054,7 +1057,8 @@ func (h *WSHandler) processAIDraw(roomID, gameID string, seat int) {
 }
 
 // processAIPlace AI의 배치 응답을 검증하고 턴을 확정한다.
-// 검증 실패 시 강제 드로우로 폴백한다.
+// SSOT 55번 V-01, 56번 A14: 검증 실패 시 INVALID_MOVE 에러가 반환되므로
+// forceAIDraw(1장)로 폴백한다. AI 는 재시도 기회 없이 강제 드로우로 턴을 종료한다.
 func (h *WSHandler) processAIPlace(roomID, gameID string, seat int, resp *client.MoveResponse) {
 	tableGroups := make([]service.TilePlacement, len(resp.TableGroups))
 	for i, g := range resp.TableGroups {
@@ -1069,11 +1073,25 @@ func (h *WSHandler) processAIPlace(roomID, gameID string, seat int, resp *client
 
 	result, err := h.gameSvc.ConfirmTurn(gameID, req)
 	if err != nil {
-		h.logger.Warn("ws: AI place error, falling back to force draw",
-			zap.String("gameId", gameID),
-			zap.Int("seat", seat),
-			zap.Error(err),
-		)
+		if svcErr, ok := service.IsServiceError(err); ok && svcErr.Code == "INVALID_MOVE" {
+			// SSOT 55번 V-01, 56번 A14: AI INVALID_MOVE → 롤백 + 강제 드로우 1장 폴백.
+			// ROLLBACK_FORCED 를 전송하여 프론트엔드 보드를 서버 상태로 동기화한다.
+			h.logger.Warn("ws: AI place invalid, forcing 1-tile draw",
+				zap.String("gameId", gameID),
+				zap.Int("seat", seat),
+				zap.String("errorCode", svcErr.Message),
+			)
+			rolledBackState, stateErr := h.gameSvc.GetRawGameState(gameID)
+			if stateErr == nil {
+				h.broadcastRollbackForced(roomID, seat, rolledBackState, svcErr.Message)
+			}
+		} else {
+			h.logger.Warn("ws: AI place error, falling back to force draw",
+				zap.String("gameId", gameID),
+				zap.Int("seat", seat),
+				zap.Error(err),
+			)
+		}
 		h.forceAIDraw(roomID, gameID, seat, "INVALID_MOVE")
 		return
 	}
@@ -1081,30 +1099,6 @@ func (h *WSHandler) processAIPlace(roomID, gameID string, seat int, resp *client
 	state := result.GameState
 	if result.GameEnded {
 		h.broadcastGameOverFromState(roomID, state)
-		return
-	}
-
-	// 규칙 S6.1: AI 배치 검증 실패 → 패널티 3장 + 턴 종료 (강제 행동으로 카운트)
-	if result.PenaltyDrawCount > 0 {
-		h.logger.Warn("ws: AI place invalid, penalty draw applied",
-			zap.String("gameId", gameID),
-			zap.Int("seat", seat),
-			zap.String("errorCode", result.ErrorCode),
-			zap.Int("penaltyDrawCount", result.PenaltyDrawCount),
-		)
-		// BUG-UI-014: invalid meld 롤백을 클라이언트에 먼저 알린다.
-		// 프론트엔드가 ROLLBACK_FORCED를 수신하면 로컬 boardState를 서버 상태로 교체한다.
-		if result.RollbackForced {
-			h.broadcastRollbackForced(roomID, seat, state, result.ErrorCode)
-		}
-		// 규칙 S8.1: 패널티도 강제 행동 → 카운터 증가
-		h.incrementForceDrawCounter(state, gameID, roomID, seat)
-		h.broadcastTurnEndFromState(roomID, seat, state, "PENALTY_DRAW", 0, &FallbackInfo{
-			IsFallbackDraw: true,
-			FallbackReason: "INVALID_MOVE",
-		})
-		h.broadcastTurnStart(roomID, state)
-		h.startTurnTimer(roomID, gameID, state.CurrentSeat, state.TurnTimeoutSec)
 		return
 	}
 

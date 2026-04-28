@@ -114,17 +114,18 @@ describe("BUG-NEW-003 · 무효 pending 세트 → 확정 버튼 disabled 사전
     // 이 테스트는 GameClient.tsx의 allGroupsValid useMemo가 validatePendingBlock을
     // 활용하여 'invalid' 세트를 사전 차단하는 흐름을 검증한다.
     // GameClient 자체는 WS/Store 의존성이 많아 단위 테스트 어려우므로,
-    // "invalid 세트면 allGroupsValid=false → ActionBar 확정 disabled" 분해 검증.
+    // "invalid 세트면 useTurnActions.confirmEnabled=false → ActionBar 확정 disabled" 분해 검증.
     const invalidTiles: TileCode[] = ["Y11a", "K12a", "B13a"] as TileCode[];
     const validity = validatePendingBlock(invalidTiles);
-    expect(validity).toBe("invalid"); // allGroupsValid가 false를 반환해야 함
+    expect(validity).toBe("invalid"); // confirmEnabled=false로 이어짐
 
-    // ActionBar는 allGroupsValid=false이면 disabled
+    // ActionBar는 confirmEnabled=false이면 disabled (useTurnActions가 SSOT)
     render(
       <ActionBar
         isMyTurn={true}
-        hasPending={true}
-        allGroupsValid={false} // invalid 세트로 인해 false
+        confirmEnabled={false} // invalid 세트 → useTurnActions가 false 반환
+        resetEnabled={true}
+        drawEnabled={false}
         onDraw={noop}
         onUndo={noop}
         onConfirm={noop}
@@ -133,7 +134,7 @@ describe("BUG-NEW-003 · 무효 pending 세트 → 확정 버튼 disabled 사전
     expect(screen.getByRole("button", { name: /확정/ })).toBeDisabled();
   });
 
-  it("[R7,B7,Y7] valid-group 세트 → allGroupsValid=true → 확정 활성", () => {
+  it("[R7,B7,Y7] valid-group 세트 → confirmEnabled=true → 확정 활성", () => {
     const validTiles: TileCode[] = ["R7a", "B7a", "Y7a"] as TileCode[];
     const validity = validatePendingBlock(validTiles);
     expect(validity).toBe("valid-group");
@@ -141,8 +142,9 @@ describe("BUG-NEW-003 · 무효 pending 세트 → 확정 버튼 disabled 사전
     render(
       <ActionBar
         isMyTurn={true}
-        hasPending={true}
-        allGroupsValid={true}
+        confirmEnabled={true} // valid 세트 → useTurnActions가 true 반환
+        resetEnabled={true}
+        drawEnabled={false}
         onDraw={noop}
         onUndo={noop}
         onConfirm={noop}

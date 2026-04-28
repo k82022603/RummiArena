@@ -25,10 +25,11 @@ import ActionBar, { type ActionBarProps } from "@/components/game/ActionBar";
 function renderActionBar(overrides: Partial<ActionBarProps> = {}) {
   const defaultProps: ActionBarProps = {
     isMyTurn: true,
-    hasPending: false,
-    allGroupsValid: true,
     drawPileCount: 60, // 기본값: drawpile 있음
     confirmBusy: false,
+    confirmEnabled: false,
+    resetEnabled: false,
+    drawEnabled: true,  // pending 없음 + 내 턴 → drawEnabled=true (기본값)
     onDraw: jest.fn(),
     onUndo: jest.fn(),
     onConfirm: jest.fn(),
@@ -44,7 +45,7 @@ function renderActionBar(overrides: Partial<ActionBarProps> = {}) {
 
 describe("[F-11] [A16] AC-11.1 — S1 + drawpile>0 → DRAW 버튼 활성", () => {
   it("내 턴 + pending 없음 + drawpile>0 → 드로우 버튼 활성화 (UR-22 라벨 '드로우')", () => {
-    renderActionBar({ isMyTurn: true, hasPending: false, drawPileCount: 80 });
+    renderActionBar({ isMyTurn: true, drawPileCount: 80 });
 
     // DRAW 버튼이 존재하고 활성화되어야 한다
     // AC-11.1: 랙 +1, 턴 종료 처리는 서버 → 클라이언트에서 버튼 활성 여부만 검증
@@ -55,7 +56,7 @@ describe("[F-11] [A16] AC-11.1 — S1 + drawpile>0 → DRAW 버튼 활성", () =
 
   it("DRAW 버튼 클릭 시 onDraw 핸들러 호출 (A16 트리거)", () => {
     const onDraw = jest.fn();
-    renderActionBar({ isMyTurn: true, hasPending: false, drawPileCount: 80, onDraw });
+    renderActionBar({ isMyTurn: true, drawPileCount: 80, onDraw });
 
     const drawButton = screen.getByRole("button", { name: /드로우/i });
     drawButton.click();
@@ -72,7 +73,7 @@ describe("[F-11] [A16] AC-11.1 — S1 + drawpile>0 → DRAW 버튼 활성", () =
 
 describe("[F-11] [V-10] [UR-22] AC-11.2 — drawpile=0 → 버튼 라벨 '패스'", () => {
   it("drawPileCount=0 이면 드로우 버튼 라벨이 '패스'로 변경됨 (UR-22)", () => {
-    renderActionBar({ isMyTurn: true, hasPending: false, drawPileCount: 0 });
+    renderActionBar({ isMyTurn: true, drawPileCount: 0 });
 
     // UR-22: 드로우 버튼 라벨 "패스" 로 변경
     // AC-11.2: drawpile=0 → 패스 처리
@@ -83,7 +84,7 @@ describe("[F-11] [V-10] [UR-22] AC-11.2 — drawpile=0 → 버튼 라벨 '패스
 
   it("drawPileCount=0 이면 onPass 핸들러 호출 (V-10 패스 처리)", () => {
     const onPass = jest.fn();
-    renderActionBar({ isMyTurn: true, hasPending: false, drawPileCount: 0, onPass });
+    renderActionBar({ isMyTurn: true, drawPileCount: 0, onPass });
 
     const passButton = screen.getByRole("button", { name: /패스/i });
     passButton.click();
@@ -92,7 +93,7 @@ describe("[F-11] [V-10] [UR-22] AC-11.2 — drawpile=0 → 버튼 라벨 '패스
   });
 
   it("drawPileCount=0 일 때 드로우 파일 소진 안내 메시지 표시 (UR-23 보완)", () => {
-    renderActionBar({ isMyTurn: true, hasPending: false, drawPileCount: 0 });
+    renderActionBar({ isMyTurn: true, drawPileCount: 0 });
 
     // UR-23: 드로우 파일 0 → 시각적 X 마크 또는 소진 안내
     // 현재 구현: "드로우 파일이 소진되었습니다" 메시지
@@ -109,8 +110,9 @@ describe("[F-11] [V-10] [UR-22] AC-11.2 — drawpile=0 → 버튼 라벨 '패스
 // ---------------------------------------------------------------------------
 
 describe("[F-11] [A16] [UR-34] AC-11.3 — pending 있을 때 DRAW 버튼 비활성", () => {
-  it("hasPending=true → DRAW 버튼 disabled (사전 차단, 토스트 X)", () => {
-    renderActionBar({ isMyTurn: true, hasPending: true, drawPileCount: 80 });
+  it("pending 있을 때(drawEnabled=false) → DRAW 버튼 disabled (사전 차단, 토스트 X)", () => {
+    // pending 상태 → useTurnActions.drawEnabled=false → drawEnabled prop으로 전달
+    renderActionBar({ isMyTurn: true, drawEnabled: false, drawPileCount: 80 });
 
     // AC-11.3: pending 있을 때 DRAW 클릭 시도 → 버튼 비활성화
     // UR-34: 토스트 금지 — 버튼 disabled로 충분
@@ -123,8 +125,8 @@ describe("[F-11] [A16] [UR-34] AC-11.3 — pending 있을 때 DRAW 버튼 비활
     }
   });
 
-  it("hasPending=true + drawPileCount=0 → 패스 버튼도 disabled", () => {
-    renderActionBar({ isMyTurn: true, hasPending: true, drawPileCount: 0 });
+  it("pending 있을 때(drawEnabled=false) + drawPileCount=0 → 패스 버튼도 disabled", () => {
+    renderActionBar({ isMyTurn: true, drawEnabled: false, drawPileCount: 0 });
 
     const passButton = screen.queryByRole("button", { name: /패스/i });
     if (passButton) {

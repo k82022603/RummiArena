@@ -5,9 +5,6 @@ import { motion, AnimatePresence } from "framer-motion";
 
 export interface ActionBarProps {
   isMyTurn: boolean;
-  hasPending: boolean;
-  /** 모든 pending 그룹의 타일 수가 3개 이상인지 여부 */
-  allGroupsValid?: boolean;
   drawPileCount?: number;
   /** CONFIRM_TURN 전송 후 서버 응답 대기 중 여부 — 중복 클릭 방지 (Issue #48) */
   confirmBusy?: boolean;
@@ -17,24 +14,18 @@ export interface ActionBarProps {
   /** 패스 전용 핸들러 (드로우 파일 소진 시). 미제공 시 onDraw 사용. */
   onPass?: () => void;
 
-  // Phase 3 추가 props — useTurnActions hook 반환값과 직접 연결
-  // 기존 isMyTurn/hasPending 기반 로직과 OR 조건으로 병행 사용 (과도기 호환)
-  // Phase 4에서 기존 props를 완전 대체 예정.
   /**
-   * ConfirmTurn 버튼 활성 여부 (useTurnActions.confirmEnabled)
-   * 미제공 시 기존 isMyTurn + hasPending + allGroupsValid 기반 계산 사용.
+   * ConfirmTurn 버튼 활성 여부 — useTurnActions.confirmEnabled (SSOT)
    */
-  confirmEnabled?: boolean;
+  confirmEnabled: boolean;
   /**
-   * RESET 버튼 활성 여부 (useTurnActions.resetEnabled)
-   * 미제공 시 기존 hasPending 기반 계산 사용.
+   * RESET 버튼 활성 여부 — useTurnActions.resetEnabled (SSOT)
    */
-  resetEnabled?: boolean;
+  resetEnabled: boolean;
   /**
-   * DRAW 버튼 활성 여부 (useTurnActions.drawEnabled)
-   * 미제공 시 기존 hasPending 기반 계산 사용.
+   * DRAW 버튼 활성 여부 — useTurnActions.drawEnabled (SSOT)
    */
-  drawEnabled?: boolean;
+  drawEnabled: boolean;
 }
 
 /**
@@ -56,30 +47,23 @@ export interface ActionBarProps {
  */
 const ActionBar = memo(function ActionBar({
   isMyTurn,
-  hasPending,
-  allGroupsValid = true,
   drawPileCount,
   confirmBusy = false,
   onDraw,
   onUndo,
   onConfirm,
   onPass,
-  // Phase 3 추가 props (과도기 호환 — 미제공 시 기존 로직 사용)
-  confirmEnabled: confirmEnabledProp,
-  resetEnabled: resetEnabledProp,
-  drawEnabled: drawEnabledProp,
+  confirmEnabled,
+  resetEnabled,
+  drawEnabled,
 }: ActionBarProps) {
   const isDrawPileEmpty = drawPileCount === 0;
 
-  // Phase 3 과도기: prop이 제공되면 우선 사용, 아니면 기존 로직으로 계산
-  const effectiveConfirmEnabled =
-    confirmEnabledProp !== undefined
-      ? confirmEnabledProp && !confirmBusy
-      : isMyTurn && hasPending && allGroupsValid && !confirmBusy;
-  const effectiveResetEnabled =
-    resetEnabledProp !== undefined ? resetEnabledProp : hasPending;
-  const effectiveDrawEnabled =
-    drawEnabledProp !== undefined ? drawEnabledProp : !hasPending;
+  // useTurnActions가 SSOT — prop 값을 그대로 사용한다.
+  // confirmBusy는 Issue #48 중복 클릭 방지용 추가 gate로만 사용.
+  const effectiveConfirmEnabled = confirmEnabled && !confirmBusy;
+  const effectiveResetEnabled = resetEnabled;
+  const effectiveDrawEnabled = drawEnabled;
 
   return (
     <AnimatePresence>

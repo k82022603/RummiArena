@@ -1,0 +1,141 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - button "스테이지 목록으로 돌아가기" [ref=e5] [cursor=pointer]: ←
+        - 'heading "Stage 6: 루미큐브 마스터" [level=1] [ref=e6]'
+        - navigation "스테이지 진행도" [ref=e8]:
+          - generic "Stage 1" [ref=e9]:
+            - generic [ref=e10]: "1"
+          - generic "Stage 2" [ref=e11]:
+            - generic [ref=e12]: "2"
+          - generic "Stage 3" [ref=e13]:
+            - generic [ref=e14]: "3"
+          - generic "Stage 4" [ref=e15]:
+            - generic [ref=e16]: "4"
+          - generic "Stage 5" [ref=e17]:
+            - generic [ref=e18]: "5"
+          - generic "Stage 6 (현재)" [ref=e19]:
+            - generic [ref=e20]: "6"
+        - button "튜토리얼 다시 보기" [ref=e21] [cursor=pointer]: 도움말
+    - paragraph [ref=e23]: 12장 이상의 타일을 보드에 배치하세요
+    - generic [ref=e24]:
+      - main [ref=e25]:
+        - generic [ref=e26]:
+          - generic [ref=e27]:
+            - generic [ref=e29]:
+              - generic [ref=e30]: STAGE 6
+              - generic [ref=e31]: 46점
+            - region "게임 테이블" [ref=e32]:
+              - heading "게임 테이블 (3개 그룹)" [level=2] [ref=e33]
+              - generic [ref=e34]:
+                - generic [ref=e38]:
+                  - generic [ref=e39]:
+                    - generic [ref=e40]: 런
+                    - generic "6개 타일" [ref=e41]: 6개
+                  - generic [ref=e42]:
+                    - img "런 그룹의 R1a 타일" [ref=e43]:
+                      - generic [ref=e44]: "1"
+                      - generic [ref=e45]: ◆
+                    - img "런 그룹의 R2a 타일" [ref=e46]:
+                      - generic [ref=e47]: "2"
+                      - generic [ref=e48]: ◆
+                    - img "런 그룹의 R3a 타일" [ref=e49]:
+                      - generic [ref=e50]: "3"
+                      - generic [ref=e51]: ◆
+                    - img "런 그룹의 R4a 타일" [ref=e52]:
+                      - generic [ref=e53]: "4"
+                      - generic [ref=e54]: ◆
+                    - img "런 그룹의 R5a 타일" [ref=e55]:
+                      - generic [ref=e56]: "5"
+                      - generic [ref=e57]: ◆
+                    - img "런 그룹의 R6a 타일" [ref=e58]:
+                      - generic [ref=e59]: "6"
+                      - generic [ref=e60]: ◆
+                - generic [ref=e64]:
+                  - generic [ref=e65]:
+                    - generic [ref=e66]: 그룹
+                    - generic "3개 타일" [ref=e67]: 3개
+                  - generic [ref=e68]:
+                    - img "그룹 그룹의 B6a 타일" [ref=e69]:
+                      - generic [ref=e70]: "6"
+                      - generic [ref=e71]: ●
+                    - img "그룹 그룹의 Y6a 타일" [ref=e72]:
+                      - generic [ref=e73]: "6"
+                      - generic [ref=e74]: ▲
+                    - img "그룹 그룹의 K6a 타일" [ref=e75]:
+                      - generic [ref=e76]: "6"
+                      - generic [ref=e77]: ■
+                - generic [ref=e81]:
+                  - generic [ref=e82]:
+                    - generic [ref=e83]: 그룹
+                    - generic "1개 타일" [ref=e84]: 1개
+                  - img "그룹 그룹의 B7a 타일" [ref=e86]:
+                    - generic [ref=e87]: "7"
+                    - generic [ref=e88]: ●
+            - generic [ref=e89]:
+              - generic [ref=e90]: 숫자/색상이 다른 타일은 자동으로 새 그룹이 됩니다
+              - button "다음 드롭 시 새 그룹 생성" [ref=e91] [cursor=pointer]: + 새 그룹
+            - generic "배치된 그룹 타입 변경" [ref=e92]:
+              - generic [ref=e93]:
+                - generic [ref=e94]: 6개
+                - button "그룹 타입 런 → 그룹으로 변경" [ref=e95] [cursor=pointer]: 런
+              - generic [ref=e96]:
+                - generic [ref=e97]: 3개
+                - button "그룹 타입 그룹 → 런으로 변경" [ref=e98] [cursor=pointer]: 그룹
+              - generic [ref=e99]:
+                - generic [ref=e100]: 1개
+                - button "그룹 타입 그룹 → 런으로 변경" [ref=e101] [cursor=pointer]: 그룹
+                - alert "그룹은 타일이 3개 이상이어야 합니다." [ref=e102]
+            - generic [ref=e103]:
+              - generic [ref=e104]:
+                - generic [ref=e105]:
+                  - text: 내 패
+                  - generic [ref=e106]: (4개)
+                - generic [ref=e107]: 유효한 세트에서 총 12장 이상 배치
+              - region "내 타일 랙" [ref=e108]:
+                - heading "내 타일 (4장)" [level=2] [ref=e109]
+                - generic [ref=e110]:
+                  - generic [ref=e111]:
+                    - text: 내 타일
+                    - generic "손패 4장" [ref=e112]: (4장)
+                  - button "타일 숫자 오름차순 정렬" [ref=e113] [cursor=pointer]:
+                    - generic [ref=e114]: ↑↓
+                    - text: 정렬
+                - generic [ref=e115]:
+                  - button [pressed]:
+                    - generic: "8"
+                  - button "B9a 타일 (드래그 가능)" [ref=e116] [cursor=pointer]:
+                    - img "B9a 타일 (드래그 가능)" [ref=e117]:
+                      - generic [ref=e118]: "9"
+                      - generic [ref=e119]: ●
+                  - button "JK1 타일 (드래그 가능)" [ref=e120] [cursor=pointer]:
+                    - img "JK1 타일 (드래그 가능)" [ref=e121]:
+                      - generic [ref=e122]: ★
+                      - generic [ref=e123]: JK
+                      - generic [ref=e124]: ★
+                  - button "K3a 타일 (드래그 가능)" [ref=e125] [cursor=pointer]:
+                    - img "K3a 타일 (드래그 가능)" [ref=e126]:
+                      - generic [ref=e127]: "3"
+                      - generic [ref=e128]: ■
+              - generic [ref=e129]:
+                - button "타일 배치 초기화" [ref=e130] [cursor=pointer]: 초기화
+                - button "스테이지 클리어 확정" [disabled] [ref=e131]: 확정
+          - img "B8a 타일 드래그 중" [ref=e134]:
+            - generic [ref=e135]: "8"
+            - generic [ref=e136]: ●
+          - status [ref=e137]: Draggable item rack-B8a-0 was moved over droppable area game-board.
+      - complementary [ref=e138]:
+        - complementary "힌트 패널" [ref=e139]:
+          - generic [ref=e140]:
+            - heading "클리어 조건" [level=3] [ref=e141]
+            - paragraph [ref=e142]: 유효한 세트에서 총 12장 이상 배치
+          - separator [ref=e143]
+          - generic [ref=e144]:
+            - heading "힌트" [level=3] [ref=e145]
+            - status [ref=e146]: 그룹은 타일이 3개 이상이어야 합니다.
+  - alert [ref=e147]
+```

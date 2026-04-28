@@ -436,17 +436,18 @@ func TestConfirmTurn_JokerSwap_NotReplaced(t *testing.T) {
 	require.NoError(t, err)
 
 	// ConfirmTurn: JK1을 교체했다고 신고했지만 테이블에 JK1이 없음
-	result, err := svc.ConfirmTurn("joker-swap-2", &ConfirmRequest{
+	_, confirmErr := svc.ConfirmTurn("joker-swap-2", &ConfirmRequest{
 		Seat:               0,
 		TableGroups:        tableAfter,
 		TilesFromRack:      tilesFromRack,
 		JokerReturnedCodes: []string{"JK1"},
 	})
-	// 규칙 S6.1: 검증 실패 → 패널티 드로우 + 턴 종료
-	require.NoError(t, err)
-	assert.True(t, result.Success)
-	assert.Equal(t, engine.ErrJokerNotUsed, result.ErrorCode)
-	assert.Greater(t, result.PenaltyDrawCount, 0)
+	// SSOT 55번 V-01, 56번 A14: 검증 실패 → INVALID_MOVE 에러 반환 + 턴 유지
+	require.Error(t, confirmErr)
+	svcErr, ok := IsServiceError(confirmErr)
+	require.True(t, ok)
+	assert.Equal(t, "INVALID_MOVE", svcErr.Code)
+	assert.Equal(t, engine.ErrJokerNotUsed, svcErr.Message)
 }
 
 func TestConfirmTurn_InitialMeld_ExactlyThirty(t *testing.T) {
@@ -542,17 +543,18 @@ func TestConfirmTurn_InitialMeld_ModifyExistingSet(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	result, err := svc.ConfirmTurn("initial-modify-1", &ConfirmRequest{
+	_, confirmErr := svc.ConfirmTurn("initial-modify-1", &ConfirmRequest{
 		Seat:          0,
 		TableGroups:   tableAfter,
 		TilesFromRack: tilesFromRack,
 	})
-	// 규칙 S6.1: 검증 실패 → 패널티 드로우 + 턴 종료
-	// V-13a: 재배치 시도이므로 ErrNoRearrangePerm (기존 ErrInitialMeldSource에서 변경)
-	require.NoError(t, err)
-	assert.True(t, result.Success)
-	assert.Equal(t, engine.ErrNoRearrangePerm, result.ErrorCode)
-	assert.Greater(t, result.PenaltyDrawCount, 0)
+	// SSOT 55번 V-01, 56번 A14: 검증 실패 → INVALID_MOVE 에러 반환 + 턴 유지
+	// V-13a: 재배치 시도이므로 ErrNoRearrangePerm
+	require.Error(t, confirmErr)
+	svcErr, ok := IsServiceError(confirmErr)
+	require.True(t, ok)
+	assert.Equal(t, "INVALID_MOVE", svcErr.Code)
+	assert.Equal(t, engine.ErrNoRearrangePerm, svcErr.Message)
 }
 
 func TestConfirmTurn_MultipleValidSets(t *testing.T) {

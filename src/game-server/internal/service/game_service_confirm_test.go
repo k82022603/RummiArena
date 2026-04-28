@@ -79,12 +79,12 @@ func TestConfirmTurn_AIPlace_ValidSet_NoRollback(t *testing.T) {
 	assert.Equal(t, []string{"K2a"}, saved.Players[0].Rack, "TC-1: 3장 제거 후 랙")
 }
 
-// --- TC-2: RED 재현 — AI 1-tile group 잔존 ---
-// AI 가 1-tile group (R10a 1장) 을 포함한 tableGroups 를 전송하면
+// --- TC-2: INVALID_MOVE 에러 반환 — AI 1-tile group 잔존 ---
+// SSOT 55번 V-01, 56번 A14: AI 가 1-tile group (R10a 1장) 을 포함한 tableGroups 를 전송하면
 // ValidateTurnConfirm 이 ErrSetSize 를 반환하고:
-//   1. 패널티 드로우 3장 적용
-//   2. 보드가 배치 전 상태로 롤백
-//   3. result.RollbackForced == true (BUG-UI-014 수정 목표)
+//   1. INVALID_MOVE 에러 반환 (패널티 드로우 없음)
+//   2. 보드가 배치 전 상태로 롤백 (스냅샷 복원)
+//   3. 턴 유지 (ws_handler에서 AI는 forceAIDraw 1장으로 폴백)
 func TestConfirmTurn_AIPlace_OneTileGroup_Rejected(t *testing.T) {
 	existingSet := &model.SetOnTable{
 		ID:    "existing-run",
@@ -104,24 +104,27 @@ func TestConfirmTurn_AIPlace_OneTileGroup_Rejected(t *testing.T) {
 		TilesFromRack: []string{"R10a"},
 	}
 
-	result, err := svc.ConfirmTurn("game-1tile-reject", req)
-	require.NoError(t, err, "패널티 드로우로 처리되므로 service error 없음")
-	assert.True(t, result.Success, "TC-2: Success=true (패널티로 처리됨)")
-	assert.Equal(t, engine.ErrSetSize, result.ErrorCode, "TC-2: ErrSetSize 코드 반환")
-	assert.Greater(t, result.PenaltyDrawCount, 0, "TC-2: 패널티 드로우 적용")
-
-	// BUG-UI-014 수정 목표: RollbackForced=true
-	assert.True(t, result.RollbackForced, "TC-2 [BUG-UI-014]: invalid meld 시 RollbackForced=true")
+	_, confirmErr := svc.ConfirmTurn("game-1tile-reject", req)
+	// SSOT 55번 V-01, 56번 A14: INVALID_MOVE 에러 반환
+	require.Error(t, confirmErr, "TC-2: INVALID_MOVE 에러 반환")
+	svcErr, ok := IsServiceError(confirmErr)
+	require.True(t, ok)
+	assert.Equal(t, "INVALID_MOVE", svcErr.Code, "TC-2: INVALID_MOVE 코드")
+	assert.Equal(t, engine.ErrSetSize, svcErr.Message, "TC-2: ErrSetSize 메시지")
 
 	// 보드가 배치 전 상태(기존 세트만)로 복원되어야 한다
 	saved, err := repo.GetGameState("game-1tile-reject")
 	require.NoError(t, err)
 	assert.Len(t, saved.Table, 1, "TC-2: 보드가 기존 1개 세트로 롤백되어야 한다")
 	assert.Equal(t, "existing-run", saved.Table[0].ID, "TC-2: 기존 세트 ID 유지")
+	// 패널티 없음
+	assert.Len(t, saved.DrawPile, 5, "TC-2: 드로우 파일 변동 없음")
+	assert.Equal(t, 0, saved.CurrentSeat, "TC-2: 턴 유지")
 }
 
-// --- TC-3: RED 재현 — JK+1-tile invalid 혼합 ---
-// AI 가 조커 + 1-tile 로만 구성된 세트를 전송하면 ErrSetSize 로 거부되어야 한다.
+// --- TC-3: INVALID_MOVE 에러 반환 — JK+1-tile invalid 혼합 ---
+// SSOT 55번 V-01, 56번 A14: AI 가 조커 + 1-tile 로만 구성된 세트를 전송하면
+// ErrSetSize 로 거부되고 INVALID_MOVE 에러가 반환된다.
 func TestConfirmTurn_AIPlace_JokerPlusOneTile_Rejected(t *testing.T) {
 	existingSet := &model.SetOnTable{
 		ID:    "existing-group",
@@ -141,17 +144,18 @@ func TestConfirmTurn_AIPlace_JokerPlusOneTile_Rejected(t *testing.T) {
 		TilesFromRack: []string{"JK1", "K4a"},
 	}
 
-	result, err := svc.ConfirmTurn("game-jk-1tile", req)
-	require.NoError(t, err, "패널티 드로우로 처리됨")
-	assert.True(t, result.Success)
-	assert.Equal(t, engine.ErrSetSize, result.ErrorCode, "TC-3: 2-tile도 ErrSetSize")
-	assert.Greater(t, result.PenaltyDrawCount, 0, "TC-3: 패널티 적용")
+	_, confirmErr := svc.ConfirmTurn("game-jk-1tile", req)
+	// SSOT 55번 V-01, 56번 A14: INVALID_MOVE 에러 반환
+	require.Error(t, confirmErr, "TC-3: INVALID_MOVE 에러 반환")
+	svcErr, ok := IsServiceError(confirmErr)
+	require.True(t, ok)
+	assert.Equal(t, "INVALID_MOVE", svcErr.Code, "TC-3: INVALID_MOVE 코드")
+	assert.Equal(t, engine.ErrSetSize, svcErr.Message, "TC-3: 2-tile도 ErrSetSize 메시지")
 
-	// BUG-UI-014 수정 목표: RollbackForced=true
-	assert.True(t, result.RollbackForced, "TC-3 [BUG-UI-014]: JK+1tile invalid meld 시 RollbackForced=true")
-
-	// 보드 롤백 확인
+	// 보드 롤백 확인 (패널티 없음)
 	saved, err := repo.GetGameState("game-jk-1tile")
 	require.NoError(t, err)
 	assert.Len(t, saved.Table, 1, "TC-3: 보드가 기존 1개 세트로 롤백")
+	assert.Len(t, saved.DrawPile, 5, "TC-3: 드로우 파일 변동 없음")
+	assert.Equal(t, 0, saved.CurrentSeat, "TC-3: 턴 유지")
 }

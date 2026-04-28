@@ -499,15 +499,16 @@ describe("S-16 · detectDuplicateTileCodes 고스트 탐지", () => {
 // =====================================================================
 // S-17 · ActionBar 확정 disabled (G-2 근본 방어)
 // =====================================================================
-describe("S-17 · allGroupsValid=false → 확정 버튼 disabled", () => {
+describe("S-17 · confirmEnabled=false → 확정 버튼 disabled (useTurnActions SSOT)", () => {
   const noop = () => {};
 
-  it("allGroupsValid=false 이면 disabled 속성 있음", () => {
+  it("confirmEnabled=false 이면 disabled 속성 있음", () => {
     render(
       <ActionBar
         isMyTurn={true}
-        hasPending={true}
-        allGroupsValid={false}
+        confirmEnabled={false}
+        resetEnabled={true}
+        drawEnabled={false}
         onDraw={noop}
         onUndo={noop}
         onConfirm={noop}
@@ -516,12 +517,13 @@ describe("S-17 · allGroupsValid=false → 확정 버튼 disabled", () => {
     expect(screen.getByRole("button", { name: /확정/ })).toBeDisabled();
   });
 
-  it("allGroupsValid=true + isMyTurn=true + hasPending=true → 활성", () => {
+  it("confirmEnabled=true + isMyTurn=true → 활성", () => {
     render(
       <ActionBar
         isMyTurn={true}
-        hasPending={true}
-        allGroupsValid={true}
+        confirmEnabled={true}
+        resetEnabled={true}
+        drawEnabled={false}
         onDraw={noop}
         onUndo={noop}
         onConfirm={noop}

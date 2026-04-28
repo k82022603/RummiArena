@@ -1,0 +1,97 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e4]: RummiArenaAdmin
+      - navigation "주요 메뉴" [ref=e5]:
+        - link "대시보드" [ref=e6] [cursor=pointer]:
+          - /url: /
+          - img [ref=e7]
+          - text: 대시보드
+        - link "활성 게임" [ref=e9] [cursor=pointer]:
+          - /url: /games
+          - img [ref=e10]
+          - text: 활성 게임
+        - link "유저 목록" [ref=e13] [cursor=pointer]:
+          - /url: /users
+          - img [ref=e14]
+          - text: 유저 목록
+        - link "AI 통계" [ref=e16] [cursor=pointer]:
+          - /url: /stats
+          - img [ref=e17]
+          - text: AI 통계
+        - link "AI 토너먼트" [ref=e19] [cursor=pointer]:
+          - /url: /tournament
+          - img [ref=e20]
+          - text: AI 토너먼트
+        - link "ELO 랭킹" [ref=e23] [cursor=pointer]:
+          - /url: /rankings
+          - img [ref=e24]
+          - text: ELO 랭킹
+        - link "Playtest S4" [ref=e26] [cursor=pointer]:
+          - /url: /playtest-s4
+          - img [ref=e27]
+          - text: Playtest S4
+      - paragraph [ref=e30]: v0.1.0 — Sprint 1
+    - generic [ref=e31]:
+      - banner [ref=e32]:
+        - paragraph [ref=e33]: RummiArena 관리자 포털
+        - generic [ref=e36]: 시스템 정상
+      - main [ref=e37]:
+        - main "Playtest S4 — Deterministic Runner" [ref=e38]:
+          - generic [ref=e39]:
+            - generic [ref=e40]:
+              - generic [ref=e41]:
+                - heading "Playtest S4 — Deterministic Runner" [level=1] [ref=e42]
+                - paragraph [ref=e43]:
+                  - text: 결정론적 시드로 엔진 레벨 회귀 시나리오를 즉시 재현한다.
+                  - generic [ref=e44]: 총 0개 시나리오 · 이력 0건
+              - generic [ref=e45]:
+                - button "시나리오 새로고침" [ref=e46]
+                - button "이력 새로고침" [ref=e47]
+            - region "실행 입력" [ref=e48]:
+              - heading "실행 입력" [level=2] [ref=e49]
+              - generic [ref=e50]:
+                - generic [ref=e51]: 시드 (64-bit)
+                - generic [ref=e52]:
+                  - textbox "시드 (64-bit)" [ref=e53]:
+                    - /placeholder: "0x14"
+                  - button "새 랜덤 시드 생성" [ref=e54]: 랜덤
+                  - button "현재 시드 복사" [disabled] [ref=e55]: 복사
+                - paragraph [ref=e56]: 0x로 시작하는 hex 또는 10진수 uint64를 입력하세요
+              - generic [ref=e57]:
+                - generic [ref=e58]: 시나리오
+                - combobox "시나리오" [ref=e59]:
+                  - option "(시나리오 없음)" [selected]
+            - region "AI 모드" [ref=e60]:
+              - heading "AI 모드" [level=2] [ref=e61]
+              - radiogroup "AI 모드" [ref=e62]:
+                - generic "Phase 1 — 엔진 레벨 결정론 검증 (항상 사용 가능)" [ref=e63] [cursor=pointer]:
+                  - radio "baseline" [checked] [ref=e64]
+                  - generic [ref=e65]: baseline
+                - 'generic "Phase 2 예정: 사전 녹화된 AI 응답 재생 — Sprint 6 후반" [ref=e66] [cursor=pointer]':
+                  - radio "fixture Phase 2+" [disabled] [ref=e67]
+                  - generic [ref=e68]: fixture
+                  - generic [ref=e69]: Phase 2+
+                - 'generic "Phase 3 예정: 실제 LLM 호출 — Sprint 7" [ref=e70] [cursor=pointer]':
+                  - radio "live Phase 2+" [disabled] [ref=e71]
+                  - generic [ref=e72]: live
+                  - generic [ref=e73]: Phase 2+
+              - paragraph [ref=e74]: "Phase 1: baseline만 사용 가능. fixture/live는 Sprint 6 후반(Phase 2) 및 Sprint 7(Phase 3)에서 활성화됩니다."
+            - button "▶ 실행 (Run)" [disabled] [ref=e76]
+            - region "실행 결과" [ref=e77]:
+              - heading "실행 결과" [level=2] [ref=e78]
+              - text: 시드 + 시나리오를 선택한 뒤
+              - strong [ref=e79]: 실행
+              - text: 을 누르면 결과가 여기에 표시됩니다.
+            - generic [ref=e80]:
+              - region "최근 시드 (브라우저 저장)" [ref=e81]:
+                - heading "최근 시드 (브라우저 저장)" [level=2] [ref=e83]
+                - paragraph [ref=e84]: 아직 실행한 시드가 없습니다. 첫 실행 후 자동으로 추가됩니다.
+              - region "서버 실행 이력 (최근 0건)" [ref=e85]:
+                - heading "서버 실행 이력 (최근 0건)" [level=2] [ref=e86]
+                - paragraph [ref=e87]: 이력이 비어 있습니다. 첫 실행 후 자동 누적됩니다.
+  - alert [ref=e88]
+```

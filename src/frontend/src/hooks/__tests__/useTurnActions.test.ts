@@ -5,8 +5,16 @@
  *   - 58 §2 F-09: ConfirmTurn 사전검증 + WS 발신
  *   - 58 §2 F-11: DRAW 버튼 활성 조건
  *   - UR-15: confirmEnabled 종합 조건
- *   - UR-22: drawEnabled = MY_TURN_IDLE && pending 없음
+ *   - UR-22: drawEnabled = isMyTurn && pending 없음
  *   - UR-36: confirmValidator 외 임의 게이트 금지
+ *
+ * [2026-04-28] gameStore pending 필드 SSOT 전환 반영:
+ *   useTurnActions의 활성 조건이 gameStore.pendingTableGroups/pendingMyTiles/pendingGroupIds
+ *   기반으로 변경됨. (pendingStore.draft는 TURN_START 스냅샷에 고착되는 문제로 대체)
+ *   - confirmEnabled: isMyTurn && hasPending && tilesAdded>=1 && allGroupsValid && (hasInitialMeld || score>=30)
+ *   - drawEnabled: isMyTurn && !hasPending (pendingTableGroups === null)
+ *   - resetEnabled: hasPending
+ *   setup 함수들도 gameStore.setPendingTableGroups() 기반으로 수정.
  */
 
 import { act, renderHook } from "@testing-library/react";
@@ -16,7 +24,6 @@ import {
   unregisterWSSendBridge,
 } from "../useTurnActions";
 import { usePendingStore } from "@/store/pendingStore";
-import { useTurnStateStore } from "@/store/turnStateStore";
 import { useGameStore } from "@/store/gameStore";
 import type { TableGroup, TileCode } from "@/types/tile";
 
@@ -29,7 +36,8 @@ function makeGroup(id: string, tiles: TileCode[]): TableGroup {
 }
 
 /**
- * 턴 상태 머신을 MY_TURN_IDLE(S1) 상태로 설정
+ * 내 턴 상태 설정 — gameState.currentSeat === mySeat(0)
+ * useTurnActions의 isMyTurn = computeIsMyTurn(currentSeat, mySeat) 조건 충족
  */
 function setupMyTurnIdle(hasInitialMeld: boolean = false) {
   useGameStore.setState({
@@ -45,43 +53,46 @@ function setupMyTurnIdle(hasInitialMeld: boolean = false) {
       status: "CONNECTED" as const,
     }],
     myTiles: ["R5a", "R6a", "R7a", "R8a", "R9a"] as TileCode[],
+    // pending 없음
+    pendingTableGroups: null,
+    pendingMyTiles: null,
+    pendingGroupIds: new Set<string>(),
+    pendingRecoveredJokers: [],
+    gameState: {
+      currentSeat: 0,        // isMyTurn=true (mySeat=0과 일치)
+      tableGroups: [],
+      drawPileCount: 10,
+      turnStartedAt: new Date().toISOString(),
+      turnTimeoutSec: 60,
+    } as import("@/types/game").GameState,
   });
-  // OUT_OF_TURN → MY_TURN_IDLE (TURN_START + isMyTurn=true)
-  useTurnStateStore.getState().transition("TURN_START", { isMyTurn: true });
 }
 
 /**
- * 상태 머신을 PENDING_BUILDING(S5) 상태로 설정
- * (TURN_START → DRAG_START_RACK → DROP_OK 순서)
+ * pending 상태 설정 — gameStore의 pending 필드에 그룹이 있는 상태
+ *
+ * [2026-04-28] useTurnActions가 gameStore.pendingTableGroups를 직접 읽으므로
+ * gameStore.setPendingTableGroups() 기반으로 설정한다.
+ * pendingStore.applyMutation()은 별도이므로 여기서는 gameStore만 설정.
  */
 function setupPendingBuilding(hasInitialMeld: boolean = true) {
   setupMyTurnIdle(hasInitialMeld);
-  usePendingStore.getState().saveTurnStartSnapshot(
-    ["R5a", "R6a", "R7a", "R8a", "R9a"] as TileCode[],
-    []
-  );
-  // DRAG_START_RACK → DRAGGING_FROM_RACK
-  useTurnStateStore.getState().transition("DRAG_START_RACK");
-  // pending 적용
-  usePendingStore.getState().applyMutation({
-    nextTableGroups: [makeGroup("pending-x", ["R5a", "R6a", "R7a"])],
-    nextMyTiles: ["R8a", "R9a"] as TileCode[],
-    nextPendingGroupIds: new Set(["pending-x"]),
-    nextPendingRecoveredJokers: [],
-    nextPendingGroupSeq: 1,
-    branch: "test",
+  // 턴 시작 랙: 5장 (myTiles)
+  // 보드에 3장 배치 후 랙에 2장 남음 → tilesAdded = 5-2 = 3
+  useGameStore.setState({
+    // myTiles = 턴 시작 랙 스냅샷 (변경하지 않음 — setupMyTurnIdle에서 설정됨)
+    pendingTableGroups: [makeGroup("pending-x", ["R5a", "R6a", "R7a"])],
+    pendingMyTiles: ["R8a", "R9a"] as TileCode[],
+    pendingGroupIds: new Set(["pending-x"]),
+    pendingRecoveredJokers: [],
   });
-  // DROP_OK → PENDING_BUILDING
-  useTurnStateStore.getState().transition("DROP_OK");
 }
 
 /**
- * 상태 머신을 PENDING_READY(S6) 상태로 설정
- * (PENDING_BUILDING + PRE_CHECK_PASS)
+ * pending 상태 설정 (setupPendingBuilding 동일 — PRE_CHECK_PASS는 더 이상 필요 없음)
  */
 function setupPendingReady(hasInitialMeld: boolean = true) {
   setupPendingBuilding(hasInitialMeld);
-  useTurnStateStore.getState().transition("PRE_CHECK_PASS");
 }
 
 // ---------------------------------------------------------------------------
@@ -91,12 +102,15 @@ function setupPendingReady(hasInitialMeld: boolean = true) {
 beforeEach(() => {
   act(() => {
     usePendingStore.getState().reset();
-    useTurnStateStore.getState().reset();
     useGameStore.setState({
       mySeat: 0,
       hasInitialMeld: false,
       players: [],
       myTiles: [],
+      pendingTableGroups: null,
+      pendingMyTiles: null,
+      pendingGroupIds: new Set<string>(),
+      pendingRecoveredJokers: [],
       gameState: null,
     });
   });
@@ -111,7 +125,7 @@ afterEach(() => {
 // 1. confirmEnabled — pending 없을 때 false
 // ---------------------------------------------------------------------------
 
-test("confirmEnabled = false when draft is null (MY_TURN_IDLE)", () => {
+test("confirmEnabled = false when draft is null (my turn, no pending)", () => {
   act(() => {
     setupMyTurnIdle(true);
   });
@@ -121,24 +135,24 @@ test("confirmEnabled = false when draft is null (MY_TURN_IDLE)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 2. confirmEnabled — PENDING_READY + 유효한 세트 + hasInitialMeld=true → true
+// 2. confirmEnabled — 내 턴 + 유효한 세트 + hasInitialMeld=true → true
 // ---------------------------------------------------------------------------
 
-test("confirmEnabled = true when PENDING_READY, valid groups, hasInitialMeld=true", () => {
+test("confirmEnabled = true when my turn, valid groups, hasInitialMeld=true", () => {
   act(() => {
     setupPendingReady(true);
   });
 
   const { result } = renderHook(() => useTurnActions());
-  // PENDING_READY(S6) + hasPending + tilesAdded>=1 + allGroupsValid + hasInitialMeld
+  // isMyTurn + hasPending + tilesAdded>=1 + allGroupsValid + hasInitialMeld
   expect(result.current.confirmEnabled).toBe(true);
 });
 
 // ---------------------------------------------------------------------------
-// 3. drawEnabled — MY_TURN_IDLE && draft null → true
+// 3. drawEnabled — 내 턴 && pending 없음 → true
 // ---------------------------------------------------------------------------
 
-test("drawEnabled = true when MY_TURN_IDLE and no pending draft", () => {
+test("drawEnabled = true when my turn and no pending draft", () => {
   act(() => {
     setupMyTurnIdle(false);
   });
@@ -148,10 +162,10 @@ test("drawEnabled = true when MY_TURN_IDLE and no pending draft", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 4. drawEnabled — PENDING_BUILDING 상태 → false
+// 4. drawEnabled — pending 있을 때 → false
 // ---------------------------------------------------------------------------
 
-test("drawEnabled = false when in PENDING_BUILDING state", () => {
+test("drawEnabled = false when pending exists", () => {
   act(() => {
     setupPendingBuilding(true);
   });
@@ -161,10 +175,10 @@ test("drawEnabled = false when in PENDING_BUILDING state", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 5. handleUndo — pendingStore 초기화 + turnState RESET 전이
+// 5. handleUndo — gameStore pending 초기화
 // ---------------------------------------------------------------------------
 
-test("handleUndo → pendingStore reset + turnState → MY_TURN_IDLE", () => {
+test("handleUndo → gameStore resetPending 호출됨", () => {
   act(() => {
     setupPendingBuilding(true);
   });
@@ -176,15 +190,18 @@ test("handleUndo → pendingStore reset + turnState → MY_TURN_IDLE", () => {
     result.current.handleUndo();
   });
 
-  expect(usePendingStore.getState().draft).toBeNull();
-  expect(useTurnStateStore.getState().state).toBe("MY_TURN_IDLE");
+  // gameStore pending 필드가 모두 초기화되어야 함
+  const gs = useGameStore.getState();
+  expect(gs.pendingTableGroups).toBeNull();
+  expect(gs.pendingMyTiles).toBeNull();
+  expect(gs.pendingGroupIds.size).toBe(0);
 });
 
 // ---------------------------------------------------------------------------
-// 6. handleDraw — WS 브릿지 호출 + DRAW 전이
+// 6. handleDraw — WS 브릿지 호출
 // ---------------------------------------------------------------------------
 
-test("handleDraw → WS DRAW_TILE 발신 + turnState DRAWING 전이", () => {
+test("handleDraw → WS DRAW_TILE 발신", () => {
   act(() => {
     setupMyTurnIdle(false);
   });
@@ -201,7 +218,6 @@ test("handleDraw → WS DRAW_TILE 발신 + turnState DRAWING 전이", () => {
     result.current.handleDraw();
   });
 
-  expect(useTurnStateStore.getState().state).toBe("DRAWING");
   expect(sent).toHaveLength(1);
   expect(sent[0].type).toBe("DRAW_TILE");
 });
@@ -211,7 +227,7 @@ test("handleDraw → WS DRAW_TILE 발신 + turnState DRAWING 전이", () => {
 // ---------------------------------------------------------------------------
 
 test("confirmEnabled = false when score < 30 and hasInitialMeld=false", () => {
-  // PENDING_READY(S6)이지만 hasInitialMeld=false, score=18 (30점 미만)
+  // 내 턴이지만 hasInitialMeld=false, score=18 (30점 미만)
   act(() => {
     setupPendingReady(false); // hasInitialMeld=false
   });
@@ -219,4 +235,27 @@ test("confirmEnabled = false when score < 30 and hasInitialMeld=false", () => {
   const { result } = renderHook(() => useTurnActions());
   // score 5+6+7=18 < 30 이므로 false
   expect(result.current.confirmEnabled).toBe(false);
+});
+
+// ---------------------------------------------------------------------------
+// 8. drawEnabled — 내 턴이 아닐 때 false
+// ---------------------------------------------------------------------------
+
+test("drawEnabled = false when not my turn", () => {
+  act(() => {
+    useGameStore.setState({
+      mySeat: 0,
+      pendingTableGroups: null,
+      gameState: {
+        currentSeat: 1,  // 상대방 턴
+        tableGroups: [],
+        drawPileCount: 10,
+        turnStartedAt: new Date().toISOString(),
+        turnTimeoutSec: 60,
+      } as import("@/types/game").GameState,
+    });
+  });
+
+  const { result } = renderHook(() => useTurnActions());
+  expect(result.current.drawEnabled).toBe(false);
 });

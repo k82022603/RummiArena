@@ -137,12 +137,13 @@ func TestPlaceTiles_GameNotFound(t *testing.T) {
 func TestPlaceTiles_InvalidSet_ValidationOnConfirm(t *testing.T) {
 	// PlaceTiles 자체는 유효성 검증 없이 테이블에 배치한다.
 	// 유효하지 않은 세트(2장만 배치)를 PlaceTiles로 올린 후
-	// ConfirmTurn에서 ValidationError가 반환되는지 확인한다.
+	// ConfirmTurn에서 Human 패널티 드로우가 적용되는지 확인한다.
+	// B안: Human → 스냅샷 복원 + 패널티 3장 + 턴 종료.
 	rack0 := []string{"R5a", "R6a", "B1a"}
 	rack1 := []string{"K1a"}
 	state := newTestGameState("game-invalid-set", twoPlayerState(rack0, rack1), []string{"Y1a"})
 	state.Players[0].HasInitialMeld = true
-	svc, _ := seedRepo(t, state)
+	svc, repo := seedRepo(t, state)
 
 	// 2장짜리 세트 (최소 3장 규칙 위반)
 	tilesFromRack := []string{"R5a", "R6a"}
@@ -157,7 +158,7 @@ func TestPlaceTiles_InvalidSet_ValidationOnConfirm(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, result.Success, "PlaceTiles는 유효성 검증 없이 성공해야 한다")
 
-	// 규칙 S6.1: ConfirmTurn 검증 실패 → 패널티 드로우 + 에러 코드 in result
+	// B안: Human INVALID_MOVE → 패널티 드로우 + 에러 코드 in result (에러 반환 없음)
 	confirmResult, err := svc.ConfirmTurn("game-invalid-set", &ConfirmRequest{
 		Seat:        0,
 		TableGroups: tableGroups,
@@ -166,6 +167,14 @@ func TestPlaceTiles_InvalidSet_ValidationOnConfirm(t *testing.T) {
 	assert.True(t, confirmResult.Success)
 	assert.Equal(t, engine.ErrSetSize, confirmResult.ErrorCode, "세트 크기 규칙 위반 에러 코드")
 	assert.Greater(t, confirmResult.PenaltyDrawCount, 0)
+	assert.NotEmpty(t, confirmResult.PenaltyReason, "패널티 사유 문구 포함")
+
+	// 랙 복원 + 패널티 드로우 확인
+	afterRollback, _ := repo.GetGameState("game-invalid-set")
+	assert.Len(t, afterRollback.Players[0].Rack, len(rack0)+confirmResult.PenaltyDrawCount,
+		"스냅샷 복원 + 패널티 드로우 추가")
+	// 턴 종료: seat 1로 넘어감
+	assert.Equal(t, 1, afterRollback.CurrentSeat, "패널티 후 턴 종료")
 }
 
 func TestPlaceTiles_TableStateSnapshot(t *testing.T) {
@@ -310,7 +319,8 @@ func TestConfirmTurn_HappyPath_ValidGroup(t *testing.T) {
 }
 
 func TestConfirmTurn_InvalidMove_BelowThirty(t *testing.T) {
-	// 최초 등록 미완료 상태에서 29점 이하 배치 → 패널티 드로우 3장 + 턴 종료
+	// 최초 등록 미완료 상태에서 29점 이하 배치 → INVALID_MOVE 에러 + 턴 유지
+	// SSOT 55번 V-01, 56번 A14: 스냅샷 롤백 + 턴 유지 (패널티 드로우 없음)
 	// R1a+R2a+R3a = 6점 → 30점 미달
 	rack0 := []string{"R1a", "R2a", "R3a", "B1a"}
 	rack1 := []string{"K1a"}
@@ -328,32 +338,34 @@ func TestConfirmTurn_InvalidMove_BelowThirty(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	result, err := svc.ConfirmTurn("game-20", &ConfirmRequest{
+	_, confirmErr := svc.ConfirmTurn("game-20", &ConfirmRequest{
 		Seat:        0,
 		TableGroups: tableGroups,
 	})
-	// 규칙 S6.1: 검증 실패 → 패널티 3장 + 턴 종료 (에러 없이 성공 결과 반환)
-	require.NoError(t, err)
-	assert.True(t, result.Success)
-	assert.Equal(t, engine.ErrInitialMeldScore, result.ErrorCode)
-	assert.Equal(t, 3, result.PenaltyDrawCount)
+	// SSOT 55번 V-01, 56번 A14: INVALID_MOVE 에러 반환 + 스냅샷 복원 + 턴 유지
+	require.Error(t, confirmErr)
+	svcErr, ok := IsServiceError(confirmErr)
+	require.True(t, ok)
+	assert.Equal(t, "INVALID_MOVE", svcErr.Code)
+	assert.Equal(t, engine.ErrInitialMeldScore, svcErr.Message)
 
-	// 턴이 다음 플레이어로 넘어갔는지 확인
-	assert.Equal(t, 1, result.NextSeat)
-
-	// 랙에 패널티 타일이 추가되었는지 확인 (원래 4장 + 패널티 3장 = 7장)
+	// 턴 유지 확인
 	afterState, _ := repo.GetGameState("game-20")
-	assert.Len(t, afterState.Players[0].Rack, 7, "패널티 3장이 랙에 추가되어야 한다")
-	assert.Empty(t, afterState.DrawPile, "드로우 파일에서 3장 모두 뽑아야 한다")
+	assert.Equal(t, 0, afterState.CurrentSeat, "턴 유지: seat 0 그대로")
+
+	// 랙 복원 확인 (패널티 없음)
+	assert.ElementsMatch(t, rack0, afterState.Players[0].Rack, "스냅샷 복원 후 원래 랙")
+	assert.Len(t, afterState.DrawPile, 3, "드로우 파일 변동 없음")
 }
 
 func TestConfirmTurn_InvalidMove_InvalidSet_DuplicateColor(t *testing.T) {
-	// 그룹 내 동일 색상 중복 (R7a, R7b, B7a) → 패널티 드로우 + 턴 종료
+	// 그룹 내 동일 색상 중복 (R7a, R7b, B7a) → INVALID_MOVE 에러 + 턴 유지
+	// SSOT 55번 V-01, 56번 A14: 스냅샷 롤백 + 턴 유지 (패널티 드로우 없음)
 	rack0 := []string{"R7a", "R7b", "B7a", "K1a"}
 	rack1 := []string{"K1b"}
 	drawPile := []string{"Y1a", "Y2a", "Y3a"}
 
-	st, _ := seedRepo(t, func() *model.GameStateRedis {
+	st, repo := seedRepo(t, func() *model.GameStateRedis {
 		s := newTestGameState("game-21b", twoPlayerState(rack0, rack1), drawPile)
 		s.Players[0].HasInitialMeld = true
 		return s
@@ -369,26 +381,32 @@ func TestConfirmTurn_InvalidMove_InvalidSet_DuplicateColor(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	result, err := st.ConfirmTurn("game-21b", &ConfirmRequest{
+	_, confirmErr := st.ConfirmTurn("game-21b", &ConfirmRequest{
 		Seat:        0,
 		TableGroups: tableGroups,
 	})
-	// 규칙 S6.1: 패널티 드로우 + 턴 종료
-	require.NoError(t, err)
-	assert.True(t, result.Success)
-	assert.Equal(t, engine.ErrGroupColorDup, result.ErrorCode)
-	assert.Equal(t, 3, result.PenaltyDrawCount)
-	assert.Equal(t, 1, result.NextSeat)
+	// SSOT 55번 V-01, 56번 A14: INVALID_MOVE 에러 반환
+	require.Error(t, confirmErr)
+	svcErr, ok := IsServiceError(confirmErr)
+	require.True(t, ok)
+	assert.Equal(t, "INVALID_MOVE", svcErr.Code)
+	assert.Equal(t, engine.ErrGroupColorDup, svcErr.Message)
+
+	// 턴 유지 + 랙 복원
+	afterState, _ := repo.GetGameState("game-21b")
+	assert.Equal(t, 0, afterState.CurrentSeat, "턴 유지")
+	assert.ElementsMatch(t, rack0, afterState.Players[0].Rack, "스냅샷 복원 후 원래 랙")
 }
 
 func TestConfirmTurn_InvalidMove_NonConsecutiveRun(t *testing.T) {
-	// 숫자 불연속 런 (R3a, R5a, R7a) → 패널티 드로우 + 턴 종료
+	// 숫자 불연속 런 (R3a, R5a, R7a) → INVALID_MOVE 에러 + 턴 유지
+	// SSOT 55번 V-01, 56번 A14: 스냅샷 롤백 + 턴 유지 (패널티 드로우 없음)
 	rack0 := []string{"R3a", "R5a", "R7a", "K1a"}
 	rack1 := []string{"K2a"}
 	drawPile := []string{"Y1a", "Y2a", "Y3a"}
 	state := newTestGameState("game-22", twoPlayerState(rack0, rack1), drawPile)
 	state.Players[0].HasInitialMeld = true
-	svc, _ := seedRepo(t, state)
+	svc, repo := seedRepo(t, state)
 
 	tilesFromRack := []string{"R3a", "R5a", "R7a"}
 	tableGroups := []TilePlacement{{ID: "run-bad", Tiles: tilesFromRack}}
@@ -400,17 +418,22 @@ func TestConfirmTurn_InvalidMove_NonConsecutiveRun(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	result, err := svc.ConfirmTurn("game-22", &ConfirmRequest{
+	_, confirmErr := svc.ConfirmTurn("game-22", &ConfirmRequest{
 		Seat:        0,
 		TableGroups: tableGroups,
 	})
-	// 규칙 S6.1: 패널티 드로우 + 턴 종료
-	require.NoError(t, err)
-	assert.True(t, result.Success)
+	// SSOT 55번 V-01, 56번 A14: INVALID_MOVE 에러 반환
+	require.Error(t, confirmErr)
+	svcErr, ok := IsServiceError(confirmErr)
+	require.True(t, ok)
+	assert.Equal(t, "INVALID_MOVE", svcErr.Code)
 	// R3a,R5a,R7a: 같은 색상이지만 숫자가 달라 그룹도 불가 → ERR_GROUP_NUMBER
-	assert.Equal(t, engine.ErrGroupNumberMismatch, result.ErrorCode)
-	assert.Equal(t, 3, result.PenaltyDrawCount)
-	assert.Equal(t, 1, result.NextSeat)
+	assert.Equal(t, engine.ErrGroupNumberMismatch, svcErr.Message)
+
+	// 턴 유지 + 랙 복원
+	afterState, _ := repo.GetGameState("game-22")
+	assert.Equal(t, 0, afterState.CurrentSeat, "턴 유지")
+	assert.ElementsMatch(t, rack0, afterState.Players[0].Rack, "스냅샷 복원 후 원래 랙")
 }
 
 func TestConfirmTurn_InvalidMove_TableTileLost(t *testing.T) {
@@ -449,16 +472,16 @@ func TestConfirmTurn_InvalidMove_TableTileLost(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	result, err := svc.ConfirmTurn("game-23", &ConfirmRequest{
+	_, confirmErr := svc.ConfirmTurn("game-23", &ConfirmRequest{
 		Seat:        0,
 		TableGroups: newTableGroups,
 	})
-	// 규칙 S6.1: 패널티 드로우 + 턴 종료
-	require.NoError(t, err)
-	assert.True(t, result.Success)
-	assert.Equal(t, engine.ErrNoRackTile, result.ErrorCode)
-	assert.Equal(t, 3, result.PenaltyDrawCount)
-	assert.Equal(t, 1, result.NextSeat)
+	// SSOT 55번 V-01, 56번 A14: INVALID_MOVE 에러 반환 + 스냅샷 복원 + 턴 유지
+	require.Error(t, confirmErr)
+	svcErr, ok := IsServiceError(confirmErr)
+	require.True(t, ok)
+	assert.Equal(t, "INVALID_MOVE", svcErr.Code)
+	assert.Equal(t, engine.ErrNoRackTile, svcErr.Message)
 }
 
 func TestConfirmTurn_NotYourTurn(t *testing.T) {
@@ -1361,7 +1384,7 @@ func TestDrawTile_U03_PassNotReachDeadlock(t *testing.T) {
 
 func TestConfirmTurn_InvalidMove_AutoRollback_RackRestored(t *testing.T) {
 	// PlaceTiles로 랙에서 타일 제거 후 ConfirmTurn 실패 시,
-	// 서버가 자동으로 스냅샷 복원 + 패널티 3장 추가해야 한다.
+	// SSOT 55번 V-01, 56번 A14: 스냅샷 복원 + 턴 유지 (패널티 드로우 없음)
 	rack0 := []string{"R5a", "R6a", "B1a"}
 	rack1 := []string{"K1a"}
 	drawPile := []string{"Y1a", "Y2a", "Y3a"}
@@ -1385,20 +1408,26 @@ func TestConfirmTurn_InvalidMove_AutoRollback_RackRestored(t *testing.T) {
 	afterPlace, _ := repo.GetGameState("auto-rollback-1")
 	assert.Equal(t, []string{"B1a"}, afterPlace.Players[0].Rack, "PlaceTiles 후 랙에서 타일 제거됨")
 
-	// ConfirmTurn 실패: 유효하지 않은 세트 → 패널티 3장 + 턴 종료
-	result, err := svc.ConfirmTurn("auto-rollback-1", &ConfirmRequest{
+	// ConfirmTurn 실패 → INVALID_MOVE 에러 반환 + 스냅샷 복원 + 턴 유지
+	_, confirmErr := svc.ConfirmTurn("auto-rollback-1", &ConfirmRequest{
 		Seat:        0,
 		TableGroups: tableGroups,
 	})
-	require.NoError(t, err)
-	assert.Equal(t, 3, result.PenaltyDrawCount)
+	require.Error(t, confirmErr)
+	svcErr, ok := IsServiceError(confirmErr)
+	require.True(t, ok)
+	assert.Equal(t, "INVALID_MOVE", svcErr.Code)
 
-	// 자동 롤백 + 패널티 검증: 랙이 복원된 후 패널티 3장 추가
+	// 자동 롤백 검증: 랙이 복원되고 패널티 없음
 	afterRollback, _ := repo.GetGameState("auto-rollback-1")
-	assert.Len(t, afterRollback.Players[0].Rack, len(rack0)+3,
-		"ConfirmTurn 실패 후 랙 복원 + 패널티 3장 추가")
+	assert.ElementsMatch(t, rack0, afterRollback.Players[0].Rack,
+		"ConfirmTurn 실패 후 랙 스냅샷 복원")
 	assert.Empty(t, afterRollback.Table,
 		"ConfirmTurn 실패 후 서버가 자동으로 테이블을 복원해야 한다")
+	// 드로우 파일 변동 없음
+	assert.Len(t, afterRollback.DrawPile, 3, "패널티 드로우 없으므로 드로우 파일 변동 없음")
+	// 턴 유지
+	assert.Equal(t, 0, afterRollback.CurrentSeat, "턴 유지 (재시도 가능)")
 }
 
 func TestConfirmTurn_InvalidMove_AutoRollback_TableRestored(t *testing.T) {
@@ -1439,27 +1468,30 @@ func TestConfirmTurn_InvalidMove_AutoRollback_TableRestored(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// ConfirmTurn 실패 → 패널티 + 턴 종료
-	result, err := svc.ConfirmTurn("auto-rollback-2", &ConfirmRequest{
+	// ConfirmTurn 실패 → INVALID_MOVE 에러 반환 + 스냅샷 복원 + 턴 유지
+	_, confirmErr := svc.ConfirmTurn("auto-rollback-2", &ConfirmRequest{
 		Seat:          0,
 		TableGroups:   tableGroups,
 		TilesFromRack: tilesFromRack,
 	})
-	require.NoError(t, err)
-	assert.Equal(t, 3, result.PenaltyDrawCount)
+	require.Error(t, confirmErr)
+	svcErr, ok := IsServiceError(confirmErr)
+	require.True(t, ok)
+	assert.Equal(t, "INVALID_MOVE", svcErr.Code)
 
-	// 자동 롤백 + 패널티 검증
+	// 자동 롤백 검증 (패널티 없음)
 	afterRollback, _ := repo.GetGameState("auto-rollback-2")
-	assert.Len(t, afterRollback.Players[0].Rack, len(rack0)+3,
-		"랙 복원 + 패널티 3장 추가")
+	assert.ElementsMatch(t, rack0, afterRollback.Players[0].Rack,
+		"랙 스냅샷 복원 (패널티 없음)")
 	require.Len(t, afterRollback.Table, 1, "테이블에 기존 세트 1개만 있어야 한다")
 	assert.Equal(t, "existing-run", afterRollback.Table[0].ID,
 		"기존 테이블 세트가 복원되어야 한다")
+	assert.Equal(t, 0, afterRollback.CurrentSeat, "턴 유지 (재시도 가능)")
 }
 
 func TestConfirmTurn_InvalidMove_AutoRollback_NoSnapshot(t *testing.T) {
 	// PlaceTiles 없이 직접 ConfirmTurn 호출 시 (스냅샷 없음),
-	// 자동 롤백 + 패널티 드로우가 적용되어야 한다.
+	// SSOT 55번 V-01, 56번 A14: INVALID_MOVE 에러 반환 + 현재 상태 유지 + 턴 유지.
 	rack0 := []string{"R1a", "R2a", "R3a"}
 	rack1 := []string{"K1a"}
 	drawPile := []string{"Y1a", "Y2a", "Y3a"}
@@ -1470,23 +1502,28 @@ func TestConfirmTurn_InvalidMove_AutoRollback_NoSnapshot(t *testing.T) {
 	tilesFromRack := []string{"R1a", "R2a", "R3a"}
 	tableGroups := []TilePlacement{{ID: "run-1", Tiles: tilesFromRack}}
 
-	result, err := svc.ConfirmTurn("auto-rollback-3", &ConfirmRequest{
+	_, confirmErr := svc.ConfirmTurn("auto-rollback-3", &ConfirmRequest{
 		Seat:          0,
 		TableGroups:   tableGroups,
 		TilesFromRack: tilesFromRack,
 	})
-	// 규칙 S6.1: 패널티 + 턴 종료
-	require.NoError(t, err)
-	assert.Equal(t, 3, result.PenaltyDrawCount)
+	// SSOT 55번 V-01, 56번 A14: INVALID_MOVE 에러 반환
+	require.Error(t, confirmErr)
+	svcErr, ok := IsServiceError(confirmErr)
+	require.True(t, ok)
+	assert.Equal(t, "INVALID_MOVE", svcErr.Code)
 
-	// 스냅샷 없는 경우에도 랙 복원 + 패널티 3장 추가
+	// 스냅샷 없는 경우: 현재 상태 유지 + 드로우 파일 변동 없음
 	afterRollback, _ := repo.GetGameState("auto-rollback-3")
-	assert.Len(t, afterRollback.Players[0].Rack, len(rack0)+3,
-		"스냅샷 없는 경우에도 랙 복원 + 패널티 3장 추가")
+	assert.ElementsMatch(t, rack0, afterRollback.Players[0].Rack,
+		"스냅샷 없는 경우 현재 랙 상태 유지 (패널티 없음)")
+	assert.Len(t, afterRollback.DrawPile, 3, "드로우 파일 변동 없음")
+	assert.Equal(t, 0, afterRollback.CurrentSeat, "턴 유지")
 }
 
 func TestConfirmTurn_InvalidMove_AutoRollback_SnapshotConsumed(t *testing.T) {
-	// 자동 롤백 + 패널티 드로우 후 스냅샷이 소비되고 턴이 종료되어야 한다.
+	// 자동 롤백 후 스냅샷이 소비되고 턴이 유지되어야 한다.
+	// SSOT 55번 V-01, 56번 A14: 스냅샷 롤백 + 턴 유지 (패널티 드로우 없음)
 	rack0 := []string{"R5a", "R6a", "B1a"}
 	rack1 := []string{"K1a"}
 	drawPile := []string{"Y1a", "Y2a", "Y3a"}
@@ -1494,7 +1531,7 @@ func TestConfirmTurn_InvalidMove_AutoRollback_SnapshotConsumed(t *testing.T) {
 	state.Players[0].HasInitialMeld = true
 	svc, repo := seedRepo(t, state)
 
-	// PlaceTiles → ConfirmTurn 실패 (자동 롤백 + 패널티)
+	// PlaceTiles → ConfirmTurn 실패 (자동 롤백)
 	tilesFromRack := []string{"R5a", "R6a"}
 	tableGroups := []TilePlacement{{ID: "bad-set", Tiles: tilesFromRack}}
 
@@ -1504,25 +1541,29 @@ func TestConfirmTurn_InvalidMove_AutoRollback_SnapshotConsumed(t *testing.T) {
 		TilesFromRack: tilesFromRack,
 	})
 
-	result, err := svc.ConfirmTurn("auto-rollback-4", &ConfirmRequest{
+	_, confirmErr := svc.ConfirmTurn("auto-rollback-4", &ConfirmRequest{
 		Seat:        0,
 		TableGroups: tableGroups,
 	})
-	require.NoError(t, err)
-	assert.Equal(t, 3, result.PenaltyDrawCount)
+	require.Error(t, confirmErr)
+	svcErr, ok := IsServiceError(confirmErr)
+	require.True(t, ok)
+	assert.Equal(t, "INVALID_MOVE", svcErr.Code)
 
-	// 턴이 다음 플레이어로 넘어갔는지 확인
+	// 턴 유지 확인 (다음 플레이어로 넘어가지 않음)
 	afterState, _ := repo.GetGameState("auto-rollback-4")
-	assert.Equal(t, 1, afterState.CurrentSeat,
-		"패널티 후 턴이 다음 플레이어로 넘어가야 한다")
+	assert.Equal(t, 0, afterState.CurrentSeat,
+		"INVALID_MOVE 후 턴 유지 (재시도 가능)")
+	assert.ElementsMatch(t, rack0, afterState.Players[0].Rack, "스냅샷 복원 후 원래 랙")
 }
 
 // ============================================================================
-// 규칙 S6.1 신규 테스트: 패널티 드로우 엣지 케이스
+// SSOT 55번 V-01, 56번 A14: INVALID_MOVE 시 스냅샷 롤백 + 턴 유지 엣지 케이스
 // ============================================================================
 
 func TestConfirmTurn_InvalidMove_PenaltyDraw_DrawPileLessThanThree(t *testing.T) {
-	// 드로우 파일에 2장만 남은 경우 → 패널티 2장만 뽑음
+	// 드로우 파일에 2장만 남은 경우에도 패널티 없이 스냅샷 복원 + 턴 유지
+	// SSOT 55번 V-01, 56번 A14
 	rack0 := []string{"R1a", "R2a", "R3a", "B1a"}
 	rack1 := []string{"K1a"}
 	state := newTestGameState("penalty-less-3", twoPlayerState(rack0, rack1), []string{"Y1a", "Y2a"})
@@ -1538,20 +1579,26 @@ func TestConfirmTurn_InvalidMove_PenaltyDraw_DrawPileLessThanThree(t *testing.T)
 	})
 	require.NoError(t, err)
 
-	result, err := svc.ConfirmTurn("penalty-less-3", &ConfirmRequest{
+	_, confirmErr := svc.ConfirmTurn("penalty-less-3", &ConfirmRequest{
 		Seat:        0,
 		TableGroups: tableGroups,
 	})
-	require.NoError(t, err)
-	assert.Equal(t, 2, result.PenaltyDrawCount, "드로우 파일 2장 → 패널티 2장만")
+	require.Error(t, confirmErr)
+	svcErr, ok := IsServiceError(confirmErr)
+	require.True(t, ok)
+	assert.Equal(t, "INVALID_MOVE", svcErr.Code)
 
 	afterState, _ := repo.GetGameState("penalty-less-3")
-	assert.Len(t, afterState.Players[0].Rack, len(rack0)+2)
-	assert.Empty(t, afterState.DrawPile, "드로우 파일이 소진되어야 한다")
+	// 드로우 파일 변동 없음 (패널티 드로우 없음)
+	assert.Len(t, afterState.DrawPile, 2, "드로우 파일 변동 없음")
+	// 랙 복원 (패널티 없음)
+	assert.ElementsMatch(t, rack0, afterState.Players[0].Rack, "스냅샷 복원 후 원래 랙")
+	assert.Equal(t, 0, afterState.CurrentSeat, "턴 유지")
 }
 
 func TestConfirmTurn_InvalidMove_PenaltyDraw_DrawPileEmpty(t *testing.T) {
-	// 드로우 파일 0장 → 패널티 0장 (패스 처리와 유사, 턴은 종료)
+	// 드로우 파일 0장 → 패널티 없이 스냅샷 복원 + 턴 유지
+	// SSOT 55번 V-01, 56번 A14
 	rack0 := []string{"R1a", "R2a", "R3a", "B1a"}
 	rack1 := []string{"K1a"}
 	state := newTestGameState("penalty-empty", twoPlayerState(rack0, rack1), nil)
@@ -1567,20 +1614,24 @@ func TestConfirmTurn_InvalidMove_PenaltyDraw_DrawPileEmpty(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	result, err := svc.ConfirmTurn("penalty-empty", &ConfirmRequest{
+	_, confirmErr := svc.ConfirmTurn("penalty-empty", &ConfirmRequest{
 		Seat:        0,
 		TableGroups: tableGroups,
 	})
-	require.NoError(t, err)
-	assert.Equal(t, 0, result.PenaltyDrawCount, "드로우 파일 0장 → 패널티 0장")
-	assert.Equal(t, 1, result.NextSeat, "턴은 여전히 종료되어 다음 플레이어로")
+	require.Error(t, confirmErr)
+	svcErr, ok := IsServiceError(confirmErr)
+	require.True(t, ok)
+	assert.Equal(t, "INVALID_MOVE", svcErr.Code)
 
+	// 턴 유지 + 랙 복원 (드로우 파일 변동 없음)
 	afterState, _ := repo.GetGameState("penalty-empty")
-	assert.Len(t, afterState.Players[0].Rack, len(rack0), "랙 변동 없음 (패널티 0장)")
+	assert.Equal(t, 0, afterState.CurrentSeat, "턴 유지")
+	assert.ElementsMatch(t, rack0, afterState.Players[0].Rack, "스냅샷 복원 후 원래 랙")
 }
 
 func TestConfirmTurn_InvalidMove_PenaltyDraw_ResetsConsecutivePassCount(t *testing.T) {
-	// 패널티 드로우 후 교착 카운터가 리셋되는지 확인
+	// INVALID_MOVE 후 ConsecutivePassCount 는 변동 없어야 한다 (패스/드로우가 아님)
+	// SSOT 55번 V-01, 56번 A14
 	rack0 := []string{"R1a", "R2a", "R3a", "B1a"}
 	rack1 := []string{"K1a"}
 	state := newTestGameState("penalty-pass-reset", twoPlayerState(rack0, rack1), []string{"Y1a", "Y2a", "Y3a"})
@@ -1595,13 +1646,17 @@ func TestConfirmTurn_InvalidMove_PenaltyDraw_ResetsConsecutivePassCount(t *testi
 	})
 	require.NoError(t, err)
 
-	_, err = svc.ConfirmTurn("penalty-pass-reset", &ConfirmRequest{
+	_, confirmErr := svc.ConfirmTurn("penalty-pass-reset", &ConfirmRequest{
 		Seat: 0, TableGroups: tableGroups,
 	})
-	require.NoError(t, err)
+	require.Error(t, confirmErr)
+	svcErr, ok := IsServiceError(confirmErr)
+	require.True(t, ok)
+	assert.Equal(t, "INVALID_MOVE", svcErr.Code)
 
 	afterState, _ := repo.GetGameState("penalty-pass-reset")
-	assert.Equal(t, 0, afterState.ConsecutivePassCount, "패널티 드로우 후 교착 카운터 리셋")
+	// INVALID_MOVE는 드로우/패스가 아니므로 ConsecutivePassCount 변동 없음
+	assert.Equal(t, 1, afterState.ConsecutivePassCount, "INVALID_MOVE는 교착 카운터 변동 없음")
 }
 
 // ============================================================================
@@ -1847,12 +1902,10 @@ func TestForfeitPlayer_MidGame_TurnLimitNotTriggered(t *testing.T) {
 	assert.Equal(t, model.PlayerStatusForfeited, saved.Players[0].Status)
 }
 
-// TestDrawTile_PenaltyDraw_TurnLimitReached_FinishesAsStalemate
-// penaltyDrawAndAdvance 경로도 상한 검사를 수행하는지 검증.
-// Given: maxTurnsLimit=10, TurnCount=9, ConfirmTurn 검증 실패 상황
-// When: 유효하지 않은 세트를 Confirm → 패널티 드로우 → TurnCount 10 도달
-// Then: STALEMATE로 귀결
-func TestConfirmTurn_PenaltyDraw_TurnLimitReached_FinishesAsStalemate(t *testing.T) {
+// TestConfirmTurn_InvalidMove_TurnLimitNotIncremented
+// SSOT 55번 V-01, 56번 A14: INVALID_MOVE 시 TurnCount 가 증가하지 않으므로
+// maxTurnsLimit 에 도달하지 않는다. 게임은 계속 진행된다.
+func TestConfirmTurn_InvalidMove_TurnLimitNotIncremented(t *testing.T) {
 	// 2장짜리 세트(최소 3장 규칙 위반)로 검증 실패 유도
 	rack0 := []string{"R5a", "R6a", "B1a"}
 	rack1 := []string{"K1a"}
@@ -1872,25 +1925,22 @@ func TestConfirmTurn_PenaltyDraw_TurnLimitReached_FinishesAsStalemate(t *testing
 	})
 	require.NoError(t, err)
 
-	// ConfirmTurn: 검증 실패 → 패널티 드로우 → 상한 도달 → STALEMATE
-	result, err := svc.ConfirmTurn("turn-limit-penalty", &ConfirmRequest{
+	// ConfirmTurn: 검증 실패 → INVALID_MOVE 에러 반환 + 턴 유지 (TurnCount 불변)
+	_, confirmErr := svc.ConfirmTurn("turn-limit-penalty", &ConfirmRequest{
 		Seat:        0,
 		TableGroups: tableGroups,
 	})
-	require.NoError(t, err)
-	require.NotNil(t, result)
+	require.Error(t, confirmErr)
+	svcErr, ok := IsServiceError(confirmErr)
+	require.True(t, ok)
+	assert.Equal(t, "INVALID_MOVE", svcErr.Code)
 
-	// 패널티 경로에서도 상한 도달 시 STALEMATE로 귀결되어야 한다
-	assert.True(t, result.GameEnded, "패널티 경로에서도 상한 도달 시 GameEnded=true")
-	assert.Equal(t, "STALEMATE", result.ErrorCode, "ErrorCode=STALEMATE (패널티 에러코드보다 우선)")
-	require.NotNil(t, result.GameState)
-	assert.True(t, result.GameState.IsStalemate)
-	assert.Equal(t, model.GameStatusFinished, result.GameState.Status)
-
+	// INVALID_MOVE는 TurnCount 를 증가시키지 않으므로 게임이 계속된다
 	saved, err := repo.GetGameState("turn-limit-penalty")
 	require.NoError(t, err)
-	assert.Equal(t, model.GameStatusFinished, saved.Status)
-	assert.True(t, saved.IsStalemate)
+	assert.Equal(t, model.GameStatusPlaying, saved.Status, "게임 계속: INVALID_MOVE는 TurnCount 불변")
+	assert.Equal(t, 9, saved.TurnCount, "TurnCount 변동 없음")
+	assert.Equal(t, 0, saved.CurrentSeat, "턴 유지")
 }
 
 // TestWithMaxTurnsLimit_OptionAppliedCorrectly
