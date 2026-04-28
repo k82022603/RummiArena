@@ -905,7 +905,7 @@ export default function GameClient({ roomId }: GameClientProps) {
         }
 
         // 테이블 → 다른 그룹 이동 (유형 3)
-        // TODO(P2b): pendingStore.applyMutation 추가 필요 — gameStore deprecated 필드 제거 전제조건
+        // P2b dual-write: 테이블 → 다른 그룹 이동 (유형 3)
         if (!freshHasInitialMeld) return; // 최초 등록 전에는 재배치 금지
         const targetGroup = freshTableGroups.find((g) => g.id === over.id);
         if (!targetGroup) return;
@@ -949,6 +949,15 @@ export default function GameClient({ roomId }: GameClientProps) {
             [...freshPendingGroupIds, sourceGroup.id, targetGroup.id].filter((id) => nextGroupIdSet.has(id))
           );
           setPendingGroupIds(updatedPendingIds);
+          // P2b dual-write: 테이블 → 다른 그룹 이동 (유형 3)
+          usePendingStore.getState().applyMutation({
+            nextTableGroups,
+            nextMyTiles: freshMyTiles,
+            nextPendingGroupIds: updatedPendingIds,
+            nextPendingRecoveredJokers: freshPendingRecoveredJokers,
+            nextPendingGroupSeq: pendingGroupSeqRef.current,
+            branch: "inline-table→table:merge",
+          });
         }
         return;
       }
@@ -1008,7 +1017,7 @@ export default function GameClient({ roomId }: GameClientProps) {
       }
 
       // 기존 pending 그룹에 드롭한 경우
-      // TODO(P2b): 아래 2개 분기(호환/비호환)에 pendingStore.applyMutation 추가 필요
+      // P2b dual-write: 아래 2개 분기(호환/비호환) 각각에 applyMutation 적용
       const existingPendingGroup = freshPendingTableGroups?.find(
         (g) => g.id === over.id && freshPendingGroupIds.has(g.id)
       );
@@ -1033,8 +1042,25 @@ export default function GameClient({ roomId }: GameClientProps) {
           setPendingTableGroups(nextTableGroups);
           setPendingMyTiles(nextMyTiles);
           addPendingGroupId(newGroupId);
-          if (freshPendingRecoveredJokers.includes(tileCode)) {
+          const isJokerRecovered = freshPendingRecoveredJokers.includes(tileCode);
+          if (isJokerRecovered) {
             removeRecoveredJoker(tileCode);
+          }
+          // P2b dual-write: existingPendingGroup 비호환 → 새 그룹 생성
+          {
+            const nextPendingGroupIds = new Set([...freshPendingGroupIds, newGroupId]);
+            const nextPendingRecoveredJokers = isJokerRecovered
+              ? freshPendingRecoveredJokers.filter((j) => j !== tileCode)
+              : freshPendingRecoveredJokers;
+            usePendingStore.getState().applyMutation({
+              nextTableGroups,
+              nextMyTiles,
+              nextPendingGroupIds,
+              nextPendingRecoveredJokers,
+              nextPendingGroupSeq: pendingGroupSeqRef.current,
+              ...(isJokerRecovered ? { removedJoker: tileCode } : {}),
+              branch: "inline-rack→pending-group:incompatible-new-group",
+            });
           }
           return;
         }
@@ -1057,8 +1083,24 @@ export default function GameClient({ roomId }: GameClientProps) {
         const nextMyTiles = removeFirstOccurrence(freshMyTiles, tileCode);
         setPendingTableGroups(nextTableGroups);
         setPendingMyTiles(nextMyTiles);
-        if (freshPendingRecoveredJokers.includes(tileCode)) {
+        const isJokerRecovered = freshPendingRecoveredJokers.includes(tileCode);
+        if (isJokerRecovered) {
           removeRecoveredJoker(tileCode);
+        }
+        // P2b dual-write: existingPendingGroup 호환 → 기존 그룹 append
+        {
+          const nextPendingRecoveredJokers = isJokerRecovered
+            ? freshPendingRecoveredJokers.filter((j) => j !== tileCode)
+            : freshPendingRecoveredJokers;
+          usePendingStore.getState().applyMutation({
+            nextTableGroups,
+            nextMyTiles,
+            nextPendingGroupIds: freshPendingGroupIds,
+            nextPendingRecoveredJokers,
+            nextPendingGroupSeq: pendingGroupSeqRef.current,
+            ...(isJokerRecovered ? { removedJoker: tileCode } : {}),
+            branch: "inline-rack→pending-group:compatible-append",
+          });
         }
         return;
       }
@@ -1078,7 +1120,7 @@ export default function GameClient({ roomId }: GameClientProps) {
 
       // FINDING-01 (Issue #46) — I-18 완전 롤백: freshHasInitialMeld=false 상태에서
       // 서버 확정 그룹 영역에 드롭된 경우는 반드시 새 pending 그룹을 생성한다.
-      // TODO(P2b): pendingStore.applyMutation 추가 필요 — gameStore deprecated 필드 제거 전제조건
+      // P2b dual-write: targetServerGroup && !hasInitialMeld → 새 그룹 생성
       //
       // 근거:
       //   - 서버 V-04 (초기 등록 30점 검증) 가 서버 그룹에 append 된 세트를 거절하고
@@ -1109,13 +1151,30 @@ export default function GameClient({ roomId }: GameClientProps) {
         setPendingTableGroups(nextTableGroups);
         setPendingMyTiles(nextMyTiles);
         addPendingGroupId(newGroupId);
-        if (freshPendingRecoveredJokers.includes(tileCode)) {
+        const isJokerRecovered = freshPendingRecoveredJokers.includes(tileCode);
+        if (isJokerRecovered) {
           removeRecoveredJoker(tileCode);
+        }
+        // P2b dual-write: targetServerGroup && !hasInitialMeld → 새 pending 그룹
+        {
+          const nextPendingGroupIds = new Set([...freshPendingGroupIds, newGroupId]);
+          const nextPendingRecoveredJokers = isJokerRecovered
+            ? freshPendingRecoveredJokers.filter((j) => j !== tileCode)
+            : freshPendingRecoveredJokers;
+          usePendingStore.getState().applyMutation({
+            nextTableGroups,
+            nextMyTiles,
+            nextPendingGroupIds,
+            nextPendingRecoveredJokers,
+            nextPendingGroupSeq: pendingGroupSeqRef.current,
+            ...(isJokerRecovered ? { removedJoker: tileCode } : {}),
+            branch: "inline-server-group→new-group:before-initial-meld",
+          });
         }
         return;
       }
 
-      // TODO(P2b): 아래 2개 분기(호환/비호환)에 pendingStore.applyMutation 추가 필요
+      // P2b dual-write: 아래 2개 분기(호환/비호환) 각각에 applyMutation 적용
       if (targetServerGroup && freshHasInitialMeld) {
         if (!isCompatibleWithGroup(tileCode, targetServerGroup)) {
           // 호환 안 됨: 새 그룹 생성 (옵션 A 폴스루)
@@ -1132,8 +1191,25 @@ export default function GameClient({ roomId }: GameClientProps) {
           setPendingTableGroups(nextTableGroups);
           setPendingMyTiles(nextMyTiles);
           addPendingGroupId(newGroupId);
-          if (freshPendingRecoveredJokers.includes(tileCode)) {
+          const isJokerRecovered = freshPendingRecoveredJokers.includes(tileCode);
+          if (isJokerRecovered) {
             removeRecoveredJoker(tileCode);
+          }
+          // P2b dual-write: targetServerGroup && hasInitialMeld 비호환 → 새 그룹 생성
+          {
+            const nextPendingGroupIds = new Set([...freshPendingGroupIds, newGroupId]);
+            const nextPendingRecoveredJokers = isJokerRecovered
+              ? freshPendingRecoveredJokers.filter((j) => j !== tileCode)
+              : freshPendingRecoveredJokers;
+            usePendingStore.getState().applyMutation({
+              nextTableGroups,
+              nextMyTiles,
+              nextPendingGroupIds,
+              nextPendingRecoveredJokers,
+              nextPendingGroupSeq: pendingGroupSeqRef.current,
+              ...(isJokerRecovered ? { removedJoker: tileCode } : {}),
+              branch: "inline-server-group→new-group:incompatible",
+            });
           }
           return;
         }
@@ -1158,8 +1234,25 @@ export default function GameClient({ roomId }: GameClientProps) {
         setPendingMyTiles(nextMyTiles);
         // pending ID 세트에 등록 → UI에서 "수정 중 (미확정)"으로 표시
         addPendingGroupId(targetServerGroup.id);
-        if (freshPendingRecoveredJokers.includes(tileCode)) {
+        const isJokerRecovered = freshPendingRecoveredJokers.includes(tileCode);
+        if (isJokerRecovered) {
           removeRecoveredJoker(tileCode);
+        }
+        // P2b dual-write: targetServerGroup && hasInitialMeld 호환 → 서버 그룹 append
+        {
+          const nextPendingGroupIds = new Set([...freshPendingGroupIds, targetServerGroup.id]);
+          const nextPendingRecoveredJokers = isJokerRecovered
+            ? freshPendingRecoveredJokers.filter((j) => j !== tileCode)
+            : freshPendingRecoveredJokers;
+          usePendingStore.getState().applyMutation({
+            nextTableGroups,
+            nextMyTiles,
+            nextPendingGroupIds,
+            nextPendingRecoveredJokers,
+            nextPendingGroupSeq: pendingGroupSeqRef.current,
+            ...(isJokerRecovered ? { removedJoker: tileCode } : {}),
+            branch: "inline-server-group:compatible-append",
+          });
         }
         return;
       }
@@ -1170,8 +1263,7 @@ export default function GameClient({ roomId }: GameClientProps) {
       // 전담하므로 여기서는 game-board 직접 드롭만 처리한다.
       const treatAsBoardDrop = over.id === "game-board";
 
-      // TODO(P2b): 아래 game-board/game-board-new-group/player-rack 3개 분기에
-      //   pendingStore.applyMutation 추가 필요 — gameStore deprecated 필드 제거 전제조건
+      // P2b dual-write: 아래 game-board/game-board-new-group/player-rack 3개 분기 각각에 applyMutation 적용
       if (treatAsBoardDrop) {
         // 보드 빈 공간에 드롭
         // BUG-NEW-001 수정: game-board 드롭 시 lastPendingGroup으로 서버 확정 그룹을
@@ -1270,8 +1362,24 @@ export default function GameClient({ roomId }: GameClientProps) {
           const nextMyTiles = removeFirstOccurrence(freshMyTiles, tileCode);
           setPendingTableGroups(nextTableGroups);
           setPendingMyTiles(nextMyTiles);
-          if (freshPendingRecoveredJokers.includes(tileCode)) {
+          const isJokerRecovered = freshPendingRecoveredJokers.includes(tileCode);
+          if (isJokerRecovered) {
             removeRecoveredJoker(tileCode);
+          }
+          // P2b dual-write: game-board → lastPendingGroup append
+          {
+            const nextPendingRecoveredJokers = isJokerRecovered
+              ? freshPendingRecoveredJokers.filter((j) => j !== tileCode)
+              : freshPendingRecoveredJokers;
+            usePendingStore.getState().applyMutation({
+              nextTableGroups,
+              nextMyTiles,
+              nextPendingGroupIds: freshPendingGroupIds,
+              nextPendingRecoveredJokers,
+              nextPendingGroupSeq: pendingGroupSeqRef.current,
+              ...(isJokerRecovered ? { removedJoker: tileCode } : {}),
+              branch: "inline-board→last-pending:append",
+            });
           }
         } else {
           // 새 그룹 생성 (서버 미전송, 프리뷰 상태)
@@ -1300,8 +1408,25 @@ export default function GameClient({ roomId }: GameClientProps) {
           addPendingGroupId(newGroupId);
           // forceNewGroup은 false로 리셋하지 않음 - 사용자가 수동 토글하도록 유지
           if (forceNewGroup) setForceNewGroup(false);
-          if (freshPendingRecoveredJokers.includes(tileCode)) {
+          const isJokerRecovered = freshPendingRecoveredJokers.includes(tileCode);
+          if (isJokerRecovered) {
             removeRecoveredJoker(tileCode);
+          }
+          // P2b dual-write: game-board → 새 그룹 생성
+          {
+            const nextPendingGroupIds = new Set([...freshPendingGroupIds, newGroupId]);
+            const nextPendingRecoveredJokers = isJokerRecovered
+              ? freshPendingRecoveredJokers.filter((j) => j !== tileCode)
+              : freshPendingRecoveredJokers;
+            usePendingStore.getState().applyMutation({
+              nextTableGroups,
+              nextMyTiles,
+              nextPendingGroupIds,
+              nextPendingRecoveredJokers,
+              nextPendingGroupSeq: pendingGroupSeqRef.current,
+              ...(isJokerRecovered ? { removedJoker: tileCode } : {}),
+              branch: "inline-board→new-group:auto",
+            });
           }
         }
       } else if (over.id === "game-board-new-group") {
@@ -1326,8 +1451,25 @@ export default function GameClient({ roomId }: GameClientProps) {
         setPendingTableGroups(nextTableGroups);
         setPendingMyTiles(nextMyTiles);
         addPendingGroupId(newGroupId);
-        if (freshPendingRecoveredJokers.includes(tileCode)) {
+        const isJokerRecovered = freshPendingRecoveredJokers.includes(tileCode);
+        if (isJokerRecovered) {
           removeRecoveredJoker(tileCode);
+        }
+        // P2b dual-write: game-board-new-group → 새 그룹 생성 (강제)
+        {
+          const nextPendingGroupIds = new Set([...freshPendingGroupIds, newGroupId]);
+          const nextPendingRecoveredJokers = isJokerRecovered
+            ? freshPendingRecoveredJokers.filter((j) => j !== tileCode)
+            : freshPendingRecoveredJokers;
+          usePendingStore.getState().applyMutation({
+            nextTableGroups,
+            nextMyTiles,
+            nextPendingGroupIds,
+            nextPendingRecoveredJokers,
+            nextPendingGroupSeq: pendingGroupSeqRef.current,
+            ...(isJokerRecovered ? { removedJoker: tileCode } : {}),
+            branch: "inline-new-group-dropzone:force",
+          });
         }
       } else if (over.id === "player-rack") {
         // 보드 -> 랙: pending 그룹에 실제로 있는 타일만 회수
@@ -1353,7 +1495,22 @@ export default function GameClient({ roomId }: GameClientProps) {
           const stillHasPending = updated.some((g) => freshPendingGroupIds.has(g.id));
           setPendingTableGroups(stillHasPending ? updated : null);
           if (!stillHasPending) clearPendingGroupIds();
-          setPendingMyTiles([...freshMyTiles, tileCode]);
+          const nextMyTiles = [...freshMyTiles, tileCode];
+          setPendingMyTiles(nextMyTiles);
+          // P2b dual-write: player-rack → pending 타일 회수
+          {
+            const nextGroupIds = stillHasPending
+              ? new Set([...freshPendingGroupIds].filter((id) => updated.some((g) => g.id === id)))
+              : new Set<string>();
+            usePendingStore.getState().applyMutation({
+              nextTableGroups: stillHasPending ? updated : null,
+              nextMyTiles,
+              nextPendingGroupIds: nextGroupIds,
+              nextPendingRecoveredJokers: freshPendingRecoveredJokers,
+              nextPendingGroupSeq: pendingGroupSeqRef.current,
+              branch: "inline-board→rack:recover-pending-tile",
+            });
+          }
         }
       }
       } finally {
