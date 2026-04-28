@@ -582,6 +582,8 @@ export default function GameClient({ roomId }: GameClientProps) {
   const lastDragEndTimestampRef = useRef<number>(-1);
 
   // 다음 보드 드롭 시 새 그룹 강제 생성 여부
+  // TODO(P3-3): GameRoom 이전 시 dragStateStore로 흡수. GameClient.tsx 도식 §"P3 분해 로드맵" 참조.
+  //   이전 시 dragEndReducer.input.forceNewGroup 으로 주입 경로 변경.
   const [forceNewGroup, setForceNewGroup] = useState(false);
 
   // UX-004: ExtendLockToast 표시 상태 + 같은 턴 내 1회 추적
@@ -749,6 +751,10 @@ export default function GameClient({ roomId }: GameClientProps) {
   }, [activeDragCode, currentTableGroups]);
 
   // dnd-kit 센서
+  // TODO(P3-3): sensors / pointerWithinThenClosest collisionDetection / DragOverlay 어셈블리는
+  //   GameRoom으로 이전. GameClient 외부 컨테이너에서 useDragHandlers를 직접 DndContext에 연결한다.
+  //   선결 조건: P3-2 — useDragHandlers가 아래 handleDragEnd ~770줄 인라인 분기와 행동 등가가 되어야 함
+  //   (BUG-UI-009/010/EXT guard, forceNewGroup, ExtendLockToast 부수효과 포함).
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 8 },
@@ -756,6 +762,9 @@ export default function GameClient({ roomId }: GameClientProps) {
   );
 
   // 드래그 시작 핸들러
+  // TODO(P3-3): useDragHandlers.handleDragStart로 대체 예정. 현재 useDragHandlers는 dragStateStore +
+  //   turnTransition 만 갱신. GameClient 버전은 추가로 activeDragSourceRef / setActiveDragCode /
+  //   isHandlingDragEndRef defensive clear를 수행한다 (BUG-UI-009/010 guard).
   const handleDragStart = useCallback((event: DragStartEvent) => {
     // BUG-UI-009/010: 이전 드래그 잔재 defensive clear —
     // onDragCancel 이 누락됐거나 ESC/blur 이후 잔존한 state 를 안전하게 초기화한다.
@@ -783,6 +792,15 @@ export default function GameClient({ roomId }: GameClientProps) {
     isHandlingDragEndRef.current = false;
   }, []);
 
+  // TODO(P3-2): 이 ~740줄 인라인 handleDragEnd를 useDragHandlers와 행동 등가로 통합.
+  //   현재 useDragHandlers는 dragEndReducer 1회 호출 경로를 사용하지만 다음이 누락됨:
+  //     1. BUG-UI-009 re-entrancy guard (isHandlingDragEndRef)
+  //     2. BUG-UI-EXT timestamp dedup (lastDragEndTimestampRef)
+  //     3. forceNewGroup React state → reducer input 전달
+  //     4. ExtendLockToast / setLastError 토스트 부수효과
+  //     5. isMyTurn 가드 (서버 확정 그룹 수정 차단)
+  //     6. dual-write 중 9개 분기 망라 검증
+  //   P3-2 선행 후 P3-3에서 DndContext.onDragEnd를 useDragHandlers.handleDragEnd로 교체한다.
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       // BUG-UI-009: re-entrancy guard —
@@ -1732,6 +1750,8 @@ export default function GameClient({ roomId }: GameClientProps) {
       />
       <ReconnectToast />
       {/* RateLimitToast는 layout.tsx에서 전역 마운트 */}
+    {/* TODO(P3-3): DndContext + DragOverlay GameRoom 이전. P3-2 행동 등가 검증 후 진행.
+        선결 조건은 GameRoom.tsx 상단 "P3 분해 로드맵" 주석 참조. */}
     <DndContext
       sensors={sensors}
       collisionDetection={pointerWithinThenClosest}

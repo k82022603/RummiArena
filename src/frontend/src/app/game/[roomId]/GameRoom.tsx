@@ -22,10 +22,23 @@
  *   Phase 4에서 GameClient의 DndContext를 이 컴포넌트로 이전한다.
  *
  *   P3 DndContext 이전 전제조건 (2026-04-28):
- *     1. P2b 완료 (handleDragEnd 전체 inline 분기 pendingStore dual-write)
- *     2. useTurnActions pendingStore.draft 전환 완료
- *     3. gameStore deprecated pending 필드 제거 완료
- *     4. useDragHandlers가 GameClient.handleDragEnd의 전체 기능을 대체
+ *     1. P2b 완료 (handleDragEnd 전체 inline 분기 pendingStore dual-write) — DONE
+ *     2. useTurnActions pendingStore.draft 전환 완료 — DONE
+ *     3. gameStore deprecated pending 필드 제거 완료 — DONE
+ *     4. useDragHandlers가 GameClient.handleDragEnd의 전체 기능을 대체 — TODO(P3-2)
+ *
+ *   P3 분해 로드맵 (2026-04-28 frontend-dev 위험 평가 결과):
+ *     P3-1: (보류) DndContext UI 어셈블리(sensors/collisionDetection/DragOverlay)만 GameRoom 이전.
+ *           — GameClient handler closure 의존 문제로 단독 진행 시 메모이제이션 깨짐 위험.
+ *           — P3-2 완료 후 P3-3과 통합 진행이 안전하다고 판단.
+ *     P3-2: useDragHandlers 행동 등가 확장. GameClient handleDragEnd ~770줄 인라인 분기와
+ *           1:1 등가 보장 (BUG-UI-009/010/EXT re-entrancy guard, forceNewGroup, 토스트
+ *           ExtendLockToast 부수효과 포함). dragEndReducer 분기 망라 검증 — Jest 신규 spec 추가.
+ *     P3-3: DndContext 핸들러 소스 GameClient → useDragHandlers 교체 + GameClient 핸들러 제거.
+ *           동시에 DndContext/DragOverlay/sensors GameRoom 이전. forceNewGroup state는
+ *           dragStateStore로 흡수.
+ *
+ *   현재 상태: P2b 완료 후 P3 본 이전 보류. GameClient의 DndContext + handler closure 그대로 유지.
  *
  * 계층 규칙:
  *   - L2(store/hook)만 import. L3 순수 함수 직접 import 금지.
@@ -84,10 +97,12 @@ export default function GameRoom({ roomId }: GameRoomProps) {
   useGameSync(roomId);
 
   // F-02~F-06: 드래그 핸들러 store 상태 초기화
-  // [보존 — Phase 4 연결 예정]
+  // [보존 — P3-3 연결 예정]
   // 이 hook을 마운트하면 handleDragStart/End/Cancel 함수와 store 액션이 준비된다.
   // Phase 3에서는 직접 DndContext에 연결하지 않는다 (GameClient의 DndContext 사용).
-  // Phase 4에서 GameClient DndContext를 이 컴포넌트로 이전 시 직접 연결.
+  // 이 hook은 dragEndReducer 단일 호출 경로이며 현재 GameClient의 770줄 인라인
+  // handleDragEnd와 행동 등가가 검증되지 않은 상태이다 (P3-2 선결 과제).
+  // P3-3에서 GameClient DndContext를 이 컴포넌트로 이전 시 직접 연결.
   const _dragHandlers = useDragHandlers();
   void _dragHandlers;
 
