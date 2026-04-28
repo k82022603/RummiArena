@@ -28,6 +28,7 @@ import { useRoomStore } from "@/store/roomStore";
 import { useRateLimitStore } from "@/store/rateLimitStore";
 import { usePendingStore } from "@/store/pendingStore";
 import GameBoard from "@/components/game/GameBoard";
+import { TurnStatusStrip } from "@/components/game/turn-strip";
 import PlayerRack from "@/components/game/PlayerRack";
 import PlayerCard from "@/components/game/PlayerCard";
 import ActionBar from "@/components/game/ActionBar";
@@ -1743,6 +1744,39 @@ export default function GameClient({ roomId }: GameClientProps) {
               roomId={roomId}
             />
 
+            {/* PR1: TurnStatusStrip — 목업 데이터 하드코딩. PR2에서 실시간 props로 교체 */}
+            <TurnStatusStrip
+              remainingSec={42}
+              totalSec={60}
+              current={{
+                playerId: "mock-p1",
+                name: "네선용",
+                isMe: true,
+                avatarColor: "#f59e0b",
+              }}
+              contextLine="패 7장 보유"
+              next={{
+                playerId: "mock-p2",
+                name: "shark",
+                avatarChar: "S",
+                estimatedWaitSec: 45,
+              }}
+              playerCount={4}
+              roundIndex={7}
+              rounds={[
+                {
+                  roundIndex: 6,
+                  turns: ["done", "done"],
+                },
+                {
+                  roundIndex: 7,
+                  turns: ["done", "done", "done", "current", "pending", "pending"],
+                },
+              ]}
+              turnsCompleted={3}
+              turnsTotal={6}
+            />
+
             {/* 게임 보드 — 최근 턴 하이라이트 포함 */}
             <GameBoard
               tableGroups={currentTableGroups}
@@ -1854,7 +1888,7 @@ export default function GameClient({ roomId }: GameClientProps) {
                 onPass={handlePass}
                 confirmEnabled={turnActions.confirmEnabled}
                 resetEnabled={turnActions.resetEnabled}
-                drawEnabled={turnActions.drawEnabled}
+                /* drawEnabled: useTurnActions 조건이 turnState 의존으로 과도하게 엄격 — ActionBar fallback(!hasPending) 사용 */
               />
             </div>
           </main>

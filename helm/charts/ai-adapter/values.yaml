@@ -19,7 +19,7 @@ env:
   OPENAI_DEFAULT_MODEL: "gpt-5-mini"
   CLAUDE_DEFAULT_MODEL: "claude-sonnet-4-20250514"
   CLAUDE_EXTENDED_THINKING: "true"
-  DEEPSEEK_DEFAULT_MODEL: "deepseek-v4-flash"
+  DEEPSEEK_DEFAULT_MODEL: "deepseek-v4-pro"
   # V4-Pro thinking 채택 (2026-04-28, place 31.9%, fallback 0)
   # true: thinking: { type: "enabled" } + reasoning_effort: "high"
   DEEPSEEK_V4_THINKING_MODE: "true"
