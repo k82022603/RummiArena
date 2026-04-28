@@ -41,6 +41,9 @@ function makeGroup(id: string, tiles: TileCode[]): TableGroup {
  * useTurnActions의 isMyTurn = computeIsMyTurn(currentSeat, mySeat) 조건 충족
  */
 function setupMyTurnIdle(hasInitialMeld: boolean = false) {
+  // Phase C 단계 4: gameStore.pending* deprecated 필드 제거.
+  // pendingStore.reset()으로 pending 없음 상태 보장.
+  usePendingStore.getState().reset();
   useGameStore.setState({
     mySeat: 0,
     hasInitialMeld,
@@ -54,11 +57,6 @@ function setupMyTurnIdle(hasInitialMeld: boolean = false) {
       status: "CONNECTED" as const,
     }],
     myTiles: ["R5a", "R6a", "R7a", "R8a", "R9a"] as TileCode[],
-    // pending 없음
-    pendingTableGroups: null,
-    pendingMyTiles: null,
-    pendingGroupIds: new Set<string>(),
-    pendingRecoveredJokers: [],
     gameState: {
       currentSeat: 0,        // isMyTurn=true (mySeat=0과 일치)
       tableGroups: [],
@@ -111,16 +109,14 @@ function setupPendingReady(hasInitialMeld: boolean = true) {
 
 beforeEach(() => {
   act(() => {
+    // Phase C 단계 4: gameStore deprecated pending 필드 제거.
+    // pendingStore.reset()으로 pending 없음 상태 보장.
     usePendingStore.getState().reset();
     useGameStore.setState({
       mySeat: 0,
       hasInitialMeld: false,
       players: [],
       myTiles: [],
-      pendingTableGroups: null,
-      pendingMyTiles: null,
-      pendingGroupIds: new Set<string>(),
-      pendingRecoveredJokers: [],
       gameState: null,
     });
   });
@@ -201,14 +197,9 @@ test("handleUndo → pendingStore.reset 호출됨", () => {
   });
 
   // pendingStore.draft가 null로 초기화되어야 함 (Phase B SSOT)
+  // Phase C 단계 4: gameStore deprecated 필드는 제거되어 별도 검증 불필요.
   const ps = usePendingStore.getState();
   expect(ps.draft).toBeNull();
-
-  // gameStore deprecated 필드도 동기화 (Phase C에서 제거 예정)
-  const gs = useGameStore.getState();
-  expect(gs.pendingTableGroups).toBeNull();
-  expect(gs.pendingMyTiles).toBeNull();
-  expect(gs.pendingGroupIds.size).toBe(0);
 });
 
 // ---------------------------------------------------------------------------
@@ -257,9 +248,10 @@ test("confirmEnabled = false when score < 30 and hasInitialMeld=false", () => {
 
 test("drawEnabled = false when not my turn", () => {
   act(() => {
+    // Phase C 단계 4: pendingStore.reset()으로 pending 없음 보장.
+    usePendingStore.getState().reset();
     useGameStore.setState({
       mySeat: 0,
-      pendingTableGroups: null,
       gameState: {
         currentSeat: 1,  // 상대방 턴
         tableGroups: [],

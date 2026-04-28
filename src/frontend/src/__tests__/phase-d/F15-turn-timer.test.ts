@@ -15,7 +15,36 @@
 
 import { renderHook, act } from "@testing-library/react";
 import { useGameStore } from "@/store/gameStore";
+import { usePendingStore } from "@/store/pendingStore";
 import { useTurnTimer } from "@/hooks/useTurnTimer";
+import type { TableGroup, TileCode } from "@/types/tile";
+
+// Phase C 단계 4 (2026-04-28):
+//   gameStore.pendingTableGroups/pendingGroupIds/resetPending 등 deprecated 필드 제거.
+//   pendingStore.draft + pendingStore.reset() 으로 마이그레이션.
+function setDraft(partial: {
+  groups?: TableGroup[];
+  pendingGroupIds?: Set<string>;
+}) {
+  usePendingStore.setState({
+    draft: {
+      groups: partial.groups ?? [],
+      pendingGroupIds: partial.pendingGroupIds ?? new Set<string>(),
+      myTiles: [],
+      recoveredJokers: [],
+      turnStartRack: [],
+      turnStartTableGroups: [],
+    },
+  });
+}
+
+function getPendingSnapshot() {
+  const draft = usePendingStore.getState().draft;
+  return {
+    pendingTableGroups: draft ? draft.groups : null,
+    pendingGroupIds: draft?.pendingGroupIds ?? new Set<string>(),
+  };
+}
 
 // ---------------------------------------------------------------------------
 // AC-15.1: S1, 10초 미만 → UR-26 빨강 펄스 (CSS class --timer-warning)
@@ -140,6 +169,8 @@ describe("[F-15] [V-09] [S0] AC-15.2 — TURN_END(timeout) → S0 전이", () =>
           currentSeat: 0, // 내 턴 → timeout 발생
           tableGroups: [],
           drawPileCount: 60,
+          turnStartedAt: new Date(0).toISOString(),
+          turnTimeoutSec: 60,
         },
         remainingMs: 0,
       });
@@ -166,15 +197,23 @@ describe("[F-15] [V-09] [S0] AC-15.2 — TURN_END(timeout) → S0 전이", () =>
     act(() => {
       useGameStore.setState({
         mySeat: 0,
-        pendingTableGroups: [{ id: "pending-timeout", tiles: ["R7a"], type: "group" }],
+        gameState: {
+          currentSeat: 0,
+          tableGroups: [],
+          drawPileCount: 60,
+          turnStartedAt: new Date(0).toISOString(),
+          turnTimeoutSec: 60,
+        },
+      });
+      setDraft({
+        groups: [{ id: "pending-timeout", tiles: ["R7a"] as TileCode[], type: "group" }],
         pendingGroupIds: new Set(["pending-timeout"]),
-        gameState: { currentSeat: 0, tableGroups: [], drawPileCount: 60 },
       });
     });
 
-    // TURN_END 처리: resetPending() 호출
+    // TURN_END 처리: pendingStore.reset() 호출
     act(() => {
-      useGameStore.getState().resetPending();
+      usePendingStore.getState().reset();
       useGameStore.setState((state) => ({
         gameState: state.gameState
           ? { ...state.gameState, currentSeat: 1 }
@@ -182,7 +221,7 @@ describe("[F-15] [V-09] [S0] AC-15.2 — TURN_END(timeout) → S0 전이", () =>
       }));
     });
 
-    const { pendingTableGroups, pendingGroupIds } = useGameStore.getState();
+    const { pendingTableGroups, pendingGroupIds } = getPendingSnapshot();
     const pendingCount = pendingTableGroups ? pendingTableGroups.length : 0;
 
     // UR-04: pending 리셋
@@ -199,7 +238,9 @@ describe("[F-15] [V-09] [S0] AC-15.2 — TURN_END(timeout) → S0 전이", () =>
       useGameStore.setState({
         mySeat: 0,
         remainingMs: 60000,
-        pendingTableGroups: [{ id: "pending-should-survive", tiles: ["R7a"], type: "group" }],
+      });
+      setDraft({
+        groups: [{ id: "pending-should-survive", tiles: ["R7a"] as TileCode[], type: "group" }],
         pendingGroupIds: new Set(["pending-should-survive"]),
       });
     });
@@ -210,7 +251,7 @@ describe("[F-15] [V-09] [S0] AC-15.2 — TURN_END(timeout) → S0 전이", () =>
     // 타이머 hook은 remainingMs를 읽고 isWarning/isDanger만 반환
     expect(result.current.seconds).toBeGreaterThan(0);
 
-    const { pendingTableGroups } = useGameStore.getState();
+    const { pendingTableGroups } = getPendingSnapshot();
     // pending 그룹은 그대로 (useTurnTimer가 건드리지 않음)
     expect(pendingTableGroups).not.toBeNull();
     expect(pendingTableGroups?.length).toBe(1);

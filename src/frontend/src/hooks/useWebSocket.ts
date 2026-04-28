@@ -4,6 +4,7 @@ import { useEffect, useRef, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { useWSStore } from "@/store/wsStore";
 import { useGameStore } from "@/store/gameStore";
+import { usePendingStore } from "@/store/pendingStore";
 import { useRateLimitStore } from "@/store/rateLimitStore";
 import { getGameToken } from "@/lib/authToken";
 import { computeNewlyPlacedTiles } from "@/lib/tileDiff";
@@ -266,11 +267,16 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
                   : p
               ),
               // C-2: myRack이 서버에서 왔으면 서버 진실(source of truth) 사용, 아니면 기존 로직
+              // Phase C 단계 4 (2026-04-28): gameStore.pendingMyTiles 제거.
+              //   pendingStore.draft.myTiles 가 단일 SSOT.
               ...(payload.myRack
                 ? { myTiles: payload.myRack as TileCode[] }
-                : (isMySeatTurn && state.pendingMyTiles != null
-                  ? { myTiles: state.pendingMyTiles }
-                  : {})),
+                : (() => {
+                    const draftMyTiles = usePendingStore.getState().draft?.myTiles ?? null;
+                    return isMySeatTurn && draftMyTiles != null
+                      ? { myTiles: draftMyTiles }
+                      : {};
+                  })()),
               // hasInitialMeld 업데이트 (내 턴인 경우)
               ...(isMySeatTurn ? { hasInitialMeld: payload.hasInitialMeld } : {}),
               // 턴 히스토리 + 최근 배치 하이라이트 (타일이 실제 추가된 경우만 highlight 활성)

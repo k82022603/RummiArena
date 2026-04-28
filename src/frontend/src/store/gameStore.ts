@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
-import type { TileCode, TableGroup } from "@/types/tile";
+import type { TileCode } from "@/types/tile";
 import type { Player, GameState, Room } from "@/types/game";
 import type { GameOverPayload } from "@/types/websocket";
 import { computeEffectiveMeld } from "@/lib/turnUtils";
@@ -54,45 +54,14 @@ interface GameStore {
   setRemainingMs: (ms: number) => void;
 
   // ---------------------------------------------------------------------------
-  // @deprecated Phase 1: 아래 pending 관련 필드는 pendingStore로 이전됨.
-  //   현재 상태 (2026-04-28):
-  //     - GameClient.handleDragEnd의 inline 분기(6곳)가 아직 이 필드들을 직접 업데이트
-  //     - useTurnActions가 이 필드들에서 읽음 (confirmEnabled/drawEnabled/resetEnabled 계산)
-  //     - useWebSocket.ts TURN_START/INVALID_MOVE 핸들러가 resetPending() 호출
-  //     - pendingStore에는 dragEndReducer 경로(2곳)와 jokerSwap(1곳)만 dual-write 중
-  //   완전 제거 전제조건:
-  //     1. handleDragEnd 나머지 6개 inline 분기에 pendingStore.applyMutation 추가
-  //     2. useTurnActions를 pendingStore.draft 기반으로 전환
-  //     3. useWebSocket.ts resetPending()을 pendingStore.reset() + rollback으로 대체
-  //   신규 코드에서는 usePendingStore를 사용할 것 (src/store/pendingStore.ts).
+  // [2026-04-28 Phase C 단계 4] pending 관련 필드/setter 완전 제거 완료.
+  //   pendingTableGroups, pendingMyTiles, pendingGroupIds, pendingRecoveredJokers
+  //   setPendingTableGroups, setPendingMyTiles, addPendingGroupId,
+  //   clearPendingGroupIds, setPendingGroupIds, addRecoveredJoker,
+  //   removeRecoveredJoker, clearRecoveredJokers, resetPending
+  //   → 모두 usePendingStore (src/store/pendingStore.ts) 로 이전.
+  //   selectMyTileCount 는 usePendingStore.getState().draft?.myTiles 를 우선 참조.
   // ---------------------------------------------------------------------------
-
-  // 임시 테이블 상태 (턴 확정 전 로컬 편집 중)
-  // @deprecated → usePendingStore().draft.groups
-  pendingTableGroups: TableGroup[] | null;
-  setPendingTableGroups: (groups: TableGroup[] | null) => void;
-
-  // 임시 내 랙 상태 (테이블에 끌어놓은 타일 제거된 상태)
-  // @deprecated → usePendingStore().draft.myTiles
-  pendingMyTiles: TileCode[] | null;
-  setPendingMyTiles: (tiles: TileCode[] | null) => void;
-
-  // P3: 테이블 조커 교체로 회수한 조커 대기 풀
-  // 규칙 §3.3/§6.2 유형 4 — 회수한 조커는 같은 턴 내에 다른 세트에 반드시 사용해야 한다.
-  // @deprecated → usePendingStore().draft.recoveredJokers
-  pendingRecoveredJokers: TileCode[];
-  addRecoveredJoker: (code: TileCode) => void;
-  removeRecoveredJoker: (code: TileCode) => void;
-  clearRecoveredJokers: () => void;
-
-  // 이번 턴에 새로 추가된 그룹 ID 세트 (프리뷰 표시용, 서버 미확정)
-  // @deprecated → usePendingStore().draft.pendingGroupIds
-  pendingGroupIds: Set<string>;
-  addPendingGroupId: (id: string) => void;
-  clearPendingGroupIds: () => void;
-  // BUG-UI-EXT 수정 4: 재배치 시 소스 그룹 제거 + 타겟 그룹 등록을 atomic 하게 처리
-  // @deprecated → usePendingStore().applyMutation()
-  setPendingGroupIds: (ids: Set<string>) => void;
 
   // AI 사고 중 표시
   aiThinkingSeat: number | null;
@@ -147,14 +116,6 @@ interface GameStore {
   lastTurnPlacement: TurnPlacement | null;
   setLastTurnPlacement: (placement: TurnPlacement | null) => void;
 
-  // pending 상태만 초기화 (INVALID_MOVE 롤백 / TURN_START 초기화 시 사용)
-  // @deprecated → usePendingStore().reset()
-  // 호출처 (2026-04-28):
-  //   - useWebSocket.ts: TURN_START, BUG-WS-001 fallback, INVALID_MOVE, AI_THINKING fallback
-  //   - useTurnActions.ts: handleUndo
-  //   - useGameSync.ts는 pendingStore.reset()을 별도 호출 (이 함수와 보완 관계, 중복 아님)
-  resetPending: () => void;
-
   // F1/F2 (BUG-UI-012 Phase 2): 게임 종료 상태 스키마
   // GAME_ENDED / PLAYER_FORFEITED 이벤트 수신 시 모달 트리거에 사용.
   // gameEnded(boolean) 는 GAME_OVER 이벤트 기반이므로 별도 유지.
@@ -177,10 +138,7 @@ const initialState = {
   players: [] as Player[],
   hasInitialMeld: false,
   remainingMs: 0,
-  pendingTableGroups: null as TableGroup[] | null,
-  pendingMyTiles: null as TileCode[] | null,
-  pendingGroupIds: new Set<string>(),
-  pendingRecoveredJokers: [] as TileCode[],
+  // Phase C 단계 4: pending* deprecated 필드 제거. usePendingStore 사용.
   aiThinkingSeat: null as number | null,
   isAITurn: false,
   aiElapsedMs: 0,
@@ -213,31 +171,7 @@ export const useGameStore = create<GameStore>()(
     setPlayers: (players) => set({ players }),
     setHasInitialMeld: (hasInitialMeld) => set({ hasInitialMeld }),
     setRemainingMs: (remainingMs) => set({ remainingMs }),
-    setPendingTableGroups: (pendingTableGroups) => set({ pendingTableGroups }),
-    setPendingMyTiles: (pendingMyTiles) => set({ pendingMyTiles }),
-    addPendingGroupId: (id) =>
-      set((state) => ({
-        pendingGroupIds: new Set([...state.pendingGroupIds, id]),
-      })),
-    clearPendingGroupIds: () => set({ pendingGroupIds: new Set<string>() }),
-    // BUG-UI-EXT 수정 4: atomic 교체 — 재배치 후 소스 ID 제거 + 타겟 ID 등록을 한 번에
-    setPendingGroupIds: (ids) => set({ pendingGroupIds: ids }),
-
-    addRecoveredJoker: (code) =>
-      set((state) => {
-        // WARN-03: 중복 push guard — 동일 code가 이미 존재하면 no-op
-        if (state.pendingRecoveredJokers.includes(code)) return state;
-        return { pendingRecoveredJokers: [...state.pendingRecoveredJokers, code] };
-      }),
-    removeRecoveredJoker: (code) =>
-      set((state) => {
-        const idx = state.pendingRecoveredJokers.indexOf(code);
-        if (idx < 0) return {};
-        const next = [...state.pendingRecoveredJokers];
-        next.splice(idx, 1);
-        return { pendingRecoveredJokers: next };
-      }),
-    clearRecoveredJokers: () => set({ pendingRecoveredJokers: [] }),
+    // Phase C 단계 4: pending* setter 제거. usePendingStore.applyMutation/reset 사용.
     setAIThinkingSeat: (aiThinkingSeat) => set({ aiThinkingSeat }),
     setIsAITurn: (isAITurn) => set({ isAITurn }),
     setAIElapsedMs: (aiElapsedMs) => set({ aiElapsedMs }),
@@ -276,14 +210,7 @@ export const useGameStore = create<GameStore>()(
     clearTurnHistory: () => set({ turnHistory: [] }),
     setLastTurnPlacement: (lastTurnPlacement) => set({ lastTurnPlacement }),
 
-    resetPending: () =>
-      set({
-        pendingTableGroups: null,
-        pendingMyTiles: null,
-        pendingGroupIds: new Set<string>(),
-        pendingRecoveredJokers: [],
-      }),
-
+    // Phase C 단계 4: resetPending 제거. usePendingStore.reset() 사용.
     reset: () => set(initialState),
   }))
 );
@@ -292,21 +219,34 @@ export const useGameStore = create<GameStore>()(
 // Selector: 내 플레이어의 실제 타일 수
 //
 // 문제: PlayerCard 배지(player.tileCount)는 서버 기준값.
-//       미확정 배치(pendingMyTiles)가 있으면 rack 실제 수와 다를 수 있음.
-// 해결: 내 시트에 한해 pendingMyTiles 길이를 우선 사용.
+//       미확정 배치(pendingStore.draft.myTiles)가 있으면 rack 실제 수와 다를 수 있음.
+// 해결: 내 시트에 한해 pendingStore.draft.myTiles 길이를 우선 사용.
 //       여러 WS 이벤트(TURN_ENDED/DRAW_TILE/PLACE_COMMIT)에서 drift 방지.
+//
+// Phase C 단계 4 (2026-04-28): gameStore.pendingMyTiles 필드 제거.
+//   pendingStore.draft.myTiles 가 단일 SSOT.
 // ---------------------------------------------------------------------------
 
 /**
  * 내 플레이어의 실제 타일 수 selector.
  *
- * - pendingMyTiles 가 있으면 그 길이를 우선 반환 (rack과 동기화)
+ * - pendingStore.draft.myTiles 가 있으면 그 길이를 우선 반환 (rack과 동기화)
  * - 없으면 서버 기준 player.tileCount 반환
+ *
+ * 주의: 이 selector는 gameStore와 pendingStore 양쪽을 참조하므로 reactive 구독
+ *      대상이 아니라 단발 호출(getState 기반)로만 사용한다. 기존 호출처는 모두
+ *      `selectMyTileCount(useGameStore.getState())` 패턴이며, 그 호출 시점의
+ *      pendingStore 스냅샷도 함께 읽는다.
  */
 export function selectMyTileCount(
   state: ReturnType<typeof useGameStore.getState>
 ): number {
-  const { mySeat, players, pendingMyTiles } = state;
+  const { mySeat, players } = state;
+  // pendingStore는 별도 store이므로 module-level singleton getState로 참조한다.
+  // 순환 참조 방지: 함수 내부에서 lazy require 패턴 (top-level import 금지).
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { usePendingStore } = require("@/store/pendingStore") as typeof import("@/store/pendingStore");
+  const pendingMyTiles = usePendingStore.getState().draft?.myTiles ?? null;
   if (pendingMyTiles !== null) {
     return pendingMyTiles.length;
   }

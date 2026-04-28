@@ -32,6 +32,7 @@ import {
 } from "@/lib/mergeCompatibility";
 import { detectDuplicateTileCodes } from "@/lib/tileStateHelpers";
 import { selectMyTileCount, useGameStore } from "@/store/gameStore";
+import { usePendingStore } from "@/store/pendingStore";
 
 import type { TileCode, TableGroup } from "@/types/tile";
 import type { Player } from "@/types/game";
@@ -355,10 +356,29 @@ describe("S-12 · Y5-Y6-Y7 valid-run", () => {
 // =====================================================================
 // S-13 · tileCount 정합성 (selectMyTileCount drift)
 // =====================================================================
-describe("S-13 · pendingMyTiles 변경 시 selectMyTileCount 동기화", () => {
+describe("S-13 · pendingStore.draft.myTiles 변경 시 selectMyTileCount 동기화", () => {
   beforeEach(() => {
     useGameStore.getState().reset();
+    usePendingStore.getState().reset();
   });
+
+  // pendingStore.draft 직접 주입 헬퍼
+  const setDraftMyTiles = (myTiles: TileCode[] | null) => {
+    if (myTiles === null) {
+      usePendingStore.getState().reset();
+    } else {
+      usePendingStore.setState({
+        draft: {
+          groups: [],
+          pendingGroupIds: new Set<string>(),
+          myTiles,
+          recoveredJokers: [],
+          turnStartRack: [],
+          turnStartTableGroups: [],
+        },
+      });
+    }
+  };
 
   it("드래그·되돌리기 반복 후 각 단계 정합성 확보", () => {
     useGameStore.setState({
@@ -366,44 +386,35 @@ describe("S-13 · pendingMyTiles 변경 시 selectMyTileCount 동기화", () => 
       players: [
         anyPlayer({ seat: 0, type: "HUMAN", tileCount: 14 }),
       ],
-      pendingMyTiles: null,
     });
     // 초기 tileCount = 14
     expect(selectMyTileCount(useGameStore.getState())).toBe(14);
 
     // pending 3장
-    useGameStore.setState({
-      pendingMyTiles: ["R1a", "R2a", "R3a"] as unknown as TileCode[],
-    });
+    setDraftMyTiles(["R1a", "R2a", "R3a"] as unknown as TileCode[]);
     expect(selectMyTileCount(useGameStore.getState())).toBe(3);
 
     // 1장 추가 → 4
-    useGameStore.setState({
-      pendingMyTiles: ["R1a", "R2a", "R3a", "B5a"] as unknown as TileCode[],
-    });
+    setDraftMyTiles(["R1a", "R2a", "R3a", "B5a"] as unknown as TileCode[]);
     expect(selectMyTileCount(useGameStore.getState())).toBe(4);
 
     // 1장 추가 → 5
-    useGameStore.setState({
-      pendingMyTiles: [
-        "R1a",
-        "R2a",
-        "R3a",
-        "B5a",
-        "Y7a",
-      ] as unknown as TileCode[],
-    });
+    setDraftMyTiles([
+      "R1a",
+      "R2a",
+      "R3a",
+      "B5a",
+      "Y7a",
+    ] as unknown as TileCode[]);
     expect(selectMyTileCount(useGameStore.getState())).toBe(5);
 
     // 되돌리기 → 4
-    useGameStore.setState({
-      pendingMyTiles: ["R1a", "R2a", "R3a", "B5a"] as unknown as TileCode[],
-    });
+    setDraftMyTiles(["R1a", "R2a", "R3a", "B5a"] as unknown as TileCode[]);
     expect(selectMyTileCount(useGameStore.getState())).toBe(4);
 
     // 확정 → pending null, tileCount 10 (서버 응답 반영)
+    setDraftMyTiles(null);
     useGameStore.setState({
-      pendingMyTiles: null,
       players: [
         anyPlayer({ seat: 0, type: "HUMAN", tileCount: 10 }),
       ],
