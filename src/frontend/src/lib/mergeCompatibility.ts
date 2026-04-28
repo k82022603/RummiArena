@@ -90,24 +90,48 @@ function isCompatibleAsRun(
     if (r.color !== runColor) return false;
   }
 
+  const jokerCount = group.tiles.filter((t) => isJoker(t)).length;
+  const numbers = regular.map((r) => r.number as number).sort((a, b) => a - b);
+  const minNum = numbers[0];
+  const maxNum = numbers[numbers.length - 1];
+
+  // 조커가 regular 타일 사이의 내부 빈자리를 채운 뒤 남는 잔여 조커 수 계산.
+  // 잔여 조커는 런의 양쪽 끝을 확장하는 데 사용될 수 있다.
+  // 예: [JK1, R9, R10] → 내부 gap = (10-9+1) - 2 = 0, 잔여 = 1 → effectiveMin = 8
+  const internalGap = (maxNum - minNum + 1) - regular.length;
+  const surplusJokers = Math.max(0, jokerCount - internalGap);
+
+  // 잔여 조커가 양쪽 끝에 분배될 수 있으므로
+  // 실제 런 범위: [minNum - surplusJokers, maxNum + surplusJokers]
+  const effectiveMin = Math.max(MIN_NUMBER, minNum - surplusJokers);
+  const effectiveMax = Math.min(MAX_NUMBER, maxNum + surplusJokers);
+
   if (tileIsJoker) {
-    const minNum = Math.min(...regular.map((r) => r.number as number));
-    const maxNum = Math.max(...regular.map((r) => r.number as number));
-    return minNum - 1 >= MIN_NUMBER || maxNum + 1 <= MAX_NUMBER;
+    return effectiveMin - 1 >= MIN_NUMBER || effectiveMax + 1 <= MAX_NUMBER;
   }
 
   if (tileColor !== runColor) return false;
   if (tileNumber === null) return false;
 
-  const numbers = regular.map((r) => r.number as number).sort((a, b) => a - b);
-  const minNum = numbers[0];
-  const maxNum = numbers[numbers.length - 1];
-
+  // I4: 일반 타일 추가 시, 기존 regular 숫자 + 새 타일을 합쳐서
+  // 전체가 조커를 사용해 유효한 연속 런을 이룰 수 있는지 직접 검사.
+  // 새 타일의 숫자가 기존에 이미 있으면 중복이므로 불가.
   const n = tileNumber as number;
-  if (n === minNum - 1 && n >= MIN_NUMBER) return true;
-  if (n === maxNum + 1 && n <= MAX_NUMBER) return true;
+  if (numbers.includes(n)) return false;
 
-  return false;
+  const allNums = [...numbers, n].sort((a, b) => a - b);
+  const newMin = allNums[0];
+  const newMax = allNums[allNums.length - 1];
+  const span = newMax - newMin + 1;
+
+  // 연속 런에 필요한 빈칸 수 = span - regular 수 (새 타일 포함)
+  // 조커로 채울 수 있어야 하고, 범위가 1~13 이내여야 함.
+  const gaps = span - allNums.length;
+  if (gaps < 0) return false;
+  if (gaps > jokerCount) return false;
+  if (newMin < MIN_NUMBER || newMax > MAX_NUMBER) return false;
+
+  return true;
 }
 
 export function isCompatibleWithGroup(tile: TileCode, group: TableGroup): boolean {

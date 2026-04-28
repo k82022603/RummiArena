@@ -69,6 +69,9 @@ type GameService interface {
 	GetRawGameState(gameID string) (*model.GameStateRedis, error)
 	// DeleteGameState 게임 상태를 삭제한다 (게임 종료 시 Redis 정리).
 	DeleteGameState(gameID string) error
+	// AddPlayerMidGame 진행 중인 게임에 새 플레이어를 추가한다.
+	// DrawPile에서 14장을 배분하며, 14장 미만이면 에러를 반환한다.
+	AddPlayerMidGame(gameID string, player model.RoomPlayer) error
 }
 
 // GameStateView 1인칭 뷰 게임 상태.
@@ -844,6 +847,63 @@ func (s *gameService) GetRawGameState(gameID string) (*model.GameStateRedis, err
 // DeleteGameState 게임 상태를 삭제한다.
 func (s *gameService) DeleteGameState(gameID string) error {
 	return s.gameRepo.DeleteGameState(gameID)
+}
+
+// AddPlayerMidGame 진행 중인 게임에 새 플레이어를 mid-game으로 추가한다.
+//
+// 규칙 D-05: 타일 총합 106장 불변 유지 — DrawPile에서 14장을 배분한다.
+// DrawPile < 14장이면 DRAW_PILE_TOO_SMALL 에러를 반환하며 상태를 변경하지 않는다.
+// 새 플레이어는 hasInitialMeld=false로 시작하며 (30점 최초 등록 규칙 적용),
+// Players 슬라이스 끝에 append되므로 advanceTurn이 다음 라운드부터 자동으로 포함한다.
+func (s *gameService) AddPlayerMidGame(gameID string, player model.RoomPlayer) error {
+	state, err := s.gameRepo.GetGameState(gameID)
+	if err != nil {
+		return &ServiceError{Code: "NOT_FOUND", Message: errMsgGameNotFound, Status: 404}
+	}
+
+	if state.Status != model.GameStatusPlaying {
+		return &ServiceError{Code: "GAME_NOT_PLAYING", Message: "진행 중인 게임이 아닙니다.", Status: 400}
+	}
+
+	// 이미 같은 seat 또는 userID가 있으면 중복 추가 방지
+	for _, p := range state.Players {
+		if p.UserID == player.UserID {
+			return &ServiceError{Code: "ALREADY_IN_GAME", Message: "이미 게임에 참가하고 있습니다.", Status: 409}
+		}
+		if p.SeatOrder == player.Seat {
+			return &ServiceError{Code: "SEAT_OCCUPIED", Message: "해당 seat이 이미 점유되어 있습니다.", Status: 409}
+		}
+	}
+
+	const initialTiles = 14
+	if len(state.DrawPile) < initialTiles {
+		return &ServiceError{
+			Code:    "DRAW_PILE_TOO_SMALL",
+			Message: fmt.Sprintf("드로우 파일에 타일이 %d장 미만입니다. 참가할 수 없습니다.", initialTiles),
+			Status:  409,
+		}
+	}
+
+	// DrawPile에서 14장 배분
+	rack := make([]string, initialTiles)
+	copy(rack, state.DrawPile[:initialTiles])
+	state.DrawPile = state.DrawPile[initialTiles:]
+
+	newPlayer := model.PlayerState{
+		SeatOrder:      player.Seat,
+		UserID:         player.UserID,
+		DisplayName:    player.DisplayName,
+		PlayerType:     player.Type,
+		HasInitialMeld: false,
+		Rack:           rack,
+		Status:         model.PlayerStatusActive,
+	}
+	state.Players = append(state.Players, newPlayer)
+
+	if err := s.gameRepo.SaveGameState(state); err != nil {
+		return fmt.Errorf("game_service: save after add player mid game: %w", err)
+	}
+	return nil
 }
 
 // --- 내부 헬퍼 함수 ---
