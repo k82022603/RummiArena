@@ -212,6 +212,8 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
             turnStartFallbackTimer.current = null;
           }
           pendingTurnStartRef.current = null;
+          // gameStore deprecated pending 필드 초기화 (GameClient.handleDragEnd가 아직 이 필드 사용)
+          // 보완: useGameSync가 pendingStore.reset() + saveTurnStartSnapshot()을 별도 수행
           resetPending();
           setRemainingMs(payload.timeoutSec * 1000);
           if (payload.turnNumber != null) setTurnNumber(payload.turnNumber);
@@ -335,7 +337,8 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
           const payload = msg.payload as InvalidMovePayload;
           // C-1: 서버 상태도 복원하기 위해 RESET_TURN 전송
           sendRef.current?.("RESET_TURN", {});
-          // 로컬 상태 롤백
+          // gameStore deprecated pending 필드 롤백
+          // 보완: useGameSync가 pendingStore.rollbackToServerSnapshot()을 별도 수행
           resetPending();
           // 에러 메시지 표시
           const errorMsg = payload.errors

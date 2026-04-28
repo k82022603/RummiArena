@@ -55,7 +55,15 @@ interface GameStore {
 
   // ---------------------------------------------------------------------------
   // @deprecated Phase 1: 아래 pending 관련 필드는 pendingStore로 이전됨.
-  //   Phase 3에서 완전 제거 예정. 현재는 기존 코드(GameClient.tsx, useWebSocket.ts) 호환성 유지.
+  //   현재 상태 (2026-04-28):
+  //     - GameClient.handleDragEnd의 inline 분기(6곳)가 아직 이 필드들을 직접 업데이트
+  //     - useTurnActions가 이 필드들에서 읽음 (confirmEnabled/drawEnabled/resetEnabled 계산)
+  //     - useWebSocket.ts TURN_START/INVALID_MOVE 핸들러가 resetPending() 호출
+  //     - pendingStore에는 dragEndReducer 경로(2곳)와 jokerSwap(1곳)만 dual-write 중
+  //   완전 제거 전제조건:
+  //     1. handleDragEnd 나머지 6개 inline 분기에 pendingStore.applyMutation 추가
+  //     2. useTurnActions를 pendingStore.draft 기반으로 전환
+  //     3. useWebSocket.ts resetPending()을 pendingStore.reset() + rollback으로 대체
   //   신규 코드에서는 usePendingStore를 사용할 것 (src/store/pendingStore.ts).
   // ---------------------------------------------------------------------------
 
@@ -139,8 +147,12 @@ interface GameStore {
   lastTurnPlacement: TurnPlacement | null;
   setLastTurnPlacement: (placement: TurnPlacement | null) => void;
 
-  // pending 상태만 초기화 (INVALID_MOVE 롤백 시 사용)
+  // pending 상태만 초기화 (INVALID_MOVE 롤백 / TURN_START 초기화 시 사용)
   // @deprecated → usePendingStore().reset()
+  // 호출처 (2026-04-28):
+  //   - useWebSocket.ts: TURN_START, BUG-WS-001 fallback, INVALID_MOVE, AI_THINKING fallback
+  //   - useTurnActions.ts: handleUndo
+  //   - useGameSync.ts는 pendingStore.reset()을 별도 호출 (이 함수와 보완 관계, 중복 아님)
   resetPending: () => void;
 
   // F1/F2 (BUG-UI-012 Phase 2): 게임 종료 상태 스키마

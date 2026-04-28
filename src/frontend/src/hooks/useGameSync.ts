@@ -103,8 +103,11 @@ export function useGameSync(_roomId: string): void {
   // ---------------------------------------------------------------------------
   // INVALID_MOVE 감지 — wsStore.lastError 변화
   // ---------------------------------------------------------------------------
-  // INVALID_MOVE 핸들링: useWebSocket.ts가 이미 resetPending()을 호출한다.
+  // INVALID_MOVE 핸들링: useWebSocket.ts가 이미 gameStore.resetPending()을 호출한다.
   // 이 hook에서는 pendingStore rollback + turnStateStore INVALID 전이를 추가한다.
+  // 양쪽은 서로 다른 store를 초기화하므로 중복이 아니라 보완 관계:
+  //   - useWebSocket.ts resetPending() → gameStore deprecated pending 필드 초기화
+  //   - 이 hook rollbackToServerSnapshot() → pendingStore.draft 롤백
   // wsStore.lastError 값이 설정되는 시점 = INVALID_MOVE 수신 시점으로 간주한다.
   // Phase 3에서 wsStore에 explicit INVALID_MOVE 이벤트 필드를 추가할 예정.
   useEffect(() => {

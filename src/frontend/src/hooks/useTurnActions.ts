@@ -109,6 +109,12 @@ export function useTurnActions(): UseTurnActionsReturn {
   //   gameStore의 pendingTableGroups/pendingMyTiles/pendingGroupIds를 직접 읽는다.
   //   이 필드들이 @deprecated 마킹되어 있지만 현재 실제 SSOT이다.
   //   ActionBar fallback 로직(isMyTurn + hasPending + allGroupsValid)과 동등하게 맞춘다.
+  //
+  // pendingStore 전환 전제조건 (P2b):
+  //   GameClient.handleDragEnd의 나머지 6개 inline 분기에
+  //   pendingStore.applyMutation dual-write가 추가되어야 pendingStore.draft가 최신 값을 갖게 됨.
+  //   현재는 dragEndReducer 경로(2곳) + jokerSwap(1곳)만 dual-write 중.
+  //   gameStore.ts의 deprecated 주석 블록에 전체 로드맵 기재.
   // ---------------------------------------------------------------------------
 
   // @deprecated 필드이나 현재 SSOT — Phase 3 완전 제거 예정

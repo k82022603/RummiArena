@@ -21,6 +21,12 @@
  *   GameClient가 자체 DndContext를 소유하므로 이 컴포넌트는 DndContext를 추가하지 않는다.
  *   Phase 4에서 GameClient의 DndContext를 이 컴포넌트로 이전한다.
  *
+ *   P3 DndContext 이전 전제조건 (2026-04-28):
+ *     1. P2b 완료 (handleDragEnd 전체 inline 분기 pendingStore dual-write)
+ *     2. useTurnActions pendingStore.draft 전환 완료
+ *     3. gameStore deprecated pending 필드 제거 완료
+ *     4. useDragHandlers가 GameClient.handleDragEnd의 전체 기능을 대체
+ *
  * 계층 규칙:
  *   - L2(store/hook)만 import. L3 순수 함수 직접 import 금지.
  *   - L4(WS) 직접 import 금지 — GameClient의 브릿지 경유.

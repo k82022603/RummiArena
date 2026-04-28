@@ -845,6 +845,7 @@ export default function GameClient({ roomId }: GameClientProps) {
         if (over.id === dragSource.groupId) return;
 
         // 테이블 → 랙 되돌리기 (유형 1 일부)
+        // TODO(P2b): pendingStore.applyMutation 추가 필요 — gameStore deprecated 필드 제거 전제조건
         if (over.id === "player-rack") {
           // 서버 확정 그룹의 타일을 랙으로 되돌리면 conservation 위반 (V-06)
           if (!sourceIsPending) return;
@@ -892,6 +893,7 @@ export default function GameClient({ roomId }: GameClientProps) {
         }
 
         // 테이블 → 다른 그룹 이동 (유형 3)
+        // TODO(P2b): pendingStore.applyMutation 추가 필요 — gameStore deprecated 필드 제거 전제조건
         if (!freshHasInitialMeld) return; // 최초 등록 전에는 재배치 금지
         const targetGroup = freshTableGroups.find((g) => g.id === over.id);
         if (!targetGroup) return;
@@ -994,6 +996,7 @@ export default function GameClient({ roomId }: GameClientProps) {
       }
 
       // 기존 pending 그룹에 드롭한 경우
+      // TODO(P2b): 아래 2개 분기(호환/비호환)에 pendingStore.applyMutation 추가 필요
       const existingPendingGroup = freshPendingTableGroups?.find(
         (g) => g.id === over.id && freshPendingGroupIds.has(g.id)
       );
@@ -1063,6 +1066,7 @@ export default function GameClient({ roomId }: GameClientProps) {
 
       // FINDING-01 (Issue #46) — I-18 완전 롤백: freshHasInitialMeld=false 상태에서
       // 서버 확정 그룹 영역에 드롭된 경우는 반드시 새 pending 그룹을 생성한다.
+      // TODO(P2b): pendingStore.applyMutation 추가 필요 — gameStore deprecated 필드 제거 전제조건
       //
       // 근거:
       //   - 서버 V-04 (초기 등록 30점 검증) 가 서버 그룹에 append 된 세트를 거절하고
@@ -1099,6 +1103,7 @@ export default function GameClient({ roomId }: GameClientProps) {
         return;
       }
 
+      // TODO(P2b): 아래 2개 분기(호환/비호환)에 pendingStore.applyMutation 추가 필요
       if (targetServerGroup && freshHasInitialMeld) {
         if (!isCompatibleWithGroup(tileCode, targetServerGroup)) {
           // 호환 안 됨: 새 그룹 생성 (옵션 A 폴스루)
@@ -1153,6 +1158,8 @@ export default function GameClient({ roomId }: GameClientProps) {
       // 전담하므로 여기서는 game-board 직접 드롭만 처리한다.
       const treatAsBoardDrop = over.id === "game-board";
 
+      // TODO(P2b): 아래 game-board/game-board-new-group/player-rack 3개 분기에
+      //   pendingStore.applyMutation 추가 필요 — gameStore deprecated 필드 제거 전제조건
       if (treatAsBoardDrop) {
         // 보드 빈 공간에 드롭
         // BUG-NEW-001 수정: game-board 드롭 시 lastPendingGroup으로 서버 확정 그룹을
