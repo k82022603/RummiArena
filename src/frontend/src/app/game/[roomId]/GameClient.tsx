@@ -710,9 +710,6 @@ export default function GameClient({ roomId }: GameClientProps) {
     return calculateScore(pendingOnlyGroups);
   }, [pendingTableGroups, pendingGroupIds]);
 
-  // 상대 플레이어 목록 (내 seat 제외)
-  const opponents = players.filter((p) => p.seat !== effectiveMySeat);
-
   // 최근 턴 하이라이트 계산 (pending 배치 중에는 하이라이트 비활성)
   const recentTileCodes = useMemo(() => {
     if (pendingTableGroups) return undefined;
@@ -1637,34 +1634,35 @@ export default function GameClient({ roomId }: GameClientProps) {
         <div className="flex flex-1 overflow-hidden min-h-0">
           {/* 좌측 사이드: 전체 플레이어 카드 + 드로우 파일 */}
           <aside
-            className="w-48 flex-shrink-0 bg-panel-bg border-r border-border p-3 flex flex-col gap-2 overflow-y-auto"
+            className="w-48 flex-shrink-0 min-h-0 bg-panel-bg border-r border-border p-3 flex flex-col gap-2 overflow-y-auto"
             aria-label="플레이어 패널"
           >
-            {/* 상대 플레이어 */}
-            {opponents.map((player) => (
-              <PlayerCard
-                key={player.seat}
-                player={player}
-                isCurrentTurn={gameState?.currentSeat === player.seat}
-                isAIThinking={aiThinkingSeat === player.seat}
-                disconnectCountdown={disconnectCountdowns[player.seat]}
-              />
-            ))}
-
-            {/* 내 플레이어 카드 */}
-            {players
-              .filter((p) => p.seat === effectiveMySeat)
-              .map((player) => (
+            {/* 전체 플레이어 — players 배열을 직접 순회하여 seat 누락 방지.
+                BUG-LAYOUT-001: opponents 파생 변수 대신 players 원본 배열 사용.
+                내 카드(effectiveMySeat 일치)는 tileCount를 currentMyTiles.length로 override.
+                4인 방에서 모든 플레이어가 표시되도록 보장한다. */}
+            {players.map((player) => {
+              const isMe = player.seat === effectiveMySeat;
+              return (
                 <PlayerCard
                   key={player.seat}
-                  player={{
-                    ...player,
-                    tileCount: currentMyTiles.length,
-                  }}
-                  isCurrentTurn={isMyTurn}
-                  isAIThinking={false}
+                  player={
+                    isMe
+                      ? { ...player, tileCount: currentMyTiles.length }
+                      : player
+                  }
+                  isCurrentTurn={
+                    isMe
+                      ? isMyTurn
+                      : gameState?.currentSeat === player.seat
+                  }
+                  isAIThinking={!isMe && aiThinkingSeat === player.seat}
+                  disconnectCountdown={
+                    isMe ? undefined : disconnectCountdowns[player.seat]
+                  }
                 />
-              ))}
+              );
+            })}
 
             {/* 드로우 파일 */}
             {gameState && (
