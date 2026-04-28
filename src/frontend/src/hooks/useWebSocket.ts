@@ -119,7 +119,6 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
     setGameEnded,
     setMySeat,
     setTurnNumber,
-    resetPending,
     addDisconnectedPlayer,
     removeDisconnectedPlayer,
     setIsDrawPileEmpty,
@@ -212,9 +211,10 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
             turnStartFallbackTimer.current = null;
           }
           pendingTurnStartRef.current = null;
-          // gameStore deprecated pending 필드 초기화 (GameClient.handleDragEnd가 아직 이 필드 사용)
-          // 보완: useGameSync가 pendingStore.reset() + saveTurnStartSnapshot()을 별도 수행
-          resetPending();
+          // [2026-04-28 Phase C 단계1] resetPending() 제거.
+          // useGameSync가 currentSeat 변경 감지 시 pendingStore.reset() + saveTurnStartSnapshot()
+          // 을 호출하므로 여기서 gameStore deprecated 필드 초기화는 불필요.
+          // GameClient.handleDragEnd의 inline 분기는 Phase C 단계3에서 setPending* 제거 예정.
           setRemainingMs(payload.timeoutSec * 1000);
           if (payload.turnNumber != null) setTurnNumber(payload.turnNumber);
           setAIThinkingSeat(null);
@@ -301,7 +301,7 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
                 "[WS] BUG-WS-001: TURN_START not received for seat %d, applying fallback",
                 payload.nextSeat
               );
-              resetPending();
+              // [2026-04-28 Phase C 단계1] resetPending() 제거 — useGameSync가 처리.
               setRemainingMs(turnTimeout * 1000);
               setAIThinkingSeat(null);
               pendingTurnStartRef.current = null;
@@ -337,9 +337,9 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
           const payload = msg.payload as InvalidMovePayload;
           // C-1: 서버 상태도 복원하기 위해 RESET_TURN 전송
           sendRef.current?.("RESET_TURN", {});
-          // gameStore deprecated pending 필드 롤백
-          // 보완: useGameSync가 pendingStore.rollbackToServerSnapshot()을 별도 수행
-          resetPending();
+          // [2026-04-28 Phase C 단계1] resetPending() 제거.
+          // useGameSync.ts가 wsStore.lastError 변화를 감지하여
+          // pendingStore.rollbackToServerSnapshot()을 호출한다.
           // 에러 메시지 표시
           const errorMsg = payload.errors
             .map((e) => resolveInvalidMoveMessage(e.code, e.message))
@@ -495,7 +495,7 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
               clearTimeout(turnStartFallbackTimer.current);
               turnStartFallbackTimer.current = null;
             }
-            resetPending();
+            // [2026-04-28 Phase C 단계1] resetPending() 제거 — useGameSync가 처리.
             const turnTimeout = pendingTurnStartRef.current.timeoutSec;
             setRemainingMs(turnTimeout * 1000);
             pendingTurnStartRef.current = null;
@@ -568,7 +568,6 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
       setLastError,
       setMySeat,
       setTurnNumber,
-      resetPending,
       setReconnectNotice,
       addDisconnectedPlayer,
       removeDisconnectedPlayer,

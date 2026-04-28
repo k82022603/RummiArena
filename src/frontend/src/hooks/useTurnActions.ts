@@ -17,7 +17,13 @@
  */
 
 import { useCallback } from "react";
-import { usePendingStore } from "@/store/pendingStore";
+import {
+  usePendingStore,
+  selectTilesAdded,
+  selectPendingPlacementScore,
+  selectAllGroupsValid,
+  selectHasPending,
+} from "@/store/pendingStore";
 import { useGameStore } from "@/store/gameStore";
 import { validateTurnPreCheck } from "@/lib/confirmValidator";
 import {
@@ -94,62 +100,37 @@ export function useTurnActions(): UseTurnActionsReturn {
   const players = useGameStore((s) => s.players);
   const mySeat = useGameStore((s) => s.mySeat);
   const gameState = useGameStore((s) => s.gameState);
-  const myTiles = useGameStore((s) => s.myTiles);
 
   // ---------------------------------------------------------------------------
-  // [2026-04-28] pendingStore.draft → gameStore pending 필드로 SSOT 전환
+  // [2026-04-28 Phase B] pendingStore.draft 기반 SSOT 전환 (재전환)
   //
-  // 근본 원인:
-  //   GameClient.handleDragEnd는 gameStore.setPendingTableGroups() 등을 업데이트하고
-  //   pendingStore.draft는 TURN_START 스냅샷에 고착되어 있었다.
-  //   따라서 pendingStore를 읽으면 confirmEnabled/drawEnabled/resetEnabled가
-  //   항상 초기값(false/false/false)으로 잘못 계산됨.
+  // 배경:
+  //   P0(2026-04-28 오전): pendingStore.draft가 TURN_START 스냅샷에 고착되는 문제로
+  //   임시로 gameStore.pending* 필드 기반으로 전환했었음.
   //
-  // 수정:
-  //   gameStore의 pendingTableGroups/pendingMyTiles/pendingGroupIds를 직접 읽는다.
-  //   이 필드들이 @deprecated 마킹되어 있지만 현재 실제 SSOT이다.
-  //   ActionBar fallback 로직(isMyTurn + hasPending + allGroupsValid)과 동등하게 맞춘다.
+  //   Phase A(2026-04-28 오후): GameClient.handleDragEnd의 9개 inline 분기에
+  //   pendingStore.applyMutation dual-write가 추가되어 pendingStore.draft가
+  //   최신 값을 가지게 되었음. 또한 useGameSync가 TURN_START 시
+  //   pendingStore.saveTurnStartSnapshot()을 호출해 turnStartRack 기준점을 갱신.
   //
-  // pendingStore 전환 전제조건 (P2b):
-  //   GameClient.handleDragEnd의 나머지 6개 inline 분기에
-  //   pendingStore.applyMutation dual-write가 추가되어야 pendingStore.draft가 최신 값을 갖게 됨.
-  //   현재는 dragEndReducer 경로(2곳) + jokerSwap(1곳)만 dual-write 중.
-  //   gameStore.ts의 deprecated 주석 블록에 전체 로드맵 기재.
+  // 현재(Phase B):
+  //   pendingStore.draft + selectors를 직접 사용한다 (58 §4.4).
+  //   - hasPending: selectHasPending(state)
+  //   - tilesAdded: selectTilesAdded(state)  // turnStartRack 기준
+  //   - allGroupsValid: selectAllGroupsValid(state)
+  //   - pendingPlacementScore: selectPendingPlacementScore(state)
   // ---------------------------------------------------------------------------
 
-  // @deprecated 필드이나 현재 SSOT — Phase 3 완전 제거 예정
-  const pendingTableGroups = useGameStore((s) => s.pendingTableGroups);
-  const pendingMyTiles = useGameStore((s) => s.pendingMyTiles);
-  const pendingGroupIds = useGameStore((s) => s.pendingGroupIds);
+  // pendingStore selectors — getState 기반 단발 호출이 아닌 reactive 구독으로 사용
+  const hasPending = usePendingStore((s) => selectHasPending(s));
+  const tilesAdded = usePendingStore((s) => selectTilesAdded(s));
+  const allGroupsValid = usePendingStore((s) => selectAllGroupsValid(s));
+  const pendingPlacementScore = usePendingStore((s) => selectPendingPlacementScore(s));
 
   const hasInitialMeld = computeEffectiveMeld(players, mySeat);
 
   // isMyTurn: gameState.currentSeat vs mySeat (ActionBar fallback과 동일한 출처)
   const isMyTurn = computeIsMyTurn(gameState?.currentSeat ?? -1, mySeat);
-
-  // hasPending: pendingTableGroups !== null (gameStore SSOT)
-  const hasPending = pendingTableGroups !== null;
-
-  // tilesAdded: 턴 시작 랙(myTiles) - 현재 랙(pendingMyTiles)
-  // pendingMyTiles가 null이면 아직 보드에 타일을 옮기지 않은 상태 → tilesAdded = 0
-  const tilesAdded = pendingMyTiles !== null
-    ? Math.max(0, myTiles.length - pendingMyTiles.length)
-    : 0;
-
-  // allGroupsValid: pendingGroupIds에 속하는 그룹이 모두 3장 이상 (UR-15, V-02)
-  const allGroupsValid = (() => {
-    if (!pendingTableGroups || pendingGroupIds.size === 0) return false;
-    const pendingGroups = pendingTableGroups.filter((g) => pendingGroupIds.has(g.id));
-    if (pendingGroups.length === 0) return false;
-    return pendingGroups.every((g) => g.tiles.length >= 3);
-  })();
-
-  // pendingPlacementScore: pending 전용 그룹 점수 합계 (V-04 클라이언트 미러)
-  const pendingPlacementScore = (() => {
-    if (!pendingTableGroups) return 0;
-    const pendingOnlyGroups = pendingTableGroups.filter((g) => pendingGroupIds.has(g.id));
-    return computePendingScore(pendingOnlyGroups);
-  })();
 
   // confirmEnabled: ActionBar fallback과 동등 + 초기 등록 미완료 시 30점 게이트 (UR-15)
   const confirmEnabled =
@@ -162,45 +143,41 @@ export function useTurnActions(): UseTurnActionsReturn {
   // RESET 활성 조건: pending이 있으면 초기화 가능 (ActionBar fallback: hasPending)
   const resetEnabled = hasPending;
 
-  // DRAW 활성 조건 (UR-22): 내 턴 && pending 없음 (pendingTableGroups === null)
+  // DRAW 활성 조건 (UR-22): 내 턴 && pending 없음
   const drawEnabled = isMyTurn && !hasPending;
 
   // ---------------------------------------------------------------------------
-  // handleConfirm
+  // handleConfirm — pendingStore.draft 기반 (Phase B)
   // ---------------------------------------------------------------------------
   const handleConfirm = useCallback(() => {
-    // 최신 상태로 재확인 (stale closure 방지) — gameStore 기반 (2026-04-28 SSOT 전환)
+    // 최신 상태로 재확인 (stale closure 방지)
     const gs = useGameStore.getState();
-    const currentPendingTableGroups = gs.pendingTableGroups;
-    const currentPendingMyTiles = gs.pendingMyTiles;
-    const currentPendingGroupIds = gs.pendingGroupIds;
-    const currentMyTiles = gs.myTiles;
+    const ps = usePendingStore.getState();
+    const draft = ps.draft;
+
+    // pending 없으면 확정 불가
+    if (draft === null || draft.groups.length === 0) return;
+
     const currentPlayers = gs.players;
     const currentMySeat = gs.mySeat;
     const currentGameState = gs.gameState;
     const currentHasInitialMeld = computeEffectiveMeld(currentPlayers, currentMySeat);
 
-    // pending 없으면 확정 불가
-    if (!currentPendingTableGroups || !currentPendingMyTiles) return;
-
     // isMyTurn gate (UR-22 확장: 내 턴이 아니면 확정 불가)
     const currentIsMyTurn = computeIsMyTurn(currentGameState?.currentSeat ?? -1, currentMySeat);
     if (!currentIsMyTurn) return;
 
-    const pendingOnlyGroups = currentPendingTableGroups.filter((g) =>
-      currentPendingGroupIds.has(g.id)
-    );
+    // pending 전용 그룹: pendingGroupIds에 포함된 그룹만 검증 대상
+    const pendingOnlyGroups = draft.groups.filter((g) => draft.pendingGroupIds.has(g.id));
 
-    // tilesAdded: 턴 시작 랙(myTiles) vs 현재 랙(pendingMyTiles)
-    const currentTilesAdded = Math.max(0, currentMyTiles.length - currentPendingMyTiles.length);
+    // tilesAdded: turnStartRack 기준
+    const currentTilesAdded = selectTilesAdded(ps);
     const score = computePendingScore(pendingOnlyGroups);
 
     // UR-15 종합 조건 재확인
-    const currentHasPending = currentPendingTableGroups !== null;
     const currentAllGroupsValid =
       pendingOnlyGroups.length > 0 && pendingOnlyGroups.every((g) => g.tiles.length >= 3);
     if (
-      !currentHasPending ||
       currentTilesAdded < 1 ||
       !currentAllGroupsValid ||
       (!currentHasInitialMeld && score < 30)
@@ -219,35 +196,34 @@ export function useTurnActions(): UseTurnActionsReturn {
     }
 
     // CONFIRM_TURN C2S 발신
-    // tilesFromRack: 턴 시작 랙(myTiles)에서 현재 랙(pendingMyTiles)에 없는 타일
-    const tilesFromRack = currentMyTiles.filter((t) => !currentPendingMyTiles.includes(t));
+    // tilesFromRack: 턴 시작 랙(turnStartRack)에서 현재 랙(myTiles)에 없는 타일
+    const tilesFromRack = draft.turnStartRack.filter((t) => !draft.myTiles.includes(t));
 
-    const payload: ConfirmTurnPayload = { tableGroups: currentPendingTableGroups, tilesFromRack };
+    const payload: ConfirmTurnPayload = { tableGroups: draft.groups, tilesFromRack };
     wsSend("CONFIRM_TURN", payload);
   }, []);
 
   // ---------------------------------------------------------------------------
-  // handleUndo
+  // handleUndo — pendingStore.reset 기반 (Phase B)
   // ---------------------------------------------------------------------------
   const handleUndo = useCallback(() => {
-    // [2026-04-28] gameStore 기반으로 전환: pendingTableGroups 유무로 pending 확인
-    const currentPendingTableGroups = useGameStore.getState().pendingTableGroups;
-    if (!currentPendingTableGroups) return;
+    const ps = usePendingStore.getState();
+    if (ps.draft === null) return;
 
-    // pending 초기화 (UR-04) — gameStore.resetPending() 사용
+    // pending 초기화 (UR-04) — pendingStore.reset()
+    ps.reset();
+    // gameStore deprecated 필드도 동기화 (Phase C에서 제거 예정)
     useGameStore.getState().resetPending();
-    // pendingStore도 동기화 (pendingStore 구독자 호환성 유지)
-    usePendingStore.getState().reset();
   }, []);
 
   // ---------------------------------------------------------------------------
-  // handleDraw
+  // handleDraw — pendingStore 기반 (Phase B)
   // ---------------------------------------------------------------------------
   const handleDraw = useCallback(() => {
-    // [2026-04-28] gameStore 기반으로 전환: isMyTurn + pendingTableGroups === null
     const gs = useGameStore.getState();
+    const ps = usePendingStore.getState();
     const currentIsMyTurn = computeIsMyTurn(gs.gameState?.currentSeat ?? -1, gs.mySeat);
-    const currentHasPending = gs.pendingTableGroups !== null;
+    const currentHasPending = selectHasPending(ps);
 
     if (!currentIsMyTurn || currentHasPending) return;
 

@@ -8,13 +8,14 @@
  *   - UR-22: drawEnabled = isMyTurn && pending 없음
  *   - UR-36: confirmValidator 외 임의 게이트 금지
  *
- * [2026-04-28] gameStore pending 필드 SSOT 전환 반영:
- *   useTurnActions의 활성 조건이 gameStore.pendingTableGroups/pendingMyTiles/pendingGroupIds
- *   기반으로 변경됨. (pendingStore.draft는 TURN_START 스냅샷에 고착되는 문제로 대체)
- *   - confirmEnabled: isMyTurn && hasPending && tilesAdded>=1 && allGroupsValid && (hasInitialMeld || score>=30)
- *   - drawEnabled: isMyTurn && !hasPending (pendingTableGroups === null)
- *   - resetEnabled: hasPending
- *   setup 함수들도 gameStore.setPendingTableGroups() 기반으로 수정.
+ * [2026-04-28 Phase B] pendingStore.draft SSOT 재전환:
+ *   GameClient.handleDragEnd 9개 분기에 pendingStore.applyMutation dual-write가
+ *   추가되었고 useGameSync가 TURN_START 시 saveTurnStartSnapshot()을 호출하므로,
+ *   useTurnActions를 다시 pendingStore.draft 기반으로 전환.
+ *   - confirmEnabled: selectHasPending && tilesAdded>=1 && allGroupsValid && (hasInitialMeld || score>=30)
+ *   - drawEnabled: isMyTurn && !selectHasPending(pendingStore)
+ *   - resetEnabled: selectHasPending(pendingStore)
+ *   setup 함수들도 pendingStore.applyMutation()/saveTurnStartSnapshot() 기반으로 수정.
  */
 
 import { act, renderHook } from "@testing-library/react";
@@ -69,22 +70,31 @@ function setupMyTurnIdle(hasInitialMeld: boolean = false) {
 }
 
 /**
- * pending 상태 설정 — gameStore의 pending 필드에 그룹이 있는 상태
+ * pending 상태 설정 — pendingStore.draft에 그룹이 있는 상태
  *
- * [2026-04-28] useTurnActions가 gameStore.pendingTableGroups를 직접 읽으므로
- * gameStore.setPendingTableGroups() 기반으로 설정한다.
- * pendingStore.applyMutation()은 별도이므로 여기서는 gameStore만 설정.
+ * [2026-04-28 Phase B] useTurnActions가 pendingStore.draft를 직접 읽으므로
+ * saveTurnStartSnapshot() + applyMutation() 기반으로 설정한다.
+ *
+ * 턴 시작 랙(turnStartRack): 5장
+ * 보드에 3장 배치 후 랙(myTiles)에 2장 남음 → selectTilesAdded = 5-2 = 3
  */
 function setupPendingBuilding(hasInitialMeld: boolean = true) {
   setupMyTurnIdle(hasInitialMeld);
-  // 턴 시작 랙: 5장 (myTiles)
-  // 보드에 3장 배치 후 랙에 2장 남음 → tilesAdded = 5-2 = 3
-  useGameStore.setState({
-    // myTiles = 턴 시작 랙 스냅샷 (변경하지 않음 — setupMyTurnIdle에서 설정됨)
-    pendingTableGroups: [makeGroup("pending-x", ["R5a", "R6a", "R7a"])],
-    pendingMyTiles: ["R8a", "R9a"] as TileCode[],
-    pendingGroupIds: new Set(["pending-x"]),
-    pendingRecoveredJokers: [],
+
+  const ps = usePendingStore.getState();
+  // 턴 시작 스냅샷 저장: 랙 5장, 빈 테이블
+  ps.saveTurnStartSnapshot(
+    ["R5a", "R6a", "R7a", "R8a", "R9a"] as TileCode[],
+    []
+  );
+  // pending 그룹 추가: 랙에서 3장 → 보드 새 그룹
+  ps.applyMutation({
+    nextTableGroups: [makeGroup("pending-x", ["R5a", "R6a", "R7a"])],
+    nextPendingGroupIds: new Set(["pending-x"]),
+    nextMyTiles: ["R8a", "R9a"] as TileCode[],
+    nextPendingRecoveredJokers: [],
+    nextPendingGroupSeq: 1,
+    branch: "test/setupPendingBuilding",
   });
 }
 
@@ -178,7 +188,7 @@ test("drawEnabled = false when pending exists", () => {
 // 5. handleUndo — gameStore pending 초기화
 // ---------------------------------------------------------------------------
 
-test("handleUndo → gameStore resetPending 호출됨", () => {
+test("handleUndo → pendingStore.reset 호출됨", () => {
   act(() => {
     setupPendingBuilding(true);
   });
@@ -190,7 +200,11 @@ test("handleUndo → gameStore resetPending 호출됨", () => {
     result.current.handleUndo();
   });
 
-  // gameStore pending 필드가 모두 초기화되어야 함
+  // pendingStore.draft가 null로 초기화되어야 함 (Phase B SSOT)
+  const ps = usePendingStore.getState();
+  expect(ps.draft).toBeNull();
+
+  // gameStore deprecated 필드도 동기화 (Phase C에서 제거 예정)
   const gs = useGameStore.getState();
   expect(gs.pendingTableGroups).toBeNull();
   expect(gs.pendingMyTiles).toBeNull();
