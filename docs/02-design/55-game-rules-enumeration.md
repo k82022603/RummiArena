@@ -231,6 +231,29 @@
 | **서버 응답** | `ERROR { code: STALE_SEQ }` |
 | **UI 응답** | UR-29 (재전송 안내) |
 
+### 2.24 V-20 — 패널티 정책 (Penalty Policy) (NEW, 2026-04-28)
+
+| 항목 | 정의 |
+|------|------|
+| **정의** | INVALID_MOVE 발생 시 (V-01~V-19 중 어느 한 룰이라도 위반) 행위자 종류에 따라 다른 패널티를 적용한다. **Human**: 테이블 스냅샷 복원 + DrawPile 에서 **3장** 추가 + 턴 종료. **AI**: 스냅샷 복원 + DrawPile 에서 **1장** 추가 + 턴 종료 (LLM 응답 무결성 보장 한계로 차등). 두 경우 모두 retry 없음 — 즉시 턴 advance |
+| **검증 위치** | 본 SSOT 신설. `service/game_service.go:359-383` (Human ConfirmTurn 검증 실패 분기), `handler/ws_handler.go:1156-1174 forceAIDraw` (AI 분기) |
+| **위반 분기 트리거** | V-01 ~ V-19 중 임의 룰의 서버 검증 실패 |
+| **서버 응답** | `INVALID_MOVE { actor: "human"\|"ai", penaltyTiles: 3\|1, reason: ERR_* }` + `TURN_END { reason: "PENALTY", drawn: N }` |
+| **UI 응답** | UR-21 INVALID_MOVE 토스트 + **UR-40** 패널티 안내 토스트 ("유효하지 않은 배치입니다. 보드가 원래 상태로 복원되고, 패널티로 N장을 드로우합니다.") + 스냅샷 복원 (UR-04 와 동일 cleanup) |
+| **D 의존성** | **D-05** (DrawPile 차감 ↔ Rack 증가, 보드+랙+drawpile 합 = 106 invariant 유지). DrawPile 잔량 < 패널티 수량인 경우 **남아있는 만큼만** 지급 (정책 결정: 패널티 강제 종료 우선, V-10 패스 처리와 동일 정신) |
+| **Rationale (Human ≠ AI 차등)** | Human 은 의도적 위반 가능 (시도-거부 학습) → 학습 비용으로 3장. AI 는 LLM 환각 / 포맷 오류일 가능성 높고, 강한 패널티 시 게임이 일방적으로 진행됨 (1장 == 정상 DRAW 와 동일) |
+
+### 2.25 V-21 — Mid-Game 진입자 정책 (NEW, 2026-04-28)
+
+| 항목 | 정의 |
+|------|------|
+| **정의** | 이미 진행 중인 게임에 새 플레이어가 합류하는 mid-game join. 정책: (i) DrawPile 에서 **14장 분배** (정상 게임 시작과 동일), (ii) `hasInitialMeld = false` 시작 (V-04 30점 의무 인계), (iii) **다음 라운드부터** turn rotation 자동 포함 (현재 진행 중인 라운드의 미진행 seat 가 아니라 새 seat 추가), (iv) DrawPile 잔량 < 14 인 경우 mid-game join 거부 (`DRAW_PILE_TOO_SMALL`) |
+| **검증 위치** | 본 SSOT 신설. `service/game_service.go:858-907 AddPlayerMidGame` |
+| **위반 예시** | DrawPile 12장 남은 상황에서 join 시도 → 거부. join 후 첫 턴 곧바로 V-04 면제 시도 → 거부 (UR-39 안내로 사전 차단) |
+| **서버 응답** | OK: `PLAYER_JOIN { seat: N, isMidGame: true }`. 거부: `ERROR { code: DRAW_PILE_TOO_SMALL }` |
+| **UI 응답** | UR-39 (mid-game 진입자 첫 턴 V-04+V-13a 안내 모달 1회) |
+| **D 의존성** | **D-05** (보드+모든 랙+drawpile = 106), **D-06** (tile code 유일성). join 시 14장 차감을 정확히 D-05 invariant 안에서 처리 |
+
 ---
 
 ## 3. UI 인터랙션 룰 (UR-*)
@@ -300,6 +323,15 @@
 | **UR-34** | **state 부패 토스트 금지** — invariant validator / source guard 류 토스트는 사용자에게 보여서는 안 됨. 부패는 코드 수정으로 해결 | 86 §3.1 (2차 사고) |
 | **UR-35** | **드래그 false positive 차단 금지** — V-13a/V-13b/V-13c/V-13d/V-14/V-15 명세 외 사유로 드래그를 막아서는 안 됨 | 스탠드업 §0 (B10 차단 사고) |
 | **UR-36** | **ConfirmTurn 사전검증은 V-01~V-15 클라 미러만 허용**. 임의 추가 게이트 금지 | 86 §4 source guard 사례 (band-aid 회피) |
+
+### 3.7 패널티 / Mid-Game / RESET 분리 UR (NEW, 2026-04-28)
+
+| ID | 정의 | 트리거 / 매핑 |
+|----|------|--------------|
+| **UR-37** | **PRE_MELD 시 서버 그룹 영역 드롭 안내** — `hasInitialMeld == false` 상태에서 사용자가 서버 확정 그룹 위에 랙 타일을 드롭하려 하면, V-13a 위반으로 차단(거부)하지 **않고** **새 pending 그룹을 자동 생성** 하는 흐름으로 우회한다. 동시에 ExtendLockToast "초기 등록 후에 보드 재배치가 가능합니다" 를 **턴 1회만** 표시 (UR-31 과 동일 카피, 빈도만 1회 한정). 사용자 의도 (랙 타일 배치) 가 보존되되 V-13a 위반 (서버 그룹 변형) 은 발생하지 않는다 | onDrop on server-group while PRE_MELD → fall-through to A1 (랙→새 그룹). 토스트는 turn 단위 중복 억제 |
+| **UR-38** | **RESET vs Rollback 분리** — `RESET_TURN` 버튼 클릭은 사용자 자발적 취소이며 `pendingStore.reset()` 만 호출. `INVALID_MOVE` WS 수신은 서버 강제 롤백이며 `pendingStore.rollbackToServerSnapshot()` 을 호출. 두 경로는 **별개 트리거** 이지만 **effect (pending=0, 보드 = 마지막 healthy 스냅샷)** 는 동일. 코드에서 두 함수를 alias 처리하지 말 것 — 향후 패널티(V-20) 분기, 부분 롤백 등 진화 시 분리 필수 | A15 (RESET_TURN 버튼) → reset(). A21 (INVALID_MOVE WS) → rollbackToServerSnapshot() + UR-21 + UR-40 |
+| **UR-39** | **Mid-Game 진입자 첫 턴 안내** — V-21 mid-game join 한 플레이어의 첫 턴 시작 시점에, V-04 (30점 초기 등록 의무) + V-13a (서버 그룹 재배치는 초기 멜드 후) 두 룰을 한 번에 안내하는 모달을 **1회만** 표시. 신규 사용자가 mid-game 합류 후 룰을 모른 채 V-20 패널티 폭주를 겪는 것 방지 | TURN_START 수신 시 `myMeta.isMidGameJoiner == true && myMeta.hasSeenJoinModal == false` 분기. 모달 닫기 시 hasSeenJoinModal = true (localStorage 또는 서버 user meta) |
+| **UR-40** | **패널티 안내 토스트** — V-20 패널티 발생 시 표시할 토스트. 카피: "유효하지 않은 배치입니다. 보드가 원래 상태로 복원되고, 패널티로 N장을 드로우합니다." 여기서 N = Human 3 / AI 1. UR-21 INVALID_MOVE 빨강 토스트 위에 **append** 되는 추가 안내 (designer 57 토큰 `--toast-warning`). UR-33 강제 드로우 토스트와는 별개 — UR-33 은 LLM 응답 무효 후 빈 응답 처리, UR-40 은 V-20 패널티 명시적 적용 | INVALID_MOVE 페이로드의 `penaltyTiles` 필드 존재 시. 5초 자동 소멸. 사용자 dismiss 가능 |
 
 ---
 
@@ -376,13 +408,14 @@ flowchart TD
 
 | 카테고리 | 개수 | ID 범위 |
 |---------|------|---------|
-| 서버 검증 (V-*) | **23** | V-01 ~ V-15, V-13a~e (5), V-16~V-19 (4 신규) |
-| UI 인터랙션 (UR-*) | **36** | UR-01 ~ UR-36 |
+| 서버 검증 (V-*) | **25** | V-01 ~ V-15, V-13a~e (5), V-16~V-21 (6 신규: V-16~19 + V-20/V-21) |
+| UI 인터랙션 (UR-*) | **40** | UR-01 ~ UR-40 (UR-37~40 신규) |
 | 데이터 무결성 (D-*) | **12** | D-01 ~ D-12 |
-| **합계** | **71** | (요구 60+ 충족) |
+| **합계** | **77** | (요구 60+ 충족) |
 
 ---
 
 ## 8. 변경 이력
 
 - **2026-04-25 game-analyst (v1.0)**: 본 SSOT 발행. V-13a~e 분해 계승, V-16~V-19 신설, UR-* 36 정의, D-* 12 정의. 사용자 실측 사고 3건 매핑 완료. 후속 산출물 (56, 56b, 57, 58, 88) 의 입력으로 사용.
+- **2026-04-28 game-analyst (v1.1)**: V-20 (패널티 정책: Human 3장 / AI 1장), V-21 (Mid-Game 진입자 14장 분배 + hasInitialMeld=false), UR-37 (PRE_MELD 시 서버 그룹 드롭 → 새 pending 그룹 fall-through), UR-38 (RESET vs Rollback 분리), UR-39 (Mid-Game 진입자 첫 턴 안내 모달), UR-40 (패널티 안내 토스트) 신규 등록. 룰 합계 71 → 77. 매트릭스 56 §3.4/§3.15/§3.16/§3.19 동시 갱신.

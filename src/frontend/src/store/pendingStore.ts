@@ -266,3 +266,18 @@ export function selectConfirmEnabled(
   if (!hasInitialMeld && selectPendingPlacementScore(state) < 30) return false;
   return true;
 }
+
+// ---------------------------------------------------------------------------
+// E2E 테스트 브릿지 — Playwright page.evaluate 에서 pendingStore 접근용
+// (gameStore 의 __gameStore 노출과 동일 패턴)
+//
+// 2026-04-28 Phase C 단계 4 이후, pending 상태는 pendingStore.draft 가 단일 SSOT.
+// E2E spec 의 fixture 헬퍼가 이 브리지로 draft 를 주입하여 결정론적 테스트를 보장.
+// ---------------------------------------------------------------------------
+if (
+  typeof window !== "undefined" &&
+  (process.env.NODE_ENV !== "production" ||
+    process.env.NEXT_PUBLIC_E2E_BRIDGE === "true")
+) {
+  (window as unknown as Record<string, unknown>).__pendingStore = usePendingStore;
+}

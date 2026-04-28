@@ -90,10 +90,12 @@
 
 | S-meld | S-compat | 결과 | 근거 |
 |--------|---------|------|------|
-| PRE_MELD | * | **거절** | V-13a / UR-13. 서버 그룹은 **건드릴 수 없음** (이번 턴 한정 자기 랙만) |
+| PRE_MELD | * | **허용 (단, fall-through)** | **UR-37** (2026-04-28 갱신). V-13a 위반 차단 대신 **새 pending 그룹 자동 생성** 으로 우회. 사용자 의도 (랙 타일 보드 배치) 보존, V-13a 위반 (서버 그룹 변형) 미발생. 동시에 ExtendLockToast "초기 등록 후에 보드 재배치가 가능합니다" 턴 1회 표시 |
 | POST_MELD | COMPAT | **허용** | UR-14. 서버 그룹은 setPendingTableGroups 에서 **그룹 id 보존하면서 pending 으로 마킹** (D-12) |
 | POST_MELD | INCOMPAT | 거절 (UR-19) |
 
+> **갱신 (2026-04-28)**: PRE_MELD 셀 정책 변경 — `거절(V-13a)` → `허용(새 pending 그룹 + UR-37 안내)`. 사용자 의도 보존이 더 중요하다는 결정 (V-13a 본질은 "기존 서버 그룹 변형 금지" 이며, 새 pending 그룹 생성은 변형이 아님).
+>
 > **사고 매핑**: BUG-UI-EXT-SC1 (확정 후 extend 회귀) 은 이 셀의 POST_MELD/COMPAT/허용 셀이 회귀로 INCOMPAT 처리된 것. 본 매트릭스가 명세 SSOT.
 
 ### 3.5 A4 — pending → 새 그룹 드롭 (split via new)
@@ -179,13 +181,19 @@
 
 서버 응답:
 - OK → TURN_END, UR-04 pending 리셋
-- FAIL (V-* 위반) → UR-21 INVALID_MOVE 토스트, 스냅샷 롤백, 턴 유지 (재시도 가능)
+- FAIL (V-* 위반) → **V-20 패널티 정책 적용 (2026-04-28 갱신)**:
+  - **Human**: UR-21 INVALID_MOVE 토스트 + UR-40 패널티 안내 토스트 + 스냅샷 롤백 + DrawPile 에서 **3장** 추가 + **턴 종료** (재시도 없음)
+  - **AI**: 스냅샷 롤백 + DrawPile 에서 **1장** 추가 + 턴 종료 (LLM 응답 무결성 한계 차등)
+  - 두 경우 모두 retry 없음 — 즉시 turn advance. **이전 정책 (턴 유지 + 재시도 가능) 은 폐기**.
+- D-05 invariant 유지: DrawPile 잔량 < 패널티 수량 시 남아있는 만큼만 지급.
 
 ### 3.16 A15 — RESET_TURN
 
 | 결과 | 근거 |
 |------|------|
 | **허용 (UR-16)**: pending 0 으로 + 랙 복귀 | 클라 단독 작업 (서버 영향 없음). pending → server 매핑 정합성 유지 (D-12) |
+
+> **UR-38 (2026-04-28 신규)**: A15 RESET_TURN 은 사용자 자발적 취소이며 `pendingStore.reset()` 호출 경로. **A21 INVALID_MOVE 수신은 서버 강제 롤백** 이며 `pendingStore.rollbackToServerSnapshot()` 호출 경로. **두 경로는 별개 트리거** (사용자 클릭 vs WS 메시지) 이지만 effect (pending=0, 보드 = 마지막 healthy 스냅샷) 는 동일. 코드에서 두 함수를 alias 처리하지 말 것 — V-20 패널티 분기, 향후 부분 롤백 진화 시 분리 필수.
 
 ### 3.17 A16 — DRAW
 
@@ -206,9 +214,9 @@
 | 행동 | 동작 |
 |------|------|
 | A18 PLACE_TILES (다른 플레이어) | 관전 표시. 내 pending 영향 없음 |
-| A19 TURN_START | UR-04: pendingTableGroups = []. UR-02 활성화 (내 턴이면) |
+| A19 TURN_START | UR-04: pendingTableGroups = []. UR-02 활성화 (내 턴이면). **mid-game 진입자 첫 턴이면 UR-39 안내 모달 1회** |
 | A20 TURN_END | TURN_START 와 동일 cleanup |
-| A21 INVALID_MOVE | UR-21 토스트, 클라 state = 서버 마지막 healthy 스냅샷 (롤백). **band-aid invariant validator 자동 RESET 토스트 노출 금지 (UR-34)** |
+| A21 INVALID_MOVE | **UR-38 분리 (2026-04-28 갱신)**: `pendingStore.rollbackToServerSnapshot()` 호출 (A15 RESET 의 `reset()` 과 별개 경로). UR-21 빨강 토스트 + **UR-40 패널티 안내 토스트** (V-20 적용 시: Human 3장 / AI 1장 드로우 안내). **턴은 즉시 종료** (이전 정책 "턴 유지 + 재시도" 폐기). **band-aid invariant validator 자동 RESET 토스트 노출 금지 (UR-34)** |
 
 ---
 
@@ -227,7 +235,7 @@
 본 매트릭스의 sparse 한 셀 (`* AND *` 표기) 은 **모든 조합에서 동일 결과** 임을 의미. 만약 이후 새로운 룰이 추가되어 분기가 필요해지면 본 문서를 재정렬한다 (architect ADR 필수).
 
 명시적으로 **deferred** 된 결정:
-- A12 조커 swap 의 "동등 가치 일반 타일" 정의 — V-13e 가 회수 조커의 즉시 재사용을 강제할 뿐, swap 시 가치 일치는 명세 부재. 검토 후 V-20 으로 추가 후보.
+- A12 조커 swap 의 "동등 가치 일반 타일" 정의 — V-13e 가 회수 조커의 즉시 재사용을 강제할 뿐, swap 시 가치 일치는 명세 부재. 검토 후 V-22 이상으로 추가 후보 (V-20/V-21 은 2026-04-28 패널티/Mid-Game 정책으로 점유됨).
 - A18 관전자 시점 (taller, 비활성 플레이어) — 본 매트릭스는 활성 플레이어 관점. 관전자 모드는 별도 carve-out.
 
 ---
@@ -247,3 +255,9 @@
 ## 7. 변경 이력
 
 - **2026-04-25 v1.0**: 본 매트릭스 발행. SSOT 55 의 V-*/UR-*/D-* 와 1:1 매핑. 사용자 실측 사고 3건 셀 매핑 완료.
+- **2026-04-28 v1.1**: SSOT 55 의 V-20 / V-21 / UR-37~40 신규 등록 동기화.
+  - §3.4 A3 PRE_MELD 셀: `거절(V-13a)` → `허용(새 pending 그룹 fall-through + UR-37 안내)`
+  - §3.15 A14 ConfirmTurn FAIL 결과: `턴 유지 + 재시도 가능` → `Human=턴 종료+패널티 3장, AI=턴 종료+패널티 1장 (V-20)`
+  - §3.16 A15 RESET vs §3.19 A21 INVALID_MOVE 분리 명시 (UR-38): `reset()` vs `rollbackToServerSnapshot()` 별개 경로
+  - §3.19 A19 TURN_START 에 mid-game 진입자 첫 턴 UR-39 모달 분기 추가
+  - §3.19 A21 INVALID_MOVE 에 UR-40 패널티 안내 토스트 추가

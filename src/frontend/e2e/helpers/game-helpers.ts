@@ -169,6 +169,82 @@ export async function setStoreState(
   await page.waitForTimeout(300);
 }
 
+// ------------------------------------------------------------------
+// pendingStore fixture 주입 (2026-04-28 Phase C 단계 4 이후 새 SSOT)
+//
+// Phase C 단계 4 (commit f9c2147) 이후 gameStore 의
+//   pendingTableGroups / pendingMyTiles / pendingGroupIds / pendingRecoveredJokers
+// 4개 필드는 완전 제거됐다. pending 상태는 usePendingStore.draft 가 단일 SSOT.
+//
+// E2E spec 은 이 헬퍼로 결정론적 fixture 를 주입한다:
+//   - gameStore 에는 myTiles / mySeat / players / gameState 등 게임 메타만 setState
+//   - pendingStore 에는 draft (groups, pendingGroupIds, myTiles, recoveredJokers,
+//     turnStartRack, turnStartTableGroups 스냅샷) 를 setState 로 통째 주입
+// ------------------------------------------------------------------
+
+export interface PendingDraftFixture {
+  /** 현재 보드에 있는 그룹들 (서버 확정 + pending 모두 포함) */
+  tableGroups?: { id: string; tiles: string[]; type: "run" | "group" }[];
+  /** 현재 턴 랙 (현재 myTiles 와 동일하게 두면 tilesAdded=0) */
+  rackTiles: string[];
+  /** TURN_START 시점 랙 스냅샷 (RESET 복원용). 미지정 시 rackTiles 와 동일. */
+  turnStartRack?: string[];
+  /** TURN_START 시점 테이블 스냅샷 (rollback 용). 미지정 시 tableGroups 와 동일. */
+  turnStartTableGroups?: { id: string; tiles: string[]; type: "run" | "group" }[];
+  /** pending 으로 마킹할 그룹 ID 목록. 미지정 시 빈 Set. */
+  pendingGroupIds?: string[];
+  /** V-07 회수 조커 목록. 미지정 시 빈 배열. */
+  recoveredJokers?: string[];
+}
+
+/**
+ * pendingStore.draft 를 직접 주입한다.
+ *
+ * 사용 시점: setupGameWithRack 등 fixture 헬퍼에서 store 주입 직후 호출.
+ * gameStore 의 myTiles 와 pendingStore 의 draft.myTiles 를 동일하게 두면
+ * pending 미적용 상태(첫 mutation 전)와 동등.
+ */
+export async function setPendingDraft(
+  page: Page,
+  draft: PendingDraftFixture | null
+): Promise<void> {
+  await page.evaluate((args: PendingDraftFixture | null) => {
+    const pendingStore = (
+      window as unknown as Record<
+        string,
+        { setState: (s: Record<string, unknown>) => void }
+      >
+    ).__pendingStore;
+    if (!pendingStore) {
+      throw new Error("__pendingStore not exposed (NEXT_PUBLIC_E2E_BRIDGE off?)");
+    }
+
+    if (args === null) {
+      pendingStore.setState({ draft: null });
+      return;
+    }
+
+    const tableGroups = args.tableGroups ?? [];
+    const turnStartTableGroups = args.turnStartTableGroups ?? tableGroups;
+    const turnStartRack = args.turnStartRack ?? args.rackTiles;
+    const idsArr: string[] = args.pendingGroupIds ?? [];
+    const pendingGroupIds = new Set<string>(idsArr);
+    const recoveredJokers = args.recoveredJokers ?? [];
+
+    pendingStore.setState({
+      draft: {
+        groups: tableGroups,
+        pendingGroupIds,
+        myTiles: args.rackTiles,
+        recoveredJokers,
+        turnStartRack,
+        turnStartTableGroups,
+      },
+    });
+  }, draft);
+  await page.waitForTimeout(150);
+}
+
 /** 랙의 타일 코드 목록을 반환한다 */
 export async function getRackTileCodes(page: Page): Promise<string[]> {
   const tiles = page.locator(

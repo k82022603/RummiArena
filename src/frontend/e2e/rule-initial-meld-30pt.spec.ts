@@ -23,6 +23,7 @@ import {
   createRoomAndStart,
   waitForGameReady,
   waitForStoreReady,
+  setPendingDraft,
 } from "./helpers/game-helpers";
 import { dndDrag } from "./helpers";
 
@@ -85,10 +86,6 @@ async function setupInitialMeldScenario(
         { seat: 0, type: "HUMAN", userId: seat0UserId, displayName: "Test", status: "CONNECTED", hasInitialMeld: args.hasInitialMeld ?? false, tileCount: args.rackTiles.length },
         { seat: 1, type: "AI_DEEPSEEK", persona: "rookie", difficulty: "beginner", psychologyLevel: 0, status: "READY", hasInitialMeld: true, tileCount: 14 },
       ],
-      pendingTableGroups: null,
-      pendingMyTiles: null,
-      pendingGroupIds: new Set<string>(),
-      pendingRecoveredJokers: [],
       aiThinkingSeat: null,
       gameState: {
         ...baseGameState,
@@ -99,6 +96,14 @@ async function setupInitialMeldScenario(
       },
     });
   }, { rackTiles: opts.rackTiles, hasInitialMeld: opts.hasInitialMeld ?? false });
+
+  // pendingStore: TURN_START 스냅샷만 (테이블 비어있음, mutation 전)
+  await setPendingDraft(page, {
+    tableGroups: [],
+    rackTiles: opts.rackTiles,
+    pendingGroupIds: [],
+    recoveredJokers: [],
+  });
 
   await page.waitForTimeout(400);
 
@@ -161,12 +166,14 @@ test.describe("V-04 최초 등록 30점 룰", () => {
     }
 
     // 검증: 세 타일 드롭 완료 후 store 상태 확인 (드롭 완료 대기)
+    // 새 SSOT: rack = pendingStore.draft.myTiles ?? gameStore.myTiles
     await page.waitForFunction(
       () => {
-        const store = (window as unknown as { __gameStore?: { getState: () => { pendingMyTiles?: string[] | null; myTiles?: string[] } } }).__gameStore;
-        if (!store) return false;
-        const s = store.getState();
-        const rack = s.pendingMyTiles ?? s.myTiles ?? [];
+        const ps = (window as unknown as { __pendingStore?: { getState: () => { draft: { myTiles: string[] } | null } } }).__pendingStore;
+        const gs = (window as unknown as { __gameStore?: { getState: () => { myTiles?: string[] } } }).__gameStore;
+        if (!gs) return false;
+        const draft = ps?.getState().draft;
+        const rack = draft?.myTiles ?? gs.getState().myTiles ?? [];
         // 3개 타일 중 최소 1개 이상 랙에서 사라졌으면 드롭이 시작된 것
         return !rack.includes("R10a") || !rack.includes("R11a") || !rack.includes("R12a");
       },
@@ -174,22 +181,22 @@ test.describe("V-04 최초 등록 30점 룰", () => {
     );
 
     const rackCodes = await page.evaluate(() => {
-      const store = (window as unknown as { __gameStore?: { getState: () => { pendingMyTiles?: string[]; myTiles: string[] } } }).__gameStore;
-      if (!store) return null;
-      const s = store.getState();
-      return s.pendingMyTiles ?? s.myTiles;
+      const ps = (window as unknown as { __pendingStore?: { getState: () => { draft: { myTiles: string[] } | null } } }).__pendingStore;
+      const gs = (window as unknown as { __gameStore?: { getState: () => { myTiles: string[] } } }).__gameStore;
+      if (!gs) return null;
+      const draft = ps?.getState().draft;
+      return draft?.myTiles ?? gs.getState().myTiles;
     });
 
     expect(rackCodes).not.toContain("R10a");
     expect(rackCodes).not.toContain("R11a");
     expect(rackCodes).not.toContain("R12a");
 
-    // 검증: pendingTableGroups 에 3타일이 포함된 그룹 존재
+    // 검증: pendingStore.draft.groups 에 3타일 포함 그룹 존재
     const groupInfo = await page.evaluate(() => {
-      const store = (window as unknown as { __gameStore?: { getState: () => { pendingTableGroups?: { tiles: string[] }[] | null } } }).__gameStore;
-      if (!store) return null;
-      const s = store.getState();
-      const groups = s.pendingTableGroups ?? [];
+      const ps = (window as unknown as { __pendingStore?: { getState: () => { draft: { groups: { tiles: string[] }[] } | null } } }).__pendingStore;
+      const draft = ps?.getState().draft;
+      const groups = draft?.groups ?? [];
       return {
         groupCount: groups.length,
         totalTiles: groups.reduce((acc, g) => acc + g.tiles.length, 0),
@@ -275,9 +282,6 @@ test.describe("V-04 최초 등록 30점 룰", () => {
           { seat: 0, type: "HUMAN", userId: seat0UserId2, displayName: "Test", status: "CONNECTED", hasInitialMeld: false, tileCount: 1 },
           { seat: 1, type: "AI_DEEPSEEK", persona: "rookie", difficulty: "beginner", psychologyLevel: 0, status: "READY", hasInitialMeld: true, tileCount: 14 },
         ],
-        pendingTableGroups: null,
-        pendingMyTiles: null,
-        pendingGroupIds: new Set<string>(),
         aiThinkingSeat: null,
         gameState: {
           ...baseGs,
@@ -288,6 +292,15 @@ test.describe("V-04 최초 등록 30점 룰", () => {
         },
       });
     });
+
+    // pendingStore: TURN_START 스냅샷 (mutation 전, 서버 그룹 1개 보존)
+    await setPendingDraft(page, {
+      tableGroups: [{ id: "srv-group-9", tiles: ["R9a", "B9a", "K9b"], type: "group" }],
+      rackTiles: ["Y9a"],
+      pendingGroupIds: [],
+      recoveredJokers: [],
+    });
+
     await page.waitForTimeout(600);
 
     const y9 = page.locator('section[aria-label="내 타일 랙"] [aria-label="Y9a 타일 (드래그 가능)"]').first();
@@ -309,26 +322,24 @@ test.describe("V-04 최초 등록 30점 룰", () => {
     await dndDrag(page, y9, board);
     await page.waitForTimeout(200);
 
-    // 드롭 후 store에 Y9a가 새 pending 그룹으로 들어갔는지 확인
+    // 드롭 후 pendingStore.draft.groups 에 Y9a 가 새 pending 그룹으로 들어갔는지 확인
     await page.waitForFunction(
       () => {
-        const store = (window as unknown as { __gameStore?: { getState: () => Record<string, unknown> } }).__gameStore;
-        if (!store) return false;
-        const s = store.getState();
-        const pending = s.pendingTableGroups as { id: string; tiles: string[] }[] | null;
-        if (!pending) return false;
-        return pending.some((g) => g.id !== "srv-group-9" && (g.tiles as string[]).includes("Y9a"));
+        const ps = (window as unknown as { __pendingStore?: { getState: () => { draft: { groups: { id: string; tiles: string[] }[] } | null } } }).__pendingStore;
+        const draft = ps?.getState().draft;
+        if (!draft) return false;
+        return draft.groups.some((g) => g.id !== "srv-group-9" && (g.tiles as string[]).includes("Y9a"));
       },
       { timeout: 8000 }
     );
 
     // 기대: 서버 그룹 3타일 유지 + Y9a 는 **새 pending 그룹** 에 분리
     const result = await page.evaluate(() => {
-      const store = (window as unknown as { __gameStore?: { getState: () => Record<string, unknown> } }).__gameStore;
-      const s = store!.getState();
-      const pending = s.pendingTableGroups as { id: string; tiles: string[] }[] | null;
-      const gs = s.gameState as { tableGroups?: { id: string; tiles: string[] }[] };
-      const groups = pending ?? gs.tableGroups ?? [];
+      const ps = (window as unknown as { __pendingStore?: { getState: () => { draft: { groups: { id: string; tiles: string[] }[] } | null } } }).__pendingStore;
+      const gs = (window as unknown as { __gameStore?: { getState: () => Record<string, unknown> } }).__gameStore!.getState();
+      const draft = ps?.getState().draft;
+      const serverTable = (gs.gameState as { tableGroups?: { id: string; tiles: string[] }[] }).tableGroups ?? [];
+      const groups = draft ? draft.groups : serverTable;
       return {
         groupCount: groups.length,
         srvGroupTiles: groups.find((g) => g.id === "srv-group-9")?.tiles ?? [],

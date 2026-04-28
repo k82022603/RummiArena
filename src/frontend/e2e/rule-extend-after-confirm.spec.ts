@@ -27,6 +27,7 @@ import {
   createRoomAndStart,
   waitForGameReady,
   waitForStoreReady,
+  setPendingDraft,
 } from "./helpers/game-helpers";
 import { dndDrag } from "./helpers";
 
@@ -46,16 +47,14 @@ async function setupExtendAfterConfirm(
   opts: ExtendScenarioOpts
 ): Promise<void> {
   await waitForStoreReady(page);
+  // gameStore: 게임 메타 + 랙. (Phase C 단계 4 이후 pending 필드 4개 제거됨)
   await page.evaluate((args) => {
     const store = (window as unknown as { __gameStore?: { getState: () => Record<string, unknown>; setState: (s: Record<string, unknown>) => void } }).__gameStore;
     if (!store) throw new Error("__gameStore not available");
     const cur = store.getState();
     const baseGs = (cur.gameState ?? {}) as Record<string, unknown>;
-    // players 배열 주입: freshHasInitialMeld (GameClient line 800-804) 가
-    //   players[mySeat].hasInitialMeld 를 1차 SSOT 로 참조하므로,
-    //   루트 hasInitialMeld 와 players[0].hasInitialMeld 를 모두 true 로 설정해야
-    //   확정 후 extend 시나리오가 올바르게 동작한다.
-    //   (GHOST-SC2 GREEN 전환 시 동일 패턴 적용 — 2026-04-26)
+    // players 배열 주입: freshHasInitialMeld 가 players[mySeat].hasInitialMeld 를 1차
+    // SSOT 로 참조하므로 루트 hasInitialMeld 와 players[0].hasInitialMeld 를 모두 true 로.
     store.setState({
       mySeat: 0,
       myTiles: args.rackTiles,
@@ -64,10 +63,6 @@ async function setupExtendAfterConfirm(
         { seat: 0, type: "HUMAN", userId: "test-user", displayName: "Test", status: "CONNECTED", hasInitialMeld: true, tileCount: args.rackTiles.length },
         { seat: 1, type: "AI_DEEPSEEK", persona: "rookie", difficulty: "beginner", psychologyLevel: 0, status: "READY", hasInitialMeld: true, tileCount: 14 },
       ],
-      pendingTableGroups: null,
-      pendingMyTiles: null,
-      pendingGroupIds: new Set<string>(),
-      pendingRecoveredJokers: [],
       aiThinkingSeat: null,
       gameState: {
         ...baseGs,
@@ -78,6 +73,15 @@ async function setupExtendAfterConfirm(
       },
     });
   }, opts);
+
+  // pendingStore: TURN_START 스냅샷만 주입 (mutation 전 상태 — pending 미적용)
+  // (2026-04-28 Phase C 단계 4 이후 새 SSOT)
+  await setPendingDraft(page, {
+    tableGroups: [opts.serverGroup],
+    rackTiles: opts.rackTiles,
+    pendingGroupIds: [],
+    recoveredJokers: [],
+  });
   await page.waitForTimeout(400);
 }
 
@@ -116,15 +120,16 @@ test.describe("BUG-UI-EXT: 확정 후 extend 시나리오", () => {
     await page.waitForTimeout(500);
 
     const result = await page.evaluate(() => {
-      const s = (window as unknown as { __gameStore?: { getState: () => Record<string, unknown> } }).__gameStore!.getState();
-      const pending = s.pendingTableGroups as { id: string; tiles: string[] }[] | null;
-      const gs = s.gameState as { tableGroups?: { id: string; tiles: string[] }[] };
-      const groups = pending ?? gs.tableGroups ?? [];
+      const gs = (window as unknown as { __gameStore?: { getState: () => Record<string, unknown> } }).__gameStore!.getState();
+      const ps = (window as unknown as { __pendingStore?: { getState: () => { draft: { groups: { id: string; tiles: string[] }[]; pendingGroupIds: Set<string> } | null } } }).__pendingStore!.getState();
+      const draft = ps.draft;
+      const serverTable = (gs.gameState as { tableGroups?: { id: string; tiles: string[] }[] }).tableGroups ?? [];
+      const groups = draft ? draft.groups : serverTable;
       const run = groups.find((g) => g.id === "srv-run-red");
       return {
         groupCount: groups.length,
         runTiles: run?.tiles ?? [],
-        pendingGroupIdsSize: (s.pendingGroupIds as Set<string>).size,
+        pendingGroupIdsSize: draft ? draft.pendingGroupIds.size : 0,
       };
     });
 
@@ -162,10 +167,11 @@ test.describe("BUG-UI-EXT: 확정 후 extend 시나리오", () => {
     await page.waitForTimeout(500);
 
     const result = await page.evaluate(() => {
-      const s = (window as unknown as { __gameStore?: { getState: () => Record<string, unknown> } }).__gameStore!.getState();
-      const pending = s.pendingTableGroups as { id: string; tiles: string[] }[] | null;
-      const gs = s.gameState as { tableGroups?: { id: string; tiles: string[] }[] };
-      const groups = pending ?? gs.tableGroups ?? [];
+      const gs = (window as unknown as { __gameStore?: { getState: () => Record<string, unknown> } }).__gameStore!.getState();
+      const ps = (window as unknown as { __pendingStore?: { getState: () => { draft: { groups: { id: string; tiles: string[] }[]; pendingGroupIds: Set<string> } | null } } }).__pendingStore!.getState();
+      const draft = ps.draft;
+      const serverTable = (gs.gameState as { tableGroups?: { id: string; tiles: string[] }[] }).tableGroups ?? [];
+      const groups = draft ? draft.groups : serverTable;
       const run = groups.find((g) => g.id === "srv-run-red");
       return { groupCount: groups.length, runTiles: run?.tiles ?? [] };
     });
@@ -195,10 +201,11 @@ test.describe("BUG-UI-EXT: 확정 후 extend 시나리오", () => {
     await page.waitForTimeout(500);
 
     const result = await page.evaluate(() => {
-      const s = (window as unknown as { __gameStore?: { getState: () => Record<string, unknown> } }).__gameStore!.getState();
-      const pending = s.pendingTableGroups as { id: string; tiles: string[] }[] | null;
-      const gs = s.gameState as { tableGroups?: { id: string; tiles: string[] }[] };
-      const groups = pending ?? gs.tableGroups ?? [];
+      const gs = (window as unknown as { __gameStore?: { getState: () => Record<string, unknown> } }).__gameStore!.getState();
+      const ps = (window as unknown as { __pendingStore?: { getState: () => { draft: { groups: { id: string; tiles: string[] }[]; pendingGroupIds: Set<string> } | null } } }).__pendingStore!.getState();
+      const draft = ps.draft;
+      const serverTable = (gs.gameState as { tableGroups?: { id: string; tiles: string[] }[] }).tableGroups ?? [];
+      const groups = draft ? draft.groups : serverTable;
       const run = groups.find((g) => g.id === "srv-run-red");
       return { groupCount: groups.length, runTiles: run?.tiles ?? [] };
     });
@@ -251,10 +258,11 @@ test.describe("BUG-UI-EXT: 확정 후 extend 시나리오", () => {
 
     // 최종 상태 수집
     const result = await page.evaluate(() => {
-      const s = (window as unknown as { __gameStore?: { getState: () => Record<string, unknown> } }).__gameStore!.getState();
-      const pending = s.pendingTableGroups as { id: string; tiles: string[] }[] | null;
-      const gs = s.gameState as { tableGroups?: { id: string; tiles: string[] }[] };
-      const groups = pending ?? gs.tableGroups ?? [];
+      const gs = (window as unknown as { __gameStore?: { getState: () => Record<string, unknown> } }).__gameStore!.getState();
+      const ps = (window as unknown as { __pendingStore?: { getState: () => { draft: { groups: { id: string; tiles: string[] }[]; pendingGroupIds: Set<string> } | null } } }).__pendingStore!.getState();
+      const draft = ps.draft;
+      const serverTable = (gs.gameState as { tableGroups?: { id: string; tiles: string[] }[] }).tableGroups ?? [];
+      const groups = draft ? draft.groups : serverTable;
 
       // 동일 타일 id 복제 감지
       const tileOccurrences = new Map<string, number>();
@@ -282,7 +290,7 @@ test.describe("BUG-UI-EXT: 확정 후 extend 시나리오", () => {
         groupSignatures,
         duplicatedTiles,
         duplicatedGroupSignatures,
-        pendingGroupIdsSize: (s.pendingGroupIds as Set<string>).size,
+        pendingGroupIdsSize: draft ? draft.pendingGroupIds.size : 0,
       };
     });
 
