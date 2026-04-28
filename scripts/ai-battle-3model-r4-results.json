@@ -1,6 +1,6 @@
 {
   "tournament": "3-model Round 4",
-  "timestamp": "2026-04-20 13:46:58",
+  "timestamp": "2026-04-28 03:41:52",
   "config": {
     "maxTurns": 80,
     "persona": "calculator",
@@ -13,27 +13,102 @@
       "modelName": "DeepSeek Reasoner",
       "totalTurns": 80,
       "aiTurns": 39,
-      "aiPlace": 0,
-      "aiTilesPlaced": 0,
-      "aiDraw": 39,
+      "aiPlace": 13,
+      "aiTilesPlaced": 29,
+      "aiDraw": 26,
       "aiFallback": 0,
-      "placeRate": 0.0,
-      "elapsed": 438.2,
+      "placeRate": 33.3,
+      "elapsed": 4853.7,
       "estimatedCost": 0.039,
       "result": "TIMEOUT",
       "responseTime": {
-        "avg": 2.0,
-        "p50": 1.9,
-        "min": 1.8,
-        "max": 2.2
+        "avg": 124.4,
+        "p50": 94.1,
+        "min": 12.9,
+        "max": 489.2
       },
-      "placeDetails": [],
-      "fallbackReasons": [],
-      "errors": [
-        "[RATE_LIMITED] 메시지 전송 빈도 제한을 초과했습니다 (type:DRAW_TILE). 40초 후에 다시 시도하세요.",
-        "[RATE_LIMITED] 메시지 전송 빈도 제한을 초과했습니다 (type:DRAW_TILE). 40초 후에 다시 시도하세요.",
-        "[RATE_LIMITED] 메시지 전송 빈도 제한을 초과했습니다 (type:DRAW_TILE). 40초 후에 다시 시도하세요."
+      "placeDetails": [
+        {
+          "turn": 2,
+          "tiles": 6,
+          "cumulative": 6,
+          "resp_time": 24.9
+        },
+        {
+          "turn": 16,
+          "tiles": 1,
+          "cumulative": 7,
+          "resp_time": 12.9
+        },
+        {
+          "turn": 22,
+          "tiles": 3,
+          "cumulative": 10,
+          "resp_time": 27.2
+        },
+        {
+          "turn": 32,
+          "tiles": 3,
+          "cumulative": 13,
+          "resp_time": 40.5
+        },
+        {
+          "turn": 36,
+          "tiles": 4,
+          "cumulative": 17,
+          "resp_time": 104.8
+        },
+        {
+          "turn": 42,
+          "tiles": 1,
+          "cumulative": 18,
+          "resp_time": 70.8
+        },
+        {
+          "turn": 52,
+          "tiles": 1,
+          "cumulative": 19,
+          "resp_time": 85.7
+        },
+        {
+          "turn": 54,
+          "tiles": 1,
+          "cumulative": 20,
+          "resp_time": 372.0
+        },
+        {
+          "turn": 62,
+          "tiles": 1,
+          "cumulative": 21,
+          "resp_time": 258.6
+        },
+        {
+          "turn": 66,
+          "tiles": 1,
+          "cumulative": 22,
+          "resp_time": 42.8
+        },
+        {
+          "turn": 72,
+          "tiles": 3,
+          "cumulative": 25,
+          "resp_time": 96.2
+        },
+        {
+          "turn": 76,
+          "tiles": 3,
+          "cumulative": 28,
+          "resp_time": 100.7
+        },
+        {
+          "turn": 78,
+          "tiles": 1,
+          "cumulative": 29,
+          "resp_time": 340.0
+        }
       ],
+      "fallbackReasons": [],
+      "errors": [],
       "round2Baseline": {
         "place": 2,
         "tiles": 14,
@@ -43,7 +118,7 @@
         "cost": 0.04,
         "fallback": 0
       },
-      "deltaPlaceRate": -5.0
+      "deltaPlaceRate": 28.3
     }
   ]
 }

@@ -287,6 +287,35 @@ describe('ClaudeAdapter', () => {
       expect(body.max_tokens).toBe(16000);
     });
 
+    it('thinking 비활성 시 thinking: { type: "disabled" }를 명시적으로 전송한다', async () => {
+      // V4 API 기본값 thinking=enabled 대응: 명시적 disabled 필수
+      const noThinkingConfig = {
+        get: jest.fn((key: string, defaultValue?: string) => {
+          const config: Record<string, string> = {
+            CLAUDE_API_KEY: 'test-claude-key',
+            CLAUDE_DEFAULT_MODEL: 'claude-sonnet-4-20250514',
+            CLAUDE_EXTENDED_THINKING: 'false',
+          };
+          return config[key] ?? defaultValue;
+        }),
+      } as unknown as ConfigService;
+      const noThinkingAdapter = new ClaudeAdapter(
+        promptBuilder,
+        responseParser,
+        noThinkingConfig,
+      );
+      mockedAxios.post = jest
+        .fn()
+        .mockResolvedValueOnce(
+          makeClaudeResponse(JSON.stringify({ action: 'draw' })),
+        );
+
+      await noThinkingAdapter.generateMove(makeMoveRequest());
+
+      const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
+      expect(body.thinking).toEqual({ type: 'disabled' });
+    });
+
     it('thinking 비활성 시 beginner=0.9, intermediate=0.7, expert=0.3 temperature를 전송한다', async () => {
       // CLAUDE_EXTENDED_THINKING=false 설정
       const noThinkingConfig = {
@@ -325,7 +354,8 @@ describe('ClaudeAdapter', () => {
 
         const [, body] = (mockedAxios.post as jest.Mock).mock.calls[0];
         expect(body.temperature).toBe(expected);
-        expect(body.thinking).toBeUndefined();
+        // V4 non-thinking 모드: thinking: { type: "disabled" } 명시 전송 (undefined가 아님)
+        expect(body.thinking).toEqual({ type: 'disabled' });
         expect(body.max_tokens).toBe(1024);
       }
     });

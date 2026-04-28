@@ -101,8 +101,11 @@ export class ClaudeAdapter extends BaseAdapter {
       body.max_tokens = 16000;
       body.thinking = { type: 'enabled', budget_tokens: 10000 };
     } else {
+      // V4 API 기본값이 thinking=enabled이므로 non-thinking 시 명시적 disabled 필수
+      // 미설정 시 content 블록이 빈 응답 반환 → 전턴 fallback 발생
       body.max_tokens = 1024;
       body.temperature = temperature;
+      body.thinking = { type: 'disabled' };
     }
 
     const response = await axios.post(`${this.baseUrl}/messages`, body, {
