@@ -52,6 +52,14 @@ import type { GameOverPayload } from "@/types/websocket";
 import type { Player } from "@/types/game";
 import { dragEndReducer } from "@/lib/dragEnd/dragEndReducer";
 
+// Phase C 단계 2: pendingStore selector fallback용 안정 참조 상수.
+// usePendingStore selector가 매 렌더마다 새 빈 Set/배열을 반환하면 useMemo 의존성이
+// 매번 변경되어 불필요한 재계산을 유발한다. module-level 상수로 참조 안정성 확보.
+// (외부 컴포넌트가 Set<string>을 요구하므로 mutable 타입 그대로 두되,
+// 의도상 frozen 으로 사용한다 — 어디에서도 .add/.delete 호출 금지.)
+const EMPTY_PENDING_GROUP_IDS: Set<string> = new Set<string>();
+const EMPTY_RECOVERED_JOKERS: TileCode[] = [];
+
 // ------------------------------------------------------------------
 // BUG-UI-005: 타일 목록으로 그룹/런 자동 분류
 // 같은 숫자 + 다른 색상 → "group", 같은 색상 + 연속 숫자 → "run"
@@ -490,10 +498,10 @@ export default function GameClient({ roomId }: GameClientProps) {
     gameState,
     players,
     hasInitialMeld,
-    pendingTableGroups,
-    pendingMyTiles,
-    pendingGroupIds,
-    pendingRecoveredJokers,
+    // Phase C 단계 2: pendingTableGroups/pendingMyTiles/pendingGroupIds/pendingRecoveredJokers
+    // read는 pendingStore.draft 기반 selector(draftPending* 변수)로 이동.
+    // gameStore deprecated 필드의 destructuring을 제거해 미사용 경고 방지.
+    // setter(setPendingTableGroups 등)는 handleDragEnd/handleUndo가 여전히 사용 중이므로 유지.
     aiThinkingSeat,
     turnNumber,
     currentPlayerId,
@@ -521,6 +529,24 @@ export default function GameClient({ roomId }: GameClientProps) {
   } = useGameStore();
 
   const { mySeat: roomMySeat } = useRoomStore();
+
+  // Phase C 단계 2: pendingStore.draft 파생 selector 4종.
+  // gameStore deprecated 필드(pendingTableGroups/pendingMyTiles/pendingGroupIds/pendingRecoveredJokers)
+  // 의 read를 pendingStore.draft 기반으로 전환한다. (단계 3에서 dual-write 제거 시 위 4개 destructuring도 제거)
+  // null 의미론 보존: draft===null 또는 draft.groups가 비어있고 pendingGroupIds가 비면 pending 상태 없음.
+  // gameStore.pendingTableGroups의 null 의미를 보존하기 위해 draft===null일 때 null을 반환한다.
+  const draftPendingTableGroups = usePendingStore((s): TableGroup[] | null =>
+    s.draft ? s.draft.groups : null
+  );
+  const draftPendingMyTiles = usePendingStore((s): TileCode[] | null =>
+    s.draft ? s.draft.myTiles : null
+  );
+  const draftPendingGroupIds = usePendingStore(
+    (s): Set<string> => s.draft?.pendingGroupIds ?? EMPTY_PENDING_GROUP_IDS
+  );
+  const draftRecoveredJokers = usePendingStore(
+    (s): TileCode[] => s.draft?.recoveredJokers ?? EMPTY_RECOVERED_JOKERS
+  );
 
   // F4 (FINDING-01 재검토): effectiveHasInitialMeld — players[mySeat].hasInitialMeld 를 1차 SSOT,
   // 루트 hasInitialMeld 를 fallback 으로 사용하는 derived 값.
@@ -598,15 +624,16 @@ export default function GameClient({ roomId }: GameClientProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // G-2: pendingTableGroups가 변경될 때 무효 ID 세트 자동 정리
+  // G-2: pending 그룹이 변경될 때 무효 ID 세트 자동 정리
   // 사용자가 타일을 추가/제거해 그룹이 수정되면 해당 그룹의 에러 강조를 해제한다.
+  // Phase C 단계 2: pendingStore.draft.groups 기반으로 전환.
   useEffect(() => {
     if (invalidPendingGroupIds.size === 0) return;
-    if (!pendingTableGroups) {
+    if (!draftPendingTableGroups) {
       setInvalidPendingGroupIds(new Set());
       return;
     }
-    const existingIds = new Set(pendingTableGroups.map((g) => g.id));
+    const existingIds = new Set(draftPendingTableGroups.map((g) => g.id));
     setInvalidPendingGroupIds((prev) => {
       const next = new Set<string>();
       for (const id of prev) {
@@ -615,7 +642,7 @@ export default function GameClient({ roomId }: GameClientProps) {
       return next.size === prev.size ? prev : next;
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingTableGroups]);
+  }, [draftPendingTableGroups]);
 
   // ------------------------------------------------------------------
   // Task 2: 연결 끊김 플레이어 카운트다운 (1초 갱신)
@@ -676,13 +703,14 @@ export default function GameClient({ roomId }: GameClientProps) {
     return gameState?.currentSeat === effectiveMySeat;
   })();
 
+  // Phase C 단계 2: pendingStore.draft 파생값 사용. gameStore.pendingTableGroups 의존성 제거.
   const currentTableGroups = useMemo(
-    () => pendingTableGroups ?? gameState?.tableGroups ?? [],
-    [pendingTableGroups, gameState?.tableGroups]
+    () => draftPendingTableGroups ?? gameState?.tableGroups ?? [],
+    [draftPendingTableGroups, gameState?.tableGroups]
   );
   const currentMyTiles = useMemo(
-    () => pendingMyTiles ?? myTiles,
-    [pendingMyTiles, myTiles]
+    () => draftPendingMyTiles ?? myTiles,
+    [draftPendingMyTiles, myTiles]
   );
 
   // C-3 + BUG-NEW-003: 모든 pending 그룹이 3개 이상 타일을 가지며
@@ -691,30 +719,30 @@ export default function GameClient({ roomId }: GameClientProps) {
   // 무효 세트(색 혼합 + 숫자 혼합)에서도 확정 버튼이 활성화되는 버그가 있었다.
   // validatePendingBlock을 통해 "invalid" 판정 세트를 사전에 차단한다.
   const allGroupsValid = useMemo(() => {
-    if (!pendingTableGroups) return true;
-    const pendingOnly = pendingTableGroups.filter((g) => pendingGroupIds.has(g.id));
+    if (!draftPendingTableGroups) return true;
+    const pendingOnly = draftPendingTableGroups.filter((g) => draftPendingGroupIds.has(g.id));
     return pendingOnly.every((g) => {
       if (g.tiles.length < 3) return false;
       const validity = validatePendingBlock(g.tiles as TileCode[]);
       return validity !== "invalid";
     });
-  }, [pendingTableGroups, pendingGroupIds]);
+  }, [draftPendingTableGroups, draftPendingGroupIds]);
 
   // 이번 턴 pending 그룹들의 배치 점수 (최초 등록 30점 안내용)
   const pendingPlacementScore = useMemo(() => {
-    if (!pendingTableGroups || pendingGroupIds.size === 0) return 0;
-    const pendingOnlyGroups = pendingTableGroups.filter((g) =>
-      pendingGroupIds.has(g.id)
+    if (!draftPendingTableGroups || draftPendingGroupIds.size === 0) return 0;
+    const pendingOnlyGroups = draftPendingTableGroups.filter((g) =>
+      draftPendingGroupIds.has(g.id)
     );
     return calculateScore(pendingOnlyGroups);
-  }, [pendingTableGroups, pendingGroupIds]);
+  }, [draftPendingTableGroups, draftPendingGroupIds]);
 
   // 최근 턴 하이라이트 계산 (pending 배치 중에는 하이라이트 비활성)
   const recentTileCodes = useMemo(() => {
-    if (pendingTableGroups) return undefined;
+    if (draftPendingTableGroups) return undefined;
     if (!lastTurnPlacement || lastTurnPlacement.placedTiles.length === 0) return undefined;
     return new Set<string>(lastTurnPlacement.placedTiles);
-  }, [lastTurnPlacement, pendingTableGroups]);
+  }, [lastTurnPlacement, draftPendingTableGroups]);
 
   const recentTileVariant: "mine" | "opponent" | null = useMemo(() => {
     if (!lastTurnPlacement) return null;
@@ -1539,28 +1567,31 @@ export default function GameClient({ roomId }: GameClientProps) {
   );
 
   // 랙 타일 정렬 핸들러 (숫자 오름차순, 조커 마지막)
+  // Phase C 단계 2: pending 존재 여부를 draftPendingMyTiles 로 판정.
+  // 단계 3에서 dual-write 제거되면 setPendingMyTiles 호출도 함께 정리됨.
   const handleRackSort = useCallback(
     (sorted: TileCode[]) => {
-      if (pendingMyTiles !== null) {
+      if (draftPendingMyTiles !== null) {
         setPendingMyTiles(sorted);
       } else {
         setMyTiles(sorted);
       }
     },
-    [pendingMyTiles, setPendingMyTiles, setMyTiles]
+    [draftPendingMyTiles, setPendingMyTiles, setMyTiles]
   );
 
   // Issue #48: CONFIRM_TURN 전송 후 서버 응답(TURN_START or INVALID_MOVE) 대기 중 락
   // — pendingTableGroups 가 null 로 reset 되면(TURN_START 핸들러) 자동 해제
   const [confirmBusy, setConfirmBusy] = useState(false);
 
-  // 락 해제: pendingTableGroups 가 null/undefined 로 초기화될 때 (TURN_START 성공 또는 INVALID_MOVE 후)
-  // 의존성 배열: [pendingTableGroups, confirmBusy] 이 둘만 — 다른 값 포함 시 과도한 실행
+  // 락 해제: pending draft 가 null/empty 로 초기화될 때 (TURN_START 성공 또는 INVALID_MOVE 후)
+  // 의존성 배열: [draftPendingTableGroups, confirmBusy] 이 둘만 — 다른 값 포함 시 과도한 실행
+  // Phase C 단계 2: pendingStore.draft 기반 전환.
   useEffect(() => {
-    if (!pendingTableGroups && confirmBusy) {
+    if (!draftPendingTableGroups && confirmBusy) {
       setConfirmBusy(false);
     }
-  }, [pendingTableGroups, confirmBusy]);
+  }, [draftPendingTableGroups, confirmBusy]);
 
   // 턴 확정: 프리뷰 상태를 서버에 전송 후 확정
   // BUG-UI-006: pending 상태를 즉시 커밋하지 않음.
@@ -1568,21 +1599,22 @@ export default function GameClient({ roomId }: GameClientProps) {
   // INVALID_MOVE(실패)를 보내면 resetPending() + ErrorToast 가 사유를 표시한다.
   const handleConfirm = useCallback(() => {
     if (confirmBusy) return;               // [Issue #48] 서버 응답 대기 중 중복 클릭 차단
-    if (!pendingTableGroups) return;
-    // M-4: pendingMyTiles가 null이면 확정 차단
-    if (!pendingMyTiles) return;
+    // Phase C 단계 2: pendingStore.draft 기반 read 전환.
+    if (!draftPendingTableGroups) return;
+    // M-4: draft.myTiles가 null이면 확정 차단
+    if (!draftPendingMyTiles) return;
 
     // P3 / I-19 수정: 조커 교체로 회수한 조커가 있으면 같은 턴 내에 다른 세트에 사용 필수
     // (§6.2 유형 4, 엔진 V-07).
     //
-    // 이전 구현 문제(I-19): pendingRecoveredJokers.length > 0 로 차단하면,
-    // 조커를 이미 보드에 배치해서 pendingMyTiles 에서 제거한 경우에도 차단이 유지됨
+    // 이전 구현 문제(I-19): recoveredJokers.length > 0 로 차단하면,
+    // 조커를 이미 보드에 배치해서 myTiles 에서 제거한 경우에도 차단이 유지됨
     // → 완전한 데드락. 사용자가 조커를 보드에 정상 배치했더라도 확정 불가.
     //
-    // 수정(옵션 c): "회수된 조커 코드 중 pendingMyTiles 에 아직 남아있는 것" 을 기준으로 차단.
-    // 조커가 보드에 드롭되면 pendingMyTiles 에서 제거되므로 자동으로 차단 해제된다.
-    const unplacedRecoveredJokers = pendingRecoveredJokers.filter((jkCode) =>
-      pendingMyTiles.includes(jkCode)
+    // 수정(옵션 c): "회수된 조커 코드 중 myTiles 에 아직 남아있는 것" 을 기준으로 차단.
+    // 조커가 보드에 드롭되면 myTiles 에서 제거되므로 자동으로 차단 해제된다.
+    const unplacedRecoveredJokers = draftRecoveredJokers.filter((jkCode) =>
+      draftPendingMyTiles.includes(jkCode)
     );
     if (unplacedRecoveredJokers.length > 0) {
       useWSStore
@@ -1593,7 +1625,7 @@ export default function GameClient({ roomId }: GameClientProps) {
 
     // C-3: 클라이언트 측 사전 검증 -- 서버 전송 전 기본 유효성 확인
     // G-2: 무효 블록 ID를 수집하여 UI 강조에 사용
-    const pendingOnlyGroups = pendingTableGroups.filter((g) => pendingGroupIds.has(g.id));
+    const pendingOnlyGroups = draftPendingTableGroups.filter((g) => draftPendingGroupIds.has(g.id));
     for (let blockIdx = 0; blockIdx < pendingOnlyGroups.length; blockIdx++) {
       const group = pendingOnlyGroups[blockIdx];
       const blockLabel = `${blockIdx + 1}번째 블록`;
@@ -1634,10 +1666,10 @@ export default function GameClient({ roomId }: GameClientProps) {
     }
 
     // BUG-UI-006(G-3): 고스트 타일 무결성 검사
-    // pendingTableGroups에 동일 tile code가 2번 이상 등장하면 V-03(중복) 위반.
+    // draft.groups에 동일 tile code가 2번 이상 등장하면 V-03(중복) 위반.
     // 이 검사는 서버 전송 전 마지막 방어선이다.
     {
-      const duplicateCodes = detectDuplicateTileCodes(pendingTableGroups);
+      const duplicateCodes = detectDuplicateTileCodes(draftPendingTableGroups);
       if (duplicateCodes.length > 0) {
         useWSStore.getState().setLastError(
           `타일 중복 감지: ${duplicateCodes.join(", ")} — 되돌리기 후 다시 배치하세요`
@@ -1647,9 +1679,9 @@ export default function GameClient({ roomId }: GameClientProps) {
     }
 
     // tilesFromRack: 원본 랙에서 이번 턴에 보드로 이동한 타일 목록
-    // pendingMyTiles에 남아있지 않은 타일 = 보드로 배치된 타일
+    // draft.myTiles에 남아있지 않은 타일 = 보드로 배치된 타일
     const tilesFromRack = myTiles.filter(
-      (t) => !pendingMyTiles.includes(t)
+      (t) => !draftPendingMyTiles.includes(t)
     );
     // F3 ROLLBACK (2026-04-24): optimistic setMyTiles 가 extend 경로 drop 중
     // pending state 를 침범해 EXT-SC1/SC3/GHOST-SC2 회귀 3건 유발.
@@ -1658,20 +1690,20 @@ export default function GameClient({ roomId }: GameClientProps) {
     setConfirmBusy(true);
     // 1단계: 이번 턴 배치 내용을 서버에 전송
     send("PLACE_TILES", {
-      tableGroups: pendingTableGroups,
+      tableGroups: draftPendingTableGroups,
       tilesFromRack,
     });
     // 2단계: 턴 확정 요청 (서버 응답을 기다림 -- 로컬 상태는 아직 유지)
     send("CONFIRM_TURN", {
-      tableGroups: pendingTableGroups,
+      tableGroups: draftPendingTableGroups,
       tilesFromRack,
     });
   }, [
     confirmBusy,
-    pendingTableGroups,
-    pendingMyTiles,
-    pendingRecoveredJokers,
-    pendingGroupIds,
+    draftPendingTableGroups,
+    draftPendingMyTiles,
+    draftRecoveredJokers,
+    draftPendingGroupIds,
     myTiles,
     send,
   ]);
@@ -1921,11 +1953,11 @@ export default function GameClient({ roomId }: GameClientProps) {
               tableGroups={currentTableGroups}
               isMyTurn={isMyTurn}
               isDragging={isDragging}
-              pendingGroupIds={pendingGroupIds}
+              pendingGroupIds={draftPendingGroupIds}
               invalidPendingGroupIds={invalidPendingGroupIds}
               recentTileCodes={recentTileCodes}
               recentTileVariant={recentTileVariant}
-              groupsDroppable={isMyTurn && (isDragging || !!pendingTableGroups)}
+              groupsDroppable={isMyTurn && (isDragging || !!draftPendingTableGroups)}
               tilesDraggable={isMyTurn}
               validMergeGroupIds={validMergeGroupIds}
               showNewGroupDropZone={isMyTurn}
@@ -1940,7 +1972,7 @@ export default function GameClient({ roomId }: GameClientProps) {
             {isMyTurn && (
               <div className="flex items-center justify-between flex-shrink-0">
                 <span className="text-tile-sm text-text-secondary/60 whitespace-nowrap">
-                  {pendingTableGroups
+                  {draftPendingTableGroups
                     ? "숫자/색상이 다른 타일은 자동으로 새 그룹이 됩니다"
                     : "타일을 드래그해 테이블에 배치하세요"}
                 </span>
@@ -1963,9 +1995,9 @@ export default function GameClient({ roomId }: GameClientProps) {
             )}
 
             {/* P3: 회수된 조커 배너 (§6.2 유형 4) */}
-            {pendingRecoveredJokers.length > 0 && (
+            {draftRecoveredJokers.length > 0 && (
               <div className="flex-shrink-0 flex justify-center">
-                <JokerSwapIndicator recoveredJokers={pendingRecoveredJokers} />
+                <JokerSwapIndicator recoveredJokers={draftRecoveredJokers} />
               </div>
             )}
 
