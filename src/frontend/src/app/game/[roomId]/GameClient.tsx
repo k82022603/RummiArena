@@ -1738,13 +1738,8 @@ export default function GameClient({ roomId }: GameClientProps) {
 
           {/* 중앙: 게임 보드 + 랙 */}
           <main className="flex-1 flex flex-col p-4 gap-3 overflow-hidden min-h-0 min-w-0">
-            {/* UX-004: 초기 등록 안내 배너 (최초 진입 1회) */}
-            <InitialMeldBanner
-              hasInitialMeld={effectiveHasInitialMeld}
-              roomId={roomId}
-            />
-
-            {/* PR1: TurnStatusStrip — 목업 데이터 하드코딩. PR2에서 실시간 props로 교체 */}
+            {/* PR1: TurnStatusStrip — 목업 데이터 하드코딩. PR2에서 실시간 props로 교체.
+                레이아웃: main 최상단 → InitialMeldBanner / GameBoard 위 */}
             <TurnStatusStrip
               remainingSec={42}
               totalSec={60}
@@ -1754,7 +1749,7 @@ export default function GameClient({ roomId }: GameClientProps) {
                 isMe: true,
                 avatarColor: "#f59e0b",
               }}
-              contextLine="패 7장 보유"
+              contextLine="최초 등록 필요 · 30점 이상의 세트를 보드에 올리세요"
               next={{
                 playerId: "mock-p2",
                 name: "shark",
@@ -1775,6 +1770,12 @@ export default function GameClient({ roomId }: GameClientProps) {
               ]}
               turnsCompleted={3}
               turnsTotal={6}
+            />
+
+            {/* UX-004: 초기 등록 안내 배너 (최초 진입 1회) */}
+            <InitialMeldBanner
+              hasInitialMeld={effectiveHasInitialMeld}
+              roomId={roomId}
             />
 
             {/* 게임 보드 — 최근 턴 하이라이트 포함 */}

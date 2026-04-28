@@ -26,7 +26,7 @@ const BASE_PROPS: TurnStatusStripProps = {
     isMe: true,
     avatarColor: "#f59e0b",
   },
-  contextLine: "패 7장 보유",
+  contextLine: "최초 등록 필요 · 30점 이상의 세트를 보드에 올리세요",
   next: {
     playerId: "p2",
     name: "shark",
@@ -77,7 +77,9 @@ describe("NowPlayingBlock — 내 차례", () => {
 
   it("컨텍스트 라인이 표시된다", () => {
     render(<TurnStatusStrip {...BASE_PROPS} />);
-    expect(screen.getByText("패 7장 보유")).toBeInTheDocument();
+    expect(
+      screen.getByText("최초 등록 필요 · 30점 이상의 세트를 보드에 올리세요")
+    ).toBeInTheDocument();
   });
 });
 

@@ -71,7 +71,8 @@ export default function TurnStatusStrip({
       className="flex-shrink-0 flex items-center"
       style={{
         height: 88,
-        background: "linear-gradient(180deg, #11151e 0%, #0d121b 100%)",
+        background:
+          "radial-gradient(circle at 12% 50%, rgba(245,158,11,0.08) 0%, transparent 40%), linear-gradient(180deg, #11151e 0%, #0d121b 100%)",
         border: "1px solid #1e2532",
         borderRadius: 10,
         padding: "14px 18px",
