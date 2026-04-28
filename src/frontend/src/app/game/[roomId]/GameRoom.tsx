@@ -46,7 +46,9 @@
  */
 
 // L2 hooks
-import { useDragHandlers } from "@/hooks/useDragHandlers";
+// P3-2 (2026-04-28): useDragHandlers 는 GameClient 가 직접 호출 (옵션 주입 필수).
+// GameRoom 의 no-args 마운트는 두 번 인스턴스 생성으로 혼동 유발 → 제거.
+// P3-3 에서 DndContext 가 GameRoom 으로 이전되면 여기서 옵션 주입하며 다시 호출한다.
 import { useGameSync } from "@/hooks/useGameSync";
 import { useInitialMeldGuard } from "@/hooks/useInitialMeldGuard";
 import { useTurnTimer } from "@/hooks/useTurnTimer";
@@ -96,15 +98,12 @@ export default function GameRoom({ roomId }: GameRoomProps) {
   // F-01: TURN_START/GAME_OVER/INVALID_MOVE 감지 → pendingStore/turnStateStore dispatch
   useGameSync(roomId);
 
-  // F-02~F-06: 드래그 핸들러 store 상태 초기화
-  // [보존 — P3-3 연결 예정]
-  // 이 hook을 마운트하면 handleDragStart/End/Cancel 함수와 store 액션이 준비된다.
-  // Phase 3에서는 직접 DndContext에 연결하지 않는다 (GameClient의 DndContext 사용).
-  // 이 hook은 dragEndReducer 단일 호출 경로이며 현재 GameClient의 770줄 인라인
-  // handleDragEnd와 행동 등가가 검증되지 않은 상태이다 (P3-2 선결 과제).
-  // P3-3에서 GameClient DndContext를 이 컴포넌트로 이전 시 직접 연결.
-  const _dragHandlers = useDragHandlers();
-  void _dragHandlers;
+  // F-02~F-06: 드래그 핸들러 — P3-2 부터 GameClient 가 useDragHandlers 를 직접 호출하며
+  //   forceNewGroup / re-entrancy guard / pendingGroupSeqRef / extendLockToast / isMyTurn 가드 /
+  //   setActiveDragCode 등 GameClient state 와 연동된 옵션을 주입한다.
+  //   GameRoom 측 no-args 마운트는 hook 내 fallback ref 들이 인스턴스마다 분리되어
+  //   잘못된 신호로 작용할 수 있으므로 제거. P3-3 에서 DndContext 를 GameRoom 이 소유하게 되면
+  //   GameRoom 이 옵션을 주입하며 useDragHandlers 를 호출하고 GameClient 호출을 제거한다.
 
   // F-09/F-11: 턴 액션 (useTurnActions)은 GameClient 내부에서 직접 호출한다.
   // GameClient가 WS 브릿지 등록(registerWSSendBridge) 이후에 useTurnActions()를 호출하므로

@@ -6,11 +6,11 @@ import {
   unregisterWSSendBridge,
   useTurnActions,
 } from "@/hooks/useTurnActions";
+import { useDragHandlers } from "@/hooks/useDragHandlers";
 import {
   DndContext,
   DragEndEvent,
   DragOverlay,
-  DragStartEvent,
   PointerSensor,
   useSensor,
   useSensors,
@@ -761,47 +761,28 @@ export default function GameClient({ roomId }: GameClientProps) {
     })
   );
 
-  // 드래그 시작 핸들러
-  // TODO(P3-3): useDragHandlers.handleDragStart로 대체 예정. 현재 useDragHandlers는 dragStateStore +
-  //   turnTransition 만 갱신. GameClient 버전은 추가로 activeDragSourceRef / setActiveDragCode /
-  //   isHandlingDragEndRef defensive clear를 수행한다 (BUG-UI-009/010 guard).
-  const handleDragStart = useCallback((event: DragStartEvent) => {
-    // BUG-UI-009/010: 이전 드래그 잔재 defensive clear —
-    // onDragCancel 이 누락됐거나 ESC/blur 이후 잔존한 state 를 안전하게 초기화한다.
-    activeDragSourceRef.current = null;
-    const data = event.active.data.current as
-      | { tileCode?: TileCode; source?: "rack" | "table"; groupId?: string; index?: number }
-      | undefined;
-    const code = data?.tileCode;
-    if (code) setActiveDragCode(code);
-    if (data?.source === "table" && typeof data.groupId === "string" && typeof data.index === "number") {
-      activeDragSourceRef.current = { kind: "table", groupId: data.groupId, index: data.index };
-    } else {
-      activeDragSourceRef.current = { kind: "rack" };
-    }
-  }, []);
+  // P3-2 (2026-04-28): handleDragStart/Cancel/End 의 ~770줄 인라인 분기를
+  // useDragHandlers hook 으로 통합 이전. forceNewGroup / re-entrancy guard /
+  // pendingGroupSeqRef / extendLockToast / isMyTurn 가드 / setActiveDragCode 동기화는
+  // 옵션으로 주입한다. 행동 등가는 jest 회귀 + dragEndReducer 분기 망라로 검증.
+  // (P3-3에서 GameRoom 으로 DndContext 이전 시 옵션 전달 책임을 이양한다.)
+  const dragHandlers = useDragHandlers({
+    forceNewGroup,
+    setForceNewGroup,
+    isHandlingDragEndRef,
+    lastDragEndTimestampRef,
+    pendingGroupSeqRef,
+    extendLockToastShownRef,
+    showExtendLockToast: () => setShowExtendLockToast(true),
+    isMyTurn,
+    activeDragSourceRef,
+    setActiveDragCode,
+  });
+  const handleDragStart = dragHandlers.handleDragStart;
+  const handleDragEnd = dragHandlers.handleDragEnd;
+  const handleDragCancel = dragHandlers.handleDragCancel;
 
-  // BUG-UI-010: onDragCancel 핸들러 —
-  // ESC 키 / 브라우저 포커스 소실 / window 비활성화 등으로 드래그가 취소될 때
-  // dnd-kit 이 호출한다. activeDragCode / activeDragSourceRef 를 명시 초기화하여
-  // 다음 드래그가 이전 drag state 잔재 없이 시작되도록 보장한다.
-  const handleDragCancel = useCallback(() => {
-    setActiveDragCode(null);
-    activeDragSourceRef.current = null;
-    // BUG-UI-009: 취소 시에도 re-entrancy guard 해제
-    isHandlingDragEndRef.current = false;
-  }, []);
-
-  // TODO(P3-2): 이 ~740줄 인라인 handleDragEnd를 useDragHandlers와 행동 등가로 통합.
-  //   현재 useDragHandlers는 dragEndReducer 1회 호출 경로를 사용하지만 다음이 누락됨:
-  //     1. BUG-UI-009 re-entrancy guard (isHandlingDragEndRef)
-  //     2. BUG-UI-EXT timestamp dedup (lastDragEndTimestampRef)
-  //     3. forceNewGroup React state → reducer input 전달
-  //     4. ExtendLockToast / setLastError 토스트 부수효과
-  //     5. isMyTurn 가드 (서버 확정 그룹 수정 차단)
-  //     6. dual-write 중 9개 분기 망라 검증
-  //   P3-2 선행 후 P3-3에서 DndContext.onDragEnd를 useDragHandlers.handleDragEnd로 교체한다.
-  const handleDragEnd = useCallback(
+  const _DEPRECATED_INLINE_HANDLE_DRAG_END_BEGIN = useCallback(
     (event: DragEndEvent) => {
       // BUG-UI-009: re-entrancy guard —
       // PlayerRack key 충돌로 dnd-kit listener 가 다중 등록되거나
@@ -1509,6 +1490,9 @@ export default function GameClient({ roomId }: GameClientProps) {
       forceNewGroup,
     ]
   );
+  // P3-2 (2026-04-28): 위 _DEPRECATED_INLINE_HANDLE_DRAG_END_BEGIN 은 useDragHandlers 로 이전됐다.
+  // P3-3 에서 GameRoom 이 DndContext 를 소유하면 본 alias + 인라인 본문 전체를 제거한다.
+  void _DEPRECATED_INLINE_HANDLE_DRAG_END_BEGIN;
 
   // 랙 타일 정렬 핸들러 (숫자 오름차순, 조커 마지막)
   // Phase C 단계 2: pending 존재 여부를 draftPendingMyTiles 로 판정.
