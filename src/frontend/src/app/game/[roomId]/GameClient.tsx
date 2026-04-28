@@ -1886,8 +1886,7 @@ export default function GameClient({ roomId }: GameClientProps) {
                 onUndo={handleUndo}
                 onConfirm={handleConfirm}
                 onPass={handlePass}
-                confirmEnabled={turnActions.confirmEnabled}
-                resetEnabled={turnActions.resetEnabled}
+                /* confirmEnabled/resetEnabled: useTurnActions가 turnState 의존으로 과도하게 엄격 — ActionBar fallback 사용 */
                 /* drawEnabled: useTurnActions 조건이 turnState 의존으로 과도하게 엄격 — ActionBar fallback(!hasPending) 사용 */
               />
             </div>
