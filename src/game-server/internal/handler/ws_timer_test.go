@@ -215,3 +215,121 @@ func TestTimersMu_ConcurrentAccess(t *testing.T) {
 
 	wg.Wait()
 }
+
+// ============================================================
+// I5: generation counter 경쟁 조건 방지 테스트
+// ============================================================
+
+// TestStartTurnTimer_GenerationIncrement startTurnTimer를 연속 호출하면
+// generation이 단조 증가하는지 확인한다.
+func TestStartTurnTimer_GenerationIncrement(t *testing.T) {
+	h, _ := newTimerTestEnv()
+	gameID := "game-gen-inc"
+
+	h.startTurnTimer("room-1", gameID, 0, 60)
+	h.timersMu.RLock()
+	gen1 := h.timers[gameID].generation
+	h.timersMu.RUnlock()
+
+	h.startTurnTimer("room-1", gameID, 0, 60)
+	h.timersMu.RLock()
+	gen2 := h.timers[gameID].generation
+	h.timersMu.RUnlock()
+
+	h.startTurnTimer("room-1", gameID, 0, 60)
+	h.timersMu.RLock()
+	gen3 := h.timers[gameID].generation
+	h.timersMu.RUnlock()
+
+	assert.Greater(t, gen2, gen1, "두 번째 호출 시 generation이 증가해야 한다")
+	assert.Greater(t, gen3, gen2, "세 번째 호출 시 generation이 추가 증가해야 한다")
+
+	// 정리
+	h.cancelTurnTimer(gameID)
+}
+
+// TestStartTurnTimer_StaleTimerDoesNotFire I5: generation counter 검증.
+// 짧은(1초) 타이머를 시작한 직후 새 타이머(60초)로 교체하면,
+// 이전 goroutine은 stale 판정으로 HandleTimeout을 호출하지 않아야 한다.
+func TestStartTurnTimer_StaleTimerDoesNotFire(t *testing.T) {
+	h, repo := newTimerTestEnv()
+	gameID := "game-stale-gen"
+
+	state := twoPlayerState(gameID)
+	seedGameState(t, repo, state)
+
+	// 1초짜리 첫 번째 타이머 시작 (만료 시 HandleTimeout 발동 예정)
+	h.startTurnTimer("room-stale", gameID, 0, 1)
+
+	h.timersMu.RLock()
+	firstGen := h.timers[gameID].generation
+	h.timersMu.RUnlock()
+
+	// 즉시 60초짜리 두 번째 타이머로 교체 → 첫 번째 goroutine의 generation이 stale
+	h.startTurnTimer("room-stale", gameID, 0, 60)
+
+	h.timersMu.RLock()
+	secondGen := h.timers[gameID].generation
+	h.timersMu.RUnlock()
+
+	assert.Greater(t, secondGen, firstGen, "두 번째 타이머의 generation이 첫 번째보다 커야 한다")
+
+	// 첫 번째 타이머 만료(1초) + 여유 시간 대기
+	time.Sleep(1500 * time.Millisecond)
+
+	// 첫 번째 goroutine은 stale 판정으로 HandleTimeout을 호출하지 않아야 한다.
+	// 게임 상태(CurrentSeat, DrawPile)가 변경되지 않아야 한다.
+	unchanged, err := repo.GetGameState(gameID)
+	require.NoError(t, err)
+	assert.Equal(t, 0, unchanged.CurrentSeat, "stale 타이머는 HandleTimeout을 호출하지 않아야 한다")
+	assert.Len(t, unchanged.DrawPile, 3, "stale 타이머는 드로우 파일을 소모하지 않아야 한다")
+
+	// 정리 (60초 타이머 취소)
+	h.cancelTurnTimer(gameID)
+}
+
+// TestStartTurnTimer_ConcurrentReplace_OnlyLatestFires I5: 동시 경쟁 시나리오.
+// 재연결 + AI goroutine 완료가 거의 동시에 startTurnTimer를 호출할 때
+// 마지막으로 등록된 타이머만 HandleTimeout을 발동해야 한다.
+func TestStartTurnTimer_ConcurrentReplace_OnlyLatestFires(t *testing.T) {
+	h, repo := newTimerTestEnv()
+	gameID := "game-concurrent-replace"
+
+	state := twoPlayerState(gameID)
+	seedGameState(t, repo, state)
+
+	const shortTimeout = 1  // 만료될 짧은 타이머
+	const longTimeout = 120 // 만료되지 않는 긴 타이머
+
+	// goroutine 1: 짧은 타이머 → 만료 시 HandleTimeout 발동 예정 (stale이 되면 발동 안 함)
+	h.startTurnTimer("room-cr", gameID, 0, shortTimeout)
+
+	// goroutine 2: 즉시 긴 타이머로 교체 (이전 goroutine을 stale로 만든다)
+	h.startTurnTimer("room-cr", gameID, 0, longTimeout)
+
+	// 짧은 타이머 만료를 충분히 기다린다
+	time.Sleep(time.Duration(shortTimeout)*time.Second + 500*time.Millisecond)
+
+	// stale 판정으로 HandleTimeout이 호출되지 않아야 한다
+	s, err := repo.GetGameState(gameID)
+	require.NoError(t, err)
+	assert.Equal(t, 0, s.CurrentSeat, "교체된 stale 타이머는 HandleTimeout을 발동하지 않아야 한다")
+
+	h.cancelTurnTimer(gameID)
+}
+
+// TestStartTurnTimer_FirstTimerAlways1 첫 번째 타이머 등록 시 generation은 1이어야 한다.
+func TestStartTurnTimer_FirstTimerAlways1(t *testing.T) {
+	h, _ := newTimerTestEnv()
+	gameID := "game-gen-first"
+
+	h.startTurnTimer("room-1", gameID, 0, 60)
+
+	h.timersMu.RLock()
+	gen := h.timers[gameID].generation
+	h.timersMu.RUnlock()
+
+	assert.Equal(t, uint64(1), gen, "첫 번째 타이머의 generation은 1이어야 한다")
+
+	h.cancelTurnTimer(gameID)
+}

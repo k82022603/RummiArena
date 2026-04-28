@@ -55,10 +55,14 @@ const wsSessionTTL = 2 * time.Hour
 const gracePeriodDuration = 60 * time.Second
 
 // turnTimer 진행 중인 단일 턴 타이머를 표현한다.
+// generation은 startTurnTimer 호출마다 단조 증가하며, goroutine이 자신이
+// 최신 타이머인지 확인하는 데 사용한다. 불일치 시 stale 타이머로 판단하고
+// HandleTimeout을 호출하지 않는다 (I5: Human 턴 타이머 경쟁 조건 수정).
 type turnTimer struct {
-	cancel context.CancelFunc
-	gameID string
-	seat   int
+	cancel     context.CancelFunc
+	generation uint64
+	gameID     string
+	seat       int
 }
 
 // graceTimer 연결 끊김 후 기권 대기 타이머
@@ -95,7 +99,7 @@ type WSHandler struct {
 	jwtSecret     string
 	logger        *zap.Logger
 	timers        map[string]*turnTimer  // key: gameID
-	timersMu      sync.Mutex
+	timersMu      sync.RWMutex
 	graceTimers         map[string]*graceTimer // key: "roomID:userID"
 	graceTimersMu       sync.Mutex
 	aiTurnCancels       map[string]context.CancelFunc // key: gameID — AI goroutine 취소용
@@ -1295,20 +1299,39 @@ func (h *WSHandler) startTurnTimer(roomID, gameID string, seat, timeoutSec int) 
 	}
 
 	h.timersMu.Lock()
+	var nextGen uint64 = 1
 	if existing, ok := h.timers[gameID]; ok {
 		existing.cancel()
+		nextGen = existing.generation + 1
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	h.timers[gameID] = &turnTimer{cancel: cancel, gameID: gameID, seat: seat}
+	h.timers[gameID] = &turnTimer{cancel: cancel, generation: nextGen, gameID: gameID, seat: seat}
 	h.timersMu.Unlock()
 
 	h.saveTimerToRedis(gameID, seat, timeoutSec)
+
+	// I5: generation을 goroutine 시작 시점에 캡처한다.
+	// 만료 후 맵의 generation과 비교하여 stale 타이머이면 HandleTimeout을 호출하지 않는다.
+	capturedGen := nextGen
 
 	go func() {
 		select {
 		case <-ctx.Done():
 			return
 		case <-time.After(time.Duration(timeoutSec) * time.Second):
+		}
+
+		// I5: stale 타이머 판정 — 다른 goroutine이 이미 새 타이머를 등록했으면 조용히 종료
+		h.timersMu.RLock()
+		current, currentOk := h.timers[gameID]
+		h.timersMu.RUnlock()
+		if !currentOk || current.generation != capturedGen {
+			h.logger.Info("ws: stale turn timer discarded",
+				zap.String("gameId", gameID),
+				zap.Int("seat", seat),
+				zap.Uint64("capturedGen", capturedGen),
+			)
+			return
 		}
 
 		h.logger.Info("ws: turn timer expired",
