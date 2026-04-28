@@ -204,16 +204,15 @@ export function useTurnActions(): UseTurnActionsReturn {
   }, []);
 
   // ---------------------------------------------------------------------------
-  // handleUndo — pendingStore.reset 기반 (Phase B)
+  // handleUndo — pendingStore.reset 기반 (Phase B → Phase C 단계 3)
   // ---------------------------------------------------------------------------
   const handleUndo = useCallback(() => {
     const ps = usePendingStore.getState();
     if (ps.draft === null) return;
 
     // pending 초기화 (UR-04) — pendingStore.reset()
+    // Phase C 단계 3: gameStore.resetPending() dual-write 제거 (single-write).
     ps.reset();
-    // gameStore deprecated 필드도 동기화 (Phase C에서 제거 예정)
-    useGameStore.getState().resetPending();
   }, []);
 
   // ---------------------------------------------------------------------------

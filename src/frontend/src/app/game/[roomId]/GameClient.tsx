@@ -500,19 +500,12 @@ export default function GameClient({ roomId }: GameClientProps) {
     hasInitialMeld,
     // Phase C 단계 2: pendingTableGroups/pendingMyTiles/pendingGroupIds/pendingRecoveredJokers
     // read는 pendingStore.draft 기반 selector(draftPending* 변수)로 이동.
-    // gameStore deprecated 필드의 destructuring을 제거해 미사용 경고 방지.
-    // setter(setPendingTableGroups 등)는 handleDragEnd/handleUndo가 여전히 사용 중이므로 유지.
+    // Phase C 단계 3: setPending*/addPending*/clearPending*/addRecoveredJoker/removeRecoveredJoker/
+    // clearRecoveredJokers/setPendingGroupIds 등 deprecated setter destructuring도 제거.
+    // handleDragEnd/handleUndo는 pendingStore.applyMutation/reset() 으로 single-write 전환됨.
     aiThinkingSeat,
     turnNumber,
     currentPlayerId,
-    setPendingTableGroups,
-    setPendingMyTiles,
-    addPendingGroupId,
-    clearPendingGroupIds,
-    setPendingGroupIds,
-    addRecoveredJoker,
-    removeRecoveredJoker,
-    clearRecoveredJokers,
     setMyTiles,
     gameEnded,
     gameOverResult,
@@ -821,26 +814,31 @@ export default function GameClient({ roomId }: GameClientProps) {
       // BUG-UI-EXT 수정 1: useMemo stale snapshot 제거 —
       // currentTableGroups / currentMyTiles 는 useMemo derived state 라 같은 렌더 사이클
       // 내에서 여러 번 handleDragEnd 가 호출되면 첫 번째 setState 가 아직 반영되지 않은
-      // stale 스냅샷을 사용한다. 매 분기 진입 전 useGameStore.getState() 로 최신 값을
+      // stale 스냅샷을 사용한다. 매 분기 진입 전 store.getState() 로 최신 값을
       // 1회 가져와 stale 를 근본적으로 차단한다.
       // (architect 재재조사 §4.1 §5.1 수정 A)
-      const latestState = useGameStore.getState();
+      // Phase C 단계 3: pending 관련 read 를 pendingStore.draft 로 전환 (single-write 화).
+      const latestGameState = useGameStore.getState();
+      const latestDraft = usePendingStore.getState().draft;
+      const freshPendingTableGroups: import("@/types/tile").TableGroup[] | null =
+        latestDraft ? latestDraft.groups : null;
       const freshTableGroups: import("@/types/tile").TableGroup[] =
-        latestState.pendingTableGroups ?? latestState.gameState?.tableGroups ?? [];
+        freshPendingTableGroups ?? latestGameState.gameState?.tableGroups ?? [];
       const freshMyTiles: import("@/types/tile").TileCode[] =
-        latestState.pendingMyTiles ?? latestState.myTiles;
-      const freshPendingTableGroups = latestState.pendingTableGroups;
-      const freshPendingGroupIds = latestState.pendingGroupIds;
-      const freshPendingRecoveredJokers = latestState.pendingRecoveredJokers;
+        latestDraft?.myTiles ?? latestGameState.myTiles;
+      const freshPendingGroupIds: Set<string> =
+        latestDraft?.pendingGroupIds ?? new Set<string>();
+      const freshPendingRecoveredJokers: import("@/types/tile").TileCode[] =
+        latestDraft?.recoveredJokers ?? [];
       // F4 (FINDING-01): players[mySeat].hasInitialMeld 를 1차 SSOT 로 사용 (루트는 fallback).
       // GAME_STATE 핸들러가 players[] 만 업데이트하므로 루트 hasInitialMeld 가 stale 될 수 있음.
       const freshHasInitialMeld = (() => {
-        const seat = latestState.mySeat;
+        const seat = latestGameState.mySeat;
         if (seat >= 0) {
-          const me = latestState.players.find((p) => p.seat === seat);
+          const me = latestGameState.players.find((p) => p.seat === seat);
           if (me?.hasInitialMeld !== undefined) return me.hasInitialMeld;
         }
-        return latestState.hasInitialMeld;
+        return latestGameState.hasInitialMeld;
       })();
 
       const dragSource = activeDragSourceRef.current;
@@ -890,10 +888,8 @@ export default function GameClient({ roomId }: GameClientProps) {
           const nextGroupIds = stillHasPending
             ? new Set([...freshPendingGroupIds].filter((id) => nextTableGroups.some((g) => g.id === id)))
             : new Set<string>();
-          setPendingTableGroups(stillHasPending ? nextTableGroups : null);
-          if (!stillHasPending) clearPendingGroupIds();
-          setPendingMyTiles([...freshMyTiles, tileCode]);
-          // P2b dual-write: table→rack 되돌리기 경로
+          // Phase C 단계 3: gameStore setter 제거 (single-write).
+          // pendingStore.applyMutation 만으로 상태 갱신.
           usePendingStore.getState().applyMutation({
             nextTableGroups: stillHasPending ? nextTableGroups : null,
             nextMyTiles: [...freshMyTiles, tileCode],
@@ -922,11 +918,8 @@ export default function GameClient({ roomId }: GameClientProps) {
             now: Date.now(),
           });
           if (!result.rejected) {
-            setPendingTableGroups(result.nextTableGroups);
-            setPendingMyTiles(result.nextMyTiles ?? freshMyTiles);
-            setPendingGroupIds(result.nextPendingGroupIds);
             pendingGroupSeqRef.current = result.nextPendingGroupSeq;
-            // P2a dual-write: pendingStore에도 동일 결과 적용 (gameStore 호출 유지)
+            // Phase C 단계 3: gameStore setter 제거 (single-write).
             usePendingStore.getState().applyMutation(result);
           }
           return;
@@ -964,20 +957,14 @@ export default function GameClient({ roomId }: GameClientProps) {
           }
         }
 
-        setPendingTableGroups(nextTableGroups);
-        // 랙 상태는 변화 없음 — freshMyTiles 최신 값을 그대로 유지
-        setPendingMyTiles(freshMyTiles);
+        // Phase C 단계 3: gameStore setter 제거 (single-write).
         // BUG-UI-EXT 수정 4 보충: 소스 그룹이 비워져 제거된 경우 pendingGroupIds 에서도 제거.
-        // 기존 addPendingGroupId 만으로는 유령 ID 가 남는다 (clearPendingGroupIds 는 전체 초기화).
         // nextTableGroups 에 실제로 존재하는 그룹 ID 만 남도록 pendingGroupIds 를 atomic 교체.
-        // setPendingGroupIds(Zustand set 기반) 를 사용하여 direct setState race 없이 일관성 보장.
         {
           const nextGroupIdSet = new Set(nextTableGroups.map((g) => g.id));
           const updatedPendingIds = new Set(
             [...freshPendingGroupIds, sourceGroup.id, targetGroup.id].filter((id) => nextGroupIdSet.has(id))
           );
-          setPendingGroupIds(updatedPendingIds);
-          // P2b dual-write: 테이블 → 다른 그룹 이동 (유형 3)
           usePendingStore.getState().applyMutation({
             nextTableGroups,
             nextMyTiles: freshMyTiles,
@@ -1013,18 +1000,13 @@ export default function GameClient({ roomId }: GameClientProps) {
               );
               // I-4 핫픽스 (옵션 B): 회수된 조커를 pendingMyTiles 에 즉시 append하여
               // 기존 랙 UI 에서 드래그 가능하게 한다.
-              // addRecoveredJoker 는 "경고 배너 only (§6.2 유형 4 의무 안내)" 역할 유지.
               // nextMyTilesAfterSwap 에서 랙 타일을 제거한 뒤 조커를 추가하면
               // 사용자는 JokerSwapIndicator 배너를 보면서도 랙에서 조커를 끌 수 있다.
               const nextMyTilesAfterSwap = [
                 ...removeFirstOccurrence(freshMyTiles, tileCode),
                 swap.recoveredJoker,
               ];
-              setPendingTableGroups(nextTableGroups);
-              setPendingMyTiles(nextMyTilesAfterSwap);
-              addPendingGroupId(swapCandidate.id);
-              addRecoveredJoker(swap.recoveredJoker);
-              // P2a dual-write: tryJokerSwap 경로 — DragOutput 구성 후 pendingStore 동기화
+              // Phase C 단계 3: gameStore setter 제거 (single-write).
               {
                 const nextPendingGroupIds = new Set([...freshPendingGroupIds, swapCandidate.id]);
                 const nextPendingRecoveredJokers = [...freshPendingRecoveredJokers, swap.recoveredJoker];
@@ -1067,14 +1049,8 @@ export default function GameClient({ roomId }: GameClientProps) {
           };
           const nextTableGroups = [...freshTableGroups, newGroup];
           const nextMyTiles = removeFirstOccurrence(freshMyTiles, tileCode);
-          setPendingTableGroups(nextTableGroups);
-          setPendingMyTiles(nextMyTiles);
-          addPendingGroupId(newGroupId);
           const isJokerRecovered = freshPendingRecoveredJokers.includes(tileCode);
-          if (isJokerRecovered) {
-            removeRecoveredJoker(tileCode);
-          }
-          // P2b dual-write: existingPendingGroup 비호환 → 새 그룹 생성
+          // Phase C 단계 3: gameStore setter 제거 (single-write).
           {
             const nextPendingGroupIds = new Set([...freshPendingGroupIds, newGroupId]);
             const nextPendingRecoveredJokers = isJokerRecovered
@@ -1109,13 +1085,8 @@ export default function GameClient({ roomId }: GameClientProps) {
           }
         }
         const nextMyTiles = removeFirstOccurrence(freshMyTiles, tileCode);
-        setPendingTableGroups(nextTableGroups);
-        setPendingMyTiles(nextMyTiles);
         const isJokerRecovered = freshPendingRecoveredJokers.includes(tileCode);
-        if (isJokerRecovered) {
-          removeRecoveredJoker(tileCode);
-        }
-        // P2b dual-write: existingPendingGroup 호환 → 기존 그룹 append
+        // Phase C 단계 3: gameStore setter 제거 (single-write).
         {
           const nextPendingRecoveredJokers = isJokerRecovered
             ? freshPendingRecoveredJokers.filter((j) => j !== tileCode)
@@ -1176,14 +1147,8 @@ export default function GameClient({ roomId }: GameClientProps) {
         };
         const nextTableGroups = [...freshTableGroups, newGroup];
         const nextMyTiles = removeFirstOccurrence(freshMyTiles, tileCode);
-        setPendingTableGroups(nextTableGroups);
-        setPendingMyTiles(nextMyTiles);
-        addPendingGroupId(newGroupId);
         const isJokerRecovered = freshPendingRecoveredJokers.includes(tileCode);
-        if (isJokerRecovered) {
-          removeRecoveredJoker(tileCode);
-        }
-        // P2b dual-write: targetServerGroup && !hasInitialMeld → 새 pending 그룹
+        // Phase C 단계 3: gameStore setter 제거 (single-write).
         {
           const nextPendingGroupIds = new Set([...freshPendingGroupIds, newGroupId]);
           const nextPendingRecoveredJokers = isJokerRecovered
@@ -1216,14 +1181,8 @@ export default function GameClient({ roomId }: GameClientProps) {
           };
           const nextTableGroups = [...freshTableGroups, newGroup];
           const nextMyTiles = removeFirstOccurrence(freshMyTiles, tileCode);
-          setPendingTableGroups(nextTableGroups);
-          setPendingMyTiles(nextMyTiles);
-          addPendingGroupId(newGroupId);
           const isJokerRecovered = freshPendingRecoveredJokers.includes(tileCode);
-          if (isJokerRecovered) {
-            removeRecoveredJoker(tileCode);
-          }
-          // P2b dual-write: targetServerGroup && hasInitialMeld 비호환 → 새 그룹 생성
+          // Phase C 단계 3: gameStore setter 제거 (single-write).
           {
             const nextPendingGroupIds = new Set([...freshPendingGroupIds, newGroupId]);
             const nextPendingRecoveredJokers = isJokerRecovered
@@ -1258,15 +1217,9 @@ export default function GameClient({ roomId }: GameClientProps) {
           }
         }
         const nextMyTiles = removeFirstOccurrence(freshMyTiles, tileCode);
-        setPendingTableGroups(nextTableGroups);
-        setPendingMyTiles(nextMyTiles);
-        // pending ID 세트에 등록 → UI에서 "수정 중 (미확정)"으로 표시
-        addPendingGroupId(targetServerGroup.id);
         const isJokerRecovered = freshPendingRecoveredJokers.includes(tileCode);
-        if (isJokerRecovered) {
-          removeRecoveredJoker(tileCode);
-        }
-        // P2b dual-write: targetServerGroup && hasInitialMeld 호환 → 서버 그룹 append
+        // Phase C 단계 3: gameStore setter 제거 (single-write).
+        // pending ID 세트에 targetServerGroup.id 등록 (applyMutation 인자로 전달).
         {
           const nextPendingGroupIds = new Set([...freshPendingGroupIds, targetServerGroup.id]);
           const nextPendingRecoveredJokers = isJokerRecovered
@@ -1388,13 +1341,8 @@ export default function GameClient({ roomId }: GameClientProps) {
               : g
           );
           const nextMyTiles = removeFirstOccurrence(freshMyTiles, tileCode);
-          setPendingTableGroups(nextTableGroups);
-          setPendingMyTiles(nextMyTiles);
           const isJokerRecovered = freshPendingRecoveredJokers.includes(tileCode);
-          if (isJokerRecovered) {
-            removeRecoveredJoker(tileCode);
-          }
-          // P2b dual-write: game-board → lastPendingGroup append
+          // Phase C 단계 3: gameStore setter 제거 (single-write).
           {
             const nextPendingRecoveredJokers = isJokerRecovered
               ? freshPendingRecoveredJokers.filter((j) => j !== tileCode)
@@ -1430,17 +1378,10 @@ export default function GameClient({ roomId }: GameClientProps) {
             }
           }
           const nextMyTiles = removeFirstOccurrence(freshMyTiles, tileCode);
-          setPendingTableGroups(nextTableGroups);
-          setPendingMyTiles(nextMyTiles);
-          // 새로 생성된 그룹을 프리뷰 ID 세트에 등록
-          addPendingGroupId(newGroupId);
           // forceNewGroup은 false로 리셋하지 않음 - 사용자가 수동 토글하도록 유지
           if (forceNewGroup) setForceNewGroup(false);
           const isJokerRecovered = freshPendingRecoveredJokers.includes(tileCode);
-          if (isJokerRecovered) {
-            removeRecoveredJoker(tileCode);
-          }
-          // P2b dual-write: game-board → 새 그룹 생성
+          // Phase C 단계 3: gameStore setter 제거 (single-write).
           {
             const nextPendingGroupIds = new Set([...freshPendingGroupIds, newGroupId]);
             const nextPendingRecoveredJokers = isJokerRecovered
@@ -1476,14 +1417,8 @@ export default function GameClient({ roomId }: GameClientProps) {
           }
         }
         const nextMyTiles = removeFirstOccurrence(freshMyTiles, tileCode);
-        setPendingTableGroups(nextTableGroups);
-        setPendingMyTiles(nextMyTiles);
-        addPendingGroupId(newGroupId);
         const isJokerRecovered = freshPendingRecoveredJokers.includes(tileCode);
-        if (isJokerRecovered) {
-          removeRecoveredJoker(tileCode);
-        }
-        // P2b dual-write: game-board-new-group → 새 그룹 생성 (강제)
+        // Phase C 단계 3: gameStore setter 제거 (single-write).
         {
           const nextPendingGroupIds = new Set([...freshPendingGroupIds, newGroupId]);
           const nextPendingRecoveredJokers = isJokerRecovered
@@ -1521,11 +1456,8 @@ export default function GameClient({ roomId }: GameClientProps) {
             .filter((g) => g.tiles.length > 0);
 
           const stillHasPending = updated.some((g) => freshPendingGroupIds.has(g.id));
-          setPendingTableGroups(stillHasPending ? updated : null);
-          if (!stillHasPending) clearPendingGroupIds();
           const nextMyTiles = [...freshMyTiles, tileCode];
-          setPendingMyTiles(nextMyTiles);
-          // P2b dual-write: player-rack → pending 타일 회수
+          // Phase C 단계 3: gameStore setter 제거 (single-write).
           {
             const nextGroupIds = stillHasPending
               ? new Set([...freshPendingGroupIds].filter((id) => updated.some((g) => g.id === id)))
@@ -1551,17 +1483,11 @@ export default function GameClient({ roomId }: GameClientProps) {
     },
     [
       isMyTurn,
-      setPendingTableGroups,
-      setPendingMyTiles,
-      addPendingGroupId,
-      clearPendingGroupIds,
-      setPendingGroupIds,
-      addRecoveredJoker,
-      removeRecoveredJoker,
-      // BUG-UI-EXT 수정 1: currentTableGroups(useMemo stale) 와 currentMyTiles 를 deps 에서 제거.
-      // handleDragEnd 내부에서 useGameStore.getState() 로 최신 참조를 직접 획득하므로
-      // useMemo snapshot 에 대한 deps 불필요. React 경고 억제를 위해 stable setter 함수만 유지.
-      // 단, forceNewGroup 은 React state 라 deps 필요.
+      // Phase C 단계 3: gameStore setter 제거 → pendingStore.applyMutation 만 사용.
+      // pendingStore.getState() 는 module-level singleton 이라 deps 불필요.
+      // BUG-UI-EXT 수정 1: currentTableGroups(useMemo stale) 와 currentMyTiles 도 deps 에서 제거.
+      // handleDragEnd 내부에서 store.getState() 로 최신 참조를 직접 획득하므로
+      // snapshot 에 대한 deps 불필요. forceNewGroup 은 React state 라 deps 필요.
       forceNewGroup,
     ]
   );
@@ -1571,13 +1497,25 @@ export default function GameClient({ roomId }: GameClientProps) {
   // 단계 3에서 dual-write 제거되면 setPendingMyTiles 호출도 함께 정리됨.
   const handleRackSort = useCallback(
     (sorted: TileCode[]) => {
-      if (draftPendingMyTiles !== null) {
-        setPendingMyTiles(sorted);
+      // Phase C 단계 3: pendingStore.applyMutation 으로 single-write 화.
+      // pending 이 있으면 draft.myTiles 만 정렬 적용 (groups/ids/jokers 그대로 유지).
+      // pending 이 없으면 gameStore.myTiles 만 정렬.
+      const ps = usePendingStore.getState();
+      const draft = ps.draft;
+      if (draft !== null) {
+        ps.applyMutation({
+          nextTableGroups: draft.groups,
+          nextMyTiles: sorted,
+          nextPendingGroupIds: draft.pendingGroupIds,
+          nextPendingRecoveredJokers: draft.recoveredJokers,
+          nextPendingGroupSeq: pendingGroupSeqRef.current,
+          branch: "rack-sort:pending",
+        });
       } else {
         setMyTiles(sorted);
       }
     },
-    [draftPendingMyTiles, setPendingMyTiles, setMyTiles]
+    [setMyTiles]
   );
 
   // Issue #48: CONFIRM_TURN 전송 후 서버 응답(TURN_START or INVALID_MOVE) 대기 중 락
@@ -1709,24 +1647,16 @@ export default function GameClient({ roomId }: GameClientProps) {
   ]);
 
   // 턴 되돌리기 (취소): 프리뷰 상태 전체 초기화 후 서버에 롤백 요청
+  // Phase C 단계 3: pendingStore.reset() 으로 single-write 화.
   const handleUndo = useCallback(() => {
     send("RESET_TURN", {});
-    setPendingTableGroups(null);
-    setPendingMyTiles(null);
-    clearPendingGroupIds();
-    clearRecoveredJokers();
+    usePendingStore.getState().reset();
     setForceNewGroup(false);
     setInvalidPendingGroupIds(new Set());
     // UX-004: 되돌리기 시 ExtendLockToast 1회 표시 카운터도 초기화 (다음 드롭 시 재안내)
     extendLockToastShownRef.current = false;
     setShowExtendLockToast(false);
-  }, [
-    send,
-    setPendingTableGroups,
-    setPendingMyTiles,
-    clearPendingGroupIds,
-    clearRecoveredJokers,
-  ]);
+  }, [send]);
 
   // 드로우
   const handleDraw = useCallback(() => {
