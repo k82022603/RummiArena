@@ -41,6 +41,21 @@ interface DragStateStore {
    */
   showExtendLockToast: boolean;
 
+  /**
+   * BUG-UI-REARRANGE-002 단조 카운터 — 동일 ms 내 ID 충돌 방지.
+   * P3-3 Step 3b (2026-04-29): GameClient.useRef + useDragHandlers fallback 분리에서
+   *   dragStateStore 로 흡수하여 hook 호출 위치(GameClient → GameRoom)가 바뀌어도
+   *   단일 카운터를 공유한다. handleRackSort 가 read-only 로 사용.
+   */
+  pendingGroupSeq: number;
+
+  /**
+   * UX-004: ExtendLockToast 같은 턴 내 1회 표시 추적 플래그.
+   * P3-3 Step 3b (2026-04-29): GameClient.useRef 에서 흡수.
+   * TURN_START / handleUndo 시 false. hook 본체가 true 로 toggle 후 toast 표시.
+   */
+  extendLockToastShown: boolean;
+
   /** 드래그 시작 시 호출 */
   setActive(tile: TileCode, source: DragSource): void;
   /** 호버 대상 갱신 */
@@ -51,6 +66,10 @@ interface DragStateStore {
   setForceNewGroup(val: boolean): void;
   /** ExtendLockToast 표시/해제 setter */
   setShowExtendLockToast(val: boolean): void;
+  /** pendingGroupSeq 갱신 setter (단조 증가 의무) */
+  setPendingGroupSeq(val: number): void;
+  /** extendLockToastShown 토글 setter */
+  setExtendLockToastShown(val: boolean): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -63,6 +82,8 @@ export const useDragStateStore = create<DragStateStore>()((set) => ({
   hoverTarget: null,
   forceNewGroup: false,
   showExtendLockToast: false,
+  pendingGroupSeq: 0,
+  extendLockToastShown: false,
 
   setActive(tile, source) {
     set({ activeTile: tile, activeSource: source });
@@ -82,6 +103,14 @@ export const useDragStateStore = create<DragStateStore>()((set) => ({
 
   setShowExtendLockToast(val) {
     set({ showExtendLockToast: val });
+  },
+
+  setPendingGroupSeq(val) {
+    set({ pendingGroupSeq: val });
+  },
+
+  setExtendLockToastShown(val) {
+    set({ extendLockToastShown: val });
   },
 }));
 

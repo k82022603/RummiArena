@@ -14,10 +14,8 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
-  closestCenter,
-  pointerWithin,
 } from "@dnd-kit/core";
-import type { CollisionDetection } from "@dnd-kit/core";
+import { pointerWithinThenClosest } from "@/lib/dndCollision";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useWebSocket } from "@/hooks/useWebSocket";
@@ -427,20 +425,9 @@ function GameEndedOverlay({
 }
 
 // ------------------------------------------------------------------
-// A3: 커스텀 collisionDetection — pointerWithin 우선, null 시 closestCenter fallback
-//
-// 근거: closestCenter 는 포인터가 빈 공간에 있을 때도 "가장 가까운" 드롭 타겟을
-// 선택하여 의도하지 않은 그룹 오매핑을 유발한다.
-// pointerWithin 은 실제 포인터가 드롭존 rect 안에 있을 때만 매칭하므로
-// 빈 공간 드롭 시 null 을 반환 → 새 그룹 생성 경로(game-board fallback)로 정확히 진입한다.
-// null 을 그대로 반환하면 DndContext 가 over=null 로 처리하여 handleDragEnd 에서
-// "드롭 위치 없음" 안내 토스트(A4)를 띄운다.
+// A3: 커스텀 collisionDetection — pointerWithinThenClosest 는 lib/dndCollision 에서 import.
+//   P3-3 Step 3b 에서 추출. GameRoom 이 DndContext 를 소유할 때 동일 헬퍼 사용.
 // ------------------------------------------------------------------
-const pointerWithinThenClosest: CollisionDetection = (args) => {
-  const pointerCollisions = pointerWithin(args);
-  if (pointerCollisions.length > 0) return pointerCollisions;
-  return closestCenter(args);
-};
 
 // ------------------------------------------------------------------
 // GameClient
@@ -570,7 +557,20 @@ export default function GameClient({ roomId }: GameClientProps) {
 
   // BUG-UI-REARRANGE-002: pending 그룹 ID 생성용 단조 카운터 —
   // Date.now() 단독은 같은 ms 내 연속 드롭 시 ID 충돌 → 중복 렌더링을 유발했다.
-  const pendingGroupSeqRef = useRef(0);
+  // P3-3 Step 3b (2026-04-29): dragStateStore.pendingGroupSeq 로 흡수.
+  //   GameRoom 으로 hook 호출이 이양되어도 단일 카운터를 공유하기 위해 store-backed ref-like
+  //   객체를 유지한다. hook 본체는 .current += 1 패턴 그대로 사용 가능 (인터페이스 호환).
+  const pendingGroupSeqRef = useMemo(
+    () => ({
+      get current() {
+        return useDragStateStore.getState().pendingGroupSeq;
+      },
+      set current(v: number) {
+        useDragStateStore.getState().setPendingGroupSeq(v);
+      },
+    }),
+    []
+  );
 
   // BUG-UI-009: handleDragEnd re-entrancy guard —
   // dnd-kit listener 다중 등록(PlayerRack key 충돌) 또는 pointer 이벤트 다중 dispatch 시
@@ -598,7 +598,19 @@ export default function GameClient({ roomId }: GameClientProps) {
   //   extendLockToastShownRef 는 hook 내부 fallback ref 로 충분 (useDragHandlers 단일 인스턴스).
   const showExtendLockToast = useDragStateStore((s) => s.showExtendLockToast);
   const setShowExtendLockToast = useDragStateStore((s) => s.setShowExtendLockToast);
-  const extendLockToastShownRef = useRef(false);
+  // P3-3 Step 3b (2026-04-29): extendLockToastShownRef 도 store-backed ref-like 로 흡수.
+  //   hook 본체의 .current = true / current 읽기 패턴 호환 + GameRoom 으로 hook 이전 시 동일 store 공유.
+  const extendLockToastShownRef = useMemo(
+    () => ({
+      get current() {
+        return useDragStateStore.getState().extendLockToastShown;
+      },
+      set current(v: boolean) {
+        useDragStateStore.getState().setExtendLockToastShown(v);
+      },
+    }),
+    []
+  );
 
   // ------------------------------------------------------------------
   // Task 1: beforeunload + 라우터 가드
@@ -629,6 +641,9 @@ export default function GameClient({ roomId }: GameClientProps) {
       useDragStateStore.getState().setForceNewGroup(false);
       // P3-3 Step 3a: showExtendLockToast 도 dragStateStore 로 흡수, 언마운트 시 false
       useDragStateStore.getState().setShowExtendLockToast(false);
+      // P3-3 Step 3b: pendingGroupSeq + extendLockToastShown 도 흡수, 언마운트 시 리셋
+      useDragStateStore.getState().setPendingGroupSeq(0);
+      useDragStateStore.getState().setExtendLockToastShown(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
