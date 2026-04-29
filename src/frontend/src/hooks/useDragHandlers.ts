@@ -172,7 +172,13 @@ export interface UseDragHandlersOptions {
 
   /** activeDragSourceRef — 드래그 소스 타입 추적 (rack/table) */
   activeDragSourceRef?: MutableRefObject<ActiveDragSource | null>;
-  /** 드래그 종료 시 React state 의 active tile 코드 초기화 */
+
+  /**
+   * @deprecated P3-3 Step 2 (2026-04-29) — activeDragCode React state 가
+   *   dragStateStore.activeTile 로 통합되며 옵션 제거. setActive/clearActive 로
+   *   hook 이 직접 store 를 갱신하므로 별도 동기화 불필요.
+   *   기존 호출자 호환을 위해 시그니처는 잠정 유지하되 본 hook 은 무시한다.
+   */
   setActiveDragCode?: (code: TileCode | null) => void;
 }
 

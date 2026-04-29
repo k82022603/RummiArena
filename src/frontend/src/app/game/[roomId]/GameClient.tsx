@@ -552,7 +552,10 @@ export default function GameClient({ roomId }: GameClientProps) {
     return me?.hasInitialMeld ?? hasInitialMeld;
   }, [players, mySeat, hasInitialMeld]);
 
-  const [activeDragCode, setActiveDragCode] = useState<TileCode | null>(null);
+  // P3-3 Step 2 (2026-04-29): activeDragCode 를 dragStateStore.activeTile 로 통합.
+  //   useDragHandlers 가 setActive/clearActive 로 이미 store 를 관리하고 있어 React state 와
+  //   이중 관리되던 것을 SSOT 단일화. setActiveDragCode 옵션 제거 (hook 이 이미 store 갱신).
+  const activeDragCode = useDragStateStore((s) => s.activeTile);
   const isDragging = activeDragCode !== null;
   // BUG-UI-LAYOUT-001: 히스토리 패널 토글 (기본 펼침)
   const [historyCollapsed, setHistoryCollapsed] = useState(false);
@@ -768,9 +771,11 @@ export default function GameClient({ roomId }: GameClientProps) {
 
   // P3-2 (2026-04-28): handleDragStart/Cancel/End 의 ~770줄 인라인 분기를
   // useDragHandlers hook 으로 통합 이전. forceNewGroup / re-entrancy guard /
-  // pendingGroupSeqRef / extendLockToast / isMyTurn 가드 / setActiveDragCode 동기화는
-  // 옵션으로 주입한다. 행동 등가는 jest 회귀 + dragEndReducer 분기 망라로 검증.
-  // (P3-3에서 GameRoom 으로 DndContext 이전 시 옵션 전달 책임을 이양한다.)
+  // pendingGroupSeqRef / extendLockToast / isMyTurn 가드는 옵션으로 주입한다.
+  // 행동 등가는 jest 회귀 + dragEndReducer 분기 망라로 검증.
+  // P3-3 Step 2 (2026-04-29): activeDragCode 가 dragStateStore.activeTile 로 통합되어
+  //   setActiveDragCode 옵션 제거. hook 이 setActive/clearActive 로 직접 store 갱신.
+  // (P3-3 Step 3b 에서 GameRoom 으로 DndContext 이전 시 옵션 전달 책임을 이양한다.)
   const dragHandlers = useDragHandlers({
     forceNewGroup,
     setForceNewGroup,
@@ -781,7 +786,6 @@ export default function GameClient({ roomId }: GameClientProps) {
     showExtendLockToast: () => setShowExtendLockToast(true),
     isMyTurn,
     activeDragSourceRef,
-    setActiveDragCode,
   });
   const handleDragStart = dragHandlers.handleDragStart;
   const handleDragEnd = dragHandlers.handleDragEnd;
@@ -847,7 +851,9 @@ export default function GameClient({ roomId }: GameClientProps) {
 
       const dragSource = activeDragSourceRef.current;
       activeDragSourceRef.current = null;
-      setActiveDragCode(null);
+      // P3-3 Step 2: activeDragCode 가 dragStateStore.activeTile 로 통합. clearActive() 는
+      //   hook 본체에서 호출되므로 _DEPRECATED 인라인 본문에서는 호출 불필요.
+      //   본 본문은 P3-3 Step 4 에서 통째 제거된다.
       const { active, over } = event;
       // 내 턴이 아니면 조용히 return (드래그 자체가 UI에서 막혀 있어야 하지만 방어)
       if (!isMyTurn) return;
