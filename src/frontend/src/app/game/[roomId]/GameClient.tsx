@@ -419,18 +419,15 @@ export default function GameClient({ roomId }: GameClientProps) {
   const [historyCollapsed, setHistoryCollapsed] = useState(false);
   // G-2: 확정 실패 시 무효로 판정된 pending 그룹 ID 세트 (사용자가 수정 전까지 유지)
   const [invalidPendingGroupIds, setInvalidPendingGroupIds] = useState<Set<string>>(new Set());
-  // P2-1: 드래그 원점 추적. 테이블 타일 드래그 시 원본 그룹/인덱스를 보존해
-  // handleDragEnd에서 분할/이동 분기를 결정한다.
-  type ActiveDragSource =
-    | { kind: "rack" }
-    | { kind: "table"; groupId: string; index: number };
-  const activeDragSourceRef = useRef<ActiveDragSource | null>(null);
-
-  // BUG-UI-REARRANGE-002: pending 그룹 ID 생성용 단조 카운터 —
-  // Date.now() 단독은 같은 ms 내 연속 드롭 시 ID 충돌 → 중복 렌더링을 유발했다.
-  // P3-3 Step 3b (2026-04-29): dragStateStore.pendingGroupSeq 로 흡수.
-  //   GameRoom 으로 hook 호출이 이양되어도 단일 카운터를 공유하기 위해 store-backed ref-like
-  //   객체를 유지한다. hook 본체는 .current += 1 패턴 그대로 사용 가능 (인터페이스 호환).
+  // P3-3 Sub-A (2026-04-29): activeDragSourceRef / isHandlingDragEndRef /
+  //   lastDragEndTimestampRef 3종 GameClient ref 제거.
+  //   - 외부 reader 없음 (useDragHandlers 옵션 주입 전용).
+  //   - 단일 hook 인스턴스 범위 transient guard 이므로 store 승격 불필요.
+  //   - useDragHandlers 의 fallbackSourceRef / fallbackHandlingRef / fallbackTimestampRef
+  //     (모두 useRef) 가 hook 인스턴스 수명 동안 동일 identity 를 유지한다.
+  //   - GameRoom 으로 DndContext 이전 시 GameRoom 의 단일 hook 인스턴스에서 동일하게 작동.
+  //   pendingGroupSeqRef 는 dragStateStore 단조 카운터 SSOT 로 hook 외부에서도 read 하는
+  //   handleRackSort 가 있어 store-backed ref-like 형태로 유지한다.
   const pendingGroupSeqRef = useMemo(
     () => ({
       get current() {
@@ -442,19 +439,6 @@ export default function GameClient({ roomId }: GameClientProps) {
     }),
     []
   );
-
-  // BUG-UI-009: handleDragEnd re-entrancy guard —
-  // dnd-kit listener 다중 등록(PlayerRack key 충돌) 또는 pointer 이벤트 다중 dispatch 시
-  // 동일 stale currentTableGroups 스냅샷으로 N개 pending 그룹이 생성되는 것을 차단한다.
-  // queueMicrotask 로 unlock 하여 연속 드래그(정상 케이스)는 차단하지 않는다.
-  const isHandlingDragEndRef = useRef(false);
-
-  // BUG-UI-EXT 수정 2: activatorEvent.timeStamp 기반 중복 dispatch dedup —
-  // isHandlingDragEndRef 는 microtask 경계(queueMicrotask unlock)를 넘는 연속 dispatch 를
-  // 차단하지 못한다. 동일 pointer down 이벤트가 여러 번 onDragEnd 를 트리거하면 같은
-  // timeStamp 를 공유하므로 이를 기록해 early-return 한다. 정상 연속 드래그는 timeStamp
-  // 가 다르므로 차단하지 않는다.
-  const lastDragEndTimestampRef = useRef<number>(-1);
 
   // 다음 보드 드롭 시 새 그룹 강제 생성 여부
   // P3-3 Step 1 (2026-04-29): GameClient.useState 에서 dragStateStore 로 흡수.
@@ -668,16 +652,16 @@ export default function GameClient({ roomId }: GameClientProps) {
   // P3-3 Step 2 (2026-04-29): activeDragCode 가 dragStateStore.activeTile 로 통합되어
   //   setActiveDragCode 옵션 제거. hook 이 setActive/clearActive 로 직접 store 갱신.
   // (P3-3 Step 3b 에서 GameRoom 으로 DndContext 이전 시 옵션 전달 책임을 이양한다.)
+  // P3-3 Sub-A (2026-04-29): isHandlingDragEndRef / lastDragEndTimestampRef /
+  //   activeDragSourceRef 옵션 주입 제거 — hook 내부 fallbackXRef (useRef) 로 충분.
+  //   외부 reader 없음. 단일 hook 인스턴스 transient guard.
   const dragHandlers = useDragHandlers({
     forceNewGroup,
     setForceNewGroup,
-    isHandlingDragEndRef,
-    lastDragEndTimestampRef,
     pendingGroupSeqRef,
     extendLockToastShownRef,
     showExtendLockToast: () => setShowExtendLockToast(true),
     isMyTurn,
-    activeDragSourceRef,
   });
   const handleDragStart = dragHandlers.handleDragStart;
   const handleDragEnd = dragHandlers.handleDragEnd;
