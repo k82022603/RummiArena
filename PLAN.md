@@ -432,7 +432,7 @@ docs/
   - P2a: handleDragEnd 9개 분기 dual-write
   - P2b Phase B/C1/C2/C3/C4: useTurnActions를 pendingStore.draft 기반 + gameStore deprecated 13개 필드 완전 제거 (38개 파일 영향)
   - P3-2: useDragHandlers 행동 등가 확장 (1064줄, BUG-UI-009/010/EXT guard + UI 부수효과)
-- **게임룰 SSOT 등록**: V-20 (패널티 정책), V-21 (Mid-Game 진입자), UR-37~40 (PRE_MELD 드롭/RESET vs Rollback/mid-game 안내/패널티 토스트). 룰 카운트 71 → 77.
+- **게임룰 SSOT 등록**: V-20 (패널티 정책), V-21 (Mid-Game 진입자), UR-37~40 (PRE_MELD 드롭/RESET vs Rollback/mid-game 안내/패널티 토스트). 룰 카운트 71 → 77. (※ 2026-04-29 후속: V-21 재정의 "방 정원 충족 후 게임 시작" + UR-39 폐기. 활성 76 + 결번 1)
 - **패널티 B안 적용**: Human=3장+턴 종료, AI=1장+턴 종료
 - **myRack race 핫픽스**: pre-deploy-playbook 1차 NO-GO에서 발견 → useGameSync 빈 스냅샷 차단 + setState 순서 변경. 자동화가 사용자 사고를 막은 결정적 사례.
 - **E2E fixture pendingStore 전환**: setPendingDraft 헬퍼 + 3개 spec 마이그레이션
@@ -441,6 +441,22 @@ docs/
 - **검증**: Jest 614 PASS / Go 770 PASS / AI Adapter 606 PASS / E2E rule 9 PASS / 3 FAIL / 3 SKIP — **CONDITIONAL GO**
 - K8s 배포: frontend `day6-364e271`, game-server `day5-8dc0999`, ai-adapter `day5-f1969f0`
 - **다음**: P3-3 DndContext 이전, GHOST-SC2 fixture 회귀 RCA, 1게임 완주 spec 보강, deepseek-reasoner 비교 (5/5 할인 종료 전)
+
+### Sprint 7 W2 A 방안 후속 — I3 롤백 + 빈 슬롯 시작 차단 (2026-04-29)
+- **사용자 결정**: 게임 진행 중 방 입장 금지. 단, WAITING 방에서 빈 슬롯에 다른 사용자 입장은 가능 (기존 기능 유지). 빈 슬롯이 있으면 게임 시작 자체 차단(방어 코드).
+- **A-1 단계** (커밋 `08c9810`, `ec337da`): I3 롤백
+  - go-dev: AddPlayerMidGame 제거, JoinRoom WAITING만 허용 (PLAYING 허용 로직 제거), checkDuplicateRoomExcept 단순화, add_player_mid_game_test.go 삭제
+  - frontend-dev: LobbyClient 참가 버튼 `disabled={room.status !== "WAITING"}` 단순 조건으로 복원
+- **A-2 단계** (커밋 `1f53481`): 빈 슬롯 시작 차단
+  - go-dev: room_service.go StartGame에 `len(activePlayers) < MaxPlayers` 검증 추가 → EMPTY_SLOTS_REMAINING (400). 테스트 2건 추가
+  - frontend-dev: WaitingRoomClient `canStart = playerCount >= settings.playerCount` + 안내 + aria-label + 신규 테스트 14건
+- **A-3 단계** (커밋 `40a1f4c`): 룰 SSOT 정리
+  - V-21 재정의: "Mid-Game 진입자 정책" → "방 정원 충족 후 게임 시작" (`len(activePlayers) === MaxPlayers` 시에만 시작)
+  - UR-39 폐기 (Mid-Game 첫 턴 안내, 진입 미지원). ID 결번 보존. 차후 신규 룰은 UR-41부터
+  - 변경 이력 v1.2 기록 (55, 56)
+- **부록**: frontend-dev-opus 에이전트 영구 등록 (`89a08e6`). 페어코딩 문서 `docs/02-design/65-opus-pair-coding-2026-04-28.md`
+- **검증**: Jest 634 PASS / Go 신규 회귀 0건 / E2E rule 9-2-3 (베이스라인 동등, GO 판정)
+- **배포**: frontend `day7-1f53481`, game-server `day7-1f53481`
 
 ---
 
