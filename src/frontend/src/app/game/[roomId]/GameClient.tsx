@@ -6,16 +6,9 @@ import {
   unregisterWSSendBridge,
   useTurnActions,
 } from "@/hooks/useTurnActions";
-import { useDragHandlers } from "@/hooks/useDragHandlers";
 import { useIsMyTurn } from "@/hooks/useIsMyTurn";
-import {
-  DndContext,
-  DragOverlay,
-  PointerSensor,
-  useSensor,
-  useSensors,
-} from "@dnd-kit/core";
-import { pointerWithinThenClosest } from "@/lib/dndCollision";
+// P3-3 Sub-C (2026-04-29): DndContext / DragOverlay / sensors / collisionDetection /
+//   useDragHandlers 어셈블리는 GameRoom 으로 이전. GameClient 는 grid + 토스트만 렌더.
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useWebSocket } from "@/hooks/useWebSocket";
@@ -39,7 +32,7 @@ import InitialMeldBanner from "@/components/game/InitialMeldBanner";
 import ThrottleBadge from "@/components/game/ThrottleBadge";
 import TurnHistoryPanel from "@/components/game/TurnHistoryPanel";
 import JokerSwapIndicator from "@/components/game/JokerSwapIndicator";
-import Tile from "@/components/tile/Tile";
+// Tile import 제거 (P3-3 Sub-C: DragOverlay 가 GameRoom 으로 이전).
 
 import type { TileCode, TileNumber, TableGroup } from "@/types/tile";
 import { parseTileCode } from "@/types/tile";
@@ -420,26 +413,12 @@ export default function GameClient({ roomId }: GameClientProps) {
   const [historyCollapsed, setHistoryCollapsed] = useState(false);
   // G-2: 확정 실패 시 무효로 판정된 pending 그룹 ID 세트 (사용자가 수정 전까지 유지)
   const [invalidPendingGroupIds, setInvalidPendingGroupIds] = useState<Set<string>>(new Set());
-  // P3-3 Sub-A (2026-04-29): activeDragSourceRef / isHandlingDragEndRef /
-  //   lastDragEndTimestampRef 3종 GameClient ref 제거.
-  //   - 외부 reader 없음 (useDragHandlers 옵션 주입 전용).
-  //   - 단일 hook 인스턴스 범위 transient guard 이므로 store 승격 불필요.
-  //   - useDragHandlers 의 fallbackSourceRef / fallbackHandlingRef / fallbackTimestampRef
-  //     (모두 useRef) 가 hook 인스턴스 수명 동안 동일 identity 를 유지한다.
-  //   - GameRoom 으로 DndContext 이전 시 GameRoom 의 단일 hook 인스턴스에서 동일하게 작동.
-  //   pendingGroupSeqRef 는 dragStateStore 단조 카운터 SSOT 로 hook 외부에서도 read 하는
-  //   handleRackSort 가 있어 store-backed ref-like 형태로 유지한다.
-  const pendingGroupSeqRef = useMemo(
-    () => ({
-      get current() {
-        return useDragStateStore.getState().pendingGroupSeq;
-      },
-      set current(v: number) {
-        useDragStateStore.getState().setPendingGroupSeq(v);
-      },
-    }),
-    []
-  );
+  // P3-3 Sub-A/C (2026-04-29): GameClient 가 유지하던 5종 drag ref 모두 제거.
+  //   - activeDragSourceRef / isHandlingDragEndRef / lastDragEndTimestampRef:
+  //     hook 내부 fallback useRef 가 단일 인스턴스 transient guard 로 충분 (Sub-A).
+  //   - pendingGroupSeqRef / extendLockToastShownRef:
+  //     hook 본체가 dragStateStore-backed ref-like 를 직접 생성하여 SSOT 단일화 (Sub-C).
+  //     handleRackSort 의 nextPendingGroupSeq 도 useDragStateStore.getState() 직접 read.
 
   // 다음 보드 드롭 시 새 그룹 강제 생성 여부
   // P3-3 Step 1 (2026-04-29): GameClient.useState 에서 dragStateStore 로 흡수.
@@ -448,25 +427,11 @@ export default function GameClient({ roomId }: GameClientProps) {
   const forceNewGroup = useDragStateStore((s) => s.forceNewGroup);
   const setForceNewGroup = useDragStateStore((s) => s.setForceNewGroup);
 
-  // UX-004: ExtendLockToast 표시 상태 + 같은 턴 내 1회 추적
+  // UX-004: ExtendLockToast 표시 상태
   // P3-3 Step 3a (2026-04-29): showExtendLockToast 를 dragStateStore 로 흡수.
-  //   GameRoom 으로 DndContext 이전 시 toast 렌더와 hook 옵션을 동시에 store 로 단일화.
-  //   extendLockToastShownRef 는 hook 내부 fallback ref 로 충분 (useDragHandlers 단일 인스턴스).
+  // P3-3 Sub-C (2026-04-29): extendLockToastShownRef 는 hook 본체로 이전.
   const showExtendLockToast = useDragStateStore((s) => s.showExtendLockToast);
   const setShowExtendLockToast = useDragStateStore((s) => s.setShowExtendLockToast);
-  // P3-3 Step 3b (2026-04-29): extendLockToastShownRef 도 store-backed ref-like 로 흡수.
-  //   hook 본체의 .current = true / current 읽기 패턴 호환 + GameRoom 으로 hook 이전 시 동일 store 공유.
-  const extendLockToastShownRef = useMemo(
-    () => ({
-      get current() {
-        return useDragStateStore.getState().extendLockToastShown;
-      },
-      set current(v: boolean) {
-        useDragStateStore.getState().setExtendLockToastShown(v);
-      },
-    }),
-    []
-  );
 
   // ------------------------------------------------------------------
   // Task 1: beforeunload + 라우터 가드
@@ -626,39 +591,10 @@ export default function GameClient({ roomId }: GameClientProps) {
     return computeValidMergeGroups(activeDragCode, currentTableGroups);
   }, [activeDragCode, currentTableGroups]);
 
-  // dnd-kit 센서
-  // TODO(P3-3): sensors / pointerWithinThenClosest collisionDetection / DragOverlay 어셈블리는
-  //   GameRoom으로 이전. GameClient 외부 컨테이너에서 useDragHandlers를 직접 DndContext에 연결한다.
-  //   선결 조건: P3-2 — useDragHandlers가 아래 handleDragEnd ~770줄 인라인 분기와 행동 등가가 되어야 함
-  //   (BUG-UI-009/010/EXT guard, forceNewGroup, ExtendLockToast 부수효과 포함).
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 8 },
-    })
-  );
-
-  // P3-2 (2026-04-28): handleDragStart/Cancel/End 의 ~770줄 인라인 분기를
-  // useDragHandlers hook 으로 통합 이전. forceNewGroup / re-entrancy guard /
-  // pendingGroupSeqRef / extendLockToast / isMyTurn 가드는 옵션으로 주입한다.
-  // 행동 등가는 jest 회귀 + dragEndReducer 분기 망라로 검증.
-  // P3-3 Step 2 (2026-04-29): activeDragCode 가 dragStateStore.activeTile 로 통합되어
-  //   setActiveDragCode 옵션 제거. hook 이 setActive/clearActive 로 직접 store 갱신.
-  // (P3-3 Step 3b 에서 GameRoom 으로 DndContext 이전 시 옵션 전달 책임을 이양한다.)
-  // P3-3 Sub-A (2026-04-29): isHandlingDragEndRef / lastDragEndTimestampRef /
-  //   activeDragSourceRef 옵션 주입 제거 — hook 내부 fallbackXRef (useRef) 로 충분.
-  //   외부 reader 없음. 단일 hook 인스턴스 transient guard.
-  const dragHandlers = useDragHandlers({
-    forceNewGroup,
-    setForceNewGroup,
-    pendingGroupSeqRef,
-    extendLockToastShownRef,
-    showExtendLockToast: () => setShowExtendLockToast(true),
-    isMyTurn,
-  });
-  const handleDragStart = dragHandlers.handleDragStart;
-  const handleDragEnd = dragHandlers.handleDragEnd;
-  const handleDragCancel = dragHandlers.handleDragCancel;
-
+  // P3-3 Sub-C (2026-04-29): DndContext / sensors / DragOverlay 어셈블리 + useDragHandlers
+  //   호출은 GameRoom 으로 이전. GameClient 는 grid + 토스트만 렌더한다.
+  //   forceNewGroup / showExtendLockToast / isMyTurn 등 store 기반 상태는 GameRoom 도 동일
+  //   selector 로 구독하므로 hook 옵션은 GameRoom 측에서 주입.
 
   // 랙 타일 정렬 핸들러 (숫자 오름차순, 조커 마지막)
   // Phase C 단계 2: pending 존재 여부를 draftPendingMyTiles 로 판정.
@@ -676,7 +612,7 @@ export default function GameClient({ roomId }: GameClientProps) {
           nextMyTiles: sorted,
           nextPendingGroupIds: draft.pendingGroupIds,
           nextPendingRecoveredJokers: draft.recoveredJokers,
-          nextPendingGroupSeq: pendingGroupSeqRef.current,
+          nextPendingGroupSeq: useDragStateStore.getState().pendingGroupSeq,
           branch: "rack-sort:pending",
         });
       } else {
@@ -822,7 +758,8 @@ export default function GameClient({ roomId }: GameClientProps) {
     setForceNewGroup(false);
     setInvalidPendingGroupIds(new Set());
     // UX-004: 되돌리기 시 ExtendLockToast 1회 표시 카운터도 초기화 (다음 드롭 시 재안내)
-    extendLockToastShownRef.current = false;
+    // P3-3 Sub-C: extendLockToastShown 도 dragStateStore 에서 직접 관리.
+    useDragStateStore.getState().setExtendLockToastShown(false);
     setShowExtendLockToast(false);
   }, [send]);
 
@@ -900,15 +837,8 @@ export default function GameClient({ roomId }: GameClientProps) {
       />
       <ReconnectToast />
       {/* RateLimitToast는 layout.tsx에서 전역 마운트 */}
-    {/* TODO(P3-3): DndContext + DragOverlay GameRoom 이전. P3-2 행동 등가 검증 후 진행.
-        선결 조건은 GameRoom.tsx 상단 "P3 분해 로드맵" 주석 참조. */}
-    <DndContext
-      sensors={sensors}
-      collisionDetection={pointerWithinThenClosest}
-      onDragStart={handleDragStart}
-      onDragEnd={handleDragEnd}
-      onDragCancel={handleDragCancel}
-    >
+      {/* P3-3 Sub-C (2026-04-29): DndContext / DragOverlay / sensors / collisionDetection 어셈블리는
+          GameRoom 으로 이전 완료. 여기는 grid 컨테이너만 렌더한다. */}
       <div className="h-screen bg-app-bg flex flex-col overflow-hidden">
         <ConnectionStatus />
 
@@ -1172,28 +1102,7 @@ export default function GameClient({ roomId }: GameClientProps) {
         </div>
       </div>
 
-      {/* 드래그 오버레이: 커서를 따라다니는 타일 (scale 1.1 + 그림자 강화 + grabbing 커서) */}
-      <DragOverlay dropAnimation={null}>
-        {activeDragCode ? (
-          <motion.div
-            initial={{ scale: 1.0, rotate: 0, opacity: 0.85 }}
-            animate={{ scale: 1.12, rotate: -3, opacity: 1 }}
-            transition={{ type: "spring", stiffness: 500, damping: 20 }}
-            style={{
-              cursor: "grabbing",
-              filter: "drop-shadow(0 10px 20px rgba(0,0,0,0.55)) drop-shadow(0 2px 6px rgba(0,0,0,0.35))",
-            }}
-          >
-            <Tile
-              code={activeDragCode}
-              size="rack"
-              draggable
-              aria-label={`${activeDragCode} 타일 드래그 중`}
-            />
-          </motion.div>
-        ) : null}
-      </DragOverlay>
-    </DndContext>
+      {/* P3-3 Sub-C (2026-04-29): DragOverlay 는 GameRoom 으로 이전. */}
     </>
   );
 }

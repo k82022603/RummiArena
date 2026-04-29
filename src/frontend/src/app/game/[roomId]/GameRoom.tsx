@@ -11,50 +11,53 @@
  *   - F-09: ConfirmTurn (useTurnActions)
  *   - F-11: DRAW (useTurnActions)
  *
- * Phase 3 과도기 전략:
- *   GameClient.tsx의 기존 기능을 완전 보존하면서 Phase 2 hook을 활성화한다.
+ * Phase 3 Sub-C 완료 (2026-04-29):
+ *   GameRoom 이 DndContext + sensors + collisionDetection + DragOverlay 어셈블리를 소유하고
+ *   useDragHandlers 를 직접 호출한다. GameClient 는 grid + 토스트만 렌더한다.
  *
- *   WS 브릿지 등록: GameClient 내부에서 registerWSSendBridge(send)를 호출한다.
- *   이 컴포넌트는 store/hook 활성화 컨테이너 역할만 수행하고
- *   렌더링은 GameClient에 위임한다.
+ *   forceNewGroup / extendLockToast / pendingGroupSeq 등 store 기반 상태는 GameClient 와
+ *   GameRoom 양쪽이 동일 selector 로 구독한다 (zustand 가 동일 snapshot 보장).
  *
- *   GameClient가 자체 DndContext를 소유하므로 이 컴포넌트는 DndContext를 추가하지 않는다.
- *   Phase 4에서 GameClient의 DndContext를 이 컴포넌트로 이전한다.
- *
- *   P3 DndContext 이전 전제조건 (2026-04-28):
- *     1. P2b 완료 (handleDragEnd 전체 inline 분기 pendingStore dual-write) — DONE
- *     2. useTurnActions pendingStore.draft 전환 완료 — DONE
- *     3. gameStore deprecated pending 필드 제거 완료 — DONE
- *     4. useDragHandlers가 GameClient.handleDragEnd의 전체 기능을 대체 — TODO(P3-2)
- *
- *   P3 분해 로드맵 (2026-04-28 frontend-dev 위험 평가 결과):
- *     P3-1: (보류) DndContext UI 어셈블리(sensors/collisionDetection/DragOverlay)만 GameRoom 이전.
- *           — GameClient handler closure 의존 문제로 단독 진행 시 메모이제이션 깨짐 위험.
- *           — P3-2 완료 후 P3-3과 통합 진행이 안전하다고 판단.
- *     P3-2: useDragHandlers 행동 등가 확장. GameClient handleDragEnd ~770줄 인라인 분기와
- *           1:1 등가 보장 (BUG-UI-009/010/EXT re-entrancy guard, forceNewGroup, 토스트
- *           ExtendLockToast 부수효과 포함). dragEndReducer 분기 망라 검증 — Jest 신규 spec 추가.
- *     P3-3: DndContext 핸들러 소스 GameClient → useDragHandlers 교체 + GameClient 핸들러 제거.
- *           동시에 DndContext/DragOverlay/sensors GameRoom 이전. forceNewGroup state는
- *           dragStateStore로 흡수.
- *
- *   현재 상태: P2b 완료 후 P3 본 이전 보류. GameClient의 DndContext + handler closure 그대로 유지.
+ *   P3-3 진행 이력:
+ *     Step 1   : forceNewGroup → dragStateStore (89ade2)
+ *     Step 2   : activeDragCode → dragStateStore.activeTile (7f098e)
+ *     Step 3a  : showExtendLockToast → dragStateStore (c3cd2e)
+ *     Step 3b  : pendingGroupSeq + extendLockToastShown → dragStateStore (2b58b1)
+ *     Step 4   : GameClient 인라인 dragEnd 핸들러 ~810줄 제거 (9d773f5)
+ *     Sub-A    : 3개 GameClient drag ref 제거 — hook 내부 fallback (a49b4f)
+ *     Sub-B    : isMyTurn → useIsMyTurn() hook 추출 (b0270a)
+ *     Sub-C    : DndContext + sensors + DragOverlay GameRoom 이전 (본 커밋)
  *
  * 계층 규칙:
  *   - L2(store/hook)만 import. L3 순수 함수 직접 import 금지.
- *   - L4(WS) 직접 import 금지 — GameClient의 브릿지 경유.
+ *   - L4(WS) 직접 import 금지 — GameClient 의 브릿지 경유.
  */
 
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import { motion } from "framer-motion";
+
 // L2 hooks
-// P3-2 (2026-04-28): useDragHandlers 는 GameClient 가 직접 호출 (옵션 주입 필수).
-// GameRoom 의 no-args 마운트는 두 번 인스턴스 생성으로 혼동 유발 → 제거.
-// P3-3 에서 DndContext 가 GameRoom 으로 이전되면 여기서 옵션 주입하며 다시 호출한다.
 import { useGameSync } from "@/hooks/useGameSync";
 import { useInitialMeldGuard } from "@/hooks/useInitialMeldGuard";
 import { useTurnTimer } from "@/hooks/useTurnTimer";
+import { useDragHandlers } from "@/hooks/useDragHandlers";
+import { useIsMyTurn } from "@/hooks/useIsMyTurn";
 
-// L1 컴포넌트 (기존 보존)
+// L2 store
+import { useDragStateStore } from "@/store/dragStateStore";
+
+// L3 순수 함수 (collisionDetection 어댑터)
+import { pointerWithinThenClosest } from "@/lib/dndCollision";
+
+// L1 컴포넌트
 import GameClient from "./GameClient";
+import Tile from "@/components/tile/Tile";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -71,24 +74,19 @@ interface GameRoomProps {
 /**
  * 게임 화면 합성 루트.
  *
- * Phase 3 과도기:
- *   Phase 2 hook들을 마운트하여 store 상태(turnStateStore, pendingStore, dragStateStore)가
- *   올바르게 유지되도록 한다. 렌더링과 WS 연결은 GameClient에 위임한다.
+ * Phase 3 Sub-C:
+ *   GameRoom 이 DndContext / sensors / collisionDetection / DragOverlay 를 소유한다.
+ *   useDragHandlers 를 직접 호출하며 forceNewGroup / setForceNewGroup /
+ *   showExtendLockToast(true) / isMyTurn 옵션을 store 기반으로 주입한다.
  *
  * WS 브릿지:
- *   GameClient 내부에서 registerWSSendBridge(send)를 호출한다.
+ *   GameClient 내부에서 registerWSSendBridge(send) 를 호출한다.
  *   이 컴포넌트는 브릿지 등록에 관여하지 않는다.
  *
  * store 상태 흐름:
  *   useGameSync → gameStore 변화 감지 → turnStateStore/pendingStore 전이
  *   useDragHandlers → dragStateStore + pendingStore + turnStateStore 업데이트
- *   useTurnActions → WS bridge 경유 C2S 발신 + store 전이
- *
- * NOTE: GameClient 내부에 자체 DndContext와 handleDragEnd가 있다.
- *       Phase 3에서는 두 구현이 공존한다.
- *       useDragHandlers/useTurnActions는 store 연결을 준비하지만
- *       실제 드래그/액션 이벤트는 GameClient가 처리한다.
- *       Phase 4에서 GameClient의 DndContext와 핸들러를 이 컴포넌트로 이전.
+ *   useTurnActions(GameClient) → WS bridge 경유 C2S 발신 + store 전이
  */
 export default function GameRoom({ roomId }: GameRoomProps) {
   // ---------------------------------------------------------------------------
@@ -98,41 +96,81 @@ export default function GameRoom({ roomId }: GameRoomProps) {
   // F-01: TURN_START/GAME_OVER/INVALID_MOVE 감지 → pendingStore/turnStateStore dispatch
   useGameSync(roomId);
 
-  // F-02~F-06: 드래그 핸들러 — P3-2 부터 GameClient 가 useDragHandlers 를 직접 호출하며
-  //   forceNewGroup / re-entrancy guard / pendingGroupSeqRef / extendLockToast / isMyTurn 가드 /
-  //   setActiveDragCode 등 GameClient state 와 연동된 옵션을 주입한다.
-  //   GameRoom 측 no-args 마운트는 hook 내 fallback ref 들이 인스턴스마다 분리되어
-  //   잘못된 신호로 작용할 수 있으므로 제거. P3-3 에서 DndContext 를 GameRoom 이 소유하게 되면
-  //   GameRoom 이 옵션을 주입하며 useDragHandlers 를 호출하고 GameClient 호출을 제거한다.
-
-  // F-09/F-11: 턴 액션 (useTurnActions)은 GameClient 내부에서 직접 호출한다.
-  // GameClient가 WS 브릿지 등록(registerWSSendBridge) 이후에 useTurnActions()를 호출하므로
-  // 이 컴포넌트에서 중복 인스턴스를 생성할 필요가 없다.
-  // Phase 4에서 GameRoom이 turnActions를 props로 내려주는 방식으로 전환할 때 이 주석을 제거한다.
-
-  // F-04/F-17: hasInitialMeld SSOT 단일화 (InitialMeldBanner/GroupDropZone 연결 준비)
-  // [보존 — Phase 4 연결 예정]
-  // InitialMeldBanner, GroupDropZone이 이 hook의 반환값을 사용하게 될 예정이다.
+  // F-04/F-17: hasInitialMeld SSOT 단일화
   const _meldGuard = useInitialMeldGuard();
   void _meldGuard;
 
-  // F-15: 턴 타이머 활성화 (TimerView 연결 준비)
-  // [보존 — Phase 4 연결 예정]
-  // TurnTimer 컴포넌트가 독자적으로 useTurnTimer를 호출하지만,
-  // GameRoom에서도 타이머 상태를 참조해 턴 강제 종료 로직에 연결할 예정이다.
+  // F-15: 턴 타이머 활성화
   const _timer = useTurnTimer();
   void _timer;
 
-  // P1: _turnState (useTurnStateStore 구독) 제거
-  //     GameClient 내부 useTurnActions가 turnStateStore를 직접 구독하므로 중복.
-  //     Phase 3 과도기에서 이 컴포넌트가 별도로 FSM 상태를 구독할 필요 없음.
+  // ---------------------------------------------------------------------------
+  // Sub-C: DndContext 어셈블리
+  // ---------------------------------------------------------------------------
 
-  // P1: _hasPending (usePendingStore 구독) 제거
-  //     GameClient 내부에서 usePendingStore를 직접 구독(subscribedByGameClient)하고,
-  //     useTurnActions가 gameStore에서 pending 상태를 직접 읽으므로 중복.
+  // dnd-kit 센서 — distance:8 활성화 거리 (탭/클릭 vs 드래그 구분)
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    })
+  );
+
+  // P3-3 Sub-B/C: isMyTurn 단일 selector. GameClient 도 동일 hook 호출하여 동기화.
+  const isMyTurn = useIsMyTurn();
+
+  // store 기반 상태 — GameClient 와 동일 zustand snapshot 구독
+  const forceNewGroup = useDragStateStore((s) => s.forceNewGroup);
+  const setForceNewGroup = useDragStateStore((s) => s.setForceNewGroup);
+  const setShowExtendLockToast = useDragStateStore((s) => s.setShowExtendLockToast);
+
+  // P3-2 행동 등가: 9개 분기 + BUG-UI-009/010/EXT guard + UX-004 toast
+  // P3-3 Sub-A/C: hook 본체가 dragStateStore-backed ref-like (pendingGroupSeq /
+  //   extendLockToastShown) 를 직접 생성하고 transient guard ref 도 fallback 사용.
+  //   GameRoom 은 forceNewGroup / setForceNewGroup / showExtendLockToast 콜백 / isMyTurn 만 주입.
+  const { handleDragStart, handleDragEnd, handleDragCancel } = useDragHandlers({
+    forceNewGroup,
+    setForceNewGroup,
+    showExtendLockToast: () => setShowExtendLockToast(true),
+    isMyTurn,
+  });
+
+  // DragOverlay 활성 타일 — store 구독
+  const activeDragCode = useDragStateStore((s) => s.activeTile);
 
   // ---------------------------------------------------------------------------
-  // 렌더 — GameClient에 위임 (기존 기능 전체 보존)
+  // 렌더 — DndContext 가 GameClient 를 감싼다
   // ---------------------------------------------------------------------------
-  return <GameClient roomId={roomId} />;
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={pointerWithinThenClosest}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
+    >
+      <GameClient roomId={roomId} />
+      {/* 드래그 오버레이: 커서를 따라다니는 타일 (scale 1.1 + 그림자 강화 + grabbing 커서) */}
+      <DragOverlay dropAnimation={null}>
+        {activeDragCode ? (
+          <motion.div
+            initial={{ scale: 1.0, rotate: 0, opacity: 0.85 }}
+            animate={{ scale: 1.12, rotate: -3, opacity: 1 }}
+            transition={{ type: "spring", stiffness: 500, damping: 20 }}
+            style={{
+              cursor: "grabbing",
+              filter:
+                "drop-shadow(0 10px 20px rgba(0,0,0,0.55)) drop-shadow(0 2px 6px rgba(0,0,0,0.35))",
+            }}
+          >
+            <Tile
+              code={activeDragCode}
+              size="rack"
+              draggable
+              aria-label={`${activeDragCode} 타일 드래그 중`}
+            />
+          </motion.div>
+        ) : null}
+      </DragOverlay>
+    </DndContext>
+  );
 }

@@ -18,7 +18,7 @@
  *   GameClient 가 옵션을 주입하면 9개 분기 + guard 가 활성화되어 행동 등가 보장.
  */
 
-import { useCallback, useRef } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import type { MutableRefObject } from "react";
 import type { DragStartEvent, DragEndEvent } from "@dnd-kit/core";
 import { useDragStateStore } from "@/store/dragStateStore";
@@ -208,16 +208,40 @@ export function useDragHandlers(
   const fallbackSourceRef = useRef<ActiveDragSource | null>(null);
   const fallbackHandlingRef = useRef<boolean>(false);
   const fallbackTimestampRef = useRef<number>(-1);
-  const fallbackSeqRef = useRef<number>(0);
-  const fallbackExtendShownRef = useRef<boolean>(false);
+
+  // P3-3 Sub-C (2026-04-29): pendingGroupSeq + extendLockToastShown SSOT 를
+  //   dragStateStore 로 이전하면서 hook 본체가 store-backed ref-like 를 직접 생성하도록 변경.
+  //   GameClient/GameRoom 양쪽이 동일 단조 카운터를 공유. 옵션 주입 가능 (테스트 격리용).
+  const storePendingGroupSeqRef = useMemo<MutableRefObject<number>>(
+    () => ({
+      get current() {
+        return useDragStateStore.getState().pendingGroupSeq;
+      },
+      set current(v: number) {
+        useDragStateStore.getState().setPendingGroupSeq(v);
+      },
+    }),
+    []
+  );
+  const storeExtendLockToastShownRef = useMemo<MutableRefObject<boolean>>(
+    () => ({
+      get current() {
+        return useDragStateStore.getState().extendLockToastShown;
+      },
+      set current(v: boolean) {
+        useDragStateStore.getState().setExtendLockToastShown(v);
+      },
+    }),
+    []
+  );
 
   const {
     forceNewGroup = false,
     setForceNewGroup,
     isHandlingDragEndRef = fallbackHandlingRef,
     lastDragEndTimestampRef = fallbackTimestampRef,
-    pendingGroupSeqRef = fallbackSeqRef,
-    extendLockToastShownRef = fallbackExtendShownRef,
+    pendingGroupSeqRef = storePendingGroupSeqRef,
+    extendLockToastShownRef = storeExtendLockToastShownRef,
     showExtendLockToast,
     isMyTurn,
     activeDragSourceRef = fallbackSourceRef,
