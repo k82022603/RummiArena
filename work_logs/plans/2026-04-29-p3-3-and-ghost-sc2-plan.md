@@ -125,6 +125,13 @@ P3-2 완료 시 useDragHandlers는 GameClient.handleDragEnd 행동 등가 보장
 
 #### Step 3: DndContext + sensors + DragOverlay 이전 (2시간)
 
+> **2026-04-29 첫 dispatch agent 분해 권장 (Opus 분석)**: Step 3을 3a/3b로 추가 분리.
+> - **3a**: `activeDragCode` React state → 기존 `dragStateStore.activeTile`로 통합 (setActiveDragCode 옵션 제거, GameClient/DragOverlay 모두 store 구독)
+> - **3b**: DndContext + sensors + collisionDetection + DragOverlay GameRoom 이전
+>
+> 사유: `activeDragCode`는 DragOverlay 렌더링 + GameBoard의 `isDragging`/`validMergeGroupIds` 양쪽에서 사용 → DragOverlay만 이전하면 React state 공유 문제 발생. `dragStateStore.activeTile`이 이미 존재하므로 통합 가능.
+> 또한 GameClient는 `<>...</>` Fragment 반환 + ErrorToast/ExtendLockToast/ReconnectToast 포함 → DndContext children 배치 시 토스트 위치 점검 필요.
+
 **파일**:
 - `GameRoom.tsx`: `<DndContext>...</DndContext>` 감싸서 children으로 GameClient 렌더링
   - sensors: `useSensors(useSensor(PointerSensor, { activationConstraint: ... }))`

@@ -2,6 +2,7 @@
  * "1게임 완주" 메타 E2E 시나리오
  *
  * 룰 SSOT: docs/02-design/06-game-rules.md (V-01~V-19 전수)
+ *           docs/02-design/55-game-rules-enumeration.md (V-/UR-/D-/INV-)
  * 매트릭스: docs/04-testing/81-e2e-rule-scenario-matrix.md §4 (메타)
  * 스킬 연동: .claude/skills/pre-deploy-playbook/SKILL.md Phase 2
  *
@@ -13,13 +14,25 @@
  *   - Human × 1 + Ollama (qwen2.5:3b) × 1, 2인전
  *   - 목표: 20~30턴 완주 또는 승리/교착 정상 종료
  *   - 각 턴마다 invariants 검증:
- *     (I1) pendingGroupIds 일관성 (확정 후 0)
- *     (I2) currentTableGroups 단조성 (같은 턴 drop 당 +0/+1)
- *     (I3) 랙 타일 수 = 렌더 tile 수 (drift 0)
- *     (I4) hasInitialMeld true → false 되돌아가지 않음
+ *     (I1) pendingGroupIds 일관성 (확정 후 0)        → V-13a 재배치 권한, AI 턴 경계 정리
+ *     (I2) currentTableGroups 단조성 (같은 턴 drop 당 +0/+1)  → V-06 타일 보존 보조
+ *     (I3) 랙 타일 수 = 렌더 tile 수 (drift 0)        → V-03/V-06 무결성
+ *     (I4) hasInitialMeld true → false 되돌아가지 않음 → V-04 단조성
+ *     (V-06) 보드 내 동일 코드 중복 0 (조커 제외)     → BUG-UI-GHOST 회귀 가드
+ *
+ * 스냅샷 보강 (2026-04-29 — Sprint 7 W2 후속):
+ *   - SnapshotRecorder 로 매 capture 시점 store 상태 보관 (기본 ring buffer 5)
+ *   - invariant 위반/실패 시 직전 N턴 trace 를 JSON 파일로 testInfo.outputPath 에 저장
+ *   - Playwright attachment 로 첨부되어 trace viewer 에서 직접 다운로드 가능
+ *   - test.step 으로 capture 단위를 trace viewer 에 분리 노출
+ *   - 게임 진행 로직 (테스트 대상 코드) 은 변경하지 않는다 — 헬퍼/spec 만 수정.
  *
  * 실행 (Ollama 대상 K8s 환경):
- *   npx playwright test e2e/rule-one-game-complete.spec.ts --workers=1
+ *   E2E_OLLAMA_ENABLED=1 npx playwright test e2e/rule-one-game-complete.spec.ts --workers=1
+ *
+ * 의도적 break 검증 방법 (헬퍼 자체 검증용):
+ *   - capture 결과를 강제로 duplicatedTiles 채우거나, isMyTurn 위반을 throw 시킨다.
+ *   - 실패 시 test-results/<test-name>/turn-snapshot-trace.json 이 생성됐는지 확인.
  *
  * 주의:
  *   - Ollama Pod cold start (최대 50s) → warmup 필요
@@ -27,66 +40,17 @@
  *   - 타임아웃: 25분 (Ollama 응답 5~15s × 30턴 + 여유)
  */
 
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 import { cleanupViaPage } from "./helpers/room-cleanup";
 import {
   createRoomAndStart,
   waitForGameReady,
-  waitForMyTurn,
 } from "./helpers/game-helpers";
-
-// ==================================================================
-// Invariants 수집 유틸
-// ==================================================================
-
-interface GameInvariants {
-  turnNumber: number;
-  currentSeat: number;
-  mySeat: number;
-  isMyTurn: boolean;
-  myRackCount: number;
-  hasInitialMeld: boolean;
-  pendingGroupIdsSize: number;
-  tableGroupsCount: number;
-  totalTileInstances: number;
-  duplicatedTiles: string[];
-  gameEnded: boolean;
-}
-
-async function snapshotInvariants(page: Page): Promise<GameInvariants | null> {
-  return await page.evaluate(() => {
-    const store = (window as unknown as { __gameStore?: { getState: () => Record<string, unknown> } }).__gameStore;
-    if (!store) return null;
-    const s = store.getState();
-    const gs = s.gameState as Record<string, unknown> | null;
-    if (!gs) return null;
-
-    const tiles = (s.pendingMyTiles as string[] | null) ?? (s.myTiles as string[]);
-    const pending = s.pendingTableGroups as { id: string; tiles: string[] }[] | null;
-    const groups = pending ?? ((gs.tableGroups as { id: string; tiles: string[] }[] | undefined) ?? []);
-
-    // tile 복제 감지 (V-06)
-    const counts = new Map<string, number>();
-    for (const g of groups) {
-      for (const t of g.tiles) counts.set(t, (counts.get(t) ?? 0) + 1);
-    }
-    const duplicatedTiles = Array.from(counts.entries()).filter(([, c]) => c > 1).map(([t]) => t);
-
-    return {
-      turnNumber: (gs.turnNumber as number) ?? 0,
-      currentSeat: (gs.currentSeat as number) ?? -1,
-      mySeat: (s.mySeat as number) ?? -1,
-      isMyTurn: ((gs.currentSeat as number) ?? -1) === ((s.mySeat as number) ?? -2),
-      myRackCount: tiles?.length ?? 0,
-      hasInitialMeld: (s.hasInitialMeld as boolean) ?? false,
-      pendingGroupIdsSize: (s.pendingGroupIds as Set<string>)?.size ?? 0,
-      tableGroupsCount: groups.length,
-      totalTileInstances: Array.from(counts.values()).reduce((a, b) => a + b, 0),
-      duplicatedTiles,
-      gameEnded: !!gs.gameEnded,
-    };
-  });
-}
+import {
+  SnapshotRecorder,
+  captureWithStep,
+  type TurnSnapshot,
+} from "./helpers/turnSnapshot";
 
 // ==================================================================
 // Ollama warmup (cold start 방지)
@@ -97,6 +61,53 @@ async function warmupOllama(): Promise<void> {
   // E2E 에서는 직접 fetch 호출이 불가하므로 scripts/ 에서 선행 실행 권장.
   // 본 spec 은 warmup 을 외부에 위임하고 단순 noop.
   return;
+}
+
+// ==================================================================
+// Invariant 검증 — 위반 발견 시 trace persist 후 throw
+// ==================================================================
+
+async function assertInvariants(
+  snap: TurnSnapshot,
+  recorder: SnapshotRecorder,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  testInfo: any,
+  ctx: { maxHasInitialMeldSeen: boolean }
+): Promise<void> {
+  // (I1) AI 턴인데 내 pending 이 남아있으면 턴 경계 정리 실패 (V-13a 보조)
+  if (!snap.isMyTurn && snap.pendingGroupIdsSize > 0) {
+    await recorder.persistOnFailure(
+      testInfo,
+      `[I1] AI turn but pendingGroupIds=${snap.pendingGroupIdsSize} at turn ${snap.turnNumber}`
+    );
+    throw new Error(
+      `[I1] AI turn but pendingGroupIds=${snap.pendingGroupIdsSize} at turn ${snap.turnNumber}`
+    );
+  }
+
+  // (V-06) 보드 내 동일 코드 중복 0 (조커 제외)
+  if (snap.duplicatedTiles.length > 0) {
+    await recorder.persistOnFailure(
+      testInfo,
+      `[V-06] duplicated tiles ${JSON.stringify(snap.duplicatedTiles)} at turn ${snap.turnNumber}`
+    );
+    expect(
+      snap.duplicatedTiles,
+      `[V-06] turn ${snap.turnNumber} duplicate tiles`
+    ).toEqual([]);
+  }
+
+  // (I4) hasInitialMeld 단조성 (V-04 보조)
+  if (snap.hasInitialMeld) ctx.maxHasInitialMeldSeen = true;
+  if (ctx.maxHasInitialMeldSeen && !snap.hasInitialMeld) {
+    await recorder.persistOnFailure(
+      testInfo,
+      `[I4] hasInitialMeld regressed true→false at turn ${snap.turnNumber}`
+    );
+    throw new Error(
+      `[I4] hasInitialMeld regressed true→false at turn ${snap.turnNumber}`
+    );
+  }
 }
 
 // ==================================================================
@@ -133,67 +144,124 @@ test.describe("One-Game-Complete 메타 시나리오", () => {
     });
     await waitForGameReady(page);
 
-    const snapshots: GameInvariants[] = [];
+    const recorder = new SnapshotRecorder({
+      keepLastN: 5,
+      label: "ogc-trace",
+    });
+    const ctx = { maxHasInitialMeldSeen: false };
     const maxTurns = 30;
     let consecutiveNullSnapshots = 0;
+    let loopIndex = 0;
 
-    // (I4) hasInitialMeld 단조성 추적
-    let maxHasInitialMeldSeen = false;
+    try {
+      for (let loop = 0; loop < maxTurns * 4; loop++) {
+        const snap = await captureWithStep(recorder, page, { loopIndex });
+        loopIndex++;
 
-    for (let loop = 0; loop < maxTurns * 4; loop++) {
-      const snap = await snapshotInvariants(page);
-      if (!snap) {
-        consecutiveNullSnapshots++;
-        if (consecutiveNullSnapshots > 10) break;
-        await page.waitForTimeout(500);
-        continue;
-      }
-      consecutiveNullSnapshots = 0;
-      snapshots.push(snap);
+        if (!snap) {
+          consecutiveNullSnapshots++;
+          if (consecutiveNullSnapshots > 10) break;
+          await page.waitForTimeout(500);
+          continue;
+        }
+        consecutiveNullSnapshots = 0;
 
-      // (I1) 확정 턴 전환 직후 pendingGroupIds=0 검증
-      if (!snap.isMyTurn && snap.pendingGroupIdsSize > 0) {
-        // AI 턴인데 내 pending 이 남아있음 → 턴 경계 정리 실패
-        throw new Error(`[I1] AI turn but pendingGroupIds=${snap.pendingGroupIdsSize} at turn ${snap.turnNumber}`);
-      }
+        // 매 capture 시점 invariants 검증 (위반 시 trace persist 후 throw)
+        await assertInvariants(snap, recorder, testInfo, ctx);
 
-      // (I3) 복제 타일 0 검증
-      expect(snap.duplicatedTiles, `[I3] turn ${snap.turnNumber} dup tiles`).toEqual([]);
+        if (snap.gameEnded) {
+          console.log(
+            `[OGC] Game ended at turn ${snap.turnNumber} (snapshots=${recorder.size()})`
+          );
+          break;
+        }
 
-      // (I4) hasInitialMeld 단조성
-      if (snap.hasInitialMeld) maxHasInitialMeldSeen = true;
-      if (maxHasInitialMeldSeen && !snap.hasInitialMeld) {
-        throw new Error(`[I4] hasInitialMeld regressed true→false at turn ${snap.turnNumber}`);
-      }
+        // 내 차례: 단순 드로우/패스 (Human AI 의존 없는 단순 플레이)
+        if (snap.isMyTurn && snap.turnNumber > 0) {
+          const drawBtn = page
+            .getByRole("button", { name: /드로우|패스/ })
+            .first();
+          if (
+            await drawBtn.isVisible({ timeout: 2000 }).catch(() => false)
+          ) {
+            await drawBtn.click();
+            await page.waitForTimeout(1500);
+          }
+        }
 
-      if (snap.gameEnded) {
-        console.log(`[OGC] Game ended at turn ${snap.turnNumber}`);
-        break;
-      }
+        await page.waitForTimeout(2500);
 
-      // 내 차례: 단순 드로우 후 턴 진행 (Human AI 에 의존하지 않는 단순 플레이)
-      if (snap.isMyTurn && snap.turnNumber > 0) {
-        const drawBtn = page.getByRole("button", { name: /드로우|패스/ }).first();
-        if (await drawBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
-          await drawBtn.click();
-          await page.waitForTimeout(1500);
+        // 20턴 이상 달성 시 성공 조건 완료
+        if (snap.turnNumber >= 20) {
+          console.log(
+            `[OGC] Reached turn ${snap.turnNumber}, breaking. Snapshots=${recorder.size()}`
+          );
+          break;
         }
       }
 
-      await page.waitForTimeout(2500);
+      // 메타 검증: 최소 20턴 달성 or 게임 종료
+      const all = recorder.all();
+      const lastSnap = all[all.length - 1];
+      expect(lastSnap, "최소 1개 이상의 snapshot 필요").toBeDefined();
 
-      // 20턴 이상 달성 시 성공 조건 완료
-      if (snap.turnNumber >= 20) {
-        console.log(`[OGC] Reached turn ${snap.turnNumber}, breaking`);
-        break;
+      const reachedTurns = recorder.maxTurnReached();
+      console.log(
+        `[OGC] Reached ${reachedTurns} turns. Ended=${lastSnap!.gameEnded}. Snapshots=${recorder.size()}`
+      );
+
+      if (!(reachedTurns >= 20 || lastSnap!.gameEnded)) {
+        await recorder.persistOnFailure(
+          testInfo,
+          `[META] Did not reach 20 turns and game not ended (reached=${reachedTurns})`
+        );
       }
+      expect(reachedTurns >= 20 || lastSnap!.gameEnded).toBe(true);
+    } catch (err) {
+      // assertInvariants 가 이미 trace persist 했어도, 그 외 경로(타임아웃/expect 실패)
+      // 도 trace 를 남기도록 fallback 호출.
+      await recorder
+        .persistOnFailure(
+          testInfo,
+          `unhandled failure: ${err instanceof Error ? err.message : String(err)}`
+        )
+        .catch(() => {
+          /* attachment 실패는 swallow */
+        });
+      throw err;
     }
+  });
+});
 
-    // 메타 검증: 최소 20턴 달성 or 게임 종료
-    const lastSnap = snapshots[snapshots.length - 1];
-    expect(lastSnap).toBeDefined();
-    const reachedTurns = lastSnap!.turnNumber;
-    console.log(`[OGC] Reached ${reachedTurns} turns. Ended=${lastSnap!.gameEnded}. Snapshots=${snapshots.length}`);
-    expect(reachedTurns >= 20 || lastSnap!.gameEnded).toBe(true);
+// ==================================================================
+// 헬퍼 자체 검증 (lightweight, store fixture only — Ollama 불필요)
+//
+// SnapshotRecorder.lastAction 추론 로직과 trace persist 동작을 검증한다.
+// 본 spec 은 항상 실행되며 OGC 메인 시나리오의 skip 영향을 받지 않는다.
+// ==================================================================
+
+test.describe("OGC 보조: SnapshotRecorder 헬퍼 동작 검증", () => {
+  test("lastAction 추론 + trace persist 정상 동작", async ({ page }, testInfo) => {
+    // 단순 lobby 페이지 로드 — 게임은 시작하지 않는다.
+    await page.goto("/lobby").catch(() => {
+      /* 인증 실패해도 무관 */
+    });
+
+    // store 가 노출되지 않은 상태 (lobby) → capture 는 null 반환
+    const recorder = new SnapshotRecorder({
+      keepLastN: 3,
+      label: "helper-self-check",
+    });
+
+    const nullSnap = await recorder.capture(page, { loopIndex: 0 });
+    expect(nullSnap, "store 미노출 lobby 에서는 null").toBeNull();
+    expect(recorder.size()).toBe(0);
+
+    // attachment 동작: persistOnFailure 는 빈 buffer 라도 JSON 을 첨부해야 한다.
+    await recorder.persistOnFailure(testInfo, "self-check empty buffer");
+    const attachments = testInfo.attachments.filter((a) =>
+      a.name.includes("helper-self-check")
+    );
+    expect(attachments.length).toBeGreaterThanOrEqual(1);
   });
 });
