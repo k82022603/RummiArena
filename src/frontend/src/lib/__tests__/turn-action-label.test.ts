@@ -24,8 +24,16 @@ describe("getTurnActionLabel — 서버 enum → 한국어 변환", () => {
     expect(getTurnActionLabel("FORFEIT")).toBe("기권");
   });
 
-  it("PLACE → 배치", () => {
-    expect(getTurnActionLabel("PLACE")).toBe("배치");
+  it("PLACE → 타일 배치", () => {
+    expect(getTurnActionLabel("PLACE")).toBe("타일 배치");
+  });
+
+  it("PLACE_TILES → 타일 배치 (Human 확정 서버 enum)", () => {
+    expect(getTurnActionLabel("PLACE_TILES")).toBe("타일 배치");
+  });
+
+  it("place_tiles → 타일 배치 (소문자 변형)", () => {
+    expect(getTurnActionLabel("place_tiles")).toBe("타일 배치");
   });
 
   // 대소문자 정규화 (toUpperCase) 검증
@@ -48,15 +56,15 @@ describe("getTurnActionLabel — 서버 enum → 한국어 변환", () => {
   });
 
   // 알 수 없는 값: 언더스코어 → 공백, 소문자 변환
-  it("알 수 없는 UNKNOWN_ACTION → 언더스코어 공백·소문자 치환", () => {
-    expect(getTurnActionLabel("UNKNOWN_ACTION")).toBe("unknown action");
+  it("알 수 없는 UNKNOWN_ACTION → 행동 (한글 fallback)", () => {
+    expect(getTurnActionLabel("UNKNOWN_ACTION")).toBe("행동");
   });
 
-  it("알 수 없는 빈 문자열 → 빈 문자열 반환", () => {
-    expect(getTurnActionLabel("")).toBe("");
+  it("알 수 없는 빈 문자열 → 행동 반환", () => {
+    expect(getTurnActionLabel("")).toBe("행동");
   });
 
-  it("알 수 없는 단일 단어 → 소문자 반환", () => {
-    expect(getTurnActionLabel("SKIP")).toBe("skip");
+  it("알 수 없는 단일 단어 → 행동 반환", () => {
+    expect(getTurnActionLabel("SKIP")).toBe("행동");
   });
 });

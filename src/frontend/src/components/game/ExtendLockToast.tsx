@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 
 const TOAST_DURATION_MS = 4000;
@@ -28,15 +28,18 @@ export interface ExtendLockToastProps {
  *   - 에러가 아닌 규칙 안내이므로 assertive 대신 polite 사용
  */
 export default function ExtendLockToast({ visible, onDismiss }: ExtendLockToastProps) {
+  const onDismissRef = useRef(onDismiss);
+  onDismissRef.current = onDismiss;
+
   useEffect(() => {
     if (!visible) return;
 
     const timer = setTimeout(() => {
-      onDismiss?.();
+      onDismissRef.current?.();
     }, TOAST_DURATION_MS);
 
     return () => clearTimeout(timer);
-  }, [visible, onDismiss]);
+  }, [visible]);
 
   return (
     <AnimatePresence>

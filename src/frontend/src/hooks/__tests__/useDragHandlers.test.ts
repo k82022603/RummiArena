@@ -85,7 +85,7 @@ function makeDragEndEvent(overrides: {
 
 beforeEach(() => {
   act(() => {
-    usePendingStore.getState().reset();
+    usePendingStore.setState({ draft: null });
     useTurnStateStore.getState().reset();
     useDragStateStore.getState().clearActive();
     useGameStore.setState({

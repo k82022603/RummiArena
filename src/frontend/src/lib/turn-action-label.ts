@@ -17,10 +17,10 @@ export function getTurnActionLabel(action: string): string {
       return "강제 드로우 (유효하지 않은 조합 반복)";
     case "FORFEIT":
       return "기권";
+    case "PLACE_TILES":
     case "PLACE":
-      return "배치";
+      return "타일 배치";
     default:
-      // 알 수 없는 값은 언더스코어를 공백으로 바꾸고 소문자로 표시
-      return action.replace(/_/g, " ").toLowerCase();
+      return "행동";
   }
 }

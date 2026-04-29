@@ -52,7 +52,7 @@ function makeDragOutput(
 
 beforeEach(() => {
   act(() => {
-    usePendingStore.getState().reset();
+    usePendingStore.setState({ draft: null });
   });
 });
 
@@ -65,14 +65,19 @@ describe("초기 상태", () => {
     expect(getStore().draft).toBeNull();
   });
 
-  it("reset 후 draft null 복귀", () => {
+  it("reset 후 turnStartTableGroups 로 복원", () => {
     act(() => {
       usePendingStore.getState().saveTurnStartSnapshot(["R7a"], []);
     });
     act(() => {
       usePendingStore.getState().reset();
     });
-    expect(getStore().draft).toBeNull();
+    const draft = getStore().draft;
+    expect(draft).not.toBeNull();
+    expect(draft!.groups).toEqual([]);
+    expect(draft!.myTiles).toEqual(["R7a"]);
+    expect(draft!.pendingGroupIds.size).toBe(0);
+    expect(draft!.recoveredJokers).toEqual([]);
   });
 });
 

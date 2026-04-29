@@ -2,7 +2,7 @@
 
 import React, { memo } from "react";
 import { motion } from "framer-motion";
-import { useTurnTimer } from "@/hooks/useTurnTimer";
+import { useGameStore } from "@/store/gameStore";
 
 interface TurnTimerProps {
   /** 전체 턴 타임아웃(초) - 프로그레스바 계산용 */
@@ -20,7 +20,16 @@ const TurnTimer = memo(function TurnTimer({
   totalSec,
   className = "",
 }: TurnTimerProps) {
-  const { seconds, isWarning, isDanger, isAITurn, elapsedSec } = useTurnTimer();
+  const remainingMs = useGameStore((s) => s.remainingMs);
+  const isAITurnRaw = useGameStore((s) => s.isAITurn);
+  const aiThinkingSeat = useGameStore((s) => s.aiThinkingSeat);
+  const aiElapsedMs = useGameStore((s) => s.aiElapsedMs);
+
+  const isAITurn = isAITurnRaw || aiThinkingSeat !== null;
+  const seconds = Math.ceil(remainingMs / 1000);
+  const isWarning = !isAITurn && seconds <= 10 && seconds > 0;
+  const isDanger = !isAITurn && seconds <= 5 && seconds > 0;
+  const elapsedSec = Math.floor(aiElapsedMs / 1000);
 
   // AI 턴: 프로그레스 바 100% 고정, 정상 색상 유지
   if (isAITurn) {

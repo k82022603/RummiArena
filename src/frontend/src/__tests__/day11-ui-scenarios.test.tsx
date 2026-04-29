@@ -359,13 +359,13 @@ describe("S-12 · Y5-Y6-Y7 valid-run", () => {
 describe("S-13 · pendingStore.draft.myTiles 변경 시 selectMyTileCount 동기화", () => {
   beforeEach(() => {
     useGameStore.getState().reset();
-    usePendingStore.getState().reset();
+    usePendingStore.setState({ draft: null });
   });
 
   // pendingStore.draft 직접 주입 헬퍼
   const setDraftMyTiles = (myTiles: TileCode[] | null) => {
     if (myTiles === null) {
-      usePendingStore.getState().reset();
+      usePendingStore.setState({ draft: null });
     } else {
       usePendingStore.setState({
         draft: {

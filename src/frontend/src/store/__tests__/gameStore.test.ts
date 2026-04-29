@@ -18,9 +18,8 @@ import type { TileCode } from "@/types/tile";
 
 describe("selectMyTileCount selector", () => {
   beforeEach(() => {
-    // 각 테스트마다 두 store 모두 초기화
     useGameStore.getState().reset();
-    usePendingStore.getState().reset();
+    usePendingStore.setState({ draft: null });
   });
 
   it("기본 상태 (mySeat=-1, players 비어있음) 은 0 반환", () => {
@@ -146,8 +145,7 @@ describe("selectMyTileCount selector", () => {
     }));
     expect(selectMyTileCount(useGameStore.getState())).toBe(4);
 
-    // 확정으로 pending 초기화 (서버 응답으로 tileCount=10 으로 감소)
-    usePendingStore.getState().reset();
+    usePendingStore.setState({ draft: null });
     useGameStore.setState({
       players: [
         { seat: 0, type: "HUMAN", tileCount: 10 },
@@ -172,7 +170,7 @@ describe("selectMyTileCount selector", () => {
 describe("G-4 tileCount drift 회귀 시나리오", () => {
   beforeEach(() => {
     useGameStore.getState().reset();
-    usePendingStore.getState().reset();
+    usePendingStore.setState({ draft: null });
   });
 
   it("board→rack 되돌리기 후 draft.myTiles 증가가 selector에 반영된다", () => {
@@ -254,8 +252,7 @@ describe("G-4 tileCount drift 회귀 시나리오", () => {
     /* eslint-enable @typescript-eslint/no-explicit-any */
     expect(selectMyTileCount(useGameStore.getState())).toBe(3); // pending 우선
 
-    // pendingStore.reset() 호출 (TURN_START 수신 시 호출됨)
-    usePendingStore.getState().reset();
-    expect(selectMyTileCount(useGameStore.getState())).toBe(11); // 서버 기준 복귀
+    usePendingStore.setState({ draft: null });
+    expect(selectMyTileCount(useGameStore.getState())).toBe(11);
   });
 });

@@ -372,7 +372,7 @@ docs/
 
 ## 현재 진행 상황
 
-**Sprint 7 Day 3 (Day 14) UI 트리아지 + 게임룰 E2E 시나리오 + 이월 F1~F5 수정** (2026-04-24) — "아침 11명 반성 → 오후 실행에서 기본 실수 4건 반복 → 저녁 마감에서 구체 행동 1가지 단위 재정렬"
+**Sprint 7 W2 최종 마감** (2026-04-29) — 사용자 실측 9건 RCA + 수정 5건 + K8s 배포. Jest 638 PASS. Sprint 8 없음 결정.
 
 ### Sprint 7 Day 3 (Day 14) 성과 — PR 14건 머지 (#70~#83)
 - **BUG-UI 수정 7건**: #70 (009/010 멜드 복제+drag stuck), #76 (EXT/GHOST 근본 — useMemo stale + pendingGroupIds atomic), #77 (014 invalid meld final validation + ROLLBACK_FORCED), #78 (011/013 + UX-004), #81 (F1~F5 통합)
@@ -457,6 +457,14 @@ docs/
 - **부록**: frontend-dev-opus 에이전트 영구 등록 (`89a08e6`). 페어코딩 문서 `docs/02-design/65-opus-pair-coding-2026-04-28.md`
 - **검증**: Jest 634 PASS / Go 신규 회귀 0건 / E2E rule 9-2-3 (베이스라인 동등, GO 판정)
 - **배포**: frontend `day7-1f53481`, game-server `day7-1f53481`
+
+### Sprint 7 W2 최종 — 사용자 실측 P0 9건 처리 (2026-04-29 저녁)
+- 사용자가 실측 플레이테스트에서 9건 스크린샷 보고
+- **코드 버그 5건 수정**: 보드 소실(pendingStore.reset), 타이머 이중(TurnTimer useTurnTimer), 조커 자동그룹(shouldCreateNewGroup 2차 검증), i18n leak(PLACE_TILES), 팝업 잔존(ExtendLockToast onDismiss ref)
+- **비버그 4건**: Banner=#9 동일, 버튼=#5 정상(다른 플레이어 차례), AI 타이머=#2 증상, extend=#8 MAX_GROUP_SIZE
+- **검증**: Jest 638 PASS / 0 FAIL, TypeScript 0 errors
+- **배포**: `rummikub-frontend:p0fix-2c19601`
+- **Sprint 8 없음 결정**
 
 ---
 

@@ -927,7 +927,12 @@ export function useDragHandlers(
             return false;
           })();
 
-          if (lastPendingGroup && !shouldCreateNewGroup) {
+          const effectiveShouldCreate = shouldCreateNewGroup
+            && lastPendingGroup
+            ? !isCompatibleWithGroup(tileCode, lastPendingGroup)
+            : shouldCreateNewGroup;
+
+          if (lastPendingGroup && !effectiveShouldCreate) {
             const updatedTiles = [...lastPendingGroup.tiles, tileCode];
             const nextTableGroups = freshTableGroups.map((g) =>
               g.id === lastPendingGroup.id

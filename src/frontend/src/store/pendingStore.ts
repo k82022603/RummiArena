@@ -163,7 +163,19 @@ export const usePendingStore = create<PendingStore>()((set, get) => ({
   },
 
   reset() {
-    set({ draft: null });
+    set((state) => {
+      const prev = state.draft;
+      if (prev === null) return { draft: null };
+      return {
+        draft: {
+          ...prev,
+          groups: prev.turnStartTableGroups,
+          pendingGroupIds: new Set<string>(),
+          myTiles: prev.turnStartRack,
+          recoveredJokers: [],
+        },
+      };
+    });
   },
 
   rollbackToServerSnapshot() {
