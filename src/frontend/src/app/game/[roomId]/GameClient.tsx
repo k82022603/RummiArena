@@ -25,9 +25,7 @@ import PlayerCard from "@/components/game/PlayerCard";
 import ActionBar from "@/components/game/ActionBar";
 import TurnTimer from "@/components/game/TurnTimer";
 import ConnectionStatus from "@/components/game/ConnectionStatus";
-import ErrorToast from "@/components/game/ErrorToast";
-import ReconnectToast from "@/components/game/ReconnectToast";
-import ExtendLockToast from "@/components/game/ExtendLockToast";
+// P3-3 Sub-D (2026-04-29): ErrorToast / ReconnectToast / ExtendLockToast 는 GameRoom 마운트.
 import InitialMeldBanner from "@/components/game/InitialMeldBanner";
 import ThrottleBadge from "@/components/game/ThrottleBadge";
 import TurnHistoryPanel from "@/components/game/TurnHistoryPanel";
@@ -427,11 +425,9 @@ export default function GameClient({ roomId }: GameClientProps) {
   const forceNewGroup = useDragStateStore((s) => s.forceNewGroup);
   const setForceNewGroup = useDragStateStore((s) => s.setForceNewGroup);
 
-  // UX-004: ExtendLockToast 표시 상태
-  // P3-3 Step 3a (2026-04-29): showExtendLockToast 를 dragStateStore 로 흡수.
-  // P3-3 Sub-C (2026-04-29): extendLockToastShownRef 는 hook 본체로 이전.
-  const showExtendLockToast = useDragStateStore((s) => s.showExtendLockToast);
-  const setShowExtendLockToast = useDragStateStore((s) => s.setShowExtendLockToast);
+  // UX-004: ExtendLockToast 상태는 dragStateStore 가 관리.
+  // P3-3 Sub-D (2026-04-29): GameRoom 이 직접 구독하므로 GameClient subscription 제거.
+  //   handleUndo 에서만 setExtendLockToastShown(false) / setShowExtendLockToast(false) 호출.
 
   // ------------------------------------------------------------------
   // Task 1: beforeunload + 라우터 가드
@@ -758,9 +754,9 @@ export default function GameClient({ roomId }: GameClientProps) {
     setForceNewGroup(false);
     setInvalidPendingGroupIds(new Set());
     // UX-004: 되돌리기 시 ExtendLockToast 1회 표시 카운터도 초기화 (다음 드롭 시 재안내)
-    // P3-3 Sub-C: extendLockToastShown 도 dragStateStore 에서 직접 관리.
+    // P3-3 Sub-C/D: extendLockToastShown / showExtendLockToast 모두 dragStateStore 직접 호출.
     useDragStateStore.getState().setExtendLockToastShown(false);
-    setShowExtendLockToast(false);
+    useDragStateStore.getState().setShowExtendLockToast(false);
   }, [send]);
 
   // 드로우
@@ -829,16 +825,9 @@ export default function GameClient({ roomId }: GameClientProps) {
 
   return (
     <>
-      <ErrorToast />
-      {/* UX-004: ExtendLockToast — top-24, ReconnectToast 아래 (top-32로 하향) */}
-      <ExtendLockToast
-        visible={showExtendLockToast}
-        onDismiss={() => setShowExtendLockToast(false)}
-      />
-      <ReconnectToast />
-      {/* RateLimitToast는 layout.tsx에서 전역 마운트 */}
-      {/* P3-3 Sub-C (2026-04-29): DndContext / DragOverlay / sensors / collisionDetection 어셈블리는
-          GameRoom 으로 이전 완료. 여기는 grid 컨테이너만 렌더한다. */}
+      {/* P3-3 Sub-D (2026-04-29): ErrorToast / ExtendLockToast / ReconnectToast 를
+          GameRoom 으로 이전 (DndContext 외부 sibling). 모두 store 구독이라 props 불필요.
+          관심사 분리: GameClient = 게임 grid + UI, GameRoom = 합성 루트 + 글로벌 알림. */}
       <div className="h-screen bg-app-bg flex flex-col overflow-hidden">
         <ConnectionStatus />
 

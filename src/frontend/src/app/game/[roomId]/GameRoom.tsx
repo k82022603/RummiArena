@@ -58,6 +58,9 @@ import { pointerWithinThenClosest } from "@/lib/dndCollision";
 // L1 컴포넌트
 import GameClient from "./GameClient";
 import Tile from "@/components/tile/Tile";
+import ErrorToast from "@/components/game/ErrorToast";
+import ReconnectToast from "@/components/game/ReconnectToast";
+import ExtendLockToast from "@/components/game/ExtendLockToast";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -121,6 +124,7 @@ export default function GameRoom({ roomId }: GameRoomProps) {
   // store 기반 상태 — GameClient 와 동일 zustand snapshot 구독
   const forceNewGroup = useDragStateStore((s) => s.forceNewGroup);
   const setForceNewGroup = useDragStateStore((s) => s.setForceNewGroup);
+  const showExtendLockToast = useDragStateStore((s) => s.showExtendLockToast);
   const setShowExtendLockToast = useDragStateStore((s) => s.setShowExtendLockToast);
 
   // P3-2 행동 등가: 9개 분기 + BUG-UI-009/010/EXT guard + UX-004 toast
@@ -138,39 +142,53 @@ export default function GameRoom({ roomId }: GameRoomProps) {
   const activeDragCode = useDragStateStore((s) => s.activeTile);
 
   // ---------------------------------------------------------------------------
-  // 렌더 — DndContext 가 GameClient 를 감싼다
+  // 렌더
+  //   - 토스트는 DndContext 외부 sibling (P3-3 Sub-D 관심사 분리).
+  //   - DndContext 가 GameClient 를 감싸고 DragOverlay 는 children.
   // ---------------------------------------------------------------------------
   return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={pointerWithinThenClosest}
-      onDragStart={handleDragStart}
-      onDragEnd={handleDragEnd}
-      onDragCancel={handleDragCancel}
-    >
-      <GameClient roomId={roomId} />
-      {/* 드래그 오버레이: 커서를 따라다니는 타일 (scale 1.1 + 그림자 강화 + grabbing 커서) */}
-      <DragOverlay dropAnimation={null}>
-        {activeDragCode ? (
-          <motion.div
-            initial={{ scale: 1.0, rotate: 0, opacity: 0.85 }}
-            animate={{ scale: 1.12, rotate: -3, opacity: 1 }}
-            transition={{ type: "spring", stiffness: 500, damping: 20 }}
-            style={{
-              cursor: "grabbing",
-              filter:
-                "drop-shadow(0 10px 20px rgba(0,0,0,0.55)) drop-shadow(0 2px 6px rgba(0,0,0,0.35))",
-            }}
-          >
-            <Tile
-              code={activeDragCode}
-              size="rack"
-              draggable
-              aria-label={`${activeDragCode} 타일 드래그 중`}
-            />
-          </motion.div>
-        ) : null}
-      </DragOverlay>
-    </DndContext>
+    <>
+      {/* 글로벌 알림 — DndContext 외부 sibling (관심사 분리, store 구독) */}
+      <ErrorToast />
+      {/* UX-004: ExtendLockToast — top-24, ReconnectToast 아래 (top-32로 하향) */}
+      <ExtendLockToast
+        visible={showExtendLockToast}
+        onDismiss={() => setShowExtendLockToast(false)}
+      />
+      <ReconnectToast />
+      {/* RateLimitToast 는 layout.tsx 에서 전역 마운트 */}
+
+      <DndContext
+        sensors={sensors}
+        collisionDetection={pointerWithinThenClosest}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
+      >
+        <GameClient roomId={roomId} />
+        {/* 드래그 오버레이: 커서를 따라다니는 타일 (scale 1.1 + 그림자 강화 + grabbing 커서) */}
+        <DragOverlay dropAnimation={null}>
+          {activeDragCode ? (
+            <motion.div
+              initial={{ scale: 1.0, rotate: 0, opacity: 0.85 }}
+              animate={{ scale: 1.12, rotate: -3, opacity: 1 }}
+              transition={{ type: "spring", stiffness: 500, damping: 20 }}
+              style={{
+                cursor: "grabbing",
+                filter:
+                  "drop-shadow(0 10px 20px rgba(0,0,0,0.55)) drop-shadow(0 2px 6px rgba(0,0,0,0.35))",
+              }}
+            >
+              <Tile
+                code={activeDragCode}
+                size="rack"
+                draggable
+                aria-label={`${activeDragCode} 타일 드래그 중`}
+              />
+            </motion.div>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
+    </>
   );
 }
