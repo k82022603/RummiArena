@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 
@@ -782,6 +783,64 @@ func TestLeaveRoom_AllowsWaitingStatus(t *testing.T) {
 		}
 	}
 	assert.False(t, found, "퇴장한 게스트는 Players 목록에서 제거돼야 한다")
+}
+
+// ============================================================
+// A-2: StartGame 빈 슬롯 차단 테스트
+// ============================================================
+
+// TestStartGame_RejectIfEmptySlotsRemain
+// 4인 방에 2명만 있을 때 StartGame을 시도하면 EMPTY_SLOTS_REMAINING(400)을 반환한다.
+func TestStartGame_RejectIfEmptySlotsRemain(t *testing.T) {
+	svc := newRoomService(t)
+
+	// 4인 방 생성 (호스트만 존재, 나머지 3 슬롯 비어 있음)
+	room, err := svc.CreateRoom(&CreateRoomRequest{
+		Name:           "빈슬롯 테스트 방",
+		PlayerCount:    4,
+		TurnTimeoutSec: 60,
+		HostUserID:     "host-empty-slot",
+	})
+	require.NoError(t, err)
+
+	// 게스트 1명만 추가 → 2명 / 4슬롯 (빈 슬롯 2개 남음)
+	err = svc.JoinRoom(room.ID, "guest-empty-slot", "게스트1")
+	require.NoError(t, err)
+
+	// StartGame 시도 → EMPTY_SLOTS_REMAINING 에러
+	_, err = svc.StartGame(room.ID, "host-empty-slot")
+	require.Error(t, err, "빈 슬롯이 있을 때 StartGame은 에러를 반환해야 한다")
+	se, ok := IsServiceError(err)
+	require.True(t, ok, "ServiceError 타입이어야 한다")
+	assert.Equal(t, "EMPTY_SLOTS_REMAINING", se.Code)
+	assert.Equal(t, 400, se.Status)
+	assert.Contains(t, se.Message, "2/4", "메시지에 현재/최대 인원 포함")
+}
+
+// TestStartGame_SucceedWhenAllSlotsFilled
+// 4인 방에 4명이 모두 있을 때 StartGame이 정상 시작된다 (회귀 방지).
+func TestStartGame_SucceedWhenAllSlotsFilled(t *testing.T) {
+	svc := newRoomService(t)
+
+	// 4인 방 생성
+	room, err := svc.CreateRoom(&CreateRoomRequest{
+		Name:           "풀방 테스트",
+		PlayerCount:    4,
+		TurnTimeoutSec: 60,
+		HostUserID:     "host-full-room",
+	})
+	require.NoError(t, err)
+
+	// 나머지 3명 참가 → 4/4 풀방
+	for i := 1; i <= 3; i++ {
+		err = svc.JoinRoom(room.ID, fmt.Sprintf("guest-full-%d", i), fmt.Sprintf("게스트%d", i))
+		require.NoError(t, err)
+	}
+
+	// StartGame → 성공
+	gameState, err := svc.StartGame(room.ID, "host-full-room")
+	require.NoError(t, err, "4인 풀방에서 StartGame은 성공해야 한다")
+	require.NotNil(t, gameState)
 }
 
 // TestCheckDuplicateRoom_StillWorksOnWaiting

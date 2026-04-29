@@ -388,6 +388,15 @@ func (s *roomService) StartGame(roomID, hostUserID string) (*model.GameStateRedi
 		return nil, &ServiceError{Code: "NOT_ENOUGH_PLAYERS", Message: "게임 시작에는 최소 2명이 필요합니다.", Status: 400}
 	}
 
+	// 빈 슬롯 차단: 모든 슬롯이 채워져야만 게임을 시작할 수 있다 (A-2 방어 코드)
+	if len(activePlayers) < room.MaxPlayers {
+		return nil, &ServiceError{
+			Code:    "EMPTY_SLOTS_REMAINING",
+			Message: fmt.Sprintf("빈 슬롯이 있어 시작할 수 없습니다 (%d/%d)", len(activePlayers), room.MaxPlayers),
+			Status:  400,
+		}
+	}
+
 	// gameService를 통해 게임 생성
 	gameID := uuid.New().String()
 	gameState, err := s.gameState.newGame(gameID, activePlayers, room.TurnTimeoutSec)

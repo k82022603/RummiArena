@@ -254,8 +254,10 @@ export default function WaitingRoomClient({
   // 내가 호스트인지 확인 (hostUserId 비교만 사용. mySeat 초기값 0에 의한 오판 방지)
   const isHost = room?.hostUserId === session?.user?.id;
 
-  // 최소 2명 충족 여부
-  const canStart = (room?.playerCount ?? 0) >= 2;
+  // 방 정원을 모두 채워야 시작 가능 (빈 슬롯 차단)
+  const requiredPlayers = room?.settings?.playerCount ?? 0;
+  const currentPlayers = room?.playerCount ?? 0;
+  const canStart = currentPlayers >= requiredPlayers && requiredPlayers > 0;
 
   // 4개 Seat 슬롯 생성
   const seats = room
@@ -440,7 +442,7 @@ export default function WaitingRoomClient({
               aria-label={
                 canStart
                   ? "게임 시작"
-                  : "최소 2명이 참가해야 시작할 수 있습니다"
+                  : `빈 슬롯이 있어 시작할 수 없습니다 (현재 ${currentPlayers}/${requiredPlayers}명)`
               }
             >
               {isStarting ? (
@@ -460,7 +462,7 @@ export default function WaitingRoomClient({
               ) : canStart ? (
                 "게임 시작"
               ) : (
-                "대기 중... (최소 2명 필요)"
+                `빈 슬롯이 있어 시작할 수 없습니다 (현재 ${currentPlayers}/${requiredPlayers}명)`
               )}
             </motion.button>
           )}
