@@ -423,7 +423,24 @@ docs/
 - effort: high ADR (에이전트 6개 effort 설정)
 - DeepSeek V4 변경 계획서 (`docs/02-design/63`)
 - K8s 배포 `g-e-2442913`, pre-deploy-playbook CONDITIONAL GO
-- **다음**: DeepSeek V4 Stage 1~3 실행 + V04 E2E 잔존 해소
+
+### Sprint 7 W2 마라톤 마감 — 이슈 7건 + 기술부채 P0~P3-2 (2026-04-28~29)
+- **플레이테스트 이슈 7건 (I1~I7)**: 타이머 동기화, AI 턴 표시, 진행 중 방 참가, 조커 런, 타이머 race, 상단 빈 공간 유지, 401 에러 — 모두 수정/배포
+- **UI State 아키텍처 통합 (P0~P3-2)**:
+  - P0: useTurnActions SSOT 전환 (드로우/확정 버튼 복구)
+  - P1: GameRoom void hook 정리
+  - P2a: handleDragEnd 9개 분기 dual-write
+  - P2b Phase B/C1/C2/C3/C4: useTurnActions를 pendingStore.draft 기반 + gameStore deprecated 13개 필드 완전 제거 (38개 파일 영향)
+  - P3-2: useDragHandlers 행동 등가 확장 (1064줄, BUG-UI-009/010/EXT guard + UI 부수효과)
+- **게임룰 SSOT 등록**: V-20 (패널티 정책), V-21 (Mid-Game 진입자), UR-37~40 (PRE_MELD 드롭/RESET vs Rollback/mid-game 안내/패널티 토스트). 룰 카운트 71 → 77.
+- **패널티 B안 적용**: Human=3장+턴 종료, AI=1장+턴 종료
+- **myRack race 핫픽스**: pre-deploy-playbook 1차 NO-GO에서 발견 → useGameSync 빈 스냅샷 차단 + setState 순서 변경. 자동화가 사용자 사고를 막은 결정적 사례.
+- **E2E fixture pendingStore 전환**: setPendingDraft 헬퍼 + 3개 spec 마이그레이션
+- **페어코딩 도입**: frontend-dev-opus (Opus 4.7) 신규 합류
+- **UI 아키텍처 통합 문서**: `docs/02-design/64-ui-state-architecture-2026-04-28.md` (Mermaid 7개 + Hook 매트릭스)
+- **검증**: Jest 614 PASS / Go 770 PASS / AI Adapter 606 PASS / E2E rule 9 PASS / 3 FAIL / 3 SKIP — **CONDITIONAL GO**
+- K8s 배포: frontend `day6-364e271`, game-server `day5-8dc0999`, ai-adapter `day5-f1969f0`
+- **다음**: P3-3 DndContext 이전, GHOST-SC2 fixture 회귀 RCA, 1게임 완주 spec 보강, deepseek-reasoner 비교 (5/5 할인 종료 전)
 
 ---
 
