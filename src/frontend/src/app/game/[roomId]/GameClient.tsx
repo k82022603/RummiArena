@@ -7,6 +7,7 @@ import {
   useTurnActions,
 } from "@/hooks/useTurnActions";
 import { useDragHandlers } from "@/hooks/useDragHandlers";
+import { useIsMyTurn } from "@/hooks/useIsMyTurn";
 import {
   DndContext,
   DragOverlay,
@@ -364,7 +365,7 @@ export default function GameClient({ roomId }: GameClientProps) {
     // handleDragEnd/handleUndo는 pendingStore.applyMutation/reset() 으로 single-write 전환됨.
     aiThinkingSeat,
     turnNumber,
-    currentPlayerId,
+    // P3-3 Sub-B: currentPlayerId 는 useIsMyTurn() hook 내부 구독으로 이전.
     setMyTiles,
     gameEnded,
     gameOverResult,
@@ -567,20 +568,11 @@ export default function GameClient({ roomId }: GameClientProps) {
   const effectiveMySeat = mySeat !== -1 ? mySeat : roomMySeat;
 
   // BUG-UI-011: isMyTurn SSOT 강제
-  // currentPlayerId(E2E 테스트 브리지 주입 포함)가 설정된 경우:
-  //   내 seat의 userId와 currentPlayerId를 비교해 턴 여부를 결정한다.
-  // currentPlayerId가 null이면 gameState.currentSeat 기반으로 계산 (프로덕션 기본 경로).
-  const isMyTurn = (() => {
-    if (currentPlayerId !== null) {
-      const myPlayer = players.find((p) => p.seat === effectiveMySeat);
-      if (myPlayer && "userId" in myPlayer) {
-        return (myPlayer as { userId: string }).userId === currentPlayerId;
-      }
-      // myPlayer에 userId가 없으면 AI 플레이어이므로 currentPlayerId 비교 불가 → false
-      return false;
-    }
-    return gameState?.currentSeat === effectiveMySeat;
-  })();
+  // P3-3 Sub-B (2026-04-29): useIsMyTurn() hook 으로 추출 (B2 — derived selector).
+  //   GameRoom 이 DndContext 를 소유(Sub-C)하며 useDragHandlers 옵션 (isMyTurn) 으로
+  //   동일 값을 주입해야 하므로 양쪽이 동일 store snapshot 을 구독하도록 단일화.
+  //   currentPlayerId / players / mySeat / roomMySeat / gameState.currentSeat 통합.
+  const isMyTurn = useIsMyTurn();
 
   // Phase C 단계 2: pendingStore.draft 파생값 사용. gameStore.pendingTableGroups 의존성 제거.
   const currentTableGroups = useMemo(
