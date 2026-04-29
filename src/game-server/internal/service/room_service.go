@@ -239,20 +239,19 @@ func (s *roomService) ListRooms() ([]*model.RoomState, error) {
 }
 
 // JoinRoom 빈 seat에 userId 플레이어를 배정한다.
-// WAITING 상태뿐 아니라 PLAYING 상태에서도 빈 seat(status=EMPTY)이 있으면 참가를 허용한다.
-// 이미 참여한 경우, 방이 꽉 찼을 경우, FINISHED/CANCELLED 상태이면 에러를 반환한다.
+// WAITING 상태에서만 참가를 허용한다.
+// 이미 참여한 경우, 방이 꽉 찼을 경우, 게임이 시작된 경우 에러를 반환한다.
 func (s *roomService) JoinRoom(roomID, userID, displayName string) error {
 	room, err := s.roomRepo.GetRoom(roomID)
 	if err != nil {
 		return &ServiceError{Code: "NOT_FOUND", Message: errMsgRoomNotFound, Status: 404}
 	}
 
-	// FINISHED/CANCELLED 상태는 참가 불가
-	if room.Status == model.RoomStatusFinished || room.Status == model.RoomStatusCancelled {
-		return &ServiceError{Code: "GAME_ALREADY_STARTED", Message: "이미 종료된 방에는 참가할 수 없습니다.", Status: 409}
+	if room.Status != model.RoomStatusWaiting {
+		return &ServiceError{Code: "GAME_ALREADY_STARTED", Message: "이미 시작된 게임에는 참가할 수 없습니다.", Status: 409}
 	}
 
-	// 이미 이 방에 참여 중인지 확인
+	// 이미 참여 중인지 확인
 	for _, p := range room.Players {
 		if p.UserID == userID {
 			return &ServiceError{Code: "ALREADY_JOINED", Message: "이미 방에 참가하고 있습니다.", Status: 409}
@@ -260,8 +259,7 @@ func (s *roomService) JoinRoom(roomID, userID, displayName string) error {
 	}
 
 	// 중복 방 참가 검증: 다른 방에 이미 참가 중인지 확인
-	// PLAYING 중인 방에 참가하는 경우, 해당 방이 지금 들어가려는 방과 같으면 스킵한다.
-	if err := s.checkDuplicateRoomExcept(userID, roomID); err != nil {
+	if err := s.checkDuplicateRoom(userID); err != nil {
 		return err
 	}
 
@@ -292,21 +290,6 @@ func (s *roomService) JoinRoom(roomID, userID, displayName string) error {
 
 	// 사용자-방 매핑 설정
 	_ = s.roomRepo.SetActiveRoomForUser(userID, roomID)
-
-	// PLAYING 상태이면 게임 상태에도 플레이어를 추가한다.
-	if room.Status == model.RoomStatusPlaying && room.GameID != nil {
-		if addErr := s.gameState.AddPlayerMidGame(*room.GameID, room.Players[emptySeat]); addErr != nil {
-			// 게임 상태 추가 실패 시 Room seat을 롤백한다.
-			room.Players[emptySeat] = model.RoomPlayer{
-				Seat:   emptySeat,
-				Type:   "HUMAN",
-				Status: model.SeatStatusEmpty,
-			}
-			_ = s.roomRepo.SaveRoom(room)
-			_ = s.roomRepo.ClearActiveRoomForUser(userID)
-			return addErr
-		}
-	}
 
 	// Dual-Write: PostgreSQL best-effort 업데이트
 	s.pgBestEffortUpdateRoom(room)
@@ -482,13 +465,6 @@ func (s *roomService) ClearActiveRoomForUser(userID string) {
 // - WAITING 방: 자동 퇴장 처리 후 허용 (대기실 방치 → 새 방 생성은 정상 UX)
 // - PLAYING 방: 409 ALREADY_IN_ROOM 거부 (게임 중 이탈 방지)
 func (s *roomService) checkDuplicateRoom(userID string) error {
-	return s.checkDuplicateRoomExcept(userID, "")
-}
-
-// checkDuplicateRoomExcept 사용자가 이미 활성 방에 참가 중인지 확인한다.
-// exceptRoomID에 지정된 방은 PLAYING 상태여도 중복 판정에서 제외한다.
-// JoinRoom에서 대상 방이 PLAYING인 경우, 그 방 자체에 새로 참가하는 것이므로 제외가 필요하다.
-func (s *roomService) checkDuplicateRoomExcept(userID, exceptRoomID string) error {
 	existingRoomID, err := s.roomRepo.GetActiveRoomForUser(userID)
 	if err != nil {
 		return nil // 조회 실패는 무시 (conservative)
@@ -513,11 +489,7 @@ func (s *roomService) checkDuplicateRoomExcept(userID, exceptRoomID string) erro
 		_, _ = s.LeaveRoom(existingRoomID, userID)
 		return nil
 	}
-	// PLAYING 방: exceptRoomID와 같은 방이면 허용 (mid-game 참가 경로)
-	if room.Status == model.RoomStatusPlaying && existingRoomID == exceptRoomID {
-		return nil
-	}
-	// 다른 PLAYING 방: 게임 중에는 다른 방 참가 불가
+	// PLAYING 방: 게임 중에는 다른 방 참가 불가
 	return &ServiceError{Code: "ALREADY_IN_ROOM", Message: "이미 게임 중인 방이 있습니다.", Status: 409}
 }
 
