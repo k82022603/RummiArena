@@ -129,19 +129,13 @@ test.describe("BUG-UI-014 invalid meld cleanup", () => {
 
     expect(rollbackResult).not.toHaveProperty("error");
     // 수정 전: invalidGroupsBeforeCount = 1 (잔존 버그 재현 확인)
-    expect((rollbackResult as { invalidGroupsBeforeCount: number }).invalidGroupsBeforeCount).toBe(
-      1,
-      "SC1: ROLLBACK_FORCED 전 1-tile invalid group 잔존 (버그 재현)"
-    );
+    // SC1: ROLLBACK_FORCED 전 1-tile invalid group 잔존 (버그 재현)
+    expect((rollbackResult as { invalidGroupsBeforeCount: number }).invalidGroupsBeforeCount).toBe(1);
     // 수정 후: ROLLBACK_FORCED 처리 후 invalid group 0
-    expect((rollbackResult as { invalidGroupsAfterCount: number }).invalidGroupsAfterCount).toBe(
-      0,
-      "SC1: ROLLBACK_FORCED 처리 후 invalid group 제거 (버그 수정 검증)"
-    );
-    expect((rollbackResult as { totalGroupsAfter: number }).totalGroupsAfter).toBe(
-      1,
-      "SC1: 유효한 세트 1개만 남아야 한다"
-    );
+    // SC1: ROLLBACK_FORCED 처리 후 invalid group 제거 (버그 수정 검증)
+    expect((rollbackResult as { invalidGroupsAfterCount: number }).invalidGroupsAfterCount).toBe(0);
+    // SC1: 유효한 세트 1개만 남아야 한다
+    expect((rollbackResult as { totalGroupsAfter: number }).totalGroupsAfter).toBe(1);
   });
 
   // ================================================================
@@ -214,10 +208,8 @@ test.describe("BUG-UI-014 invalid meld cleanup", () => {
     expect((result as { pendingTableGroups: unknown }).pendingTableGroups).toBeNull();
     // SC2: ROLLBACK_FORCED 후 pendingMyTiles=null
     expect((result as { pendingMyTiles: unknown }).pendingMyTiles).toBeNull();
-    expect((result as { tableGroupsCount: number }).tableGroupsCount).toBe(
-      1,
-      "SC2: 보드에 유효 세트만 1개"
-    );
+    // SC2: 보드에 유효 세트만 1개
+    expect((result as { tableGroupsCount: number }).tableGroupsCount).toBe(1);
   });
 
   // ================================================================
@@ -274,13 +266,9 @@ test.describe("BUG-UI-014 invalid meld cleanup", () => {
     });
 
     expect(result).not.toHaveProperty("error");
-    expect((result as { totalGroups: number }).totalGroups).toBe(
-      2,
-      "SC3: 정상 배치 후 세트 2개 유지"
-    );
-    expect((result as { invalidGroupCount: number }).invalidGroupCount).toBe(
-      0,
-      "SC3: invalid group 없어야 한다 (회귀 가드)"
-    );
+    // SC3: 정상 배치 후 세트 2개 유지
+    expect((result as { totalGroups: number }).totalGroups).toBe(2);
+    // SC3: invalid group 없어야 한다 (회귀 가드)
+    expect((result as { invalidGroupCount: number }).invalidGroupCount).toBe(0);
   });
 });

@@ -113,9 +113,9 @@ function G(id: string, tiles: TileCode[], type?: "group" | "run"): TableGroup {
  * 현재는 result에 action 필드가 없으므로 이 함수가 undefined를 반환 -> RED.
  */
 function extractAction(result: DragOutput): DragAction | undefined {
-  // Phase E에서 DragOutput에 action 필드가 추가되면 이 줄이 활성화된다.
-  // 현재는 'action' 프로퍼티가 존재하지 않으므로 undefined를 반환한다.
-  return (result as Record<string, unknown>).action as DragAction | undefined;
+  // DragOutput.action은 선택적 필드(action?: DragAction)로 정의되어 있다.
+  // Phase E 이전에는 리듀서가 action을 채우지 않으므로 undefined가 반환된다 -> RED.
+  return result.action as DragAction | undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -357,7 +357,7 @@ describe("[F-17] [V-04] pending 배치 점수 계산 -- selectPendingPlacementSc
     // const { getByTestId } = render(<ScoreDisplay />);
     // expect(getByTestId("pending-score")).toHaveTextContent("15");
     // 현재는 ScoreDisplay 컴포넌트가 존재하지 않음 -> RED
-    expect(typeof (storeState as Record<string, unknown>).subscribedByGameClient).toBe("boolean");
+    expect(typeof storeState.subscribedByGameClient).toBe("boolean");
   });
 });
 

@@ -12,6 +12,7 @@ import "@testing-library/jest-dom";
 import React from "react";
 import { render } from "@testing-library/react";
 import Tile from "@/components/tile/Tile";
+import type { TileCode } from "@/types/tile";
 
 describe("Tile — 기본 렌더링", () => {
   it("숫자 타일 렌더 (R7a)", () => {
@@ -138,7 +139,7 @@ describe("Tile — 접근성 심볼 (색약 대비)", () => {
     ];
     for (const [code, symbol] of cases) {
       const { container } = render(
-        <Tile code={code as `R${number}a` | `B${number}a` | `Y${number}a` | `K${number}a`} size="rack" />
+        <Tile code={code as TileCode} size="rack" />
       );
       expect(container.textContent).toContain(symbol);
     }
