@@ -333,6 +333,59 @@ describe("selectHasPending", () => {
     });
     expect(selectHasPending(getStore())).toBe(true);
   });
+
+  // ---------------------------------------------------------------------------
+  // 2026-04-29 P0 회귀 방지 (BUG-DRAW-001):
+  //   자기 차례 시작 시 useGameSync.TURN_START 핸들러가
+  //   saveTurnStartSnapshot(myTiles, tableGroups)을 호출한다.
+  //   이때 tableGroups는 서버 보드의 모든 그룹(다른 플레이어가 만든 것 포함).
+  //   saveTurnStartSnapshot 구현(prev=null 시 groups: tableGroups로 초기화)
+  //   때문에 draft.groups는 서버 그룹들로 채워지지만, pendingGroupIds는 빈 Set.
+  //
+  //   selectHasPending이 draft.groups.length만 검사하면 → true → drawEnabled=false.
+  //   사용자가 자기 차례에 드로우 버튼 못 누르는 회귀 발생.
+  //
+  //   RCA: drawEnabled = isMyTurn && !hasPending (UR-22). hasPending은 "내가 이번 턴에
+  //        직접 마킹한 pending 그룹"을 의미해야 한다 (pendingGroupIds.size > 0).
+  //        draft.groups에는 서버 보드 그룹도 포함되므로 이를 기준으로 삼으면 안 됨.
+  // ---------------------------------------------------------------------------
+  it("BUG-DRAW-001: saveTurnStartSnapshot 직후 pendingGroupIds 빈 Set이면 false (UR-22)", () => {
+    // 시나리오: 다른 플레이어가 멜드를 만들어 보드에 그룹이 있는 상태에서
+    //          자기 차례가 시작된다. useGameSync.TURN_START가 saveTurnStartSnapshot을
+    //          호출하고, pendingGroupIds는 비어있어야 한다.
+    const serverGroup = makeGroup("srv-meld-1", ["R7a", "R8a", "R9a"]);
+    act(() => {
+      usePendingStore.getState().saveTurnStartSnapshot(["B5b", "K3a"], [serverGroup]);
+    });
+
+    // draft는 존재하고 turnStartTableGroups에 서버 그룹이 보존되어야 한다.
+    const draft = getStore().draft;
+    expect(draft).not.toBeNull();
+    expect(draft!.turnStartTableGroups).toEqual([serverGroup]);
+    expect(draft!.pendingGroupIds.size).toBe(0);
+
+    // 그러나 사용자가 아무 드래그도 안 했으므로 hasPending = false.
+    // drawEnabled = isMyTurn && !hasPending = true 가 되어 드로우 가능해야 한다.
+    expect(selectHasPending(getStore())).toBe(false);
+  });
+
+  it("BUG-DRAW-001: applyMutation 후 pendingGroupIds 채워지면 true", () => {
+    // 자기 차례 시작
+    act(() => {
+      usePendingStore.getState().saveTurnStartSnapshot(["R7a", "B7b", "K7a"], []);
+    });
+    expect(selectHasPending(getStore())).toBe(false);
+
+    // 사용자가 새 멜드 드래그
+    act(() => {
+      usePendingStore.getState().applyMutation(makeDragOutput({
+        nextTableGroups: [makeGroup("pending-1", ["R7a", "B7b", "K7a"])],
+        nextMyTiles: [],
+        nextPendingGroupIds: new Set(["pending-1"]),
+      }));
+    });
+    expect(selectHasPending(getStore())).toBe(true);
+  });
 });
 
 describe("selectConfirmEnabled", () => {

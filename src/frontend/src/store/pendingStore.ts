@@ -234,9 +234,22 @@ export function selectPendingPlacementScore(state: PendingStore): number {
 
 /**
  * pending 그룹이 1개 이상 존재하는지 여부
+ *
+ * 2026-04-29 BUG-DRAW-001 핫픽스 (UR-22):
+ *   draft.groups에는 서버 보드 그룹(다른 플레이어 멜드 포함)도 들어있다.
+ *   saveTurnStartSnapshot(rack, tableGroups) 호출 시 prev=null 이면
+ *   `groups: tableGroups`로 초기화되어 draft.groups.length > 0 이 되지만,
+ *   사용자가 마킹한 pending 그룹은 0개이므로 hasPending=false 여야 한다.
+ *
+ *   "내가 이번 턴에 직접 만들거나 수정한 그룹"의 진짜 SSOT는 pendingGroupIds.
+ *   selectAllGroupsValid / selectPendingPlacementScore / handleConfirm 도 모두
+ *   pendingGroupIds.has(g.id)로 필터링하므로 일관성도 회복된다.
+ *
+ *   drawEnabled = isMyTurn && !hasPending (UR-22) — 자기 차례 진입 직후
+ *   draft 가 만들어지더라도 사용자가 드래그를 안 했으면 드로우 버튼 활성.
  */
 export function selectHasPending(state: PendingStore): boolean {
-  return state.draft !== null && state.draft.groups.length > 0;
+  return state.draft !== null && state.draft.pendingGroupIds.size > 0;
 }
 
 /**
