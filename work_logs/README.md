@@ -25,6 +25,37 @@ work_logs/
 | 회고 로그 | `sprint-NN.md` | `sprint-01.md` | Sprint 종료 시 |
 | 결정 로그 | `DNN-제목.md` | `D01-백엔드-언어-결정.md` | 결정 시 |
 
+## 회고 로그 목록
+
+### Sprint 7 팀원별 회고 (2026-04-29)
+
+Sprint 7 (2026-04-22 ~ 2026-04-29) 최종 스프린트 팀원별 KPT 회고.
+
+| # | 파일 | 팀원 | 역할 |
+|---|------|------|------|
+| 01 | `retrospectives/sprint7/01-애벌레.md` | 애벌레 | 프로젝트 오너 |
+| 02 | `retrospectives/sprint7/02-architect.md` | architect | 시스템 설계 |
+| 03 | `retrospectives/sprint7/03-go-dev.md` | go-dev | game-server 개발 |
+| 04 | `retrospectives/sprint7/04-node-dev.md` | node-dev | ai-adapter 개발 |
+| 05 | `retrospectives/sprint7/05-frontend-dev.md` | frontend-dev | 프론트엔드 개발 |
+| 06 | `retrospectives/sprint7/06-frontend-dev-opus.md` | frontend-dev-opus | 페어코딩 Navigator |
+| 07 | `retrospectives/sprint7/07-devops.md` | devops | K8s/Helm/ArgoCD |
+| 08 | `retrospectives/sprint7/08-qa.md` | qa | E2E 테스트 |
+| 09 | `retrospectives/sprint7/09-ai-engineer.md` | ai-engineer | AI 프롬프트/실험 |
+| 10 | `retrospectives/sprint7/10-game-analyst.md` | game-analyst | 게임룰 SSOT |
+| 11 | `retrospectives/sprint7/11-designer.md` | designer | UI/UX |
+| 12 | `retrospectives/sprint7/12-security.md` | security | DevSecOps |
+| 13 | `retrospectives/sprint7/13-pm.md` | pm | 스크럼/마감 관리 |
+
+### 이전 Sprint 회고
+
+| Sprint | 파일 |
+|--------|------|
+| Sprint 1 | `retrospectives/sprint1-retrospective.md` |
+| Sprint 2 | `retrospectives/sprint2-retrospective.md` |
+| Sprint 3 | `retrospectives/sprint3-retrospective.md` |
+| Sprint 5 | `retrospectives/sprint5-retrospective.md` |
+
 ## 로그 성격 비교
 
 | 로그 | 언제 | 무엇을 | 톤 |
