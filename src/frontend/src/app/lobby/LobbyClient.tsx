@@ -101,32 +101,21 @@ function RoomCard({
         </span>
       </div>
 
-      {/* 참가 버튼 */}
-      {(() => {
-        const canJoin =
-          room.status === "WAITING" ||
-          (room.status === "PLAYING" && room.playerCount < room.settings.playerCount);
-        const buttonLabel =
-          room.status === "PLAYING" && canJoin ? "참가 (진행 중)" : "참가";
-        return (
-          <button
-            type="button"
-            onClick={() => void onJoin(room.id)}
-            disabled={!canJoin}
-            className={[
-              "ml-4 px-4 py-1.5 rounded-lg font-medium text-tile-sm transition-colors",
-              canJoin
-                ? room.status === "PLAYING"
-                  ? "bg-success text-white hover:bg-green-500"
-                  : "bg-warning text-gray-900 hover:bg-yellow-400"
-                : "bg-border text-text-secondary cursor-not-allowed",
-            ].join(" ")}
-            aria-label={`${room.roomCode} 방 ${buttonLabel}`}
-          >
-            {buttonLabel}
-          </button>
-        );
-      })()}
+      {/* 참가 버튼 — WAITING 상태만 참가 가능 (I3 롤백: PLAYING 방 참가 금지) */}
+      <button
+        type="button"
+        onClick={() => void onJoin(room.id)}
+        disabled={room.status !== "WAITING"}
+        className={[
+          "ml-4 px-4 py-1.5 rounded-lg font-medium text-tile-sm transition-colors",
+          room.status === "WAITING"
+            ? "bg-warning text-gray-900 hover:bg-yellow-400"
+            : "bg-border text-text-secondary cursor-not-allowed",
+        ].join(" ")}
+        aria-label={`${room.roomCode} 방 참가`}
+      >
+        참가
+      </button>
     </motion.div>
   );
 }
