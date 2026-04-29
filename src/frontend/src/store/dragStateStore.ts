@@ -34,6 +34,13 @@ interface DragStateStore {
    */
   forceNewGroup: boolean;
 
+  /**
+   * UX-004: ExtendLockToast 표시 상태.
+   * P3-3 Step 3a (2026-04-29): GameClient.useState 에서 dragStateStore 로 흡수.
+   * 초기 등록 전 서버 그룹 영역 드롭 시 1회 표시. handleUndo / TURN_START 시 false.
+   */
+  showExtendLockToast: boolean;
+
   /** 드래그 시작 시 호출 */
   setActive(tile: TileCode, source: DragSource): void;
   /** 호버 대상 갱신 */
@@ -42,6 +49,8 @@ interface DragStateStore {
   clearActive(): void;
   /** "+ 새 그룹" 모드 토글 setter (수동 토글 + 자동 리셋 양쪽 사용) */
   setForceNewGroup(val: boolean): void;
+  /** ExtendLockToast 표시/해제 setter */
+  setShowExtendLockToast(val: boolean): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -53,6 +62,7 @@ export const useDragStateStore = create<DragStateStore>()((set) => ({
   activeSource: null,
   hoverTarget: null,
   forceNewGroup: false,
+  showExtendLockToast: false,
 
   setActive(tile, source) {
     set({ activeTile: tile, activeSource: source });
@@ -68,6 +78,10 @@ export const useDragStateStore = create<DragStateStore>()((set) => ({
 
   setForceNewGroup(val) {
     set({ forceNewGroup: val });
+  },
+
+  setShowExtendLockToast(val) {
+    set({ showExtendLockToast: val });
   },
 }));
 

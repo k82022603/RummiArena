@@ -593,7 +593,11 @@ export default function GameClient({ roomId }: GameClientProps) {
   const setForceNewGroup = useDragStateStore((s) => s.setForceNewGroup);
 
   // UX-004: ExtendLockToast 표시 상태 + 같은 턴 내 1회 추적
-  const [showExtendLockToast, setShowExtendLockToast] = useState(false);
+  // P3-3 Step 3a (2026-04-29): showExtendLockToast 를 dragStateStore 로 흡수.
+  //   GameRoom 으로 DndContext 이전 시 toast 렌더와 hook 옵션을 동시에 store 로 단일화.
+  //   extendLockToastShownRef 는 hook 내부 fallback ref 로 충분 (useDragHandlers 단일 인스턴스).
+  const showExtendLockToast = useDragStateStore((s) => s.showExtendLockToast);
+  const setShowExtendLockToast = useDragStateStore((s) => s.setShowExtendLockToast);
   const extendLockToastShownRef = useRef(false);
 
   // ------------------------------------------------------------------
@@ -623,6 +627,8 @@ export default function GameClient({ roomId }: GameClientProps) {
       useRateLimitStore.getState().reset();
       // P3-3 Step 1: forceNewGroup 도 dragStateStore 로 이전됐으므로 언마운트 시 리셋
       useDragStateStore.getState().setForceNewGroup(false);
+      // P3-3 Step 3a: showExtendLockToast 도 dragStateStore 로 흡수, 언마운트 시 false
+      useDragStateStore.getState().setShowExtendLockToast(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
