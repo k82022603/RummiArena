@@ -27,6 +27,7 @@ import { useWSStore } from "@/store/wsStore";
 import { useRoomStore } from "@/store/roomStore";
 import { useRateLimitStore } from "@/store/rateLimitStore";
 import { usePendingStore } from "@/store/pendingStore";
+import { useDragStateStore } from "@/store/dragStateStore";
 import GameBoard from "@/components/game/GameBoard";
 import PlayerRack from "@/components/game/PlayerRack";
 import PlayerCard from "@/components/game/PlayerCard";
@@ -582,9 +583,11 @@ export default function GameClient({ roomId }: GameClientProps) {
   const lastDragEndTimestampRef = useRef<number>(-1);
 
   // 다음 보드 드롭 시 새 그룹 강제 생성 여부
-  // TODO(P3-3): GameRoom 이전 시 dragStateStore로 흡수. GameClient.tsx 도식 §"P3 분해 로드맵" 참조.
-  //   이전 시 dragEndReducer.input.forceNewGroup 으로 주입 경로 변경.
-  const [forceNewGroup, setForceNewGroup] = useState(false);
+  // P3-3 Step 1 (2026-04-29): GameClient.useState 에서 dragStateStore 로 흡수.
+  //   "+ 새 그룹" 버튼 onClick + useDragHandlers 자동 리셋 양쪽 모두 store setter 경유.
+  //   P3-3 Step 3b 에서 DndContext 가 GameRoom 으로 이전되면 GameRoom 이 직접 store 를 구독한다.
+  const forceNewGroup = useDragStateStore((s) => s.forceNewGroup);
+  const setForceNewGroup = useDragStateStore((s) => s.setForceNewGroup);
 
   // UX-004: ExtendLockToast 표시 상태 + 같은 턴 내 1회 추적
   const [showExtendLockToast, setShowExtendLockToast] = useState(false);
@@ -615,6 +618,8 @@ export default function GameClient({ roomId }: GameClientProps) {
       useWSStore.getState().reset();
       useRoomStore.getState().reset();
       useRateLimitStore.getState().reset();
+      // P3-3 Step 1: forceNewGroup 도 dragStateStore 로 이전됐으므로 언마운트 시 리셋
+      useDragStateStore.getState().setForceNewGroup(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

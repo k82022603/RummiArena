@@ -27,12 +27,21 @@ interface DragStateStore {
   /** 현재 호버 중인 drop target ID */
   hoverTarget: string | null;
 
+  /**
+   * "+ 새 그룹" 모드 토글.
+   * P3-3 Step 1 (2026-04-29): GameClient.useState 에서 dragStateStore 로 흡수.
+   * useDragHandlers 가 game-board 직접 드롭 시 강제 새 그룹 분기 진입에 사용.
+   */
+  forceNewGroup: boolean;
+
   /** 드래그 시작 시 호출 */
   setActive(tile: TileCode, source: DragSource): void;
   /** 호버 대상 갱신 */
   setHoverTarget(targetId: string | null): void;
   /** 드래그 종료/취소 시 호출 */
   clearActive(): void;
+  /** "+ 새 그룹" 모드 토글 setter (수동 토글 + 자동 리셋 양쪽 사용) */
+  setForceNewGroup(val: boolean): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -43,6 +52,7 @@ export const useDragStateStore = create<DragStateStore>()((set) => ({
   activeTile: null,
   activeSource: null,
   hoverTarget: null,
+  forceNewGroup: false,
 
   setActive(tile, source) {
     set({ activeTile: tile, activeSource: source });
@@ -54,6 +64,10 @@ export const useDragStateStore = create<DragStateStore>()((set) => ({
 
   clearActive() {
     set({ activeTile: null, activeSource: null, hoverTarget: null });
+  },
+
+  setForceNewGroup(val) {
+    set({ forceNewGroup: val });
   },
 }));
 
