@@ -214,7 +214,7 @@
 | 행동 | 동작 |
 |------|------|
 | A18 PLACE_TILES (다른 플레이어) | 관전 표시. 내 pending 영향 없음 |
-| A19 TURN_START | UR-04: pendingTableGroups = []. UR-02 활성화 (내 턴이면). **mid-game 진입자 첫 턴이면 UR-39 안내 모달 1회** |
+| A19 TURN_START | UR-04: pendingTableGroups = []. UR-02 활성화 (내 턴이면). (2026-04-29 v1.2: UR-39 mid-game 진입자 첫 턴 안내 모달 분기 **폐기** — V-21 재정의로 mid-game join 미지원) |
 | A20 TURN_END | TURN_START 와 동일 cleanup |
 | A21 INVALID_MOVE | **UR-38 분리 (2026-04-28 갱신)**: `pendingStore.rollbackToServerSnapshot()` 호출 (A15 RESET 의 `reset()` 과 별개 경로). UR-21 빨강 토스트 + **UR-40 패널티 안내 토스트** (V-20 적용 시: Human 3장 / AI 1장 드로우 안내). **턴은 즉시 종료** (이전 정책 "턴 유지 + 재시도" 폐기). **band-aid invariant validator 자동 RESET 토스트 노출 금지 (UR-34)** |
 
@@ -235,7 +235,7 @@
 본 매트릭스의 sparse 한 셀 (`* AND *` 표기) 은 **모든 조합에서 동일 결과** 임을 의미. 만약 이후 새로운 룰이 추가되어 분기가 필요해지면 본 문서를 재정렬한다 (architect ADR 필수).
 
 명시적으로 **deferred** 된 결정:
-- A12 조커 swap 의 "동등 가치 일반 타일" 정의 — V-13e 가 회수 조커의 즉시 재사용을 강제할 뿐, swap 시 가치 일치는 명세 부재. 검토 후 V-22 이상으로 추가 후보 (V-20/V-21 은 2026-04-28 패널티/Mid-Game 정책으로 점유됨).
+- A12 조커 swap 의 "동등 가치 일반 타일" 정의 — V-13e 가 회수 조커의 즉시 재사용을 강제할 뿐, swap 시 가치 일치는 명세 부재. 검토 후 V-22 이상으로 추가 후보 (V-20 은 2026-04-28 패널티 정책, V-21 은 2026-04-29 "방 정원 충족 후 게임 시작" 으로 점유됨).
 - A18 관전자 시점 (taller, 비활성 플레이어) — 본 매트릭스는 활성 플레이어 관점. 관전자 모드는 별도 carve-out.
 
 ---
@@ -261,3 +261,7 @@
   - §3.16 A15 RESET vs §3.19 A21 INVALID_MOVE 분리 명시 (UR-38): `reset()` vs `rollbackToServerSnapshot()` 별개 경로
   - §3.19 A19 TURN_START 에 mid-game 진입자 첫 턴 UR-39 모달 분기 추가
   - §3.19 A21 INVALID_MOVE 에 UR-40 패널티 안내 토스트 추가
+- **2026-04-29 v1.2**: SSOT 55 v1.2 동기화 — PLAYING 방 mid-game join 기능 롤백 (A-1/A-2 단계 코드 변경 GO 후 본 매트릭스 정리 = A-3 단계).
+  - **§3.19 A19 TURN_START**: "mid-game 진입자 첫 턴 UR-39 모달 분기" **제거** (V-21 재정의로 mid-game join 미지원, UR-39 폐기 결번)
+  - **§5 deferred 메모**: V-21 점유 표기를 "Mid-Game 정책" → "방 정원 충족 후 게임 시작" 으로 갱신
+  - **유지**: §3.4 A3 (UR-37), §3.15 A14 (V-20), §3.16/§3.19 A15/A21 (UR-38, UR-40) — mid-game 무관 룰들

@@ -243,16 +243,18 @@
 | **D 의존성** | **D-05** (DrawPile 차감 ↔ Rack 증가, 보드+랙+drawpile 합 = 106 invariant 유지). DrawPile 잔량 < 패널티 수량인 경우 **남아있는 만큼만** 지급 (정책 결정: 패널티 강제 종료 우선, V-10 패스 처리와 동일 정신) |
 | **Rationale (Human ≠ AI 차등)** | Human 은 의도적 위반 가능 (시도-거부 학습) → 학습 비용으로 3장. AI 는 LLM 환각 / 포맷 오류일 가능성 높고, 강한 패널티 시 게임이 일방적으로 진행됨 (1장 == 정상 DRAW 와 동일) |
 
-### 2.25 V-21 — Mid-Game 진입자 정책 (NEW, 2026-04-28)
+### 2.25 V-21 — 방 정원 충족 후 게임 시작 (재정의, 2026-04-29)
 
 | 항목 | 정의 |
 |------|------|
-| **정의** | 이미 진행 중인 게임에 새 플레이어가 합류하는 mid-game join. 정책: (i) DrawPile 에서 **14장 분배** (정상 게임 시작과 동일), (ii) `hasInitialMeld = false` 시작 (V-04 30점 의무 인계), (iii) **다음 라운드부터** turn rotation 자동 포함 (현재 진행 중인 라운드의 미진행 seat 가 아니라 새 seat 추가), (iv) DrawPile 잔량 < 14 인 경우 mid-game join 거부 (`DRAW_PILE_TOO_SMALL`) |
-| **검증 위치** | 본 SSOT 신설. `service/game_service.go:858-907 AddPlayerMidGame` |
-| **위반 예시** | DrawPile 12장 남은 상황에서 join 시도 → 거부. join 후 첫 턴 곧바로 V-04 면제 시도 → 거부 (UR-39 안내로 사전 차단) |
-| **서버 응답** | OK: `PLAYER_JOIN { seat: N, isMidGame: true }`. 거부: `ERROR { code: DRAW_PILE_TOO_SMALL }` |
-| **UI 응답** | UR-39 (mid-game 진입자 첫 턴 V-04+V-13a 안내 모달 1회) |
-| **D 의존성** | **D-05** (보드+모든 랙+drawpile = 106), **D-06** (tile code 유일성). join 시 14장 차감을 정확히 D-05 invariant 안에서 처리 |
+| **정의** | 게임 시작은 방의 모든 좌석이 채워졌을 때만 허용한다. 즉 `len(activePlayers) === MaxPlayers` 인 경우에만 `StartGame` 진행. 빈 슬롯이 1개라도 남아 있으면 `EMPTY_SLOTS_REMAINING (400)` 으로 거부. WAITING 상태에서 다른 사용자 참가는 기존 동작 그대로 유지되며, 본 룰은 **PLAYING 전이 시점의 invariant** 만 다룬다. PLAYING 상태 mid-game join 은 **미지원** (2026-04-29 사용자 결정으로 mid-game join 기능 롤백, 본 룰은 그 후속 명세). |
+| **검증 위치** | `service/room_service.go StartGame` 의 빈 슬롯 검증 (정원 미충족 시 시작 거부, 커밋 `1f53481`). 본 SSOT 가 invariant 단일 출처. |
+| **위반 예시** | MaxPlayers=4 방에서 3명만 입장한 상태로 호스트가 StartGame 요청 → `EMPTY_SLOTS_REMAINING (400)` 거부. 정원 충족 후 시작은 정상. |
+| **서버 응답** | OK: `GAME_START { players: [...] }` (모든 좌석 채워진 경우). 거부: `ERROR { code: EMPTY_SLOTS_REMAINING, status: 400 }` |
+| **UI 응답** | 정원 미충족 시 StartGame 버튼 비활성화 + 부족 인원 안내. (별도 UR-* 신규 발행 없음 — 기존 방 화면 UX 범주.) |
+| **D 의존성** | **D-05** (보드+모든 랙+drawpile = 106 invariant 유지의 전제 조건). 정원 충족 후 14장 × N 분배가 D-05 invariant 안에서 처리됨을 보장. |
+| **테스트** | `TestStartGame_RejectIfEmptySlotsRemain`, `TestStartGame_SucceedWhenAllSlotsFilled` (`service/room_service_test.go`) |
+| **이력** | 2026-04-28 v1.1 "Mid-Game 진입자 정책 (14장 분배 + hasInitialMeld=false)" 으로 최초 등록 → 2026-04-29 v1.2 PLAYING 방 빈 석 참가 기능 롤백에 따라 본 의미로 재정의. |
 
 ---
 
@@ -330,7 +332,7 @@
 |----|------|--------------|
 | **UR-37** | **PRE_MELD 시 서버 그룹 영역 드롭 안내** — `hasInitialMeld == false` 상태에서 사용자가 서버 확정 그룹 위에 랙 타일을 드롭하려 하면, V-13a 위반으로 차단(거부)하지 **않고** **새 pending 그룹을 자동 생성** 하는 흐름으로 우회한다. 동시에 ExtendLockToast "초기 등록 후에 보드 재배치가 가능합니다" 를 **턴 1회만** 표시 (UR-31 과 동일 카피, 빈도만 1회 한정). 사용자 의도 (랙 타일 배치) 가 보존되되 V-13a 위반 (서버 그룹 변형) 은 발생하지 않는다 | onDrop on server-group while PRE_MELD → fall-through to A1 (랙→새 그룹). 토스트는 turn 단위 중복 억제 |
 | **UR-38** | **RESET vs Rollback 분리** — `RESET_TURN` 버튼 클릭은 사용자 자발적 취소이며 `pendingStore.reset()` 만 호출. `INVALID_MOVE` WS 수신은 서버 강제 롤백이며 `pendingStore.rollbackToServerSnapshot()` 을 호출. 두 경로는 **별개 트리거** 이지만 **effect (pending=0, 보드 = 마지막 healthy 스냅샷)** 는 동일. 코드에서 두 함수를 alias 처리하지 말 것 — 향후 패널티(V-20) 분기, 부분 롤백 등 진화 시 분리 필수 | A15 (RESET_TURN 버튼) → reset(). A21 (INVALID_MOVE WS) → rollbackToServerSnapshot() + UR-21 + UR-40 |
-| **UR-39** | **Mid-Game 진입자 첫 턴 안내** — V-21 mid-game join 한 플레이어의 첫 턴 시작 시점에, V-04 (30점 초기 등록 의무) + V-13a (서버 그룹 재배치는 초기 멜드 후) 두 룰을 한 번에 안내하는 모달을 **1회만** 표시. 신규 사용자가 mid-game 합류 후 룰을 모른 채 V-20 패널티 폭주를 겪는 것 방지 | TURN_START 수신 시 `myMeta.isMidGameJoiner == true && myMeta.hasSeenJoinModal == false` 분기. 모달 닫기 시 hasSeenJoinModal = true (localStorage 또는 서버 user meta) |
+| **UR-39** | **(폐기됨, 2026-04-29)** Mid-Game 진입자 첫 턴 안내 모달 — V-21 재정의("방 정원 충족 후 게임 시작")로 PLAYING 방 mid-game join 기능 자체가 미지원이 되어 본 안내 모달 트리거 조건 (`isMidGameJoiner == true`) 이 영구히 발생하지 않음. ID 는 결번으로 보존하며 차후 신규 룰은 UR-41 부터 부여. | (폐기) 트리거 없음. 코드 구현 금지. |
 | **UR-40** | **패널티 안내 토스트** — V-20 패널티 발생 시 표시할 토스트. 카피: "유효하지 않은 배치입니다. 보드가 원래 상태로 복원되고, 패널티로 N장을 드로우합니다." 여기서 N = Human 3 / AI 1. UR-21 INVALID_MOVE 빨강 토스트 위에 **append** 되는 추가 안내 (designer 57 토큰 `--toast-warning`). UR-33 강제 드로우 토스트와는 별개 — UR-33 은 LLM 응답 무효 후 빈 응답 처리, UR-40 은 V-20 패널티 명시적 적용 | INVALID_MOVE 페이로드의 `penaltyTiles` 필드 존재 시. 5초 자동 소멸. 사용자 dismiss 가능 |
 
 ---
@@ -408,10 +410,10 @@ flowchart TD
 
 | 카테고리 | 개수 | ID 범위 |
 |---------|------|---------|
-| 서버 검증 (V-*) | **25** | V-01 ~ V-15, V-13a~e (5), V-16~V-21 (6 신규: V-16~19 + V-20/V-21) |
-| UI 인터랙션 (UR-*) | **40** | UR-01 ~ UR-40 (UR-37~40 신규) |
+| 서버 검증 (V-*) | **25** | V-01 ~ V-15, V-13a~e (5), V-16~V-21 (6: V-16~19 + V-20 + V-21 재정의) |
+| UI 인터랙션 (UR-*) | **39** | UR-01 ~ UR-40 중 UR-39 폐기 결번 (활성 39: UR-37/38/40 활성, UR-39 폐기) |
 | 데이터 무결성 (D-*) | **12** | D-01 ~ D-12 |
-| **합계** | **77** | (요구 60+ 충족) |
+| **합계** | **77** | (활성 76 + UR-39 결번 1 = 명목 77. 요구 60+ 충족) |
 
 ---
 
@@ -419,3 +421,8 @@ flowchart TD
 
 - **2026-04-25 game-analyst (v1.0)**: 본 SSOT 발행. V-13a~e 분해 계승, V-16~V-19 신설, UR-* 36 정의, D-* 12 정의. 사용자 실측 사고 3건 매핑 완료. 후속 산출물 (56, 56b, 57, 58, 88) 의 입력으로 사용.
 - **2026-04-28 game-analyst (v1.1)**: V-20 (패널티 정책: Human 3장 / AI 1장), V-21 (Mid-Game 진입자 14장 분배 + hasInitialMeld=false), UR-37 (PRE_MELD 시 서버 그룹 드롭 → 새 pending 그룹 fall-through), UR-38 (RESET vs Rollback 분리), UR-39 (Mid-Game 진입자 첫 턴 안내 모달), UR-40 (패널티 안내 토스트) 신규 등록. 룰 합계 71 → 77. 매트릭스 56 §3.4/§3.15/§3.16/§3.19 동시 갱신.
+- **2026-04-29 game-analyst (v1.2)**: 사용자 결정으로 PLAYING 방 빈 석 참가 (mid-game join) 기능 롤백 (A-1/A-2 단계 코드 변경 GO 판정 후 본 SSOT 정리 = A-3 단계). WAITING 방 참가는 기존 동작 유지.
+  - **V-21 재정의** (폐기 아님): "Mid-Game 진입자 정책" → **"방 정원 충족 후 게임 시작"** (`len(activePlayers) === MaxPlayers` invariant, `room_service.go StartGame` 매핑, 커밋 `1f53481`, 거부 코드 `EMPTY_SLOTS_REMAINING (400)`). 테스트: `TestStartGame_RejectIfEmptySlotsRemain` / `TestStartGame_SucceedWhenAllSlotsFilled`.
+  - **UR-39 폐기**: V-21 재정의로 mid-game join 자체가 미지원이 되어 모달 트리거 조건 영구 미발생. ID 는 결번 보존, 차후 신규 룰은 UR-41 부터.
+  - **유지**: V-20 (패널티), UR-37 (PRE_MELD 드롭), UR-38 (RESET vs Rollback), UR-40 (패널티 토스트) — mid-game 과 무관하므로 영향 없음.
+  - **카운트**: 활성 76 + UR-39 결번 1 = 명목 77 (변동 없음). 매트릭스 56 §3.19 / §5 / §7 동시 갱신.
