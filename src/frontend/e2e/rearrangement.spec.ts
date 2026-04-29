@@ -31,12 +31,25 @@ import { cleanupViaPage } from "./helpers/room-cleanup";
 import {
   createRoomAndStart,
   waitForGameReady,
-  waitForStoreReady,
+  setupRearrangementFixture,
 } from "./helpers/game-helpers";
 import { dndDrag } from "./helpers";
 
 // ==================================================================
 // 공통 헬퍼: 합병 시나리오 셋업
+//
+// 2026-04-29 RCA 수정:
+//   기존 setupMergeScenario / setupSplitScenario 등 4개 fixture 함수가
+//   gameStore.setState 직후 page.waitForTimeout(400) 만 수행하여
+//   WS GAME_STATE 덮어쓰기 race 가 6 FAIL 의 원인이었다.
+//   game-helpers.ts 의 setupRearrangementFixture (W1 GHOST-SC2 패턴 + DOM 폴링 +
+//   1회 재주입) 으로 교체.
+//
+//   추가로 deprecated gameStore 필드(pendingTableGroups / pendingMyTiles /
+//   pendingGroupIds / pendingRecoveredJokers) 주입을 제거. 이 필드들은
+//   Phase C 단계 4 (2026-04-28) 이후 gameStore 에서 완전 제거됐고,
+//   pending 상태는 usePendingStore.draft 가 단일 SSOT.
+//   setupRearrangementFixture 가 호출 전 pendingStore.draft = null 명시 초기화.
 // ==================================================================
 
 interface MergeScenarioOpts {
@@ -53,56 +66,20 @@ interface MergeScenarioOpts {
  *   - currentSeat: 0               (= mySeat 가정)
  *   - mySeat: 0
  *   - hasInitialMeld: opts에 따라
- *   - pendingTableGroups: null     (편집 시작 전)
+ *   - pendingStore.draft: null     (편집 시작 전)
  *   - aiThinkingSeat: null
  */
 async function setupMergeScenario(
   page: import("@playwright/test").Page,
   opts: MergeScenarioOpts
 ): Promise<void> {
-  await waitForStoreReady(page);
-
-  await page.evaluate((args) => {
-    const store = (
-      window as unknown as Record<
-        string,
-        {
-          getState: () => Record<string, unknown>;
-          setState: (s: Record<string, unknown>) => void;
-        }
-      >
-    ).__gameStore;
-    if (!store) throw new Error("__gameStore not available");
-
-    const current = store.getState();
-    const baseGameState = (current.gameState ?? {}) as Record<string, unknown>;
-
-    store.setState({
-      mySeat: 0,
-      myTiles: ["Y9a", "R1a", "R2a"],
-      hasInitialMeld: args.hasInitialMeld,
-      pendingTableGroups: null,
-      pendingMyTiles: null,
-      pendingGroupIds: new Set<string>(),
-      aiThinkingSeat: null,
-      gameState: {
-        ...baseGameState,
-        currentSeat: 0,
-        tableGroups: [
-          {
-            id: "srv-group-9",
-            tiles: ["R9a", "B9a", "K9b"],
-            type: "group",
-          },
-        ],
-        turnTimeoutSec: 600,
-        drawPileCount: 90,
-      },
-    });
-  }, { hasInitialMeld: opts.hasInitialMeld });
-
-  // React 렌더링 반영 + dnd-kit droppable 등록 대기
-  await page.waitForTimeout(400);
+  await setupRearrangementFixture(page, {
+    tableGroups: [
+      { id: "srv-group-9", tiles: ["R9a", "B9a", "K9b"], type: "group" },
+    ],
+    rackTiles: ["Y9a", "R1a", "R2a"],
+    hasInitialMeld: opts.hasInitialMeld,
+  });
 }
 
 // ==================================================================
@@ -218,21 +195,30 @@ test.describe("TC-RR: 재배치 합병 (§6.2 유형 2)", () => {
     //   - Y9a는 호환이지만 hasInitialMeld=false → append 금지 → 새 1타일 pending 그룹 생성
     //   - 서버 그룹 [R9 B9 K9]는 3타일 그대로 유지
     //   - 그룹 총 2개 (서버 그룹 3타일 + Y9a 신규 pending 그룹 1타일)
+    // 2026-04-29 SSOT 정렬: gameStore.pendingTableGroups (Phase C 제거됨) →
+    // __pendingStore.draft.groups 우선, 없으면 gameState.tableGroups fallback
     const result = await page.evaluate(() => {
-      const store = (
-        window as unknown as Record<
-          string,
-          { getState: () => Record<string, unknown> }
-        >
+      const pendingStore = (
+        window as unknown as {
+          __pendingStore?: {
+            getState: () => {
+              draft: { groups: { id: string; tiles: string[] }[] } | null;
+            };
+          };
+        }
+      ).__pendingStore;
+      const draft = pendingStore?.getState().draft;
+
+      const gameStore = (
+        window as unknown as {
+          __gameStore?: { getState: () => Record<string, unknown> };
+        }
       ).__gameStore;
-      const state = store.getState();
-      const pending = state.pendingTableGroups as
-        | { id: string; tiles: string[] }[]
-        | null;
-      const gs = state.gameState as
+      const gs = gameStore?.getState().gameState as
         | { tableGroups?: { id: string; tiles: string[] }[] }
         | null;
-      const groups = pending ?? gs?.tableGroups ?? [];
+
+      const groups = draft?.groups ?? gs?.tableGroups ?? [];
       const srvGroup = groups.find((g: { id: string }) => g.id === "srv-group-9");
       return {
         groupCount: groups.length,
@@ -285,47 +271,17 @@ async function setupSplitScenario(
   page: import("@playwright/test").Page,
   opts: SplitScenarioOpts
 ): Promise<void> {
-  await waitForStoreReady(page);
-  await page.evaluate((args) => {
-    const store = (
-      window as unknown as Record<
-        string,
-        {
-          getState: () => Record<string, unknown>;
-          setState: (s: Record<string, unknown>) => void;
-        }
-      >
-    ).__gameStore;
-    if (!store) throw new Error("__gameStore not available");
-
-    const current = store.getState();
-    const baseGameState = (current.gameState ?? {}) as Record<string, unknown>;
-
-    store.setState({
-      mySeat: 0,
-      myTiles: ["B9a"],
-      hasInitialMeld: args.hasInitialMeld,
-      pendingTableGroups: null,
-      pendingMyTiles: null,
-      pendingGroupIds: new Set<string>(),
-      pendingRecoveredJokers: [],
-      aiThinkingSeat: null,
-      gameState: {
-        ...baseGameState,
-        currentSeat: 0,
-        tableGroups: [
-          {
-            id: "srv-run-blue",
-            tiles: ["B10a", "B11a", "B12a", "B13a"],
-            type: "run",
-          },
-        ],
-        turnTimeoutSec: 600,
-        drawPileCount: 90,
+  await setupRearrangementFixture(page, {
+    tableGroups: [
+      {
+        id: "srv-run-blue",
+        tiles: ["B10a", "B11a", "B12a", "B13a"],
+        type: "run",
       },
-    });
-  }, { hasInitialMeld: opts.hasInitialMeld });
-  await page.waitForTimeout(400);
+    ],
+    rackTiles: ["B9a"],
+    hasInitialMeld: opts.hasInitialMeld,
+  });
 }
 
 test.describe("TC-RR: 재배치 분할 (§6.2 유형 1)", () => {
@@ -379,20 +335,26 @@ test.describe("TC-RR: 재배치 분할 (§6.2 유형 1)", () => {
       page.locator("text=미확정").first()
     ).toBeVisible({ timeout: 3000 });
 
-    // 스토어 확인: pendingGroupIds에 원본 그룹 포함, pendingMyTiles에 B13 존재
+    // 스토어 확인: pendingGroupIds에 원본 그룹 포함, pending myTiles에 B13 존재
+    // 2026-04-29 SSOT 정렬: gameStore.pendingGroupIds / pendingMyTiles (Phase C 제거됨)
+    // → __pendingStore.draft.{pendingGroupIds, myTiles}
     const storeCheck = await page.evaluate(() => {
-      const store = (
-        window as unknown as Record<
-          string,
-          { getState: () => Record<string, unknown> }
-        >
-      ).__gameStore;
-      const state = store.getState();
-      const pendingIds = state.pendingGroupIds as Set<string>;
-      const pendingMy = state.pendingMyTiles as string[] | null;
+      const pendingStore = (
+        window as unknown as {
+          __pendingStore?: {
+            getState: () => {
+              draft: {
+                pendingGroupIds: Set<string>;
+                myTiles: string[];
+              } | null;
+            };
+          };
+        }
+      ).__pendingStore;
+      const draft = pendingStore?.getState().draft;
       return {
-        containsOriginal: pendingIds?.has?.("srv-run-blue") ?? false,
-        myContainsB13: pendingMy?.includes("B13a") ?? false,
+        containsOriginal: draft?.pendingGroupIds.has("srv-run-blue") ?? false,
+        myContainsB13: draft?.myTiles.includes("B13a") ?? false,
       };
     });
     expect(storeCheck.containsOriginal).toBe(true);
@@ -436,19 +398,25 @@ test.describe("TC-RR: 재배치 분할 (§6.2 유형 1)", () => {
       page.locator('span[aria-label="4개 타일"]')
     ).toHaveCount(1, { timeout: 2000 });
 
+    // 2026-04-29 SSOT 정렬: gameStore.pendingGroupIds / pendingMyTiles (Phase C 제거됨)
+    // → __pendingStore.draft (없으면 빈 상태로 간주)
     const storeCheck = await page.evaluate(() => {
-      const store = (
-        window as unknown as Record<
-          string,
-          { getState: () => Record<string, unknown> }
-        >
-      ).__gameStore;
-      const state = store.getState();
-      const pendingIds = state.pendingGroupIds as Set<string>;
-      const pendingMy = state.pendingMyTiles as string[] | null;
+      const pendingStore = (
+        window as unknown as {
+          __pendingStore?: {
+            getState: () => {
+              draft: {
+                pendingGroupIds: Set<string>;
+                myTiles: string[];
+              } | null;
+            };
+          };
+        }
+      ).__pendingStore;
+      const draft = pendingStore?.getState().draft;
       return {
-        pendingIdsEmpty: (pendingIds?.size ?? 0) === 0,
-        noB13InRack: !(pendingMy?.includes("B13a") ?? false),
+        pendingIdsEmpty: (draft?.pendingGroupIds.size ?? 0) === 0,
+        noB13InRack: !(draft?.myTiles.includes("B13a") ?? false),
       };
     });
     expect(storeCheck.pendingIdsEmpty).toBe(true);
@@ -480,54 +448,21 @@ test.describe("TC-RR: 머지 호환 힌트 (P2-2)", () => {
       turnTimeout: 60,
     });
     await waitForGameReady(page);
-    await waitForStoreReady(page);
 
     // store 강제 주입: 그룹 [R5 Y5 K5] + 런 [B10 B11 B12] + 랙 [B5a] + 최초 등록 완료
-    await page.evaluate(() => {
-      const store = (
-        window as unknown as Record<
-          string,
-          {
-            getState: () => Record<string, unknown>;
-            setState: (s: Record<string, unknown>) => void;
-          }
-        >
-      ).__gameStore;
-      if (!store) throw new Error("__gameStore not available");
-      const current = store.getState();
-      const baseGameState = (current.gameState ?? {}) as Record<string, unknown>;
-      store.setState({
-        mySeat: 0,
-        myTiles: ["B5a"],
-        hasInitialMeld: true,
-        pendingTableGroups: null,
-        pendingMyTiles: null,
-        pendingGroupIds: new Set<string>(),
-        pendingRecoveredJokers: [],
-        aiThinkingSeat: null,
-        gameState: {
-          ...baseGameState,
-          currentSeat: 0,
-          tableGroups: [
-            { id: "srv-group-5", tiles: ["R5a", "Y5a", "K5a"], type: "group" },
-            { id: "srv-run-blue", tiles: ["B10a", "B11a", "B12a"], type: "run" },
-          ],
-          turnTimeoutSec: 600,
-          drawPileCount: 90,
-        },
-      });
+    await setupRearrangementFixture(page, {
+      tableGroups: [
+        { id: "srv-group-5", tiles: ["R5a", "Y5a", "K5a"], type: "group" },
+        { id: "srv-run-blue", tiles: ["B10a", "B11a", "B12a"], type: "run" },
+      ],
+      rackTiles: ["B5a"],
+      hasInitialMeld: true,
     });
-    // store 주입 후 React 렌더링이 완료되어 R5a/B10a/B5a 타일이 모두 DOM에 실제로 그려질 때까지 대기.
-    // 고정 대기(400ms)는 저부하 장비에서 0.5~1.5초 걸릴 수 있어 플레이키 원인이다.
+    // 추가 검증: B10a (두 번째 그룹) 도 DOM 에 그려졌는지 확인
+    // setupRearrangementFixture 는 첫 랙 타일만 검증하므로 B10a 는 별도 폴링.
     await page.waitForFunction(
-      () => {
-        return (
-          !!document.querySelector('[aria-label="B5a 타일 (드래그 가능)"]') &&
-          !!document.querySelector('[aria-label*="R5a 타일"]') &&
-          !!document.querySelector('[aria-label*="B10a 타일"]')
-        );
-      },
-      { timeout: 10_000 }
+      () => !!document.querySelector('[aria-label*="B10a 타일"]'),
+      { timeout: 5_000 }
     );
 
     // B5a를 mouseDown + 8px 이상 이동으로 드래그 활성화 (drop 없음)
@@ -640,43 +575,15 @@ test.describe("TC-RR: 조커 교체 MVP (§6.2 유형 4)", () => {
       turnTimeout: 60,
     });
     await waitForGameReady(page);
-    await waitForStoreReady(page);
 
     // store 강제 주입: 그룹 [R7 JK1 K7] + 랙 [B7a] + 최초 등록 완료
-    await page.evaluate(() => {
-      const store = (
-        window as unknown as Record<
-          string,
-          {
-            getState: () => Record<string, unknown>;
-            setState: (s: Record<string, unknown>) => void;
-          }
-        >
-      ).__gameStore;
-      if (!store) throw new Error("__gameStore not available");
-      const current = store.getState();
-      const baseGameState = (current.gameState ?? {}) as Record<string, unknown>;
-      store.setState({
-        mySeat: 0,
-        myTiles: ["B7a"],
-        hasInitialMeld: true,
-        pendingTableGroups: null,
-        pendingMyTiles: null,
-        pendingGroupIds: new Set<string>(),
-        pendingRecoveredJokers: [],
-        aiThinkingSeat: null,
-        gameState: {
-          ...baseGameState,
-          currentSeat: 0,
-          tableGroups: [
-            { id: "srv-group-7", tiles: ["R7a", "JK1", "K7a"], type: "group" },
-          ],
-          turnTimeoutSec: 600,
-          drawPileCount: 90,
-        },
-      });
+    await setupRearrangementFixture(page, {
+      tableGroups: [
+        { id: "srv-group-7", tiles: ["R7a", "JK1", "K7a"], type: "group" },
+      ],
+      rackTiles: ["B7a"],
+      hasInitialMeld: true,
     });
-    await page.waitForTimeout(400);
 
     // 사전 조건: 보드에 1개 그룹(3타일)
     await expect(
@@ -702,16 +609,21 @@ test.describe("TC-RR: 조커 교체 MVP (§6.2 유형 4)", () => {
     });
     expect(jkInGroup).toBe(false);
 
-    // 결과 2: pendingRecoveredJokers에 JK1 존재
+    // 결과 2: recoveredJokers에 JK1 존재
+    // 2026-04-29 SSOT 정렬: gameStore.pendingRecoveredJokers (Phase C 제거됨) →
+    // __pendingStore.draft.recoveredJokers
     const recovered = await page.evaluate(() => {
-      const store = (
-        window as unknown as Record<
-          string,
-          { getState: () => Record<string, unknown> }
-        >
-      ).__gameStore;
-      const state = store.getState();
-      return state.pendingRecoveredJokers as string[];
+      const pendingStore = (
+        window as unknown as {
+          __pendingStore?: {
+            getState: () => {
+              draft: { recoveredJokers: string[] } | null;
+            };
+          };
+        }
+      ).__pendingStore;
+      const draft = pendingStore?.getState().draft;
+      return draft?.recoveredJokers ?? [];
     });
     expect(recovered).toContain("JK1");
 
@@ -720,13 +632,24 @@ test.describe("TC-RR: 조커 교체 MVP (§6.2 유형 4)", () => {
       page.locator('[data-testid="joker-swap-indicator"]')
     ).toBeVisible({ timeout: 3000 });
 
-    // 결과 4: ConfirmTurn 버튼 클릭 시 경고 표시
+    // 결과 4: ConfirmTurn 차단 — 두 형태 중 하나로 차단된다.
+    //   (a) 버튼 자체가 disabled (canConfirmTurn=false → V-07 가드)
+    //   (b) 버튼이 enabled 이지만 클릭 시 [role="alert"] 경고 표시
+    // 두 경로 모두 "회수 조커 같은 턴 사용 금지" 차단의 정상 동작이므로
+    // disabled 인 경우는 그 자체로 PASS, enabled 인 경우만 클릭 후 alert 검증.
+    //
+    // 2026-04-29 RCA: 기존 코드는 isVisible() 만 검사하고 click() 을 호출했는데
+    // disabled 버튼은 visible=true 이지만 click 이 10초 timeout 으로 FAIL 했다.
     const confirmBtn = page.getByRole("button", { name: /턴 확정|확정/ }).first();
     if (await confirmBtn.isVisible().catch(() => false)) {
-      await confirmBtn.click();
-      await expect(
-        page.locator('[role="alert"]').filter({ hasText: /회수한 조커/ })
-      ).toBeVisible({ timeout: 3000 });
+      const enabled = await confirmBtn.isEnabled().catch(() => false);
+      if (enabled) {
+        await confirmBtn.click();
+        await expect(
+          page.locator('[role="alert"]').filter({ hasText: /회수한 조커/ })
+        ).toBeVisible({ timeout: 3000 });
+      }
+      // disabled 면 V-07 가드가 작동한 것이므로 별도 검증 없이 PASS
     }
   });
 });
@@ -755,43 +678,14 @@ test.describe("TC-RR: 혼합 숫자 자동 분리 (BUG-UI-CLASSIFY-001a)", () =>
       turnTimeout: 60,
     });
     await waitForGameReady(page);
-    await waitForStoreReady(page);
 
     // store 강제 주입: 빈 보드 + 랙 [R7a, Y4a] + 최초 등록 전(hasInitialMeld=false)
     // shouldCreateNewGroup 분기는 hasInitialMeld 상관없이 동작하므로 false에서도 검증 가능.
-    // 기존 gameState를 spread하여 players/currentTurn 등 필수 필드를 보존한다.
-    await page.evaluate(() => {
-      const store = (
-        window as unknown as Record<
-          string,
-          {
-            getState: () => Record<string, unknown>;
-            setState: (s: Record<string, unknown>) => void;
-          }
-        >
-      ).__gameStore;
-      if (!store) throw new Error("__gameStore not available");
-      const current = store.getState();
-      const baseGameState = (current.gameState ?? {}) as Record<string, unknown>;
-      store.setState({
-        mySeat: 0,
-        myTiles: ["R7a", "Y4a"],
-        hasInitialMeld: false,
-        pendingTableGroups: null,
-        pendingMyTiles: null,
-        pendingGroupIds: new Set<string>(),
-        pendingRecoveredJokers: [],
-        aiThinkingSeat: null,
-        gameState: {
-          ...baseGameState,
-          currentSeat: 0,
-          tableGroups: [],
-          turnTimeoutSec: 600,
-          drawPileCount: 90,
-        },
-      });
+    await setupRearrangementFixture(page, {
+      tableGroups: [],
+      rackTiles: ["R7a", "Y4a"],
+      hasInitialMeld: false,
     });
-    await page.waitForTimeout(400);
 
     const board = page.locator('section[aria-label="게임 테이블"]');
     await expect(board).toBeVisible({ timeout: 5000 });
@@ -809,23 +703,30 @@ test.describe("TC-RR: 혼합 숫자 자동 분리 (BUG-UI-CLASSIFY-001a)", () =>
     await dndDrag(page, y4, board);
     await page.waitForTimeout(300);
 
-    // 검증: pendingTableGroups가 2개의 1-타일 그룹으로 구성돼야 한다
+    // 검증: pending 그룹이 2개의 1-타일 그룹으로 구성돼야 한다
+    // 2026-04-29 SSOT 정렬: gameStore.pendingTableGroups (Phase C 제거됨) →
+    // __pendingStore.draft.{groups, pendingGroupIds} 의 pending-only 그룹
     const result = await page.evaluate(() => {
-      const store = (
-        window as unknown as Record<
-          string,
-          { getState: () => Record<string, unknown> }
-        >
-      ).__gameStore;
-      const state = store.getState();
-      const pending = state.pendingTableGroups as
-        | { id: string; tiles: string[] }[]
-        | null;
-      if (!pending) return { groupCount: 0, sizes: [] as number[] };
+      const pendingStore = (
+        window as unknown as {
+          __pendingStore?: {
+            getState: () => {
+              draft: {
+                groups: { id: string; tiles: string[] }[];
+                pendingGroupIds: Set<string>;
+              } | null;
+            };
+          };
+        }
+      ).__pendingStore;
+      const draft = pendingStore?.getState().draft;
+      if (!draft) return { groupCount: 0, sizes: [] as number[], ids: [] as string[] };
+      // pending 그룹만 필터 (서버 그룹은 pendingGroupIds 에 없음)
+      const pendingOnly = draft.groups.filter((g) => draft.pendingGroupIds.has(g.id));
       return {
-        groupCount: pending.length,
-        sizes: pending.map((g) => g.tiles.length),
-        ids: pending.map((g) => g.id),
+        groupCount: pendingOnly.length,
+        sizes: pendingOnly.map((g) => g.tiles.length),
+        ids: pendingOnly.map((g) => g.id),
       };
     });
 

@@ -245,6 +245,204 @@ export async function setPendingDraft(
   await page.waitForTimeout(150);
 }
 
+// ------------------------------------------------------------------
+// 재배치 시나리오 fixture 헬퍼 (2026-04-29)
+//
+// rearrangement.spec.ts 6 FAIL RCA 결과 추가된 헬퍼.
+//
+// 기존 setupMergeScenario / setupSplitScenario 등은 gameStore.setState 로
+//   - gameState.tableGroups (서버 그룹)
+//   - myTiles (랙)
+//   - hasInitialMeld
+//   - currentSeat
+// 를 한 번 주입하고 page.waitForTimeout(400) 으로 React 렌더링을 기다렸다.
+//
+// 그러나 useWebSocket.ts 의 GAME_STATE 핸들러는 setMyTiles + setGameState +
+// setPlayers 를 매번 덮어쓰므로, fixture 주입 직후 GAME_STATE 가 도착하면
+//   - myTiles 가 14장 원본으로 복원 → 1~3장 fixture 의도된 랙 코드 부재
+//   - gameState.tableGroups 가 빈 배열로 복원 → "3개 타일" / "4개 타일" 그룹 미표시
+// 이 race 가 6 FAIL 의 진짜 원인.
+//
+// 본 헬퍼는 W1 GHOST-SC2 RCA 와 동일한 옵션 A 패턴 +
+// "DOM 폴링 + 자동 재주입" 으로 강건성을 확보한다:
+//   1. WS GAME_STATE 가 최소 1회 도착해 gameState non-null 안정화 대기
+//   2. pendingStore.draft = null 명시 초기화
+//   3. gameStore.setState 로 fixture 주입 (myTiles, gameState.tableGroups,
+//      players[seat=0].hasInitialMeld, currentPlayerId)
+//   4. DOM 에 실제 그룹/랙 타일이 그려질 때까지 폴링 (최대 5초)
+//      미반영 시 1회 재주입 후 재폴링 (WS 가 덮어쓴 경우 복구)
+// ------------------------------------------------------------------
+
+export interface RearrangementFixtureOpts {
+  /** 보드에 강제 주입할 서버 그룹들 (id, tiles, type) */
+  tableGroups: { id: string; tiles: string[]; type: "run" | "group" }[];
+  /** 랙에 강제 주입할 타일 코드 */
+  rackTiles: string[];
+  /** seat=0 플레이어의 hasInitialMeld 패치 값 */
+  hasInitialMeld: boolean;
+  /** turnTimeoutSec (기본 600) */
+  turnTimeoutSec?: number;
+  /** drawPileCount (기본 90) */
+  drawPileCount?: number;
+}
+
+/**
+ * 재배치(merge/split/joker-swap) E2E 시나리오용 결정론적 fixture 주입.
+ *
+ * 사용 예:
+ *   await setupRearrangementFixture(page, {
+ *     tableGroups: [{ id: "srv-group-9", tiles: ["R9a","B9a","K9b"], type: "group" }],
+ *     rackTiles: ["Y9a", "R1a", "R2a"],
+ *     hasInitialMeld: true,
+ *   });
+ *
+ * 주의: 호출 전 createRoomAndStart + waitForGameReady 가 완료돼 있어야 한다.
+ */
+export async function setupRearrangementFixture(
+  page: Page,
+  opts: RearrangementFixtureOpts
+): Promise<void> {
+  const turnTimeoutSec = opts.turnTimeoutSec ?? 600;
+  const drawPileCount = opts.drawPileCount ?? 90;
+
+  await waitForStoreReady(page);
+
+  // 1. WS GAME_STATE 가 최소 1회 도착해 gameState 가 non-null 이 될 때까지 대기.
+  //    이 시점 이후에 패치하면 후속 GAME_STATE 가 도착해도 동일 값 덮어쓰기는
+  //    무해하고, race window 가 최소화된다 (W1 GHOST-SC2 RCA 패턴).
+  await page.waitForFunction(
+    () => {
+      const s = (window as unknown as {
+        __gameStore?: { getState: () => Record<string, unknown> };
+      }).__gameStore?.getState();
+      return !!s?.gameState;
+    },
+    { timeout: 15_000 }
+  );
+
+  // 2. pendingStore.draft = null 명시 초기화 (이전 테스트 잔재 차단)
+  await setPendingDraft(page, null);
+
+  // 3. gameStore 패치 함수 — 재주입 가능하도록 함수화
+  const inject = async (): Promise<void> => {
+    await page.evaluate((args: RearrangementFixtureOpts & { turnTimeoutSec: number; drawPileCount: number }) => {
+      const store = (
+        window as unknown as {
+          __gameStore?: {
+            getState: () => Record<string, unknown>;
+            setState: (s: Record<string, unknown>) => void;
+          };
+        }
+      ).__gameStore;
+      if (!store) throw new Error("__gameStore not available");
+
+      const cur = store.getState();
+      const baseGameState = (cur.gameState ?? {}) as Record<string, unknown>;
+
+      // players[seat=0].hasInitialMeld 패치 + currentPlayerId 고정 (W1 GHOST-SC2 패턴)
+      const rawPlayers = (cur.players ?? []) as Array<Record<string, unknown>>;
+      const patchedPlayers = rawPlayers.map((p) =>
+        p.seat === 0
+          ? { ...p, hasInitialMeld: args.hasInitialMeld, tileCount: args.rackTiles.length }
+          : p
+      );
+      if (!patchedPlayers.some((p) => p.seat === 0)) {
+        patchedPlayers.push({
+          seat: 0,
+          hasInitialMeld: args.hasInitialMeld,
+          tileCount: args.rackTiles.length,
+          type: "HUMAN",
+          userId: "fixture-seat-0",
+          displayName: "fixture",
+          status: "CONNECTED",
+        });
+      }
+      const seat0Player = patchedPlayers.find((p) => p.seat === 0);
+      const seat0UserId = (seat0Player?.userId as string | undefined) ?? null;
+
+      store.setState({
+        mySeat: 0,
+        myTiles: args.rackTiles,
+        hasInitialMeld: args.hasInitialMeld,
+        players: patchedPlayers,
+        currentPlayerId: seat0UserId,
+        aiThinkingSeat: null,
+        gameState: {
+          ...baseGameState,
+          currentSeat: 0,
+          tableGroups: args.tableGroups,
+          turnTimeoutSec: args.turnTimeoutSec,
+          drawPileCount: args.drawPileCount,
+        },
+      });
+    }, { ...opts, turnTimeoutSec, drawPileCount });
+  };
+
+  await inject();
+
+  // 4. DOM 폴링 — fixture 가 실제로 렌더되었는지 확인.
+  //    그룹 0개일 때(빈 보드 시나리오)는 그룹 검증 생략, 첫 랙 타일만 검증.
+  const expectGroupCounts = opts.tableGroups.map((g) => g.tiles.length);
+  const expectFirstRackTile = opts.rackTiles[0];
+
+  const verify = async (): Promise<boolean> => {
+    return await page.evaluate(
+      (args: { expectGroupCounts: number[]; expectFirstRackTile: string | undefined }) => {
+        // 그룹 배지 카운트 검증
+        for (const cnt of args.expectGroupCounts) {
+          const badges = document.querySelectorAll(`span[aria-label="${cnt}개 타일"]`);
+          if (badges.length < 1) return false;
+        }
+        // 첫 랙 타일이 랙 섹션에 그려졌는지 검증
+        if (args.expectFirstRackTile) {
+          const rack = document.querySelector('section[aria-label="내 타일 랙"]');
+          if (!rack) return false;
+          const tile = rack.querySelector(
+            `[aria-label="${args.expectFirstRackTile} 타일 (드래그 가능)"]`
+          );
+          if (!tile) return false;
+        }
+        return true;
+      },
+      { expectGroupCounts, expectFirstRackTile }
+    );
+  };
+
+  // 최대 5초 폴링, 1회 재주입 허용
+  const deadline = Date.now() + 5_000;
+  let reinjected = false;
+  while (Date.now() < deadline) {
+    if (await verify()) {
+      // dnd-kit droppable 등록 안정화를 위한 짧은 대기
+      await page.waitForTimeout(200);
+      return;
+    }
+    await page.waitForTimeout(150);
+    // 2.5초 경과 후에도 미반영이면 1회 재주입 (WS GAME_STATE 가 덮어쓴 경우)
+    if (!reinjected && Date.now() - (deadline - 5_000) > 2_500) {
+      await inject();
+      reinjected = true;
+    }
+  }
+
+  // 폴링 실패 — 진단 정보를 포함한 에러 throw
+  const diagnostic = await page.evaluate(() => {
+    const store = (window as unknown as {
+      __gameStore?: { getState: () => Record<string, unknown> };
+    }).__gameStore?.getState();
+    const gs = store?.gameState as { tableGroups?: { id: string; tiles: string[] }[] } | undefined;
+    const myTiles = store?.myTiles as string[] | undefined;
+    return {
+      tableGroups: gs?.tableGroups ?? null,
+      myTilesLen: myTiles?.length ?? -1,
+      myTilesFirst: (myTiles ?? []).slice(0, 5),
+    };
+  });
+  throw new Error(
+    `[setupRearrangementFixture] DOM verify timed out. diagnostic=${JSON.stringify(diagnostic)}`
+  );
+}
+
 /** 랙의 타일 코드 목록을 반환한다 */
 export async function getRackTileCodes(page: Page): Promise<string[]> {
   const tiles = page.locator(
