@@ -39,6 +39,17 @@ export async function createRoomAndStart(
     maxRetries = 4,
   } = opts;
 
+  // [E2E-RACE 로그 보강] E2E_RACE_DEBUG=true 환경변수가 설정된 경우
+  // page.addInitScript 로 window.__E2E_RACE_DEBUG__=true 를 페이지 로드 초기부터 주입한다.
+  // addInitScript 는 등록 후 모든 페이지 네비게이션(goto)에 자동 적용되므로
+  // GAME_STATE 첫 도착 시점부터 로그가 캡처된다.
+  if (process.env.E2E_RACE_DEBUG === "true") {
+    await page.addInitScript(() => {
+      (window as unknown as Record<string, unknown>).__E2E_RACE_DEBUG__ = true;
+      (window as unknown as Record<string, unknown>).__E2E_RACE_LOGS__ = [];
+    });
+  }
+
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     // 이전 테스트에서 남은 활성 방 정리
     await page.goto("/lobby");
@@ -307,6 +318,15 @@ export async function setupRearrangementFixture(
 
   await waitForStoreReady(page);
 
+  // [E2E-RACE 로그 보강] E2E_RACE_DEBUG=true 환경변수가 설정된 경우
+  // window.__E2E_RACE_DEBUG__=true 를 page context 에 주입한다.
+  // 이로써 inject 내부의 page.evaluate 코드가 로그를 출력하게 된다.
+  if (process.env.E2E_RACE_DEBUG === "true") {
+    await page.evaluate(() => {
+      (window as unknown as Record<string, unknown>).__E2E_RACE_DEBUG__ = true;
+    });
+  }
+
   // 1. WS GAME_STATE 가 최소 1회 도착해 gameState 가 non-null 이 될 때까지 대기.
   //    이 시점 이후에 패치하면 후속 GAME_STATE 가 도착해도 동일 값 덮어쓰기는
   //    무해하고, race window 가 최소화된다 (W1 GHOST-SC2 RCA 패턴).
@@ -326,6 +346,28 @@ export async function setupRearrangementFixture(
   // 3. gameStore 패치 함수 — 재주입 가능하도록 함수화
   const inject = async (): Promise<void> => {
     await page.evaluate((args: RearrangementFixtureOpts & { turnTimeoutSec: number; drawPileCount: number }) => {
+      // [E2E-RACE 로그 보강] fixture inject 시작 시점 기록
+      if ((window as unknown as Record<string, unknown>).__E2E_RACE_DEBUG__) {
+        const store = (window as unknown as {
+          __gameStore?: { getState: () => Record<string, unknown> };
+        }).__gameStore;
+        const cur = store?.getState();
+        const gs = cur?.gameState as { tableGroups?: { id: string }[] } | undefined;
+        console.info(
+          "[E2E-RACE] fixture inject start",
+          JSON.stringify({
+            t: performance.now().toFixed(2),
+            tableGroupsCount: args.tableGroups.length,
+            rackTilesCount: args.rackTiles.length,
+            storeBefore: {
+              tableGroupsCount: gs?.tableGroups?.length ?? null,
+              tableGroupsIds: gs?.tableGroups?.map((g) => g.id) ?? null,
+              myTilesCount: (cur?.myTiles as string[] | undefined)?.length ?? null,
+            },
+          })
+        );
+      }
+
       const store = (
         window as unknown as {
           __gameStore?: {
@@ -375,10 +417,80 @@ export async function setupRearrangementFixture(
           drawPileCount: args.drawPileCount,
         },
       });
+
+      // [E2E-RACE 로그 보강] fixture inject 완료 (store.setState 직후)
+      if ((window as unknown as Record<string, unknown>).__E2E_RACE_DEBUG__) {
+        const afterCur = store.getState();
+        const afterGs = afterCur?.gameState as { tableGroups?: { id: string }[] } | undefined;
+        console.info(
+          "[E2E-RACE] fixture inject done",
+          JSON.stringify({
+            t: performance.now().toFixed(2),
+            storeAfter: {
+              tableGroupsCount: afterGs?.tableGroups?.length ?? null,
+              tableGroupsIds: afterGs?.tableGroups?.map((g) => g.id) ?? null,
+              myTilesCount: (afterCur?.myTiles as string[] | undefined)?.length ?? null,
+            },
+          })
+        );
+      }
     }, { ...opts, turnTimeoutSec, drawPileCount });
   };
 
   await inject();
+
+  // [E2E-RACE 로그 보강] inject 직후 store 상태를 100ms 간격으로 샘플링해
+  // race (GAME_STATE 덮어쓰기) 발생 여부를 Node.js 레벨에서 관찰한다.
+  // 배포된 번들 수정 없이도 작동 (page.evaluate 기반).
+  if (process.env.E2E_RACE_DEBUG === "true") {
+    const injectedGroupIds = opts.tableGroups.map((g) => g.id);
+    const injectedRackCount = opts.rackTiles.length;
+
+    // inject 직후 스냅샷 기록
+    const snapAfterInject = await page.evaluate(() => {
+      const store = (window as unknown as {
+        __gameStore?: { getState: () => Record<string, unknown> };
+      }).__gameStore?.getState();
+      const gs = store?.gameState as { tableGroups?: { id: string }[] } | undefined;
+      return {
+        t: performance.now().toFixed(2),
+        tableGroupsCount: gs?.tableGroups?.length ?? null,
+        tableGroupsIds: gs?.tableGroups?.map((g) => g.id) ?? null,
+        myTilesCount: (store?.myTiles as string[] | undefined)?.length ?? null,
+      };
+    });
+    console.log(
+      `[E2E-RACE] store snapshot t+0ms (after inject): tableGroups=${snapAfterInject.tableGroupsCount} ids=${JSON.stringify(snapAfterInject.tableGroupsIds)} rack=${snapAfterInject.myTilesCount}`
+    );
+
+    // 100ms, 250ms, 500ms 후 스냅샷 — race 발생 시 이 시점에 덮어써짐
+    for (const delay of [100, 250, 500]) {
+      await page.waitForTimeout(delay === 100 ? 100 : delay - (delay === 250 ? 100 : 250));
+      const snap = await page.evaluate(() => {
+        const store = (window as unknown as {
+          __gameStore?: { getState: () => Record<string, unknown> };
+        }).__gameStore?.getState();
+        const gs = store?.gameState as { tableGroups?: { id: string }[] } | undefined;
+        return {
+          t: performance.now().toFixed(2),
+          tableGroupsCount: gs?.tableGroups?.length ?? null,
+          tableGroupsIds: gs?.tableGroups?.map((g) => g.id) ?? null,
+          myTilesCount: (store?.myTiles as string[] | undefined)?.length ?? null,
+        };
+      });
+
+      const idsMatch =
+        snap.tableGroupsIds !== null &&
+        injectedGroupIds.every((id) => snap.tableGroupsIds!.includes(id));
+      const raceDetected =
+        !idsMatch || snap.myTilesCount !== injectedRackCount;
+
+      console.log(
+        `[E2E-RACE] store snapshot t+${delay}ms: tableGroups=${snap.tableGroupsCount} ids=${JSON.stringify(snap.tableGroupsIds)} rack=${snap.myTilesCount}` +
+        (raceDetected ? " *** RACE DETECTED (fixture overwritten) ***" : " [OK - fixture intact]")
+      );
+    }
+  }
 
   // 4. DOM 폴링 — fixture 가 실제로 렌더되었는지 확인.
   //    그룹 0개일 때(빈 보드 시나리오)는 그룹 검증 생략, 첫 랙 타일만 검증.
@@ -415,11 +527,52 @@ export async function setupRearrangementFixture(
     if (await verify()) {
       // dnd-kit droppable 등록 안정화를 위한 짧은 대기
       await page.waitForTimeout(200);
+
+      // [E2E-RACE 로그 보강] 폴링 성공 시 window.__E2E_RACE_LOGS__ 를 Node.js stdout 으로 출력
+      if (process.env.E2E_RACE_DEBUG === "true") {
+        const raceLogs = await page.evaluate(() => {
+          const w = window as unknown as Record<string, unknown>;
+          const logs = w.__E2E_RACE_LOGS__;
+          // 읽은 후 초기화 (다음 테스트와 혼재 방지)
+          w.__E2E_RACE_LOGS__ = [];
+          return Array.isArray(logs) ? (logs as unknown[]) : [];
+        });
+        if (raceLogs.length > 0) {
+          console.log(`[setupRearrangementFixture] [E2E-RACE] captured ${raceLogs.length} GAME_STATE events:`);
+          for (const entry of raceLogs) {
+            console.log(`  [E2E-RACE]`, JSON.stringify(entry));
+          }
+        } else {
+          console.log("[setupRearrangementFixture] [E2E-RACE] 0 GAME_STATE events captured (race did not occur or debug flag not active in browser)");
+        }
+      }
+
       return;
     }
     await page.waitForTimeout(150);
     // 2.5초 경과 후에도 미반영이면 1회 재주입 (WS GAME_STATE 가 덮어쓴 경우)
     if (!reinjected && Date.now() - (deadline - 5_000) > 2_500) {
+      // [E2E-RACE 로그 보강] 재주입 발동 기록
+      await page.evaluate(() => {
+        if ((window as unknown as Record<string, unknown>).__E2E_RACE_DEBUG__) {
+          const store = (window as unknown as {
+            __gameStore?: { getState: () => Record<string, unknown> };
+          }).__gameStore;
+          const cur = store?.getState();
+          const gs = cur?.gameState as { tableGroups?: { id: string }[] } | undefined;
+          console.info(
+            "[E2E-RACE] fixture re-inject triggered",
+            JSON.stringify({
+              t: performance.now().toFixed(2),
+              storeAtReinject: {
+                tableGroupsCount: gs?.tableGroups?.length ?? null,
+                tableGroupsIds: gs?.tableGroups?.map((g) => g.id) ?? null,
+                myTilesCount: (cur?.myTiles as string[] | undefined)?.length ?? null,
+              },
+            })
+          );
+        }
+      });
       await inject();
       reinjected = true;
     }

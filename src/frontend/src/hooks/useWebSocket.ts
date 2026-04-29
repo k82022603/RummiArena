@@ -146,6 +146,42 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
         }
         case "GAME_STATE": {
           const payload = msg.payload as GameStatePayload;
+
+          // [E2E-RACE 로그 보강] 2026-04-29: fixture vs GAME_STATE race 추적
+          // 활성화 조건 (두 가지 중 하나):
+          //   A. NEXT_PUBLIC_E2E_RACE_DEBUG=true 로 빌드된 번들 (로컬 dev 서버)
+          //   B. window.__E2E_RACE_DEBUG__=true (E2E 런타임 page.evaluate 주입) ← K8s 배포 대응
+          // production 빌드에서 A 조건이 false이고 B 주입도 없으면 dead code로 동작
+          const _raceDebugActive =
+            process.env.NEXT_PUBLIC_E2E_RACE_DEBUG === "true" ||
+            (typeof window !== "undefined" &&
+              !!(window as unknown as Record<string, unknown>).__E2E_RACE_DEBUG__);
+          if (_raceDebugActive) {
+            const before = useGameStore.getState();
+            const raceEntry = {
+              event: "GAME_STATE arrive",
+              t: performance.now().toFixed(2),
+              before: {
+                tableGroupsCount: (before.gameState as { tableGroups?: unknown[] } | null)?.tableGroups?.length ?? null,
+                myTilesCount: before.myTiles?.length ?? null,
+                tableGroupsIds: (before.gameState as { tableGroups?: { id: string }[] } | null)?.tableGroups?.map((g) => g.id) ?? null,
+              },
+              payload: {
+                tableGroupsCount: payload.tableGroups?.length ?? null,
+                myRackCount: payload.myRack?.length ?? null,
+                tableGroupsIds: payload.tableGroups?.map((g: { id: string }) => g.id) ?? null,
+                currentSeat: payload.currentSeat,
+              },
+            };
+            console.info("[E2E-RACE] GAME_STATE arrive", JSON.stringify(raceEntry));
+            // window.__E2E_RACE_LOGS__ 에도 push — page.evaluate()로 Node.js에서 읽기 가능
+            if (typeof window !== "undefined") {
+              const w = window as unknown as Record<string, unknown>;
+              if (!Array.isArray(w.__E2E_RACE_LOGS__)) w.__E2E_RACE_LOGS__ = [];
+              (w.__E2E_RACE_LOGS__ as unknown[]).push(raceEntry);
+            }
+          }
+
           // 2026-04-28 회귀 핫픽스: setMyTiles를 setGameState보다 먼저 호출해
           // useGameSync의 TURN_START 감지가 currentSeat 변경 시점에 빈 myTiles
           // 스냅샷을 저장하는 race window를 닫는다.
@@ -205,6 +241,32 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
             const elapsed = Date.now() - new Date(payload.turnStartedAt).getTime();
             const remaining = Math.max(0, payload.turnTimeoutSec * 1000 - elapsed);
             setRemainingMs(remaining);
+          }
+
+          // [E2E-RACE 로그 보강] after-write 스냅샷 (덮어쓰기 완료 시점 확인)
+          // _raceDebugActive 조건은 위 arrive 블록과 동일 (빌드 번들 or window 플래그)
+          if (
+            process.env.NEXT_PUBLIC_E2E_RACE_DEBUG === "true" ||
+            (typeof window !== "undefined" &&
+              !!(window as unknown as Record<string, unknown>).__E2E_RACE_DEBUG__)
+          ) {
+            const after = useGameStore.getState();
+            const afterEntry = {
+              event: "GAME_STATE after-write",
+              t: performance.now().toFixed(2),
+              after: {
+                tableGroupsCount: (after.gameState as { tableGroups?: unknown[] } | null)?.tableGroups?.length ?? null,
+                myTilesCount: after.myTiles?.length ?? null,
+                tableGroupsIds: (after.gameState as { tableGroups?: { id: string }[] } | null)?.tableGroups?.map((g) => g.id) ?? null,
+              },
+            };
+            console.info("[E2E-RACE] GAME_STATE after-write", JSON.stringify(afterEntry));
+            // window.__E2E_RACE_LOGS__ push
+            if (typeof window !== "undefined") {
+              const w = window as unknown as Record<string, unknown>;
+              if (!Array.isArray(w.__E2E_RACE_LOGS__)) w.__E2E_RACE_LOGS__ = [];
+              (w.__E2E_RACE_LOGS__ as unknown[]).push(afterEntry);
+            }
           }
           break;
         }
