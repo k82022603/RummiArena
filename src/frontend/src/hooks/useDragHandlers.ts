@@ -504,9 +504,8 @@ export function useDragHandlers(
                 return true; // 서버 그룹에 타일이 추가된 상태 유지
               })
             );
-            const stillHasPending = nextGroupIds.size > 0;
             usePendingStore.getState().applyMutation({
-              nextTableGroups: stillHasPending ? nextTableGroups : null,
+              nextTableGroups: nextTableGroups,
               nextMyTiles: [...freshMyTiles, tileCode],
               nextPendingGroupIds: nextGroupIds,
               nextPendingRecoveredJokers: freshPendingRecoveredJokers,
@@ -1092,7 +1091,7 @@ export function useDragHandlers(
                   )
                 : new Set<string>();
               usePendingStore.getState().applyMutation({
-                nextTableGroups: stillHasPending ? updated : null,
+                nextTableGroups: updated,
                 nextMyTiles,
                 nextPendingGroupIds: nextGroupIds,
                 nextPendingRecoveredJokers: freshPendingRecoveredJokers,

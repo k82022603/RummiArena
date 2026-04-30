@@ -20,11 +20,10 @@ import { useCallback } from "react";
 import {
   usePendingStore,
   selectTilesAdded,
-  selectPendingPlacementScore,
-  selectAllGroupsValid,
   selectHasPending,
 } from "@/store/pendingStore";
 import { useGameStore } from "@/store/gameStore";
+import { useWSStore } from "@/store/wsStore";
 import { validateTurnPreCheck } from "@/lib/confirmValidator";
 import {
   computeEffectiveMeld,
@@ -97,10 +96,10 @@ export function useTurnActions(): UseTurnActionsReturn {
   // ---------------------------------------------------------------------------
 
   // gameStore selectors (인라인 객체 selector 무한 루프 방지 — 필드별 개별 호출)
-  const players = useGameStore((s) => s.players);
+  // isMyTurn 계산에 필요한 필드만 구독. hasInitialMeld / players 는 handleConfirm 내부에서
+  // getState()로 직접 읽으므로 reactive 구독 불필요 (P0-3 불필요 재렌더 제거).
   const mySeat = useGameStore((s) => s.mySeat);
   const gameState = useGameStore((s) => s.gameState);
-  const storedHasInitialMeld = useGameStore((s) => s.hasInitialMeld);
 
   // ---------------------------------------------------------------------------
   // [2026-04-28 Phase B] pendingStore.draft 기반 SSOT 전환 (재전환)
@@ -123,25 +122,17 @@ export function useTurnActions(): UseTurnActionsReturn {
   // ---------------------------------------------------------------------------
 
   // pendingStore selectors — getState 기반 단발 호출이 아닌 reactive 구독으로 사용
+  // allGroupsValid / pendingPlacementScore / tilesAdded 는 handleConfirm 내부에서만 필요 —
+  // 버튼 활성 조건 단순화(P0-3)로 reactive 구독 제거. handleConfirm은 클릭 시 getState()로 직접 확인.
   const hasPending = usePendingStore((s) => selectHasPending(s));
-  const tilesAdded = usePendingStore((s) => selectTilesAdded(s));
-  const allGroupsValid = usePendingStore((s) => selectAllGroupsValid(s));
-  const pendingPlacementScore = usePendingStore((s) => selectPendingPlacementScore(s));
-
-  // V-13a: players 배열 기준이 primary. gameStore.hasInitialMeld는 GAME_STATE 동기화 fallback.
-  // players[mySeat].hasInitialMeld가 stale한 경우에도 storedHasInitialMeld가 보완한다.
-  const hasInitialMeld = computeEffectiveMeld(players, mySeat) || storedHasInitialMeld;
 
   // isMyTurn: gameState.currentSeat vs mySeat (ActionBar fallback과 동일한 출처)
   const isMyTurn = computeIsMyTurn(gameState?.currentSeat ?? -1, mySeat);
 
-  // confirmEnabled: ActionBar fallback과 동등 + 초기 등록 미완료 시 30점 게이트 (UR-15)
-  const confirmEnabled =
-    isMyTurn &&
-    hasPending &&
-    tilesAdded >= 1 &&
-    allGroupsValid &&
-    (hasInitialMeld || pendingPlacementScore >= 30);
+  // P0-3: confirmEnabled = isMyTurn (버튼 항상 활성, 클릭 시 내부 검증으로 토스트 표시)
+  // 기존 5조건(hasPending/tilesAdded/allGroupsValid/score) 제거 — UX 개선: 버튼은 켜두고
+  // 클릭 후 에러 메시지로 안내 (UR-15 사전조건은 handleConfirm 내부에서 동일하게 검증)
+  const confirmEnabled = isMyTurn;
 
   // RESET 활성 조건: pending이 있으면 초기화 가능 (ActionBar fallback: hasPending)
   const resetEnabled = hasPending;
@@ -158,33 +149,46 @@ export function useTurnActions(): UseTurnActionsReturn {
     const ps = usePendingStore.getState();
     const draft = ps.draft;
 
-    // pending 없으면 확정 불가
-    if (draft === null || draft.groups.length === 0) return;
-
-    const currentPlayers = gs.players;
-    const currentMySeat = gs.mySeat;
-    const currentGameState = gs.gameState;
-    const currentHasInitialMeld = computeEffectiveMeld(currentPlayers, currentMySeat) || gs.hasInitialMeld;
-
-    // isMyTurn gate (UR-22 확장: 내 턴이 아니면 확정 불가)
-    const currentIsMyTurn = computeIsMyTurn(currentGameState?.currentSeat ?? -1, currentMySeat);
+    // isMyTurn gate — race 방지 (클릭 시점과 렌더 시점 불일치 대응)
+    const currentIsMyTurn = computeIsMyTurn(gs.gameState?.currentSeat ?? -1, gs.mySeat);
     if (!currentIsMyTurn) return;
+
+    // draft 없으면 배치된 타일 없음
+    if (draft === null) {
+      useWSStore.getState().setLastError("랙에서 타일을 최소 1장 배치해야 합니다");
+      return;
+    }
+
+    const currentHasInitialMeld =
+      computeEffectiveMeld(gs.players, gs.mySeat) || gs.hasInitialMeld;
 
     // pending 전용 그룹: pendingGroupIds에 포함된 그룹만 검증 대상
     const pendingOnlyGroups = draft.groups.filter((g) => draft.pendingGroupIds.has(g.id));
 
     // tilesAdded: turnStartRack 기준
     const currentTilesAdded = selectTilesAdded(ps);
-    const score = computePendingScore(pendingOnlyGroups);
 
-    // UR-15 종합 조건 재확인
-    const currentAllGroupsValid =
-      pendingOnlyGroups.length > 0 && pendingOnlyGroups.every((g) => g.tiles.length >= 3);
-    if (
-      currentTilesAdded < 1 ||
-      !currentAllGroupsValid ||
-      (!currentHasInitialMeld && score < 30)
-    ) return;
+    // UR-15 종합 조건 재확인 — 실패 시 toast(setLastError)로 안내
+    if (currentTilesAdded < 1) {
+      useWSStore.getState().setLastError("랙에서 타일을 최소 1장 배치해야 합니다");
+      return;
+    }
+    if (pendingOnlyGroups.length === 0) {
+      useWSStore.getState().setLastError("배치된 그룹이 없습니다");
+      return;
+    }
+    const currentAllGroupsValid = pendingOnlyGroups.every((g) => g.tiles.length >= 3);
+    if (!currentAllGroupsValid) {
+      useWSStore.getState().setLastError("그룹은 최소 3장 이상이어야 합니다");
+      return;
+    }
+    const score = computePendingScore(pendingOnlyGroups);
+    if (!currentHasInitialMeld && score < 30) {
+      useWSStore.getState().setLastError(
+        `초기 등록에는 30점 이상 필요합니다 (현재 ${score}점)`
+      );
+      return;
+    }
 
     // V-01/02/03/04/14/15 클라이언트 미러 사전검증 (UR-36: 이 외 임의 게이트 금지)
     const validation = validateTurnPreCheck(
@@ -195,6 +199,19 @@ export function useTurnActions(): UseTurnActionsReturn {
     );
 
     if (!validation.valid) {
+      // errorCode를 한글 메시지로 변환 (INVALID_MOVE_MESSAGES 와 동일한 오류 코드 체계)
+      const ERR_MESSAGES: Record<string, string> = {
+        ERR_SET_SIZE: "그룹은 최소 3장 이상이어야 합니다",
+        ERR_NO_RACK_TILE: "랙에서 타일을 최소 1장 배치해야 합니다",
+        ERR_INITIAL_MELD_SCORE: "초기 등록에는 30점 이상 필요합니다",
+        ERR_INVALID_SET: "유효하지 않은 타일 조합입니다",
+        ERR_GROUP_COLOR_DUP: "그룹에 같은 색상 타일이 중복되었습니다",
+        ERR_RUN_SEQUENCE: "런의 숫자가 연속되지 않았습니다",
+      };
+      const errMsg = validation.errorCode
+        ? (ERR_MESSAGES[validation.errorCode] ?? "유효하지 않은 배치입니다")
+        : "유효하지 않은 배치입니다";
+      useWSStore.getState().setLastError(errMsg);
       return;
     }
 

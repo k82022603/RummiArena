@@ -113,7 +113,6 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
   const {
     setMyTiles,
     setGameState,
-    setPlayers,
     setRemainingMs,
     setAIThinkingSeat,
     setIsAITurn,
@@ -124,7 +123,6 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
     removeDisconnectedPlayer,
     setIsDrawPileEmpty,
     setDeadlockReason,
-    setHasInitialMeld,
   } = useGameStore();
 
   const handleMessage = useCallback(
@@ -218,7 +216,7 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
               status: p.isConnected ? ("CONNECTED" as const) : ("DISCONNECTED" as const),
             } as Player;
           });
-          setPlayers(playersUpdated);
+          // P0-2 atomic setState: setPlayers + hasInitialMeld 단일 호출로 race window 제거
           // BUG-UI-EXT 수정 3 + F4 B2 (FINDING-01): hasInitialMeld 완전 SSOT 동기화 —
           // TURN_END 에서만 루트 hasInitialMeld 를 갱신하던 기존 로직은 GAME_STATE (재연결/
           // 새로고침 복구) 시 루트 hasInitialMeld 가 false 로 초기화되는 드리프트를 유발한다.
@@ -228,9 +226,14 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
           {
             const mySeatNow = useGameStore.getState().mySeat;
             const myPlayer = payload.players.find((p) => p.seat === mySeatNow);
-            if (myPlayer !== undefined && myPlayer.hasInitialMeld !== undefined) {
-              setHasInitialMeld(myPlayer.hasInitialMeld);
-            }
+            const hasInitialMeldUpdate =
+              myPlayer !== undefined && myPlayer.hasInitialMeld !== undefined
+                ? { hasInitialMeld: myPlayer.hasInitialMeld }
+                : {};
+            useGameStore.setState({
+              players: playersUpdated,
+              ...hasInitialMeldUpdate,
+            });
           }
           // drawPileCount가 0이면 소진 상태 설정
           if (payload.drawPileCount === 0) {
@@ -632,7 +635,6 @@ export function useWebSocket({ roomId, enabled = true }: UseWebSocketOptions) {
     [
       setMyTiles,
       setGameState,
-      setPlayers,
       setRemainingMs,
       setAIThinkingSeat,
       setIsAITurn,

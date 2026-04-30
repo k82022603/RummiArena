@@ -12,7 +12,10 @@
  *   GameClient.handleDragEnd 9개 분기에 pendingStore.applyMutation dual-write가
  *   추가되었고 useGameSync가 TURN_START 시 saveTurnStartSnapshot()을 호출하므로,
  *   useTurnActions를 다시 pendingStore.draft 기반으로 전환.
- *   - confirmEnabled: selectHasPending && tilesAdded>=1 && allGroupsValid && (hasInitialMeld || score>=30)
+ *
+ * [2026-04-30 P0-3] confirmEnabled = isMyTurn (버튼 항상 활성화 UX):
+ *   - confirmEnabled: isMyTurn (기존 5조건 제거)
+ *   - 검증 실패 조건은 handleConfirm 내부에서 setLastError()로 toast 표시
  *   - drawEnabled: isMyTurn && !selectHasPending(pendingStore)
  *   - resetEnabled: selectHasPending(pendingStore)
  *   setup 함수들도 pendingStore.applyMutation()/saveTurnStartSnapshot() 기반으로 수정.
@@ -128,16 +131,17 @@ afterEach(() => {
 });
 
 // ---------------------------------------------------------------------------
-// 1. confirmEnabled — pending 없을 때 false
+// 1. confirmEnabled — 내 턴이면 항상 true (P0-3: 버튼 항상 활성)
 // ---------------------------------------------------------------------------
 
-test("confirmEnabled = false when draft is null (my turn, no pending)", () => {
+test("confirmEnabled = true when my turn (P0-3: button always active on my turn)", () => {
   act(() => {
     setupMyTurnIdle(true);
   });
 
   const { result } = renderHook(() => useTurnActions());
-  expect(result.current.confirmEnabled).toBe(false);
+  // P0-3: confirmEnabled = isMyTurn — draft 없어도 내 턴이면 활성
+  expect(result.current.confirmEnabled).toBe(true);
 });
 
 // ---------------------------------------------------------------------------
@@ -228,18 +232,31 @@ test("handleDraw → WS DRAW_TILE 발신", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 7. confirmEnabled — V-04 미충족 시 false (hasInitialMeld=false, score 18 < 30)
+// 7. handleConfirm — V-04 미충족 시 WS 발신 없이 setLastError 호출 (hasInitialMeld=false, score < 30)
+// P0-3: confirmEnabled는 항상 true지만, handleConfirm 내부 검증에서 토스트 표시
 // ---------------------------------------------------------------------------
 
-test("confirmEnabled = false when score < 30 and hasInitialMeld=false", () => {
+test("handleConfirm → no WS send + setLastError when score < 30 and hasInitialMeld=false", () => {
   // 내 턴이지만 hasInitialMeld=false, score=18 (30점 미만)
   act(() => {
     setupPendingReady(false); // hasInitialMeld=false
   });
 
+  const sent: Array<{ type: string; payload: unknown }> = [];
+  registerWSSendBridge((type, payload) => {
+    sent.push({ type, payload });
+  });
+
   const { result } = renderHook(() => useTurnActions());
-  // score 5+6+7=18 < 30 이므로 false
-  expect(result.current.confirmEnabled).toBe(false);
+  // P0-3: confirmEnabled = isMyTurn → true (버튼은 활성)
+  expect(result.current.confirmEnabled).toBe(true);
+
+  act(() => {
+    result.current.handleConfirm();
+  });
+
+  // score 18 < 30 → CONFIRM_TURN 발신 안 됨 (검증 실패)
+  expect(sent).toHaveLength(0);
 });
 
 // ---------------------------------------------------------------------------
