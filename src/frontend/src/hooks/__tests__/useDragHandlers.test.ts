@@ -280,3 +280,149 @@ test("handleDragEnd(rack→existing-pending-group) → 그룹에 타일 추가",
   expect(group).toBeDefined();
   expect(group!.tiles).toContain("R7a");
 });
+
+// ---------------------------------------------------------------------------
+// 6. Bug 1 회귀 방지: players[mySeat].hasInitialMeld=false + rootStore.hasInitialMeld=true
+//    → freshHasInitialMeld=true → 서버 그룹 드롭 시 새 pending 그룹이 아닌 서버 그룹 append
+// ---------------------------------------------------------------------------
+
+test("Bug1-회귀: players hasInitialMeld=false지만 루트 hasInitialMeld=true이면 서버그룹 append", () => {
+  const serverGroupId = "server-group-uuid-001";
+  act(() => {
+    // players[0].hasInitialMeld=false, 루트 hasInitialMeld=true (불일치 상황)
+    useGameStore.setState({
+      mySeat: 0,
+      hasInitialMeld: true,
+      myTiles: ["Y9a"] as TileCode[],
+      players: [{
+        seat: 0,
+        type: "HUMAN" as const,
+        userId: "user-0",
+        displayName: "P0",
+        tileCount: 1,
+        hasInitialMeld: false, // 서버 스냅샷 갱신 누락 시뮬레이션
+        status: "CONNECTED" as const,
+      }],
+      gameState: {
+        currentSeat: 0,
+        tableGroups: [makeGroup(serverGroupId, ["Y10a", "Y11a", "Y12a"] as TileCode[])],
+        drawPileCount: 50,
+        turnTimeoutSec: 60,
+        turnStartedAt: new Date().toISOString(),
+      },
+    });
+    usePendingStore.getState().saveTurnStartSnapshot(
+      ["Y9a"] as TileCode[],
+      [makeGroup(serverGroupId, ["Y10a", "Y11a", "Y12a"] as TileCode[])]
+    );
+    useTurnStateStore.getState().transition("TURN_START", { isMyTurn: true });
+  });
+
+  const { result } = renderHook(() => useDragHandlers());
+
+  act(() => {
+    result.current.handleDragStart(
+      makeDragStartEvent({ tileCode: "Y9a", sourceKind: "rack" })
+    );
+    result.current.handleDragEnd(
+      makeDragEndEvent({
+        tileCode: "Y9a",
+        sourceKind: "rack",
+        overId: serverGroupId,
+      })
+    );
+  });
+
+  const draft = usePendingStore.getState().draft;
+  expect(draft).not.toBeNull();
+  // 서버 그룹에 Y9a가 append 되어야 함 (새 1장 그룹이 생성되면 Bug 1 재현)
+  const serverGroup = draft!.groups.find((g) => g.id === serverGroupId);
+  expect(serverGroup).toBeDefined();
+  expect(serverGroup!.tiles).toContain("Y9a");
+  // pendingGroupIds에 서버 그룹 ID가 등록되어야 함
+  expect(draft!.pendingGroupIds.has(serverGroupId)).toBe(true);
+  // 새 pending- 그룹이 생성되지 않아야 함 (1장짜리 고아 그룹 차단)
+  const orphanGroup = draft!.groups.find(
+    (g) => g.id !== serverGroupId && g.tiles.includes("Y9a")
+  );
+  expect(orphanGroup).toBeUndefined();
+});
+
+// ---------------------------------------------------------------------------
+// 7. Bug 2 회귀 방지: 서버 그룹에 Y9 추가 후 랙으로 되돌리면 drawEnabled 복원
+//    selectHasPending=false → drawEnabled=true 가 되어야 함
+// ---------------------------------------------------------------------------
+
+test("Bug2-회귀: 서버그룹 append 후 랙으로 되돌리면 pendingGroupIds에서 서버그룹 제거", () => {
+  const serverGroupId = "server-group-uuid-002";
+  act(() => {
+    useGameStore.setState({
+      mySeat: 0,
+      hasInitialMeld: true,
+      myTiles: ["Y9a"] as TileCode[],
+      players: [{
+        seat: 0,
+        type: "HUMAN" as const,
+        userId: "user-0",
+        displayName: "P0",
+        tileCount: 1,
+        hasInitialMeld: true,
+        status: "CONNECTED" as const,
+      }],
+      gameState: {
+        currentSeat: 0,
+        tableGroups: [
+          makeGroup(serverGroupId, ["Y10a", "Y11a", "Y12a", "Y9a"] as TileCode[])
+        ],
+        drawPileCount: 50,
+        turnTimeoutSec: 60,
+        turnStartedAt: new Date().toISOString(),
+      },
+    });
+    // 서버 그룹에 Y9a가 이미 append된 상태 설정
+    usePendingStore.getState().saveTurnStartSnapshot(
+      [] as TileCode[], // Y9a를 이미 드롭한 후이므로 랙은 빔
+      [makeGroup(serverGroupId, ["Y10a", "Y11a", "Y12a"] as TileCode[])] // turnStart 원본
+    );
+    usePendingStore.getState().applyMutation({
+      nextTableGroups: [
+        makeGroup(serverGroupId, ["Y10a", "Y11a", "Y12a", "Y9a"] as TileCode[])
+      ],
+      nextMyTiles: [] as TileCode[],
+      nextPendingGroupIds: new Set([serverGroupId]),
+      nextPendingRecoveredJokers: [],
+      nextPendingGroupSeq: 0,
+      branch: "test-setup-server-append",
+    });
+    useTurnStateStore.getState().transition("TURN_START", { isMyTurn: true });
+    useTurnStateStore.getState().transition("DROP_OK");
+  });
+
+  const { result } = renderHook(() => useDragHandlers());
+
+  // Y9a를 서버 그룹(index=3)에서 랙으로 되돌리기
+  act(() => {
+    result.current.handleDragStart(
+      makeDragStartEvent({
+        tileCode: "Y9a",
+        sourceKind: "table",
+        groupId: serverGroupId,
+        index: 3,
+      })
+    );
+    result.current.handleDragEnd(
+      makeDragEndEvent({
+        tileCode: "Y9a",
+        sourceKind: "table",
+        overId: "player-rack",
+        groupId: serverGroupId,
+        index: 3,
+      })
+    );
+  });
+
+  const draft = usePendingStore.getState().draft;
+  // 서버 그룹이 원상복귀되었으면 pendingGroupIds에서 제거되어야 함
+  const hasPendingAfter = draft !== null && draft.pendingGroupIds.size > 0;
+  expect(hasPendingAfter).toBe(false);
+});

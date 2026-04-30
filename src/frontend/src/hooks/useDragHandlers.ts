@@ -403,13 +403,19 @@ export function useDragHandlers(
           latestDraft?.recoveredJokers ?? [];
 
         // F4 (FINDING-01): players[mySeat].hasInitialMeld 를 1차 SSOT 로 사용 (루트는 fallback).
+        // Bug 1 수정: useInitialMeldGuard 와 동일한 OR 패턴 적용.
+        // players[mySeat].hasInitialMeld 가 false 이더라도 latestGameState.hasInitialMeld(루트) 가
+        // true 이면 초기 등록 완료로 간주한다. 서버 TURN_START 스냅샷에서 players 배열의
+        // hasInitialMeld 가 갱신 누락될 수 있어 두 소스를 OR 합산한다.
         const freshHasInitialMeld = (() => {
           const seat = latestGameState.mySeat;
+          let playerValue: boolean | undefined;
           if (seat >= 0) {
             const me = latestGameState.players.find((p) => p.seat === seat);
-            if (me?.hasInitialMeld !== undefined) return me.hasInitialMeld;
+            if (me?.hasInitialMeld !== undefined) playerValue = me.hasInitialMeld;
           }
-          return latestGameState.hasInitialMeld;
+          // OR: 어느 한 소스라도 true 이면 초기 등록 완료
+          return (playerValue ?? false) || latestGameState.hasInitialMeld;
         })();
 
         const sourceKind =
@@ -474,16 +480,31 @@ export function useDragHandlers(
               )
               .filter((g) => g.tiles.length > 0);
 
-            const stillHasPending = nextTableGroups.some((g) =>
-              freshPendingGroupIds.has(g.id)
+            // Bug 2 수정: 서버 그룹(non-pending- prefix)을 랙으로 되돌려 원상복귀된 경우
+            // pendingGroupIds 에서 제거해야 selectHasPending=false → drawEnabled=true 복원.
+            // turnStartTableGroups 와 비교해 타일 배열이 동일하면 원상복귀 판정.
+            const turnStartGroups =
+              usePendingStore.getState().draft?.turnStartTableGroups ?? [];
+            const nextGroupIds = new Set(
+              [...freshPendingGroupIds].filter((id) => {
+                // 해당 그룹이 nextTableGroups 에 존재하는지 확인
+                const g = nextTableGroups.find((x) => x.id === id);
+                if (!g) return false;
+                // pending- prefix 그룹은 기존 로직대로 유지
+                if (id.startsWith("pending-")) return true;
+                // 서버 그룹: turnStart 원본과 타일 배열이 완전히 동일하면 원상복귀 → pending 해제
+                const original = turnStartGroups.find((og) => og.id === id);
+                if (
+                  original &&
+                  original.tiles.length === g.tiles.length &&
+                  original.tiles.every((t, i) => t === g.tiles[i])
+                ) {
+                  return false; // 원상복귀 → pending 해제
+                }
+                return true; // 서버 그룹에 타일이 추가된 상태 유지
+              })
             );
-            const nextGroupIds = stillHasPending
-              ? new Set(
-                  [...freshPendingGroupIds].filter((id) =>
-                    nextTableGroups.some((g) => g.id === id)
-                  )
-                )
-              : new Set<string>();
+            const stillHasPending = nextGroupIds.size > 0;
             usePendingStore.getState().applyMutation({
               nextTableGroups: stillHasPending ? nextTableGroups : null,
               nextMyTiles: [...freshMyTiles, tileCode],
