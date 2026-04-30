@@ -100,6 +100,7 @@ export function useTurnActions(): UseTurnActionsReturn {
   const players = useGameStore((s) => s.players);
   const mySeat = useGameStore((s) => s.mySeat);
   const gameState = useGameStore((s) => s.gameState);
+  const storedHasInitialMeld = useGameStore((s) => s.hasInitialMeld);
 
   // ---------------------------------------------------------------------------
   // [2026-04-28 Phase B] pendingStore.draft 기반 SSOT 전환 (재전환)
@@ -127,7 +128,9 @@ export function useTurnActions(): UseTurnActionsReturn {
   const allGroupsValid = usePendingStore((s) => selectAllGroupsValid(s));
   const pendingPlacementScore = usePendingStore((s) => selectPendingPlacementScore(s));
 
-  const hasInitialMeld = computeEffectiveMeld(players, mySeat);
+  // V-13a: players 배열 기준이 primary. gameStore.hasInitialMeld는 GAME_STATE 동기화 fallback.
+  // players[mySeat].hasInitialMeld가 stale한 경우에도 storedHasInitialMeld가 보완한다.
+  const hasInitialMeld = computeEffectiveMeld(players, mySeat) || storedHasInitialMeld;
 
   // isMyTurn: gameState.currentSeat vs mySeat (ActionBar fallback과 동일한 출처)
   const isMyTurn = computeIsMyTurn(gameState?.currentSeat ?? -1, mySeat);
@@ -161,7 +164,7 @@ export function useTurnActions(): UseTurnActionsReturn {
     const currentPlayers = gs.players;
     const currentMySeat = gs.mySeat;
     const currentGameState = gs.gameState;
-    const currentHasInitialMeld = computeEffectiveMeld(currentPlayers, currentMySeat);
+    const currentHasInitialMeld = computeEffectiveMeld(currentPlayers, currentMySeat) || gs.hasInitialMeld;
 
     // isMyTurn gate (UR-22 확장: 내 턴이 아니면 확정 불가)
     const currentIsMyTurn = computeIsMyTurn(currentGameState?.currentSeat ?? -1, currentMySeat);
