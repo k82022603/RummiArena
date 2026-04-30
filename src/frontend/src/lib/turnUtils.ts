@@ -76,11 +76,12 @@ export function computeTilesAdded(
 // ---------------------------------------------------------------------------
 
 /**
- * 조커가 아닌 타일의 숫자값 합산 (조커는 실제 대체 숫자 사용 불가 → 0 처리)
+ * 타일 점수 계산. 조커는 30점 (calculateScore와 동일, UI 표시와 일치).
+ * 실제 조커 대체값(1~13)은 서버가 최종 판정. 클라이언트는 30점으로 보수적 상한 사용.
  */
 function scoreTile(code: TileCode): number {
   const parsed = parseTileCode(code);
-  if (parsed.isJoker || parsed.number === null) return 0;
+  if (parsed.isJoker || parsed.number === null) return 30;
   return parsed.number;
 }
 
@@ -88,8 +89,7 @@ function scoreTile(code: TileCode): number {
  * pending 전용 그룹들의 점수 합계를 계산한다 (V-04 클라이언트 미러).
  *
  * V-04: 초기 등록 시 자신의 랙 타일만으로 구성한 세트 합계 >= 30점.
- * 조커는 대체 타일의 숫자값으로 계산해야 하지만, 클라이언트 미러에서는
- * 보수적으로 0점 처리한다. 서버가 최종 판정자임.
+ * 조커는 30점으로 계산 (UI 표시용 calculateScore와 동일). 서버가 최종 판정자.
  *
  * @param pendingOnlyGroups pending 전용 그룹 배열 (pendingGroupIds에 포함된 그룹만)
  * @returns 합산 점수

@@ -110,9 +110,9 @@ describe("[turnUtils] computePendingScore (V-04)", () => {
     expect(computePendingScore(groups)).toBe(20);
   });
 
-  it("조커는 0점 처리", () => {
+  it("조커는 30점 처리 (calculateScore와 동일, 서버가 최종 판정)", () => {
     const groups: TableGroup[] = [makeGroup("p1", ["JK1", "B5a", "Y8a"])];
-    expect(computePendingScore(groups)).toBe(13); // 5+8=13
+    expect(computePendingScore(groups)).toBe(43); // 30+5+8=43
   });
 
   it("여러 그룹 합산", () => {
