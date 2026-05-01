@@ -669,4 +669,26 @@ docs/
 - [x] Istio 드라이런 최종 확인 — Not Ready, P0 이슈 3건 사전 발견
 - [x] AI 토너먼트 대시보드 컴포넌트 스펙 초안 (`33`, 1538줄, 13 컴포넌트)
 - [x] 와이어프레임 23번 기술 리뷰 — Conditional Ready, 선결 5건
+
+---
+
+## Post-Sprint 7: 핫픽스 세션 (Sprint 8 없음)
+
+**기간**: 2026-04-30 ~ (진행 중, Sprint 8 없음 확정)
+
+### 2026-05-01
+
+- [x] **LLaMA v8-ollama-place 프롬프트** — place rate 0%→**15.8%** (사전 계산 멜드 주입 전략, docs/04-testing/104~106)
+- [x] **BUG-CONFIRM-001 수정** — confirmBusy 영구 잠금. `!draftPendingTableGroups`→`draftPendingGroupIds.size===0` 조건 변경 (커밋 `02f18f0`)
+- [x] **회귀 가드 3건** — pendingStore confirmBusy 해제 조건 테스트 (커밋 `dde63e3`)
+- [x] **게임 분석 보고서 107** — Room 927a6635 실측 사고 RCA (커밋 `342eac8`)
+- [x] **확정 버튼 아키텍처 정리 (Option C)** — GameClient.handleConfirm(109줄) → useTurnActions 통합(5줄), 조커 갭 false positive 해소 (커밋 `b3bca43`)
+- [x] K8s 배포: `rummikub-frontend:confirm-refactor-b3bca43`
+- [x] Jest 643 PASS / 0 FAIL
+
+### 잔여 과제 (기간 미정)
+
+- [ ] V-22 신설 문서화: "단독 활성 플레이어 자동 승리" (서버 구현됨, docs/02-design/55 미기재)
+- [ ] pendingStore lifecycle 테스트 강화 (BUG-CONFIRM-001 패턴)
+- [ ] ArgoCD sync drift 감지 알림 활성화 (ConfigMap 드리프트 재발 방지)
 - [x] Agent Teams 6명 병렬 실행 — 30분 내 3,631줄 생산
