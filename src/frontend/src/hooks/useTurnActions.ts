@@ -16,7 +16,7 @@
  * WS는 useWebSocket에서 관리 — 이 hook은 직접 ref를 갖지 않는다.
  */
 
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import {
   usePendingStore,
   selectTilesAdded,
@@ -30,7 +30,8 @@ import {
   computeIsMyTurn,
   computePendingScore,
 } from "@/lib/turnUtils";
-import type { ConfirmTurnPayload } from "@/types/websocket";
+import type { ConfirmTurnPayload, PlaceTilesPayload } from "@/types/websocket";
+import { detectDuplicateTileCodes } from "@/lib/tileStateHelpers";
 
 // ---------------------------------------------------------------------------
 // WS 발신 브릿지 (싱글톤 ref 저장소)
@@ -68,6 +69,11 @@ function wsSend(type: string, payload: unknown): void {
 // Hook 인터페이스
 // ---------------------------------------------------------------------------
 
+export interface UseTurnActionsOptions {
+  /** 확정 검증 실패 시 무효 그룹 ID를 통보받을 콜백 (GameClient UI 하이라이트용) */
+  onInvalidGroup?: (groupId: string) => void;
+}
+
 export interface UseTurnActionsReturn {
   handleConfirm: () => void;
   handleUndo: () => void;
@@ -90,7 +96,11 @@ export interface UseTurnActionsReturn {
  *       매 렌더마다 새 참조를 반환해 무한 루프를 유발한다.
  *       각 필드 / selector는 개별 호출로 분리한다.
  */
-export function useTurnActions(): UseTurnActionsReturn {
+export function useTurnActions(opts: UseTurnActionsOptions = {}): UseTurnActionsReturn {
+  // onInvalidGroup 콜백 ref — 매 렌더마다 새 참조가 와도 handleConfirm deps 불변 유지
+  const onInvalidGroupRef = useRef(opts.onInvalidGroup);
+  onInvalidGroupRef.current = opts.onInvalidGroup;
+
   // ---------------------------------------------------------------------------
   // Reactive state — 개별 selector 구독
   // ---------------------------------------------------------------------------
@@ -159,6 +169,15 @@ export function useTurnActions(): UseTurnActionsReturn {
       return;
     }
 
+    // V-07: 미배치 회수 조커 차단 — 회수했으나 아직 myTiles에 남아있는 조커 (I-19 수정 패턴)
+    const unplacedRecoveredJokers = draft.recoveredJokers.filter(
+      (jkCode) => draft.myTiles.includes(jkCode)
+    );
+    if (unplacedRecoveredJokers.length > 0) {
+      useWSStore.getState().setLastError("회수한 조커(JK)를 같은 턴에 다른 세트에 사용해야 합니다");
+      return;
+    }
+
     const currentHasInitialMeld =
       computeEffectiveMeld(gs.players, gs.mySeat) || gs.hasInitialMeld;
 
@@ -177,20 +196,11 @@ export function useTurnActions(): UseTurnActionsReturn {
       useWSStore.getState().setLastError("배치된 그룹이 없습니다");
       return;
     }
-    const currentAllGroupsValid = pendingOnlyGroups.every((g) => g.tiles.length >= 3);
-    if (!currentAllGroupsValid) {
-      useWSStore.getState().setLastError("그룹은 최소 3장 이상이어야 합니다");
-      return;
-    }
+
     const score = computePendingScore(pendingOnlyGroups);
-    if (!currentHasInitialMeld && score < 30) {
-      useWSStore.getState().setLastError(
-        `초기 등록에는 30점 이상 필요합니다 (현재 ${score}점)`
-      );
-      return;
-    }
 
     // V-01/02/03/04/14/15 클라이언트 미러 사전검증 (UR-36: 이 외 임의 게이트 금지)
+    // validateTurnPreCheck: joker 갭 허용, 초기 등록 30점, 색상 중복, 런 연속성 전부 커버
     const validation = validateTurnPreCheck(
       pendingOnlyGroups,
       currentHasInitialMeld,
@@ -199,11 +209,10 @@ export function useTurnActions(): UseTurnActionsReturn {
     );
 
     if (!validation.valid) {
-      // errorCode를 한글 메시지로 변환 (INVALID_MOVE_MESSAGES 와 동일한 오류 코드 체계)
       const ERR_MESSAGES: Record<string, string> = {
         ERR_SET_SIZE: "그룹은 최소 3장 이상이어야 합니다",
         ERR_NO_RACK_TILE: "랙에서 타일을 최소 1장 배치해야 합니다",
-        ERR_INITIAL_MELD_SCORE: "초기 등록에는 30점 이상 필요합니다",
+        ERR_INITIAL_MELD_SCORE: `초기 등록에는 30점 이상 필요합니다 (현재 ${score}점)`,
         ERR_INVALID_SET: "유효하지 않은 타일 조합입니다",
         ERR_GROUP_COLOR_DUP: "그룹에 같은 색상 타일이 중복되었습니다",
         ERR_RUN_SEQUENCE: "런의 숫자가 연속되지 않았습니다",
@@ -212,15 +221,30 @@ export function useTurnActions(): UseTurnActionsReturn {
         ? (ERR_MESSAGES[validation.errorCode] ?? "유효하지 않은 배치입니다")
         : "유효하지 않은 배치입니다";
       useWSStore.getState().setLastError(errMsg);
+      if (validation.errorGroupId) {
+        onInvalidGroupRef.current?.(validation.errorGroupId);
+      }
       return;
     }
 
-    // CONFIRM_TURN C2S 발신
+    // BUG-UI-006(G-3): 고스트 타일 중복 감지 — 서버 전송 전 마지막 방어선
+    const duplicateCodes = detectDuplicateTileCodes(draft.groups);
+    if (duplicateCodes.length > 0) {
+      useWSStore.getState().setLastError(
+        `타일 중복 감지: ${duplicateCodes.join(", ")} — 되돌리기 후 다시 배치하세요`
+      );
+      return;
+    }
+
     // tilesFromRack: 턴 시작 랙(turnStartRack)에서 현재 랙(myTiles)에 없는 타일
     const tilesFromRack = draft.turnStartRack.filter((t) => !draft.myTiles.includes(t));
 
-    const payload: ConfirmTurnPayload = { tableGroups: draft.groups, tilesFromRack };
-    wsSend("CONFIRM_TURN", payload);
+    // 1단계: 이번 턴 배치 내용을 서버에 전송
+    const sendPayload: PlaceTilesPayload = { tableGroups: draft.groups, tilesFromRack };
+    wsSend("PLACE_TILES", sendPayload);
+    // 2단계: 턴 확정 요청
+    const confirmPayload: ConfirmTurnPayload = { tableGroups: draft.groups, tilesFromRack };
+    wsSend("CONFIRM_TURN", confirmPayload);
   }, []);
 
   // ---------------------------------------------------------------------------

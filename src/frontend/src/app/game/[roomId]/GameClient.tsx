@@ -32,12 +32,10 @@ import TurnHistoryPanel from "@/components/game/TurnHistoryPanel";
 import JokerSwapIndicator from "@/components/game/JokerSwapIndicator";
 // Tile import 제거 (P3-3 Sub-C: DragOverlay 가 GameRoom 으로 이전).
 
-import type { TileCode, TileNumber, TableGroup } from "@/types/tile";
-import { parseTileCode } from "@/types/tile";
+import type { TileCode, TableGroup } from "@/types/tile";
 import { calculateScore } from "@/lib/practice/practice-engine";
 import { computeValidMergeGroups } from "@/lib/mergeCompatibility";
 import { validatePendingBlock } from "@/components/game/GameBoard";
-import { detectDuplicateTileCodes } from "@/lib/tileStateHelpers";
 import type { GameOverPayload } from "@/types/websocket";
 import type { Player } from "@/types/game";
 
@@ -330,7 +328,9 @@ export default function GameClient({ roomId }: GameClientProps) {
   // GameRoom은 중복 호출을 제거하고 이 컴포넌트에서 단일 인스턴스로 관리한다.
   // Phase 4에서 GameRoom이 turnActions를 props로 내려주는 방식으로 전환할 때
   // 이 줄을 제거하고 props에서 수신한다.
-  const turnActions = useTurnActions();
+  const turnActions = useTurnActions({
+    onInvalidGroup: (id) => setInvalidPendingGroupIds(new Set([id])),
+  });
 
   // G-B Phase E: pendingStore 브릿지 연결 (F17-SC1, GHOST-SC2)
   // GameClient가 pendingStore를 소비하고 있음을 표시한다.
@@ -632,120 +632,13 @@ export default function GameClient({ roomId }: GameClientProps) {
     }
   }, [draftPendingGroupIds, confirmBusy]);
 
-  // 턴 확정: 프리뷰 상태를 서버에 전송 후 확정
-  // BUG-UI-006: pending 상태를 즉시 커밋하지 않음.
-  // 서버가 TURN_END(성공)를 보내면 TURN_START 핸들러에서 resetPending() 으로 정리되고,
-  // INVALID_MOVE(실패)를 보내면 resetPending() + ErrorToast 가 사유를 표시한다.
-  const handleConfirm = useCallback(() => {
-    if (confirmBusy) return;               // [Issue #48] 서버 응답 대기 중 중복 클릭 차단
-    // Phase C 단계 2: pendingStore.draft 기반 read 전환.
-    if (!draftPendingTableGroups) return;
-    // M-4: draft.myTiles가 null이면 확정 차단
-    if (!draftPendingMyTiles) return;
-
-    // P3 / I-19 수정: 조커 교체로 회수한 조커가 있으면 같은 턴 내에 다른 세트에 사용 필수
-    // (§6.2 유형 4, 엔진 V-07).
-    //
-    // 이전 구현 문제(I-19): recoveredJokers.length > 0 로 차단하면,
-    // 조커를 이미 보드에 배치해서 myTiles 에서 제거한 경우에도 차단이 유지됨
-    // → 완전한 데드락. 사용자가 조커를 보드에 정상 배치했더라도 확정 불가.
-    //
-    // 수정(옵션 c): "회수된 조커 코드 중 myTiles 에 아직 남아있는 것" 을 기준으로 차단.
-    // 조커가 보드에 드롭되면 myTiles 에서 제거되므로 자동으로 차단 해제된다.
-    const unplacedRecoveredJokers = draftRecoveredJokers.filter((jkCode) =>
-      draftPendingMyTiles.includes(jkCode)
-    );
-    if (unplacedRecoveredJokers.length > 0) {
-      useWSStore
-        .getState()
-        .setLastError("회수한 조커(JK)를 같은 턴에 다른 세트에 사용해야 합니다");
-      return;
-    }
-
-    // C-3: 클라이언트 측 사전 검증 -- 서버 전송 전 기본 유효성 확인
-    // G-2: 무효 블록 ID를 수집하여 UI 강조에 사용
-    const pendingOnlyGroups = draftPendingTableGroups.filter((g) => draftPendingGroupIds.has(g.id));
-    for (let blockIdx = 0; blockIdx < pendingOnlyGroups.length; blockIdx++) {
-      const group = pendingOnlyGroups[blockIdx];
-      const blockLabel = `${blockIdx + 1}번째 블록`;
-      if (group.tiles.length < 3) {
-        setInvalidPendingGroupIds(new Set([group.id]));
-        useWSStore.getState().setLastError(`${blockLabel}이 유효하지 않습니다 (최소 3개 타일 필요)`);
-        return;
-      }
-      const nonJokerTiles = group.tiles.filter((t) => t !== "JK1" && t !== "JK2");
-      if (nonJokerTiles.length > 0) {
-        const parsed = nonJokerTiles.map((t) => parseTileCode(t as TileCode));
-        const numbers = new Set(parsed.map((p) => p.number));
-        const colors = new Set(parsed.map((p) => p.color));
-
-        if (numbers.size === 1) {
-          // 그룹: 같은 숫자, 다른 색 -- 색상 중복 검사
-          if (colors.size !== nonJokerTiles.length) {
-            setInvalidPendingGroupIds(new Set([group.id]));
-            useWSStore.getState().setLastError(`${blockLabel}이 유효하지 않습니다 (같은 색상 타일 중복)`);
-            return;
-          }
-        } else if (colors.size === 1) {
-          // 런: 같은 색, 연속 숫자
-          const sortedNums = Array.from(numbers).filter((n): n is TileNumber => n !== null).sort((a, b) => a - b);
-          for (let i = 1; i < sortedNums.length; i++) {
-            if (sortedNums[i] - sortedNums[i - 1] !== 1) {
-              setInvalidPendingGroupIds(new Set([group.id]));
-              useWSStore.getState().setLastError(`${blockLabel}이 유효하지 않습니다 (연속된 숫자가 아닙니다)`);
-              return;
-            }
-          }
-        } else {
-          setInvalidPendingGroupIds(new Set([group.id]));
-          useWSStore.getState().setLastError(`${blockLabel}이 유효하지 않습니다 (색 혼합 세트)`);
-          return;
-        }
-      }
-    }
-
-    // BUG-UI-006(G-3): 고스트 타일 무결성 검사
-    // draft.groups에 동일 tile code가 2번 이상 등장하면 V-03(중복) 위반.
-    // 이 검사는 서버 전송 전 마지막 방어선이다.
-    {
-      const duplicateCodes = detectDuplicateTileCodes(draftPendingTableGroups);
-      if (duplicateCodes.length > 0) {
-        useWSStore.getState().setLastError(
-          `타일 중복 감지: ${duplicateCodes.join(", ")} — 되돌리기 후 다시 배치하세요`
-        );
-        return;
-      }
-    }
-
-    // tilesFromRack: 원본 랙에서 이번 턴에 보드로 이동한 타일 목록
-    // draft.myTiles에 남아있지 않은 타일 = 보드로 배치된 타일
-    const tilesFromRack = myTiles.filter(
-      (t) => !draftPendingMyTiles.includes(t)
-    );
-    // F3 ROLLBACK (2026-04-24): optimistic setMyTiles 가 extend 경로 drop 중
-    // pending state 를 침범해 EXT-SC1/SC3/GHOST-SC2 회귀 3건 유발.
-    // V-04 SC1 은 Sprint 7 Week 2 에서 MOVE_ACCEPTED 이벤트 구독 방식으로 재구현.
-    // [Issue #48] 전송 직전 락 설정 — TURN_START 또는 INVALID_MOVE 수신 시 useEffect 에서 해제
+  // 턴 확정: confirmBusy 가드 후 useTurnActions.handleConfirm으로 위임
+  // 검증(V-01/02/03/04/07/14/15), 중복 감지, PLACE_TILES+CONFIRM_TURN 발신은 hook이 담당.
+  const wrappedConfirm = useCallback(() => {
+    if (confirmBusy) return; // [Issue #48] 서버 응답 대기 중 중복 클릭 차단
     setConfirmBusy(true);
-    // 1단계: 이번 턴 배치 내용을 서버에 전송
-    send("PLACE_TILES", {
-      tableGroups: draftPendingTableGroups,
-      tilesFromRack,
-    });
-    // 2단계: 턴 확정 요청 (서버 응답을 기다림 -- 로컬 상태는 아직 유지)
-    send("CONFIRM_TURN", {
-      tableGroups: draftPendingTableGroups,
-      tilesFromRack,
-    });
-  }, [
-    confirmBusy,
-    draftPendingTableGroups,
-    draftPendingMyTiles,
-    draftRecoveredJokers,
-    draftPendingGroupIds,
-    myTiles,
-    send,
-  ]);
+    turnActions.handleConfirm();
+  }, [confirmBusy, turnActions]);
 
   // 턴 되돌리기 (취소): 프리뷰 상태 전체 초기화 후 서버에 롤백 요청
   // Phase C 단계 3: pendingStore.reset() 으로 single-write 화.
@@ -1073,7 +966,7 @@ export default function GameClient({ roomId }: GameClientProps) {
                 confirmBusy={confirmBusy}
                 onDraw={handleDraw}
                 onUndo={handleUndo}
-                onConfirm={handleConfirm}
+                onConfirm={wrappedConfirm}
                 onPass={handlePass}
                 confirmEnabled={turnActions.confirmEnabled}
                 resetEnabled={turnActions.resetEnabled}
