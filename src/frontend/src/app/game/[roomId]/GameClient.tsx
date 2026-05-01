@@ -619,17 +619,18 @@ export default function GameClient({ roomId }: GameClientProps) {
   );
 
   // Issue #48: CONFIRM_TURN 전송 후 서버 응답(TURN_START or INVALID_MOVE) 대기 중 락
-  // — pendingTableGroups 가 null 로 reset 되면(TURN_START 핸들러) 자동 해제
+  // — TURN_START 수신 후 pendingGroupIds 가 빈 Set 으로 초기화되면 자동 해제
   const [confirmBusy, setConfirmBusy] = useState(false);
 
-  // 락 해제: pending draft 가 null/empty 로 초기화될 때 (TURN_START 성공 또는 INVALID_MOVE 후)
-  // 의존성 배열: [draftPendingTableGroups, confirmBusy] 이 둘만 — 다른 값 포함 시 과도한 실행
-  // Phase C 단계 2: pendingStore.draft 기반 전환.
+  // 락 해제: TURN_START 수신 → pendingStore.reset() → pendingGroupIds.size === 0
+  // BUG-CONFIRM-001 수정: 기존 조건 !draftPendingTableGroups 는 draft 가 생성된 이후
+  // 절대 null 이 되지 않아 confirmBusy 가 영구 잠금되는 버그를 유발했다.
+  // pendingGroupIds.size === 0 으로 판단하면 TURN_START → reset() 후 정상 해제된다.
   useEffect(() => {
-    if (!draftPendingTableGroups && confirmBusy) {
+    if (draftPendingGroupIds.size === 0 && confirmBusy) {
       setConfirmBusy(false);
     }
-  }, [draftPendingTableGroups, confirmBusy]);
+  }, [draftPendingGroupIds, confirmBusy]);
 
   // 턴 확정: 프리뷰 상태를 서버에 전송 후 확정
   // BUG-UI-006: pending 상태를 즉시 커밋하지 않음.
