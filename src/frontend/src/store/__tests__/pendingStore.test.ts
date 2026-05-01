@@ -513,3 +513,126 @@ describe("P2a dual-write — dragEndReducer 결과 applyMutation 경로", () => 
     expect(draft!.myTiles).toContain("JK1");
   });
 });
+
+// ---------------------------------------------------------------------------
+// BUG-CONFIRM-001 — confirmBusy 영구 잠금 회귀 방지
+//
+// 컨텍스트:
+//   GameClient.useEffect 의 confirmBusy 해제 조건이
+//     수정 전: !draftPendingTableGroups && confirmBusy   (영구 잠금)
+//     수정 후: draftPendingGroupIds.size === 0 && confirmBusy  (정상 해제)
+//   의 의미를 store-level 계약으로 고정한다.
+//
+// 룰 매핑:
+//   - V-01 (유효한 배치), V-13a/V-13d (런 확장), D-08 (조커 gap 채움)
+//   - UR-04 (턴 시작/종료 시 pending 초기화)
+// ---------------------------------------------------------------------------
+
+describe("BUG-CONFIRM-001: confirmBusy 해제 조건 계약", () => {
+  it("saveTurnStartSnapshot 후 draft.groups 는 비-null (구 조건이 영구 잠금되는 이유)", () => {
+    // T+0: TURN_START 수신 — 서버 그룹이 비어 있지 않은 상태
+    const serverGroups: TableGroup[] = [
+      makeGroup("srv-1", ["R1a", "R2a", "R3a"]),
+    ];
+    act(() => {
+      usePendingStore
+        .getState()
+        .saveTurnStartSnapshot(["B5a", "Y7a"], serverGroups);
+    });
+
+    const draft = getStore().draft;
+
+    // 핵심: draft.groups 는 서버 그룹으로 채워져 있어 절대 null 이 아니다
+    // → 구 조건 !draftPendingTableGroups 은 false → confirmBusy 해제 불가 = 영구 잠금
+    expect(draft).not.toBeNull();
+    expect(draft!.groups).not.toBeNull();
+    expect(draft!.groups.length).toBeGreaterThan(0);
+
+    // 신 조건: pendingGroupIds 는 빈 Set 이어야 정상 해제 가능
+    expect(draft!.pendingGroupIds.size).toBe(0);
+  });
+
+  it("초기 등록 성공 → applyMutation → reset 사이클에서 pendingGroupIds.size 가 정상 추적된다", () => {
+    // T+0: TURN_START
+    act(() => {
+      usePendingStore
+        .getState()
+        .saveTurnStartSnapshot(
+          ["R7a", "R8a", "R9a"],
+          [makeGroup("srv-1", ["B1a", "B2a", "B3a"])]
+        );
+    });
+
+    // 초기 상태: pendingGroupIds 비어 있음 → confirmBusy 해제 가능
+    expect(getStore().draft!.pendingGroupIds.size).toBe(0);
+
+    // T+1: 사용자 드래그 → 새 pending 그룹 생성 (초기 등록 30점 런)
+    const newGroupId = "pending-1";
+    act(() => {
+      usePendingStore.getState().applyMutation(
+        makeDragOutput({
+          nextTableGroups: [
+            makeGroup("srv-1", ["B1a", "B2a", "B3a"]),
+            makeGroup(newGroupId, ["R7a", "R8a", "R9a"]),
+          ],
+          nextMyTiles: [],
+          nextPendingGroupIds: new Set([newGroupId]),
+          nextPendingGroupSeq: 1,
+          branch: "rack→new-group",
+        })
+      );
+    });
+
+    // pendingGroupIds 증가 → confirmBusy 가 true 로 진입했다고 가정해도 해제 안 됨 (정상)
+    expect(getStore().draft!.pendingGroupIds.size).toBe(1);
+
+    // T+2: CONFIRM_TURN 전송 후 서버 TURN_START 응답 → reset()
+    act(() => {
+      usePendingStore.getState().reset();
+    });
+
+    // 신 조건이 충족되어야 한다: pendingGroupIds.size === 0 → confirmBusy 정상 해제
+    const draft = getStore().draft;
+    expect(draft).not.toBeNull();
+    expect(draft!.pendingGroupIds.size).toBe(0);
+
+    // 회귀 가드: draft.groups 는 여전히 비-null 이므로
+    // 구 조건 !draftPendingTableGroups 만으로는 절대 해제되지 않는다는 사실을 명시
+    expect(draft!.groups).not.toBeNull();
+  });
+
+  it("rollbackToServerSnapshot 후에도 pendingGroupIds.size === 0 으로 confirmBusy 해제 가능 (INVALID_MOVE 경로)", () => {
+    act(() => {
+      usePendingStore
+        .getState()
+        .saveTurnStartSnapshot(
+          ["R7a"],
+          [makeGroup("srv-1", ["B1a", "B2a", "B3a"])]
+        );
+    });
+
+    // 무효한 pending 변경 시도
+    act(() => {
+      usePendingStore.getState().applyMutation(
+        makeDragOutput({
+          nextTableGroups: [
+            makeGroup("srv-1", ["B1a", "B2a", "B3a"]),
+            makeGroup("pending-bad", ["R7a"]),
+          ],
+          nextMyTiles: [],
+          nextPendingGroupIds: new Set(["pending-bad"]),
+          branch: "test-invalid",
+        })
+      );
+    });
+    expect(getStore().draft!.pendingGroupIds.size).toBe(1);
+
+    // 서버에서 INVALID_MOVE 응답 → rollback
+    act(() => {
+      usePendingStore.getState().rollbackToServerSnapshot();
+    });
+
+    // 해제 조건 충족
+    expect(getStore().draft!.pendingGroupIds.size).toBe(0);
+  });
+});
