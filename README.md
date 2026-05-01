@@ -232,7 +232,7 @@ GET    /ready                 # 준비 상태
 | **DeepSeek Reasoner** | **30.8%** | **A+** | 80 (완주) | $0.04 | 비용 대비 성과 1위, v2 프롬프트 |
 | **GPT-5-mini** | 33.3% | (N/A) | 14 | $0.15 | 재배포로 WS 끊김, 재실행 필요 |
 | **Claude Sonnet 4** (thinking) | 20.0% | A | 32 | $1.11 | WS_TIMEOUT |
-| **Ollama qwen2.5:3b** | - | - | - | $0 | 로컬 추론, 성능 제한적 |
+| **Ollama qwen2.5:3b** | **15.8%** | B | 40 | $0 | v8-ollama-place 사전 계산 전략 (2026-05-01) |
 
 ### Round 2 → Round 4 개선
 

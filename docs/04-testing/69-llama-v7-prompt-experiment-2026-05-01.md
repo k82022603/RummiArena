@@ -154,3 +154,23 @@ kubectl set env deploy/ai-adapter -n rummikub OLLAMA_DEFAULT_MODEL=qwen2.5:3b
 kubectl set env deploy/ai-adapter -n rummikub OLLAMA_PROMPT_VARIANT=v7-ollama-meld
 # 실험 완료 후 v7 유지 (Helm values.yaml 기준과 일치)
 ```
+
+---
+
+## 9. 후속 — v8 사전 계산 전략으로 Place 달성 (2026-05-01 Addendum)
+
+본 실험에서 v7도 place rate 0%를 기록한 근본 원인은 **모델 용량 한계**였다. 3B 모델에게 14~20장 랙에서 30점 이상 멜드를 추론하라는 요청 자체가 신뢰할 수 없는 수준이었다.
+
+**v8 전략 (2026-05-01 동일 날짜 실험)**: 프롬프트 빌더(TypeScript)가 `findMeldFor30()` 알고리즘으로 유효 멜드를 **사전 계산** 하여 `"Output this JSON exactly: {...}"` 형태로 박제 — 모델은 추론 없이 JSON을 복사만 한다.
+
+| 지표 | v7 (본 실험) | v8 (후속 실험) |
+|------|------------|--------------|
+| Place rate | **0%** | **15.8% (3/19 턴)** |
+| INVALID_MOVE | 0회 | 0회 |
+| 프롬프트 크기 | ~1700토큰 | ~355토큰 |
+| 평균 응답시간 | 46.5s | 19.7s |
+| 결말 | 80턴 TIMEOUT | 40턴 TIMEOUT |
+
+v8은 K8s `OLLAMA_PROMPT_VARIANT=v8-ollama-place` 로 2026-05-01부터 운영 중.
+
+상세 결과: `docs/04-testing/71-v8-ollama-place-experiment-2026-05-01.md`
