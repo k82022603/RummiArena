@@ -1,0 +1,80 @@
+{
+  "experiment": "qwen3:4b + v7-ollama-meld",
+  "timestamp": "20260501-101023",
+  "config": {
+    "model": "qwen3:4b",
+    "prompt": "v7-ollama-meld",
+    "maxTurns": 40,
+    "turnTimeoutSec": 300,
+    "wsTimeout": 3600
+  },
+  "rounds": [
+    {
+      "round": "Round-1-qwen3:4b",
+      "model": "Ollama qwen3:4b + v7",
+      "ai_place": 3,
+      "ai_tiles_placed": 8,
+      "ai_draw": 16,
+      "ai_fallback": 0,
+      "fallback_reasons": [],
+      "total_turns": 40,
+      "result": "TIMEOUT",
+      "elapsed": 375.8,
+      "ai_response_times": [
+        165.2,
+        27.2,
+        10.6,
+        9.6,
+        8.5,
+        8.4,
+        8.5,
+        10.3,
+        8.9,
+        10.0,
+        10.2,
+        9.7,
+        10.6,
+        10.4,
+        12.5,
+        10.0,
+        8.9,
+        26.6,
+        8.4
+      ],
+      "place_details": [
+        {
+          "turn": 3,
+          "tiles": 6,
+          "resp_time": 165.2
+        },
+        {
+          "turn": 5,
+          "tiles": 1,
+          "resp_time": 27.2
+        },
+        {
+          "turn": 37,
+          "tiles": 1,
+          "resp_time": 26.6
+        }
+      ],
+      "error_messages": [
+        "[NOT_YOUR_TURN] 자신의 턴이 아닙니다."
+      ],
+      "rate": 15.8,
+      "resp_avg": 19.7,
+      "resp_p50": 10.0,
+      "resp_min": 8.4,
+      "resp_max": 165.2
+    }
+  ],
+  "baseline": {
+    "model": "qwen2.5:3b + v7",
+    "place_rate": 0.0,
+    "fallback": 0,
+    "turns": 80,
+    "result": "TIMEOUT",
+    "resp_avg": 46.5,
+    "resp_p50": 40.0
+  }
+}
