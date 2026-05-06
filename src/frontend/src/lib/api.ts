@@ -256,3 +256,33 @@ export interface MyProfile {
 export async function getMyProfile(token?: string): Promise<MyProfile> {
   return apiFetch<MyProfile>("/auth/me", { token });
 }
+
+// ------------------------------------------------------------------
+// 랭킹 / ELO API
+// ------------------------------------------------------------------
+
+/** GET /api/users/:id/rating 응답 DTO */
+export interface UserRatingDetail {
+  userId: string;
+  rating: number;
+  tier: string;
+  tierProgress: number;
+  nextTier?: string;
+  ratingToNextTier?: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  gamesPlayed: number;
+  winRate: number;
+  winStreak: number;
+  bestStreak: number;
+  peakRating: number;
+}
+
+/** 유저 ELO 상세 조회 */
+export async function getUserRating(
+  userId: string,
+  token?: string,
+): Promise<UserRatingDetail> {
+  return apiFetch<UserRatingDetail>(`/users/${userId}/rating`, { token });
+}

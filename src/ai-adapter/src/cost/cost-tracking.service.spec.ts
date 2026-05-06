@@ -72,8 +72,8 @@ describe('CostTrackingService', () => {
 
     it('deepseek 단가가 올바르다', () => {
       expect(MODEL_PRICING.deepseek).toEqual({
-        inputPer1M: 0.14,
-        outputPer1M: 0.28,
+        inputPer1M: 1.74,
+        outputPer1M: 3.48,
       });
     });
 

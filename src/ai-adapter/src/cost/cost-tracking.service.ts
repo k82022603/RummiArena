@@ -5,9 +5,9 @@ import { REDIS_CLIENT } from '../redis/redis.module';
 
 /**
  * 모델별 토큰 단가 (USD per 1M tokens).
- * GPT-4o: input $2.5/1M, output $10/1M
- * Claude Sonnet: input $3/1M, output $15/1M
- * DeepSeek: input $0.14/1M, output $0.28/1M
+ * GPT-5-mini: input $2.5/1M, output $10/1M
+ * Claude Sonnet 4: input $3/1M, output $15/1M
+ * DeepSeek V4-Pro: input $1.74/1M, output $3.48/1M (2026-05-05 할인 종료 후 정상가)
  * Ollama: 로컬 실행이므로 비용 0
  */
 export interface ModelPricing {
@@ -18,7 +18,7 @@ export interface ModelPricing {
 export const MODEL_PRICING: Record<string, ModelPricing> = {
   openai: { inputPer1M: 2.5, outputPer1M: 10.0 },
   claude: { inputPer1M: 3.0, outputPer1M: 15.0 },
-  deepseek: { inputPer1M: 0.14, outputPer1M: 0.28 },
+  deepseek: { inputPer1M: 1.74, outputPer1M: 3.48 },
   ollama: { inputPer1M: 0, outputPer1M: 0 },
 };
 

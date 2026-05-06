@@ -4,7 +4,8 @@ import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState, useCallback } from "react";
-import { getRooms, joinRoom } from "@/lib/api";
+import { getRooms, joinRoom, getUserRating } from "@/lib/api";
+import type { UserRatingDetail } from "@/lib/api";
 import { useRoomStore } from "@/store/roomStore";
 import type { Room } from "@/types/game";
 
@@ -126,6 +127,21 @@ function RoomCard({
 
 function MyProfileCard() {
   const { data: session } = useSession();
+  const [rating, setRating] = useState<UserRatingDetail | null>(null);
+
+  useEffect(() => {
+    const userId = (session?.user as { id?: string } | undefined)?.id;
+    const token = session?.accessToken;
+    if (!userId) return;
+
+    getUserRating(userId, token)
+      .then((data) => setRating(data))
+      .catch(() => setRating(null));
+  }, [session]);
+
+  const eloDisplay = rating !== null ? rating.rating.toLocaleString() : "—";
+  const winRateDisplay =
+    rating !== null ? `${Math.round(rating.winRate)}%` : "—";
 
   return (
     <div className="p-4 bg-card-bg rounded-xl border border-border">
@@ -156,31 +172,14 @@ function MyProfileCard() {
       {/* ELO / 통계 */}
       <div className="grid grid-cols-2 gap-2 text-center">
         <div className="bg-panel-bg rounded-lg p-2">
-          <p className="text-tile-xl font-bold text-warning">1,247</p>
+          <p className="text-tile-xl font-bold text-warning">{eloDisplay}</p>
           <p className="text-tile-xs text-text-secondary">ELO</p>
         </div>
         <div className="bg-panel-bg rounded-lg p-2">
-          <p className="text-tile-xl font-bold text-success">54%</p>
+          <p className="text-tile-xl font-bold text-success">{winRateDisplay}</p>
           <p className="text-tile-xs text-text-secondary">승률</p>
         </div>
       </div>
-    </div>
-  );
-}
-
-// ------------------------------------------------------------------
-// 통계 패널 (우측)
-// ------------------------------------------------------------------
-
-function StatsPanel() {
-  return (
-    <div className="p-4 bg-card-bg rounded-xl border border-border">
-      <h3 className="text-tile-sm font-semibold text-text-secondary mb-3 uppercase tracking-wider">
-        현재 현황
-      </h3>
-      <p className="text-tile-xs text-text-secondary text-center py-4">
-        통계 준비 중
-      </p>
     </div>
   );
 }
@@ -191,10 +190,9 @@ function StatsPanel() {
 
 /**
  * 로비 클라이언트 컴포넌트
- * 와이어프레임 기준 3단 레이아웃:
+ * 2단 레이아웃:
  * - 좌측 (320px): 내 프로필 + 빠른 게임 + 연습 모드
  * - 중앙 (flex-1): Room 목록 + 검색 + Room 만들기
- * - 우측 (280px): 접속 통계
  */
 export default function LobbyClient() {
   const { data: session } = useSession();
@@ -499,10 +497,6 @@ export default function LobbyClient() {
           </div>
         </section>
 
-        {/* ---- 우측 패널 (280px) ---- */}
-        <aside className="hidden xl:block w-64 flex-shrink-0">
-          <StatsPanel />
-        </aside>
       </div>
     </main>
   );
