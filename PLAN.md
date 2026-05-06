@@ -372,7 +372,18 @@ docs/
 
 ## 현재 진행 상황
 
-**Sprint 7 W2 최종 마감** (2026-04-29) — 사용자 실측 9건 RCA + 수정 5건 + K8s 배포. Jest 638 PASS. Sprint 8 없음 결정.
+**핫픽스 세션 진행 중** (Sprint 8 없음) — 2026-05-06 기준 Jest 659 / Go 770 / AI Adapter 606 ALL PASS. K8s 7개 Pod Running.
+
+### 2026-05-06 핫픽스 세션
+- V-22 단독 활성 플레이어 자동 승리 룰 문서화 (활성 룰 77개)
+- pendingStore lifecycle 테스트 +12건 (Jest 643→655→659)
+- 로비 ELO/승률 하드코딩 → API 연동 (`GET /api/users/:id/rating`)
+- StatsPanel "통계 준비 중" 제거 (3단→2단 레이아웃)
+- DeepSeek V4-Pro 정상가 반영 ($0.14→$1.74, 할인 종료 2026-05-05)
+- K8s 배포: `rummikub-frontend:lobby-fix-e7222d0`, `rummiarena/ai-adapter:cost-fix-e7222d0`
+
+### Sprint 7 W2 최종 마감 (2026-04-29)
+사용자 실측 9건 RCA + 수정 5건 + K8s 배포. Jest 638 PASS. Sprint 8 없음 결정.
 
 ### Sprint 7 Day 3 (Day 14) 성과 — PR 14건 머지 (#70~#83)
 - **BUG-UI 수정 7건**: #70 (009/010 멜드 복제+drag stuck), #76 (EXT/GHOST 근본 — useMemo stale + pendingGroupIds atomic), #77 (014 invalid meld final validation + ROLLBACK_FORCED), #78 (011/013 + UX-004), #81 (F1~F5 통합)
