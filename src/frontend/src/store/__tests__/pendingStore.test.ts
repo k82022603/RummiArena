@@ -15,6 +15,7 @@ import {
   selectTilesAdded,
   selectPendingPlacementScore,
   selectHasPending,
+  selectAllGroupsValid,
   selectConfirmEnabled,
 } from "@/store/pendingStore";
 import type { DragOutput } from "@/lib/dragEnd/dragEndReducer";
@@ -634,5 +635,413 @@ describe("BUG-CONFIRM-001: confirmBusy 해제 조건 계약", () => {
 
     // 해제 조건 충족
     expect(getStore().draft!.pendingGroupIds.size).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 8. Draft 생성 → 확정 → Draft 클리어 전체 사이클
+//
+// 시나리오: 사용자가 드래그로 pending 그룹을 만들고 확정 후 reset()이 호출된다.
+//   확정 전 confirmEnabled=true, reset 후 pendingGroupIds.size=0 → 다시 확정 가능한 상태.
+//
+// 룰 매핑:
+//   - UR-04: 턴 시작/종료 시 pending 초기화
+//   - UR-15: ConfirmTurn 활성화 조건
+// ---------------------------------------------------------------------------
+
+describe("Draft 생성 → 확정 → Draft 클리어 전체 사이클", () => {
+  it("draft 생성 시 confirmEnabled=true, reset 후 pendingGroupIds.size=0으로 재확정 가능 상태", () => {
+    // T+0: TURN_START — 랙 3장, 보드 비어있음
+    const startRack: TileCode[] = ["R7a", "B7b", "K7a"];
+    act(() => {
+      usePendingStore.getState().saveTurnStartSnapshot(startRack, []);
+    });
+
+    // confirmEnabled는 pending이 없으므로 false
+    expect(selectConfirmEnabled(getStore(), true)).toBe(false);
+
+    // T+1: 사용자 드래그 — 3장 그룹 생성 (7+7+7 = 21점, hasInitialMeld=true이므로 30점 조건 불필요)
+    act(() => {
+      usePendingStore.getState().applyMutation(
+        makeDragOutput({
+          nextTableGroups: [makeGroup("pending-1", ["R7a", "B7b", "K7a"])],
+          nextMyTiles: [],
+          nextPendingGroupIds: new Set(["pending-1"]),
+          branch: "rack→board:new-group",
+        })
+      );
+    });
+
+    // confirmEnabled = true (tilesAdded=3, 유효 그룹 1개, hasInitialMeld=true)
+    expect(selectConfirmEnabled(getStore(), true)).toBe(true);
+    expect(getStore().draft!.pendingGroupIds.size).toBe(1);
+
+    // T+2: CONFIRM_TURN 전송 후 서버로부터 다음 TURN_START 수신 → reset()
+    act(() => {
+      usePendingStore.getState().reset();
+    });
+
+    // reset 후: pendingGroupIds.size=0 → confirmBusy 해제 가능
+    const draft = getStore().draft;
+    expect(draft).not.toBeNull();
+    expect(draft!.pendingGroupIds.size).toBe(0);
+
+    // reset 후 confirmEnabled = false (pending 없음)
+    expect(selectConfirmEnabled(getStore(), true)).toBe(false);
+  });
+
+  it("사이클을 2회 반복해도 상태가 깨끗하게 초기화된다", () => {
+    // 1회차
+    act(() => {
+      usePendingStore.getState().saveTurnStartSnapshot(["R7a", "B7b", "K7a"], []);
+    });
+    act(() => {
+      usePendingStore.getState().applyMutation(
+        makeDragOutput({
+          nextTableGroups: [makeGroup("pending-1", ["R7a", "B7b", "K7a"])],
+          nextMyTiles: [],
+          nextPendingGroupIds: new Set(["pending-1"]),
+        })
+      );
+    });
+    expect(getStore().draft!.pendingGroupIds.size).toBe(1);
+    act(() => {
+      usePendingStore.getState().reset();
+    });
+    expect(getStore().draft!.pendingGroupIds.size).toBe(0);
+
+    // 2회차: 새 TURN_START 스냅샷 저장
+    act(() => {
+      usePendingStore.getState().saveTurnStartSnapshot(["R10a", "B10b", "K10a"], []);
+    });
+    act(() => {
+      usePendingStore.getState().applyMutation(
+        makeDragOutput({
+          nextTableGroups: [makeGroup("pending-2", ["R10a", "B10b", "K10a"])],
+          nextMyTiles: [],
+          nextPendingGroupIds: new Set(["pending-2"]),
+        })
+      );
+    });
+    expect(getStore().draft!.pendingGroupIds.size).toBe(1);
+    act(() => {
+      usePendingStore.getState().reset();
+    });
+    expect(getStore().draft!.pendingGroupIds.size).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 9. 빈 Draft에서 확정 시도 방어
+//
+// 시나리오: 사용자가 아무 드래그도 하지 않은 상태(pendingGroupIds 빈 Set)에서
+//   확정 버튼을 누른다. selectConfirmEnabled가 false를 반환하여 전송 차단.
+//   draft가 null이거나 pendingGroupIds.size=0이면 조용히 false.
+//
+// 룰 매핑:
+//   - UR-15: ConfirmTurn 활성화 조건 — pending 없으면 비활성
+// ---------------------------------------------------------------------------
+
+describe("빈 Draft에서 확정 시도 방어 (UR-15)", () => {
+  it("draft=null 상태에서 selectConfirmEnabled는 false를 반환한다", () => {
+    // draft가 null인 초기 상태
+    expect(getStore().draft).toBeNull();
+    expect(selectConfirmEnabled(getStore(), true)).toBe(false);
+    expect(selectConfirmEnabled(getStore(), false)).toBe(false);
+  });
+
+  it("saveTurnStartSnapshot만 호출한 상태 (드래그 없음)에서 selectConfirmEnabled는 false", () => {
+    // TURN_START 수신 후 아무 드래그 안 함
+    act(() => {
+      usePendingStore.getState().saveTurnStartSnapshot(["R7a", "B5b", "K3a"], []);
+    });
+
+    // pendingGroupIds 빈 Set → hasPending=false → confirmEnabled=false
+    expect(selectHasPending(getStore())).toBe(false);
+    expect(selectConfirmEnabled(getStore(), true)).toBe(false);
+  });
+
+  it("빈 pendingGroupIds에서 rollback 호출해도 에러 없이 처리된다", () => {
+    // pendingGroupIds가 빈 Set인 상태에서 rollback
+    act(() => {
+      usePendingStore.getState().saveTurnStartSnapshot(["R7a"], []);
+    });
+    expect(getStore().draft!.pendingGroupIds.size).toBe(0);
+
+    // 예외 없이 실행 완료, 상태 불변
+    expect(() => {
+      act(() => {
+        usePendingStore.getState().rollbackToServerSnapshot();
+      });
+    }).not.toThrow();
+
+    expect(getStore().draft!.pendingGroupIds.size).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 10. Draft 있는 상태에서 턴 종료 → Draft 클리어
+//
+// 시나리오: 드래그 후 pending이 생긴 상태에서 TURN_END/TURN_START(다음 플레이어)로
+//   인해 reset()이 호출된다. draft 내 pendingGroupIds가 빈 Set으로 초기화되고
+//   turnStartTableGroups로 groups가 복원된다.
+//
+// 룰 매핑:
+//   - UR-04: 턴 시작/종료 시 pending 초기화
+// ---------------------------------------------------------------------------
+
+describe("Draft 있는 상태에서 턴 종료 → Draft 클리어 (UR-04)", () => {
+  it("pending 그룹이 있는 상태에서 reset() 호출 시 pendingGroupIds가 빈 Set이 된다", () => {
+    const startTableGroups: TableGroup[] = [makeGroup("srv-1", ["B1a", "B2a", "B3a"])];
+    act(() => {
+      usePendingStore.getState().saveTurnStartSnapshot(["R7a", "B7b"], startTableGroups);
+    });
+
+    // 드래그로 pending 생성
+    act(() => {
+      usePendingStore.getState().applyMutation(
+        makeDragOutput({
+          nextTableGroups: [
+            makeGroup("srv-1", ["B1a", "B2a", "B3a"]),
+            makeGroup("pending-1", ["R7a", "B7b"]),
+          ],
+          nextMyTiles: [],
+          nextPendingGroupIds: new Set(["pending-1"]),
+          branch: "rack→board:new-group",
+        })
+      );
+    });
+
+    expect(getStore().draft!.pendingGroupIds.size).toBe(1);
+    expect(selectHasPending(getStore())).toBe(true);
+
+    // 턴 종료 — 다음 TURN_START 이벤트가 reset()을 유발한다고 가정
+    act(() => {
+      usePendingStore.getState().reset();
+    });
+
+    const draft = getStore().draft;
+    // pendingGroupIds가 빈 Set으로 초기화됨
+    expect(draft!.pendingGroupIds.size).toBe(0);
+    // groups가 turnStartTableGroups로 복원됨
+    expect(draft!.groups).toEqual(startTableGroups);
+    // myTiles가 turnStartRack으로 복원됨
+    expect(draft!.myTiles).toEqual(["R7a", "B7b"]);
+    // recoveredJokers 초기화
+    expect(draft!.recoveredJokers).toHaveLength(0);
+    // selectHasPending = false (드로우 버튼 다시 활성화 가능)
+    expect(selectHasPending(getStore())).toBe(false);
+  });
+
+  it("reset 후 groups는 null이 아니라 turnStartTableGroups 배열이다", () => {
+    // 시나리오: draft=null 상태에서 reset() 호출 → draft=null 그대로
+    act(() => {
+      usePendingStore.getState().reset();
+    });
+    expect(getStore().draft).toBeNull();
+
+    // 시나리오: saveTurnStartSnapshot 후 reset() → draft 유지, groups=turnStartTableGroups
+    act(() => {
+      usePendingStore.getState().saveTurnStartSnapshot([], [makeGroup("srv-2", ["R1a", "R2a", "R3a"])]);
+    });
+    act(() => {
+      usePendingStore.getState().reset();
+    });
+    const draft = getStore().draft;
+    expect(draft).not.toBeNull();
+    expect(draft!.groups).toEqual([makeGroup("srv-2", ["R1a", "R2a", "R3a"])]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 11. 여러 그룹 Draft 후 일부 제거 → 확정 가능 여부
+//
+// 시나리오: 3개 pending 그룹을 만든 뒤 2개를 제거하고 나머지 1개만 유효하면
+//   selectConfirmEnabled = true.
+//   pendingGroupIds.size > 0이고 모든 pending 그룹이 >= 3장이어야 한다.
+//
+// 룰 매핑:
+//   - INV-G3: 빈 그룹 자동 제거
+//   - UR-15: ConfirmTurn 활성화 조건
+//   - V-02: 최소 3장 그룹
+// ---------------------------------------------------------------------------
+
+describe("여러 그룹 Draft 후 일부 제거 → 확정 가능 여부 (UR-15, V-02)", () => {
+  it("3개 그룹 생성 후 2개 제거 → 나머지 1개로 확정 가능", () => {
+    // 랙에 충분한 타일
+    const rack: TileCode[] = ["R7a", "B7b", "K7a", "R8a", "B8b", "K8a", "R9a", "B9b", "K9a"];
+    act(() => {
+      usePendingStore.getState().saveTurnStartSnapshot(rack, []);
+    });
+
+    // 3개 그룹 생성
+    act(() => {
+      usePendingStore.getState().applyMutation(
+        makeDragOutput({
+          nextTableGroups: [
+            makeGroup("pending-1", ["R7a", "B7b", "K7a"]),
+            makeGroup("pending-2", ["R8a", "B8b", "K8a"]),
+            makeGroup("pending-3", ["R9a", "B9b", "K9a"]),
+          ],
+          nextMyTiles: [],
+          nextPendingGroupIds: new Set(["pending-1", "pending-2", "pending-3"]),
+          branch: "rack→board:new-group",
+        })
+      );
+    });
+
+    expect(getStore().draft!.pendingGroupIds.size).toBe(3);
+    expect(selectAllGroupsValid(getStore())).toBe(true);
+
+    // pending-2, pending-3을 랙으로 돌려보냄 → pending-1만 남음
+    act(() => {
+      usePendingStore.getState().applyMutation(
+        makeDragOutput({
+          nextTableGroups: [makeGroup("pending-1", ["R7a", "B7b", "K7a"])],
+          nextMyTiles: ["R8a", "B8b", "K8a", "R9a", "B9b", "K9a"],
+          nextPendingGroupIds: new Set(["pending-1"]),
+          branch: "pending→rack",
+        })
+      );
+    });
+
+    expect(getStore().draft!.pendingGroupIds.size).toBe(1);
+    // pending-1 3장(유효) → selectAllGroupsValid=true
+    expect(selectAllGroupsValid(getStore())).toBe(true);
+    // tilesAdded=3 (랙 9장→6장), hasInitialMeld=true → confirmEnabled=true
+    expect(selectConfirmEnabled(getStore(), true)).toBe(true);
+  });
+
+  it("3개 그룹 중 2개 제거 후 남은 1개가 2장(미달)이면 confirmEnabled=false", () => {
+    const rack: TileCode[] = ["R7a", "B7b", "K7a", "R8a", "B8b", "K8a", "R9a", "B9b"];
+    act(() => {
+      usePendingStore.getState().saveTurnStartSnapshot(rack, []);
+    });
+
+    // 3개 그룹 생성 (마지막은 2장짜리 미달 그룹)
+    act(() => {
+      usePendingStore.getState().applyMutation(
+        makeDragOutput({
+          nextTableGroups: [
+            makeGroup("pending-1", ["R7a", "B7b", "K7a"]),
+            makeGroup("pending-2", ["R8a", "B8b", "K8a"]),
+            makeGroup("pending-3", ["R9a", "B9b"]),  // 2장: 미달
+          ],
+          nextMyTiles: [],
+          nextPendingGroupIds: new Set(["pending-1", "pending-2", "pending-3"]),
+          branch: "rack→board:new-group",
+        })
+      );
+    });
+
+    // pending-1, pending-2 제거 → 미달 pending-3만 남음
+    act(() => {
+      usePendingStore.getState().applyMutation(
+        makeDragOutput({
+          nextTableGroups: [makeGroup("pending-3", ["R9a", "B9b"])],
+          nextMyTiles: ["R7a", "B7b", "K7a", "R8a", "B8b", "K8a"],
+          nextPendingGroupIds: new Set(["pending-3"]),
+          branch: "pending→rack",
+        })
+      );
+    });
+
+    // selectAllGroupsValid = false (pending-3이 2장)
+    expect(selectAllGroupsValid(getStore())).toBe(false);
+    // confirmEnabled = false
+    expect(selectConfirmEnabled(getStore(), true)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 12. confirmBusy 영구 잠금 방지 — draftPendingGroupIds.size === 0 체크 명시적 회귀 가드
+//
+// 배경:
+//   수정 전 GameClient.useEffect 조건: !draftPendingTableGroups
+//     → saveTurnStartSnapshot 후 draft.groups가 서버 그룹으로 채워져 truthy
+//     → 조건 false → confirmBusy 영구 잠금
+//   수정 후 조건: draftPendingGroupIds.size === 0
+//     → 사용자가 아무 드래그도 안 해도 Set.size=0 → 조건 true → 정상 해제
+//
+// 이 테스트는 pendingStore.draft 의 두 가지 상태를 명시적으로 비교하여
+//   "size===0 체크"가 "!groups 체크"보다 왜 안전한지 계약으로 고정한다.
+//
+// 룰 매핑:
+//   - UR-04: 턴 시작/종료 시 pending 초기화
+//   - BUG-CONFIRM-001 (2026-05-01)
+// ---------------------------------------------------------------------------
+
+describe("BUG-CONFIRM-001 확장: size===0 체크 vs !groups 체크 계약 (회귀 가드)", () => {
+  it("서버 그룹이 존재해도 pendingGroupIds.size는 0 — !groups 조건이 잘못된 이유", () => {
+    // 보드에 서버 그룹이 3개 있는 상황
+    const serverGroups: TableGroup[] = [
+      makeGroup("srv-meld-1", ["R1a", "R2a", "R3a"]),
+      makeGroup("srv-meld-2", ["B4a", "B5a", "B6a"]),
+      makeGroup("srv-meld-3", ["K7a", "K8a", "K9a"]),
+    ];
+    act(() => {
+      usePendingStore.getState().saveTurnStartSnapshot(["Y10a"], serverGroups);
+    });
+
+    const draft = getStore().draft;
+
+    // !groups 체크 방식 — truthy이므로 confirmBusy 해제 불가 (잘못된 조건)
+    const falseConditionResult = !draft!.groups;
+    expect(falseConditionResult).toBe(false);  // false → 해제 안 됨 = 버그
+
+    // size===0 체크 방식 — pendingGroupIds가 빈 Set이면 confirmBusy 해제 가능 (올바른 조건)
+    const correctConditionResult = draft!.pendingGroupIds.size === 0;
+    expect(correctConditionResult).toBe(true);  // true → 해제 가능 = 정상
+  });
+
+  it("applyMutation 후 pendingGroupIds.size > 0 → confirmBusy 해제 차단 (잠금 유지)", () => {
+    act(() => {
+      usePendingStore.getState().saveTurnStartSnapshot(["R7a", "B7b", "K7a"], []);
+    });
+
+    // 드래그로 pending 그룹 생성
+    act(() => {
+      usePendingStore.getState().applyMutation(
+        makeDragOutput({
+          nextTableGroups: [makeGroup("pending-1", ["R7a", "B7b", "K7a"])],
+          nextMyTiles: [],
+          nextPendingGroupIds: new Set(["pending-1"]),
+        })
+      );
+    });
+
+    const draft = getStore().draft;
+
+    // 확정 처리 중: pendingGroupIds.size > 0 → confirmBusy 해제하면 안 됨
+    expect(draft!.pendingGroupIds.size).toBe(1);
+    expect(draft!.pendingGroupIds.size === 0).toBe(false);  // 해제 조건 미충족
+  });
+
+  it("reset 후 pendingGroupIds.size===0 → confirmBusy 해제 조건 충족, Set 자체는 non-null", () => {
+    act(() => {
+      usePendingStore.getState().saveTurnStartSnapshot(["R7a", "B7b", "K7a"], []);
+    });
+    act(() => {
+      usePendingStore.getState().applyMutation(
+        makeDragOutput({
+          nextTableGroups: [makeGroup("pending-1", ["R7a", "B7b", "K7a"])],
+          nextMyTiles: [],
+          nextPendingGroupIds: new Set(["pending-1"]),
+        })
+      );
+    });
+    act(() => {
+      usePendingStore.getState().reset();
+    });
+
+    const draft = getStore().draft;
+
+    // pendingGroupIds는 null/undefined가 아닌 빈 Set
+    expect(draft!.pendingGroupIds).toBeInstanceOf(Set);
+    // size===0 → confirmBusy 해제 가능
+    expect(draft!.pendingGroupIds.size).toBe(0);
+    expect(draft!.pendingGroupIds.size === 0).toBe(true);
+    // groups는 여전히 non-null (구 조건이 잘못된 이유 재확인)
+    expect(draft!.groups).not.toBeNull();
   });
 });

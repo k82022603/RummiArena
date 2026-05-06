@@ -18,7 +18,7 @@
 | **D-NN** | 데이터 무결성 룰 (서버·클라 공통) | `gameStore`, `engine`, WS 페이로드 직렬화 | invariant 위반 → 코드 버그. band-aid 금지, 코드 수정 |
 
 **번호 정책**:
-- V-NN은 기존 `06-game-rules.md` §10 의 V-01~V-15 + V-13a~V-13e 분해를 **그대로 계승**한다 (호환성). 신규 V-16~V-19 만 본 문서에서 추가.
+- V-NN은 기존 `06-game-rules.md` §10 의 V-01~V-15 + V-13a~V-13e 분해를 **그대로 계승**한다 (호환성). 신규 V-16~V-22 를 본 문서에서 추가.
 - UR-NN은 본 문서가 단일 발급원. 30개 이상 정의.
 - D-NN은 본 문서가 단일 발급원. 12개 이상 정의.
 
@@ -256,6 +256,20 @@
 | **테스트** | `TestStartGame_RejectIfEmptySlotsRemain`, `TestStartGame_SucceedWhenAllSlotsFilled` (`service/room_service_test.go`) |
 | **이력** | 2026-04-28 v1.1 "Mid-Game 진입자 정책 (14장 분배 + hasInitialMeld=false)" 으로 최초 등록 → 2026-04-29 v1.2 PLAYING 방 빈 석 참가 기능 롤백에 따라 본 의미로 재정의. |
 
+### 2.26 V-22 — 단독 활성 플레이어 자동 승리 (NEW, 2026-05-06)
+
+| 항목 | 정의 |
+|------|------|
+| **정의** | 게임 진행 중 플레이어가 기권(FORFEITED) 처리되어 **활성 플레이어(`Status != FORFEITED`)가 1명 이하**로 줄어들면, 남은 유일한 활성 플레이어를 즉시 승리 처리하고 게임을 종료한다. 활성 플레이어가 0명이면(전원 기권) 무승부(`WinnerID = ""`)로 종료. DISCONNECTED 상태는 FORFEITED가 아니므로 **활성으로 카운트**한다 -- Grace Period 내 재연결 가능성을 보장. |
+| **기권 트리거 4종** | (1) **LEAVE** -- 플레이어가 자발적으로 `LEAVE_GAME` 메시지 전송 (`ws_handler.go:640-643`). (2) **DISCONNECT_TIMEOUT** -- 연결 끊김 후 Grace Period 60초(`gracePeriodDuration`) 경과 시 자동 기권 (`ws_handler.go:2290-2327`). (3) **ABSENT_3_TURNS** -- DISCONNECTED 상태에서 턴 타임아웃이 3회 연속 발생 시 자동 기권 (`ws_handler.go:1399-1447`, 규칙 S8.2). (4) **AI_FORCE_DRAW_LIMIT** -- AI가 5회 연속 강제 드로우 시 비활성화/기권 (`ws_handler.go:1241-1277`). |
+| **검증 위치** | `service/game_service.go:731-773 ForfeitPlayer` -- `countActivePlayers(state) <= 1` 일 때 `state.Status = GameStatusFinished`, 남은 비-FORFEITED 플레이어를 `WinnerID`로 지정, `GameEnded: true` 반환. `handler/ws_handler.go:2330-2418 forfeitAndBroadcast` -- `result.GameEnded == true` 일 때 GAME_OVER 브로드캐스트 + 게임 결과 DB 영속화 + ELO 업데이트 + Room FINISHED 처리. |
+| **활성 플레이어 판정** | `countActivePlayers()` (`game_service.go:888-897`): `Status != PlayerStatusForfeited` 인 플레이어 수를 반환. `DISCONNECTED`는 활성으로 카운트 (Grace Period 재연결 가능성 보존). |
+| **위반 예시** | 4인 게임에서 3명이 순차적으로 LEAVE -- 마지막 기권 시점에 `activeCount == 1` → 남은 1명 자동 승리. 전원이 동시에 LEAVE → `activeCount == 0` → 무승부 (winnerID = ""). |
+| **서버 응답** | (1) `PLAYER_FORFEITED { seat, displayName, reason, activePlayers, isGameOver: true }` 브로드캐스트. (2) `GAME_OVER { endType: "FORFEIT", winnerID, winnerSeat, results: [...] }` 브로드캐스트. |
+| **UI 응답** | UR-27 (GAME_OVER 오버레이, `reason` 분기: FORFEIT) + UR-28 (ELO 변동 표시). 기권 플레이어에 대한 사전 안내는 `PLAYER_FORFEITED` 수신 시 INFO-T "({displayName})님이 게임에서 나갔습니다" 표시. |
+| **D 의존성** | **D-05** (보드+모든 랙+drawpile = 106 invariant). 기권자의 랙 타일은 게임 종료 시 점수 계산에 사용되며 drawpile로 반환하지 않음. |
+| **테스트** | `TestCountActivePlayers` (`service/game_service_test.go:1119`), `TestWSMultiplayer_Disconnect_Broadcast` (`e2e/ws_multiplayer_test.go:475`). |
+
 ---
 
 ## 3. UI 인터랙션 룰 (UR-*)
@@ -410,10 +424,10 @@ flowchart TD
 
 | 카테고리 | 개수 | ID 범위 |
 |---------|------|---------|
-| 서버 검증 (V-*) | **25** | V-01 ~ V-15, V-13a~e (5), V-16~V-21 (6: V-16~19 + V-20 + V-21 재정의) |
+| 서버 검증 (V-*) | **26** | V-01 ~ V-15, V-13a~e (5), V-16~V-22 (7: V-16~19 + V-20 + V-21 재정의 + V-22 신설) |
 | UI 인터랙션 (UR-*) | **39** | UR-01 ~ UR-40 중 UR-39 폐기 결번 (활성 39: UR-37/38/40 활성, UR-39 폐기) |
 | 데이터 무결성 (D-*) | **12** | D-01 ~ D-12 |
-| **합계** | **77** | (활성 76 + UR-39 결번 1 = 명목 77. 요구 60+ 충족) |
+| **합계** | **78** | (활성 77 + UR-39 결번 1 = 명목 78. 요구 60+ 충족) |
 
 ---
 
@@ -426,3 +440,4 @@ flowchart TD
   - **UR-39 폐기**: V-21 재정의로 mid-game join 자체가 미지원이 되어 모달 트리거 조건 영구 미발생. ID 는 결번 보존, 차후 신규 룰은 UR-41 부터.
   - **유지**: V-20 (패널티), UR-37 (PRE_MELD 드롭), UR-38 (RESET vs Rollback), UR-40 (패널티 토스트) — mid-game 과 무관하므로 영향 없음.
   - **카운트**: 활성 76 + UR-39 결번 1 = 명목 77 (변동 없음). 매트릭스 56 §3.19 / §5 / §7 동시 갱신.
+- **2026-05-06 game-analyst (v1.3)**: V-22 (단독 활성 플레이어 자동 승리) 신설. 서버 `ForfeitPlayer` (`game_service.go:731-773`) 에 이미 구현된 "activeCount <= 1 → 자동 승리" 정책을 SSOT 에 공식 등재. 기권 트리거 4종 (LEAVE / DISCONNECT_TIMEOUT / ABSENT_3_TURNS / AI_FORCE_DRAW_LIMIT) 명시. 43-rule-ux-sync-ssot.md 동시 갱신. 룰 합계 77 → 78 (활성 77 + UR-39 결번 1).
