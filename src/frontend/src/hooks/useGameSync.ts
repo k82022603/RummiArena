@@ -95,9 +95,9 @@ export function useGameSync(_roomId: string): void {
         const myTilesEmpty = next.myTiles.length === 0;
         if (isFirstEntry && myTilesEmpty) {
           // race window: setGameState 직후, setMyTiles 전.
-          // pending reset만 수행하고 빈 스냅샷 저장은 회피.
+          // F6: reset() 대신 draft 완전 초기화 — stale groups가 남지 않도록.
           // 다음 setMyTiles 후 별도 effect에서 스냅샷 저장.
-          usePendingStore.getState().reset();
+          usePendingStore.setState({ draft: null });
           const isMyTurn = computeIsMyTurn(next.currentSeat, next.mySeat);
           useTurnStateStore.getState().transition("TURN_START", { isMyTurn });
           return;

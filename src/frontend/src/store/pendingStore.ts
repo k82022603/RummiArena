@@ -197,21 +197,27 @@ export const usePendingStore = create<PendingStore>()((set, get) => ({
 
   saveTurnStartSnapshot(rack: TileCode[], tableGroups: TableGroup[]) {
     set((state) => {
+      // F1+F3: 빈 그룹 필터링 후 최신 서버 보드로 동기화
+      const filtered = tableGroups.filter((g) => g.tiles.length > 0);
+
       const prev = state.draft ?? {
-        groups: tableGroups,
+        groups: filtered,
         pendingGroupIds: new Set<string>(),
         myTiles: rack,
         recoveredJokers: [],
         turnStartRack: rack,
-        turnStartTableGroups: tableGroups,
+        turnStartTableGroups: filtered,
       };
 
       return {
         draft: {
           ...prev,
           turnStartRack: rack,
-          turnStartTableGroups: tableGroups,
+          turnStartTableGroups: filtered,
           myTiles: rack,
+          groups: filtered,                      // F1: 최신 서버 보드로 동기화
+          pendingGroupIds: new Set<string>(),    // 새 턴 시작이므로 pending 초기화
+          recoveredJokers: [],                   // 새 턴 시작이므로 초기화
         },
       };
     });

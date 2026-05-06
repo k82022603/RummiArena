@@ -366,9 +366,9 @@ const GameBoard = memo(function GameBoard({
           </p>
         </div>
       ) : (
-        <div className="flex flex-wrap gap-6">
+        <div className="flex flex-wrap gap-6 content-start">
           <AnimatePresence>
-            {tableGroups.map((group) => {
+            {tableGroups.filter((g) => g.tiles.length > 0).map((group) => {
               const isPending = pendingGroupIds.has(group.id);
               const tileCount = group.tiles.length;
               const colorWarning = duplicateColorWarnings[group.id] ?? null;
