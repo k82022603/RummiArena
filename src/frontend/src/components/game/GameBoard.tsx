@@ -327,7 +327,10 @@ const GameBoard = memo(function GameBoard({
         "bg-board-bg border-2",
         borderClass,
         bgOverlayClass,
-        "min-h-[300px] transition-all duration-150",
+        // BUG-GHOST-002 v2: 그룹이 없을 때만 min-h-[300px] 유지.
+        // 그룹이 존재하면 min-h-0으로 해제하여 패딩이 아래로 밀리지 않도록 한다.
+        tableGroups.length === 0 ? "min-h-[300px]" : "min-h-0",
+        "transition-all duration-150",
         className,
       ]
         .filter(Boolean)

@@ -536,8 +536,14 @@ export default function GameClient({ roomId }: GameClientProps) {
   const isMyTurn = useIsMyTurn();
 
   // Phase C 단계 2: pendingStore.draft 파생값 사용. gameStore.pendingTableGroups 의존성 제거.
+  // BUG-GHOST-002 v2: fallback 경로도 빈 그룹 strict filter 적용.
+  // draftPendingTableGroups는 pendingStore.applyMutation에서 INV-G3으로 이미 필터되지만,
+  // gameState.tableGroups(서버 직접 수신 값)는 필터 없이 전달될 수 있으므로 방어 처리.
   const currentTableGroups = useMemo(
-    () => draftPendingTableGroups ?? gameState?.tableGroups ?? [],
+    () =>
+      (draftPendingTableGroups ?? gameState?.tableGroups ?? []).filter(
+        (g) => g.tiles.length > 0
+      ),
     [draftPendingTableGroups, gameState?.tableGroups]
   );
   const currentMyTiles = useMemo(
