@@ -68,35 +68,22 @@ export function useGameSync(_roomId: string): void {
         if (next.currentSeat === null) return;
 
         // -------------------------------------------------------------------
-        // 2026-04-28 회귀 핫픽스 (E2E 14건 FAIL — myRack 빈 배열 표시):
+        // BUG-GHOST-002 v2: TURN_START race 보강 — myTilesEmpty 단독 판정
         //
-        // useWebSocket.ts의 GAME_STATE 핸들러는 setGameState → setMyTiles 순서로
-        // 별개 setState를 호출한다. zustand subscribeWithSelector는 매 setState 마다
-        // selector를 평가하므로,
-        //   1) setGameState 직후: currentSeat이 변경되어 이 콜백이 발동.
-        //      이 시점 next.myTiles는 아직 빈 배열 [] (setMyTiles 전).
-        //      → saveTurnStartSnapshot([], ...) 실행 → draft.myTiles = []
-        //   2) setMyTiles 직후: myTiles만 14장으로 갱신되지만 seatChanged/turnNumberChanged
-        //      모두 false → early return. draft.myTiles 빈 배열 그대로.
-        //   3) GameClient: currentMyTiles = draftPendingMyTiles ?? myTiles
-        //      → draftPendingMyTiles(빈 배열)이 우선되어 rack 0장 표시.
+        // 기존: isFirstEntry(prev.currentSeat===null) && myTilesEmpty 이중 조건.
+        //   → 첫 진입이 아닌 케이스(prev.currentSeat !== null)에서 myTiles가
+        //     비어있어도 race window로 처리되지 않아 빈 스냅샷이 저장되는 문제.
         //
-        // 회피 전략: 첫 진입(prev.currentSeat === null)이면서 next.myTiles가
-        //   비어있으면, 이는 setGameState 직후의 race window이므로 스냅샷 저장을
-        //   건너뛴다. 다음 setState (setMyTiles)는 콜백을 발동시키지 않으므로,
-        //   실제 스냅샷은 다음 turn 전환 또는 별도 트리거에서 저장된다.
-        //   하지만 GAME_STATE 1회 수신만으로도 정상 동작하도록, 여기서는 reset만
-        //   하고 saveTurnStartSnapshot은 myTiles가 채워졌을 때만 수행한다.
-        //
-        // 정상 케이스(턴 진행 중 마지막 타일 배치로 0장)에서는 prev.currentSeat
-        //   이 null 이 아니므로 영향 없음.
+        // v2: myTilesEmpty 단독 판정.
+        //   - next.myTiles.length === 0 이면 항상 스냅샷 저장 스킵.
+        //   - 백필 effect(하단)가 myTilesRef 교체를 감지하여 스냅샷을 저장한다.
+        //   - 정상 종료(마지막 타일 0장 배치 승리)는 GAME_OVER 이벤트로 처리되므로
+        //     TURN_START 콜백에서 0장 케이스를 별도 처리할 필요 없음.
         // -------------------------------------------------------------------
-        const isFirstEntry = prev.currentSeat === null;
         const myTilesEmpty = next.myTiles.length === 0;
-        if (isFirstEntry && myTilesEmpty) {
-          // race window: setGameState 직후, setMyTiles 전.
-          // F6: reset() 대신 draft 완전 초기화 — stale groups가 남지 않도록.
-          // 다음 setMyTiles 후 별도 effect에서 스냅샷 저장.
+        if (myTilesEmpty) {
+          // race window 또는 타일 소진: stale groups가 남지 않도록 draft 초기화.
+          // 백필 effect가 myTilesRef 교체를 감지 후 스냅샷을 저장한다.
           usePendingStore.setState({ draft: null });
           const isMyTurn = computeIsMyTurn(next.currentSeat, next.mySeat);
           useTurnStateStore.getState().transition("TURN_START", { isMyTurn });
@@ -120,16 +107,19 @@ export function useGameSync(_roomId: string): void {
   }, []);
 
   // ---------------------------------------------------------------------------
-  // 2026-04-28 회귀 핫픽스 (백필):
-  //   TURN_START 감지 콜백에서 race window(currentSeat 변경 + myTiles 빈 배열)
-  //   를 우회한 직후, setMyTiles에 의해 myTiles가 채워졌을 때 turnStartSnapshot
-  //   을 백필한다. 사용자 드래그가 시작되어 draft가 만들어지기 전이라면 안전하게
-  //   스냅샷을 저장할 수 있다.
+  // BUG-GHOST-002 v2: 백필 effect — myTilesRef 변경 기반 게이트 완화
   //
-  //   조건:
-  //     - prev.myTiles 빈 배열, next.myTiles ≥ 1 (채워짐)
-  //     - currentSeat이 null 이 아님 (게임 시작됨)
-  //     - pendingStore.draft === null (사용자 드래그 시작 전)
+  //   기존 게이트 (prev.myTilesLength === 0 → next.myTilesLength > 0) 는
+  //   "빈 → 채워짐" 전이 1회만 트리거하여, 동일 길이로 myTiles 배열 참조가
+  //   교체되는 케이스(턴 교체 후 동일 장수 지급 등)를 처리하지 못했다.
+  //
+  //   v2 게이트: myTilesRef(배열 참조)가 실제로 교체될 때마다 트리거.
+  //     - next.myTilesLength === 0 이면 스킵 (타일 없는 상태는 스냅샷 불필요)
+  //     - prev.myTilesRef === next.myTilesRef 이면 스킵 (참조 동일 = 변화 없음)
+  //     - pendingGroupIds.size > 0 이면 스킵 (드래그 진행 중 덮어쓰기 방지)
+  //
+  //   equalityFn에 myTilesRef 비교를 추가하여 zustand subscribeWithSelector가
+  //   참조 변경 시마다 콜백을 발동시키도록 한다.
   // ---------------------------------------------------------------------------
   useEffect(() => {
     const unsubscribe = useGameStore.subscribe(
@@ -140,12 +130,13 @@ export function useGameSync(_roomId: string): void {
         tableGroups: state.gameState?.tableGroups ?? [],
       }),
       (next, prev) => {
-        // myTiles가 빈 → 채워진 첫 전이만 트리거
-        if (prev.myTilesLength !== 0 || next.myTilesLength === 0) return;
+        // BUG-GHOST-002 v2: myTilesRef 변경 시 백필 (race 게이트 완화)
+        if (next.myTilesLength === 0) return;
         if (next.currentSeat === null) return;
+        if (prev.myTilesRef === next.myTilesRef) return;
 
         const pending = usePendingStore.getState();
-        // 드래그가 시작되어 draft가 이미 만들어진 경우 덮어쓰지 않음
+        // draft가 이미 존재하면 덮어쓰지 않음 (드래그 시작 후 사용자 상태 보존)
         if (pending.draft !== null) return;
 
         pending.saveTurnStartSnapshot(
@@ -156,6 +147,7 @@ export function useGameSync(_roomId: string): void {
       {
         equalityFn: (a, b) =>
           a.myTilesLength === b.myTilesLength &&
+          a.myTilesRef === b.myTilesRef &&
           a.currentSeat === b.currentSeat &&
           a.tableGroups.length === b.tableGroups.length,
       }
