@@ -1081,8 +1081,23 @@ func (h *WSHandler) handleAITurn(roomID, gameID string, player *model.PlayerStat
 		return
 	}
 
+	// BUG-LLAMA-FORFEIT (2026-05-08): tilesFromRack=[] 분기 명시화.
+	//   LLaMA(qwen2.5:3b)가 종종 action="place"이면서 tilesFromRack을 빈 배열로 반환한다.
+	//   기존 else 분기에서 forceAIDraw("AI_ERROR")로 떨어져 카운터 +1 → 5회 누적 → forfeit.
+	//   신규 그룹이 없으면 자발적 draw로 간주(카운터 reset), 신규 그룹이 있으면 V-09
+	//   server-side 재배치로 허용(ConfirmTurn이 V-* 룰 검증 담당).
 	if resp.Action == "place" && len(resp.TilesFromRack) > 0 {
 		h.processAIPlace(roomID, gameID, player.SeatOrder, resp)
+	} else if resp.Action == "place" && len(resp.TilesFromRack) == 0 {
+		if h.hasNewGroupVsCurrentState(resp.TableGroups, currentState) {
+			h.processAIPlace(roomID, gameID, player.SeatOrder, resp)
+		} else {
+			h.logger.Info("ws: AI place with empty tilesFromRack and no new group — treating as voluntary draw",
+				zap.String("gameId", gameID),
+				zap.Int("seat", player.SeatOrder),
+			)
+			h.processAIDraw(roomID, gameID, player.SeatOrder)
+		}
 	} else if resp.Action == "draw" {
 		// AI가 정상적으로 draw를 선택한 경우 (fallback 아님)
 		h.processAIDraw(roomID, gameID, player.SeatOrder)
@@ -1236,6 +1251,58 @@ func (h *WSHandler) forceAIDraw(roomID, gameID string, seat int, reason string) 
 	})
 	h.broadcastTurnStart(roomID, state)
 	h.startTurnTimer(roomID, gameID, state.CurrentSeat, state.TurnTimeoutSec)
+}
+
+// hasNewGroupVsCurrentState 응답 TableGroups와 현재 보드를 비교하여
+// 신규 그룹(현재 보드에 없던 타일 조합)이 하나라도 있는지 판정한다.
+// V-09 server-side 재배치 허용 여부의 1차 게이트.
+// currentState가 nil이면 보수적으로 false를 반환한다.
+func (h *WSHandler) hasNewGroupVsCurrentState(
+	respGroups []client.TileGroup,
+	currentState *model.GameStateRedis,
+) bool {
+	if currentState == nil {
+		return false
+	}
+	// model.SetOnTable.Tiles는 []*model.Tile 이므로 코드 문자열로 변환하여 비교한다.
+	boardGroupCodes := make([][]string, len(currentState.Table))
+	for i, sg := range currentState.Table {
+		codes := make([]string, len(sg.Tiles))
+		for j, t := range sg.Tiles {
+			codes[j] = t.Code
+		}
+		boardGroupCodes[i] = codes
+	}
+
+	if len(respGroups) != len(boardGroupCodes) {
+		return true
+	}
+	for _, rg := range respGroups {
+		matched := false
+		for _, boardCodes := range boardGroupCodes {
+			if tileSeqEqual(rg.Tiles, boardCodes) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return true
+		}
+	}
+	return false
+}
+
+// tileSeqEqual 두 타일 코드 슬라이스가 순서까지 동일한지 비교한다.
+func tileSeqEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // incrementForceDrawCounter AI 강제 드로우 카운터를 증가시키고, 5회 도달 시 비활성화(기권) 처리한다.
