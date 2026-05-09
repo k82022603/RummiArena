@@ -1,6 +1,6 @@
 {
   "tournament": "3-model Round 4",
-  "timestamp": "2026-05-01 06:05:03",
+  "timestamp": "2026-05-10 00:04:42",
   "config": {
     "maxTurns": 80,
     "persona": "calculator",
@@ -13,27 +13,82 @@
       "modelName": "Ollama qwen2.5:3b",
       "totalTurns": 80,
       "aiTurns": 39,
-      "aiPlace": 0,
-      "aiTilesPlaced": 0,
-      "aiDraw": 39,
+      "aiPlace": 9,
+      "aiTilesPlaced": 30,
+      "aiDraw": 30,
       "aiFallback": 0,
-      "placeRate": 0.0,
-      "elapsed": 1815.6,
+      "placeRate": 23.1,
+      "elapsed": 656.4,
       "estimatedCost": 0.0,
       "result": "TIMEOUT",
       "responseTime": {
-        "avg": 46.5,
-        "p50": 40.0,
-        "min": 22.6,
-        "max": 255.8
+        "avg": 16.8,
+        "p50": 10.0,
+        "min": 7.5,
+        "max": 57.5
       },
-      "placeDetails": [],
+      "placeDetails": [
+        {
+          "turn": 3,
+          "tiles": 6,
+          "cumulative": 6,
+          "resp_time": 34.7
+        },
+        {
+          "turn": 29,
+          "tiles": 3,
+          "cumulative": 9,
+          "resp_time": 28.2
+        },
+        {
+          "turn": 33,
+          "tiles": 3,
+          "cumulative": 12,
+          "resp_time": 29.7
+        },
+        {
+          "turn": 37,
+          "tiles": 1,
+          "cumulative": 13,
+          "resp_time": 28.5
+        },
+        {
+          "turn": 53,
+          "tiles": 3,
+          "cumulative": 16,
+          "resp_time": 37.6
+        },
+        {
+          "turn": 59,
+          "tiles": 5,
+          "cumulative": 21,
+          "resp_time": 45.0
+        },
+        {
+          "turn": 65,
+          "tiles": 3,
+          "cumulative": 24,
+          "resp_time": 47.1
+        },
+        {
+          "turn": 71,
+          "tiles": 3,
+          "cumulative": 27,
+          "resp_time": 54.2
+        },
+        {
+          "turn": 79,
+          "tiles": 3,
+          "cumulative": 30,
+          "resp_time": 57.5
+        }
+      ],
       "fallbackReasons": [],
       "errors": [
         "[NOT_YOUR_TURN] 자신의 턴이 아닙니다."
       ],
       "round2Baseline": {},
-      "deltaPlaceRate": 0.0
+      "deltaPlaceRate": 23.1
     }
   ]
 }
