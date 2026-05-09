@@ -40,7 +40,7 @@ env:
   DEEPSEEK_PROMPT_VARIANT: ""
   DEEPSEEK_REASONER_PROMPT_VARIANT: "v2"
   DASHSCOPE_PROMPT_VARIANT: "v4"
-  OLLAMA_PROMPT_VARIANT: "v7-ollama-meld"
+  OLLAMA_PROMPT_VARIANT: "v9-ollama-place"
   # ContextShaper 설정 (docs/02-design/44 §6.3)
   # 기본값 passthrough = v2 동작 그대로 보존
   # Phase 4 실측: kubectl set env deploy/ai-adapter -n rummikub DEEPSEEK_REASONER_CONTEXT_SHAPER=joker-hinter

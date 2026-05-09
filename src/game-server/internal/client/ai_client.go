@@ -84,11 +84,12 @@ type OpponentInfo struct {
 // MoveResponse POST /move 응답 DTO.
 // 계약서 §3.6 기준.
 type MoveResponse struct {
-	Action        string          `json:"action"` // "place" | "draw"
-	TableGroups   []TileGroup     `json:"tableGroups,omitempty"`
-	TilesFromRack []string        `json:"tilesFromRack,omitempty"`
-	Reasoning     string          `json:"reasoning,omitempty"`
-	Metadata      MoveMetadata    `json:"metadata"`
+	Action             string       `json:"action"` // "place" | "draw"
+	TableGroups        []TileGroup  `json:"tableGroups,omitempty"`
+	TilesFromRack      []string     `json:"tilesFromRack,omitempty"`
+	JokerReturnedCodes []string     `json:"jokerReturnedCodes,omitempty"` // V-07: 조커 교체 시 회수한 조커 코드
+	Reasoning          string       `json:"reasoning,omitempty"`
+	Metadata           MoveMetadata `json:"metadata"`
 }
 
 // MoveMetadata AI 호출 메타데이터 (계약서 §3.7 metadata 필드)

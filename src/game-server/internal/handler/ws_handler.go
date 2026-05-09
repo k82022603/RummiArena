@@ -1160,9 +1160,10 @@ func (h *WSHandler) processAIPlace(roomID, gameID string, seat int, resp *client
 	}
 
 	req := &service.ConfirmRequest{
-		Seat:          seat,
-		TableGroups:   tableGroups,
-		TilesFromRack: resp.TilesFromRack,
+		Seat:               seat,
+		TableGroups:        tableGroups,
+		TilesFromRack:      resp.TilesFromRack,
+		JokerReturnedCodes: resp.JokerReturnedCodes,
 	}
 
 	result, err := h.gameSvc.ConfirmTurn(gameID, req)

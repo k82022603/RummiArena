@@ -15,6 +15,7 @@ import { v4_1Variant } from './variants/v4-1.variant';
 import { v5Variant } from './variants/v5.variant';
 import { v7OllamaMeldVariant } from './variants/v7-ollama-meld.variant';
 import { v8OllamaPlaceVariant } from './variants/v8-ollama-place.variant';
+import { v9OllamaPlaceVariant } from './variants/v9-ollama-place.variant';
 import { characterKoVariant } from './variants/character-ko.variant';
 
 /**
@@ -134,6 +135,7 @@ export class PromptRegistry implements OnModuleInit {
     this.register(v5Variant);
     this.register(v7OllamaMeldVariant);
     this.register(v8OllamaPlaceVariant);
+    this.register(v9OllamaPlaceVariant);
     this.register(characterKoVariant);
   }
 

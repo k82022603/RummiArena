@@ -77,6 +77,15 @@ export class MoveResponseDto {
   tilesFromRack?: string[];
 
   /**
+   * 조커 교체 시 회수한 조커 코드 목록 (V-07, V-13e).
+   * action이 "place"이고 조커 교체가 발생했을 때만 포함.
+   */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  jokerReturnedCodes?: string[];
+
+  /**
    * AI의 사고 과정 또는 전략 설명.
    * 디버깅 및 UI 표시용.
    */
