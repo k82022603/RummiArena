@@ -3,15 +3,17 @@
 루미큐브(Rummikub) 보드게임 기반 **멀티 LLM 전략 실험 플랫폼**.
 Human + AI 혼합 2~4인 실시간 대전을 지원하며, GPT / Claude / DeepSeek / Ollama 등 다양한 LLM의 게임 전략을 비교·분석한다.
 
-> **Sprint 7 완료 + 핫픽스** — Jest 643 tests · Go 770 tests · AI Adapter 606 tests · CI/CD 17/17 ALL GREEN
+> **🏁 프로젝트 종료 — 2026-05-10**
+> Sprint 1~7 + 핫픽스 완료 · Jest 659 tests · Go 770 tests · AI Adapter 637 tests · CI/CD 17/17 ALL GREEN
 
 ## Highlights
 
-- **4종 LLM 실시간 대전** — OpenAI gpt-5-mini, Claude Sonnet 4, DeepSeek Reasoner, Ollama qwen2.5:3b
+- **4종 LLM 실시간 대전** — OpenAI gpt-5-mini (33.3%), DeepSeek V4-Pro (31.9%), Ollama qwen2.5:3b (25.6%), Claude Sonnet 4 (20.0%)
 - **LLM 신뢰 금지 아키텍처** — LLM은 수를 "제안"만 하고, Game Engine이 규칙 검증. 무효 → 재요청(3회) → 강제 드로우
 - **AI 캐릭터 시스템** — 6종 페르소나 × 3단계 난이도 × 심리전 레벨(0~3)
 - **ELO 랭킹** — Redis Sorted Set 기반 6티어, 실시간 순위
 - **DevSecOps** — GitLab CI 17스테이지, SonarQube, Trivy, Rate Limiting
+- **게임룰 SSOT** — 77개 룰(V-*/UR-* 코드), 게임 분석가 검증, 룰 기반 로직만 허용
 
 ## Architecture
 
@@ -225,61 +227,40 @@ GET    /ready                 # 준비 상태
 
 ## AI Battle Results
 
-### Round 4 (2026-04-06, 최신)
+### 최종 모델별 Place Rate (2026-05-10 기준)
 
-| Model | Place Rate | 등급 | 턴 | 비용 | 비고 |
-|-------|-----------|------|-----|------|------|
-| **DeepSeek Reasoner** | **30.8%** | **A+** | 80 (완주) | $0.04 | 비용 대비 성과 1위, v2 프롬프트 |
-| **GPT-5-mini** | 33.3% | (N/A) | 14 | $0.15 | 재배포로 WS 끊김, 재실행 필요 |
-| **Claude Sonnet 4** (thinking) | 20.0% | A | 32 | $1.11 | WS_TIMEOUT |
-| **Ollama qwen2.5:3b** | **15.8%** | B | 40 | $0 | v8-ollama-place 사전 계산 전략 (2026-05-01) |
+| Model | Place Rate | 프롬프트 | 비용/게임 | 비고 |
+|-------|-----------|---------|-----------|------|
+| **GPT-5-mini** | **33.3%** | v2 | $0.15 | 3모델 공통 표준 v2 확정 |
+| **DeepSeek V4-Pro** (thinking) | **31.9%** | v2 | $0.039 | N=3, avg 102s, fallback 0 |
+| **Ollama qwen2.5:3b** | **25.6%** | v9-ollama-place | $0 | N=3 평균, v8(15.8%)→+9.8%p |
+| **Claude Sonnet 4** (thinking) | **20.0%** | v2 | $1.11 | WS_TIMEOUT, 역대 최고 33.3% |
 
-### Round 2 → Round 4 개선
+> 전 모델 Fallback 0건 달성. 비용 대비: DeepSeek이 Claude 대비 28배 효율.
 
-| Model | Round 2 | Round 4 | Delta |
-|-------|---------|---------|-------|
-| DeepSeek Reasoner | 5% (F) | **30.8% (A+)** | **+25.8%p** |
-| GPT-5-mini | 28% (A) | 33.3% (N/A) | 데이터 불완전 |
-| Claude Sonnet 4 | 23% (A) | 20.0% (A) | -3%p |
+### LLM 실험 여정 요약
 
-> 전 모델 Fallback 0건. DeepSeek 비용 대비 성과: Claude의 114배, GPT의 23배
+| 시기 | 실험 | 핵심 발견 |
+|------|------|----------|
+| Sprint 3 | Ollama 통합 | CPU 추론 가능, 단 응답 25초 |
+| Sprint 4 | DeepSeek Round 2 | 5% → 23.1%, 프롬프트가 성능 결정 |
+| Sprint 5 | v2 프롬프트 표준화 | DeepSeek 30.8% 달성, 3모델 공통화 |
+| Sprint 7 | DeepSeek V4-Pro thinking | 31.9%, V4-Flash 전 모드 탈락 |
+| 핫픽스 | v8/v9-ollama-place | LLaMA 0% → 15.8% → 25.6% |
 
-### v2 프롬프트 통일 실험 (2026-04-06)
-
-DeepSeek 전용으로 설계한 v2 프롬프트를 3모델 공통 표준으로 적용하여 크로스모델 실험을 수행했다.
-
-| Model | v2 Rate | 이전 Rate | 변화 | 턴 | 비고 |
-|-------|:-------:|:---------:|:----:|:---:|------|
-| **Claude Sonnet 4** (thinking) | **33.3%** | 20.0% (R4) | **+13.3%p** | 62 | **역대 최고 Place Rate** |
-| **GPT-5-mini** | **30.8%** | 28.0% (R2) | +2.8%p | 80 | **첫 80턴 완주** |
-| DeepSeek Reasoner | 17.9% | 30.8% (R4) | -12.9%p | 80 | 게임 간 분산, AI_TIMEOUT 8건 |
-
-**결론**: v2 프롬프트가 Claude/GPT에서도 효과를 입증하여 **3모델 공통 표준**으로 채택. Claude가 역대 최고 성적(33.3%)을 달성하고, GPT가 사상 첫 80턴 완주에 성공했다.
-
-> 상세 분석: `docs/04-testing/38-v2-prompt-crossmodel-experiment.md` 참조
-
-### DeepSeek V4-Pro Thinking 채택 (2026-04-28, 최신)
-
-| Model | Place Rate | 비고 |
-|-------|-----------|------|
-| **DeepSeek V4-Pro** (thinking) | **31.9%** | N=3, avg 102s, $0.039/game, fallback 0 |
-| DeepSeek V4-Flash | 0% | thinking 비활성화 시 전량 드로우 |
-| DeepSeek V4-Pro (non-thinking) | 14.3% | thinking 필수 확인 |
-
-> V4-Pro thinking mode 채택. V4-Flash 전 모드 탈락.
-> 상세: `docs/04-testing/63-deepseek-v4-migration-plan.md`
+> 상세 분석: `docs/04-testing/109-v9-ollama-place-experiment-2026-05-09.md`
 
 ## Test Status
 
 | Category | Tests | Status |
 |----------|-------|--------|
 | Game Engine (Go) | 770 | PASS |
-| AI Adapter (NestJS) | 606 | PASS |
-| Frontend Jest | 643 | PASS |
+| AI Adapter (NestJS) | 637 | PASS |
+| Frontend Jest | 659 | PASS |
 | Playwright E2E | 375 | PASS |
 | WS Multiplayer | 16 | PASS |
 | WS Integration | 5 | PASS |
-| **Total** | **2,415** | **ALL PASS** |
+| **Total** | **2,462** | **ALL PASS** |
 
 ### CI/CD Pipeline (17/17 Stages)
 
@@ -330,19 +311,28 @@ lint (4) → test (2) → quality (2) → build (4) → scan (4) → gitops (1)
 - [K8s Architecture](docs/05-deployment/02-k8s-architecture.md)
 - [Deployment Guide](docs/05-deployment/01-deployment-guide.md)
 
+### Closure & Operations
+- [Project Closure Report](docs/07-closure/01-project-closure-report.md)
+- [Operation Handover Plan](docs/07-closure/02-operation-handover-plan.md)
+- [Operator Manual](docs/06-operations/10-operator-manual.md)
+- [User Manual](docs/06-operations/11-user-manual.md)
+- [Production Environment Guide](docs/06-operations/12-production-environment-guide.md)
+- [Final Retrospectives](work_logs/retrospectives/final-2026-05-10/)
+
 ## Sprint Progress
 
-| Sprint | Period | SP | Key Deliverables |
-|--------|--------|----|-----------------|
-| Sprint 1 | W1~W2 | 28/28 | Game Engine, REST API, WebSocket, K8s 5서비스 |
-| Sprint 2 | W3~W4 | 50/50 | AI 캐릭터, Turn Orchestrator, ELO, Admin, 연습 모드 |
-| Sprint 3 | W5~W6 | 30/30 | OAuth K8s, WS 재연결, Ollama, Redis Timer/Session |
-| Sprint 4 | W7 | - | 생명주기 4기능, 비용/메트릭, 보안 P0 5건, AI Round 2 |
-| Sprint 5 | W8 | - | Rate Limiting, DeepSeek 최적화, CI/CD 17/17, 플레이테스트 |
-| Sprint 6 | W9~W10 | - | 재배치 UI 4유형, dnd-kit, Agent Teams 13명, 핫픽스 4건 |
-| **Sprint 7** | **W11~W12** | - | **UI State 아키텍처 통합, pendingStore SSOT, 4계층 설계, 룰 77개, BUG-CONFIRM-001, 확정버튼 아키텍처 정리** |
+| Sprint | Period | Key Deliverables |
+|--------|--------|-----------------|
+| Sprint 1 | 03-13~21 | Game Engine, REST API, WebSocket, K8s 5서비스, CI/CD 기반 |
+| Sprint 2 | 03-22~28 | AI 캐릭터 6종, Turn Orchestrator, ELO 랭킹, Admin, 연습 모드 |
+| Sprint 3 | 03-29~04-04 | Google OAuth K8s, WS 재연결, Ollama 통합, Redis Timer/Session |
+| Sprint 4 | 04-05~11 | 플레이어 생명주기, AI 비용 메트릭, 보안 P0, AI Round 2 (DeepSeek 23.1%) |
+| Sprint 5 | 04-12~18 | Rate Limiting, DeepSeek 30%+, CI/CD 17/17 ALL GREEN, 플레이테스트 88.6% |
+| Sprint 6 | 04-19~21 | 재배치 UI 4유형(dnd-kit), Agent Teams 13명 체제, 핫픽스 4건 |
+| Sprint 7 | 04-22~29 | UI State 아키텍처 통합, pendingStore SSOT, 게임룰 77개, BUG-CONFIRM-001 |
+| **핫픽스** | **05-01~10** | **v8/v9-ollama-place (LLaMA 0%→25.6%), joker 파이프라인 패치, ELO API 연동** |
 
-**746 commits** · 100+ 설계 문서 · 2,415 tests
+**750+ commits** · 110+ 설계 문서 · 2,462 tests · **프로젝트 종료 2026-05-10**
 
 ## License
 

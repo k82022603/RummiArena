@@ -237,5 +237,16 @@ gantt
 
 ---
 
+## 프로젝트 종료 (2026-05-10)
+
+- Sprint 7 완료 + 핫픽스(2026-05-01~10) 이후 프로젝트 공식 종료
+- Sprint 8 없음 (확정)
+- 최종 상태: Jest 659 / Go 770 / AI Adapter 637 / CI/CD 17/17 ALL GREEN
+- 미완 기술부채: SEC-DEBT-001~006, next-auth v5 이주, P3-3 DndContext 이전
+- 상세 종료 보고서: docs/07-closure/01-project-closure-report.md
+
+---
+
 *이 문서는 Sprint 진행에 따라 지속 업데이트된다.*
 *최종 업데이트: 2026-03-30 -- All-Hands 리뷰 결과 반영, Sprint 3~4 완료/진행 상태 현행화*
+*프로젝트 종료 갱신: 2026-05-10*
